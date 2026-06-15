@@ -8,4 +8,4 @@ Open SMS3 here:
 
 This GitHub Pages project URL is published from the `sequence-manipulation-suite` repository.
 
-SMS3 is a local-first browser lab toolkit. The app runs as static HTML, JavaScript, and bundled reference data in your browser; normal sequence, table, and workflow inputs are not uploaded to an SMS3 server.
+SMS3 runs as static HTML, JavaScript, and bundled reference data in your browser; normal sequence, table, and workflow inputs are not uploaded to an SMS3 server.
