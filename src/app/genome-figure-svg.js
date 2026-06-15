@@ -2328,6 +2328,7 @@ function renderCircularRecord(record, state) {
 
   const labelCandidateIds = buildInsideLabelCandidates({ ...record, features, forceLabelIds: state.forceLabelIds }, state.labelDensity);
   const insideLabelIds = new Set();
+  const insideLabelDraws = [];
   const ringFor = (feature) => {
     if (stackedLayout) return featureBaseRadius + slotForFeature(stackedLayout, feature) * slotStep;
     return featureBaseRadius + slotIndexForFeature(feature, slotGroups, state.featureSlotGrouping) * slotStep;
@@ -2349,16 +2350,18 @@ function renderCircularRecord(record, state) {
         text: feature.label
       });
       if (shouldUseInsideLabel(feature, labelCandidateIds, insideLabelIds) && labelPlacement) {
-        drawCircularInsideFeatureLabel(
-          svg,
-          feature.label,
-          labelPlacement,
-          `${state.svgIdPrefix || "genome-figure"}-${safeSvgIdPart(feature.id)}-${partIndex}`,
-          { featureFill: color }
-        );
+        insideLabelDraws.push({
+          label: feature.label,
+          placement: labelPlacement,
+          pathId: `${state.svgIdPrefix || "genome-figure"}-${safeSvgIdPart(feature.id)}-${partIndex}`,
+          options: { featureFill: color }
+        });
         insideLabelIds.add(feature.id);
       }
     }
+  }
+  for (const label of insideLabelDraws) {
+    drawCircularInsideFeatureLabel(svg, label.label, label.placement, label.pathId, label.options);
   }
 
   if (state.showSuggestedLabels !== false && !state.labels.some(isSuggestedLabel)) {
@@ -2448,6 +2451,7 @@ function renderLinearRecord(record, state) {
   }));
   const labelCandidateIds = buildInsideLabelCandidates({ ...record, features, forceLabelIds: state.forceLabelIds }, state.labelDensity);
   const insideLabelIds = new Set();
+  const insideLabelDraws = [];
   const labelAnchorsById = new Map();
   const labelAnchorsByFeatureId = new Map();
   for (const row of rows) {
@@ -2535,11 +2539,14 @@ function renderLinearRecord(record, state) {
         const featureSlotWidth = state.slotWidth ?? 17;
         drawLinearFeatureGlyph(svg, feature, left, y, Math.max(1.5, widthPx), featureSlotWidth, color, state);
         if (shouldUseInsideLabel(feature, labelCandidateIds, insideLabelIds) && featureSlotWidth >= INSIDE_FEATURE_LABEL_HEIGHT + 2 && widthPx > estimateTextWidth(feature.label, INSIDE_FEATURE_LABEL_FONT_SIZE) + INSIDE_FEATURE_LABEL_PADDING) {
-          drawInsideFeatureLabel(svg, feature.label, left + widthPx / 2, y, { featureFill: color });
+          insideLabelDraws.push({ label: feature.label, x: left + widthPx / 2, y, options: { featureFill: color } });
           insideLabelIds.add(feature.id);
         }
       }
     }
+  }
+  for (const label of insideLabelDraws) {
+    drawInsideFeatureLabel(svg, label.label, label.x, label.y, label.options);
   }
   refreshFeatureLabelAnchors(state.labels, labelAnchorsById, labelAnchorsByFeatureId);
   if (state.showSuggestedLabels !== false && !state.labels.some(isSuggestedLabel)) {
