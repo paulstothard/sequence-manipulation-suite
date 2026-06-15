@@ -732,6 +732,17 @@ function labelAnchorForAngle(angle) {
   return "middle";
 }
 
+function inwardAxisLabelAnchorForAngle(angle) {
+  const normalized = ((angle % 360) + 360) % 360;
+  if (normalized > 20 && normalized < 160) {
+    return "end";
+  }
+  if (normalized > 200 && normalized < 340) {
+    return "start";
+  }
+  return "middle";
+}
+
 function circularLabelZoneForAngle(angle) {
   const normalized = ((angle % 360) + 360) % 360;
   if (normalized >= 330 || normalized <= 30) {
@@ -903,9 +914,9 @@ function renderCircularAxis(centerX, centerY, axisRadius, sequenceLength) {
     const inner = polarToCartesian(centerX, centerY, axisRadius - 8, angle);
     const outer = polarToCartesian(centerX, centerY, axisRadius + 8, angle);
     const label = polarToCartesian(centerX, centerY, axisRadius - 28, angle);
-    const anchor = labelAnchorForAngle(angle);
+    const anchor = inwardAxisLabelAnchorForAngle(angle);
     parts.push(`<line class="axis-tick" x1="${inner.x.toFixed(2)}" y1="${inner.y.toFixed(2)}" x2="${outer.x.toFixed(2)}" y2="${outer.y.toFixed(2)}"></line>`);
-    parts.push(`<text class="axis-label axis-label-circular" x="${label.x.toFixed(2)}" y="${label.y.toFixed(2)}" text-anchor="${anchor}">${escapeXml(tick.label)}</text>`);
+    parts.push(`<text class="axis-label axis-label-circular" x="${label.x.toFixed(2)}" y="${label.y.toFixed(2)}" text-anchor="${anchor}" dominant-baseline="middle">${escapeXml(tick.label)}</text>`);
   }
   return parts.join("\n");
 }
