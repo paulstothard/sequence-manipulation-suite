@@ -752,14 +752,7 @@ function renderHomeView() {
     makeHomeLink("#reference=sms3-showcase", "View the SMS3 showcase", "Scan example outputs from tools, plots, viewers, and figures.")
   );
 
-  const referenceAction = document.createElement("div");
-  referenceAction.className = "home-links home-links-single";
-  referenceAction.append(
-    makeHomeLink("#reference=citation-guidance", "How to cite SMS", "Copy recommended citation text in common journal formats.")
-  );
-
   appendHomeSection(main, "Explore example outputs", showcaseAction);
-  appendHomeSection(main, "Reference", referenceAction);
 
   elements.homeBody.append(summary, note, main);
 }
