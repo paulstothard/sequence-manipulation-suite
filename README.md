@@ -9,7 +9,3 @@ Open SMS3 here:
 This GitHub Pages project URL is published from the `sequence-manipulation-suite` repository.
 
 SMS3 is a local-first browser lab toolkit. The app runs as static HTML, JavaScript, and bundled reference data in your browser; normal sequence, table, and workflow inputs are not uploaded to an SMS3 server.
-
-Development happens in the private/development `sms3` repository. This public repository is a deployment artifact generated from that source repository. Do not develop SMS3 here; manual edits may be overwritten by the deploy packaging script.
-
-Maintainer deployment notes and host-specific files live in the development repo's `deploy` symlink.
