@@ -737,7 +737,7 @@ function renderHomeView() {
 
   const summary = document.createElement("p");
   summary.className = "summary home-summary";
-  summary.textContent = `SMS3 is a local-first browser toolkit for sequence manipulation, analysis, visualization, and reference-data tasks. It includes ${visibleSortedTools.length.toLocaleString()} registered tools for DNA/RNA, protein, table, plot, and figure work.`;
+  summary.textContent = `SMS3 is a browser toolkit for sequence manipulation, analysis, visualization, and reference-data tasks. It includes ${visibleSortedTools.length.toLocaleString()} registered tools for DNA/RNA, protein, table, plot, and figure work.`;
 
   const note = document.createElement("p");
   note.className = "home-note";
