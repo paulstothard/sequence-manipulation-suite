@@ -1,0 +1,12 @@
+{
+  "dataset": "SMS3 codon usage reference data",
+  "version": "2026-05 generated",
+  "accessDate": "2026-05-02",
+  "description": "Project-curated codon usage reference data generated from source records with explicit provenance.",
+  "license": "Mixed provenance. Each reference records its own source and redistribution note.",
+  "notes": [
+    "The synthetic seed reference is intentionally not organism-specific.",
+    "Organism-specific references should be generated into checked-in JSON with source, version, access date, genetic code, units, assumptions, and validation totals.",
+    "Generated references are compact derived data. Keep source-fetching and parsing steps documented in scripts/reference-data/README.md."
+  ]
+}

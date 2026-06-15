@@ -1,0 +1,21 @@
+{
+  "dataset": "restriction-enzymes",
+  "name": "Restriction enzyme seed references",
+  "version": "2026-05-17-common-type-ii-2",
+  "accessDate": "2026-05-17",
+  "sourceName": "NEB recognition specificity list and REBASE literature",
+  "sourceUrls": [
+    "https://www.neb.com/en-us/tools-and-resources/selection-charts/alphabetized-list-of-recognition-specificities",
+    "http://rebase.neb.com",
+    "https://doi.org/10.1093/nar/gkg069"
+  ],
+  "licenseOrRedistributionNote": "Small curated seed set of common enzyme names, recognition sites, and cut positions. Review source terms before importing full upstream restriction-enzyme databases.",
+  "buildScript": "scripts/reference-data/build-restriction-enzyme-data.mjs",
+  "assumptions": [
+    "Records intentionally focus on common Type II enzymes with simple single-site recognition patterns that SMS3 can model with one recognition sequence and cut position.",
+    "Cut positions are stored as offsets after bases in the listed recognition sequence.",
+    "Methylation sensitivity, star activity, buffer compatibility, and enzyme availability are not modeled.",
+    "The SMS3 scanner treats these records as browser-bundled references and reports direct-strand coordinates."
+  ],
+  "recordCount": 110
+}
