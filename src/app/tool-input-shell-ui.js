@@ -1,5 +1,266 @@
 import { wrapFastaText } from "../core/fasta.js";
 
+export function getToolInputFileUiForMetadata(tool) {
+  const metadata = tool?.metadata ?? {};
+  if (metadata.inputRequired === false) {
+    return {
+      dropLabel: "No input file needed",
+      accept: ""
+    };
+  }
+  if (metadata.fileInput) {
+    return {
+      dropLabel: metadata.fileInput.dropLabel ?? "Drop supported input here",
+      accept: metadata.fileInput.accept ?? ".txt"
+    };
+  }
+
+  const workflowInputs = metadata.workflow?.inputs ?? [];
+  const inputTypeLabel = String(metadata.inputType ?? "").trim();
+  const inputType = inputTypeLabel.toLowerCase();
+  const category = (metadata.category ?? "").toLowerCase();
+  const tags = (metadata.tags ?? []).map((tag) => String(tag).toLowerCase());
+  const sequenceInput = workflowInputs.find((input) => input.kind === "sequence-records");
+  const hasSequenceInput = Boolean(sequenceInput) || inputType.includes("sequence");
+  const hasTableInput =
+    workflowInputs.some((input) => input.kind === "table") ||
+    category.includes("table") ||
+    tags.some((tag) => ["table", "csv", "tsv"].includes(tag));
+  const hasDnaRnaFlatfileInput =
+    inputType.includes("flatfile") ||
+    inputType.includes("genbank") ||
+    inputType.includes("embl") ||
+    inputType.includes("ddbj") ||
+    inputType.includes("annotated dna record");
+
+  if (inputType.includes("markdown")) {
+    return {
+      dropLabel: "Drop Markdown or plain-text notes here",
+      accept: ".md,.markdown,.txt"
+    };
+  }
+
+  if (inputType.includes("vcf")) {
+    return {
+      dropLabel: "Drop VCF or VCF.GZ here",
+      accept: ".vcf,.vcf.gz,.gz,.txt"
+    };
+  }
+
+  if (inputType.includes("sam")) {
+    return {
+      dropLabel: "Drop SAM or compressed SAM here",
+      accept: ".sam,.sam.gz,.gz,.txt"
+    };
+  }
+
+  if (inputType.includes("fastq")) {
+    return {
+      dropLabel: "Drop FASTQ or compressed FASTQ here",
+      accept: ".fastq,.fq,.fastq.gz,.fq.gz,.gz,.txt"
+    };
+  }
+
+  if (inputType.includes("sanger") || inputType.includes("chromatogram")) {
+    return {
+      dropLabel: "Drop AB1, SCF, one base-call sequence, or FASTA record here",
+      accept: ".ab1,.abi,.scf,.json,.txt,.fa,.fasta,.seq"
+    };
+  }
+
+  if (inputType === "plain text") {
+    return {
+      dropLabel: "Drop plain-text input here",
+      accept: ".txt,.txt.gz,.gz"
+    };
+  }
+
+  if (inputType.includes("text list")) {
+    return {
+      dropLabel: "Drop plain-text, CSV, or TSV list items here",
+      accept: ".txt,.csv,.tsv,.tab"
+    };
+  }
+
+  if (inputType.includes("plain text, csv, or tsv")) {
+    return {
+      dropLabel: "Drop plain-text, CSV, or TSV here",
+      accept: ".txt,.csv,.tsv,.tab"
+    };
+  }
+
+  if (inputType.includes("dna/rna fasta reads or contigs")) {
+    return {
+      dropLabel: "Drop DNA/RNA FASTA reads or contigs here",
+      accept: ".fa,.fasta,.fna,.ffn,.fa.gz,.fasta.gz,.fna.gz,.ffn.gz,.gz,.txt"
+    };
+  }
+
+  if (inputType.includes("two protein fasta records")) {
+    return {
+      dropLabel: "Drop two protein FASTA records here",
+      accept: ".fa,.fasta,.faa,.fa.gz,.fasta.gz,.faa.gz,.gz,.txt"
+    };
+  }
+
+  if (inputType.includes("two dna/rna fasta records")) {
+    return {
+      dropLabel: "Drop two DNA/RNA FASTA records here",
+      accept: ".fa,.fasta,.fna,.ffn,.fa.gz,.fasta.gz,.fna.gz,.ffn.gz,.gz,.txt"
+    };
+  }
+
+  if (inputType.includes("two coding dna/rna sequences")) {
+    return {
+      dropLabel: "Drop two coding DNA/RNA sequences or FASTA records here",
+      accept: ".fa,.fasta,.fna,.ffn,.fa.gz,.fasta.gz,.fna.gz,.ffn.gz,.gz,.txt,.seq"
+    };
+  }
+
+  if (inputType.includes("two protein sequences")) {
+    return {
+      dropLabel: "Drop two protein sequences or FASTA records here",
+      accept: ".fa,.fasta,.faa,.fa.gz,.fasta.gz,.faa.gz,.gz,.txt,.seq"
+    };
+  }
+
+  if (inputType.includes("two dna/rna sequences")) {
+    return {
+      dropLabel: "Drop two DNA/RNA sequences or FASTA records here",
+      accept: ".fa,.fasta,.fna,.ffn,.fa.gz,.fasta.gz,.fna.gz,.ffn.gz,.gz,.txt,.seq"
+    };
+  }
+
+  if (inputType.includes("coding dna/rna fasta records")) {
+    return {
+      dropLabel: "Drop coding DNA/RNA FASTA records here",
+      accept: ".fa,.fasta,.fna,.ffn,.fa.gz,.fasta.gz,.fna.gz,.ffn.gz,.gz,.txt"
+    };
+  }
+
+  if (inputType.includes("protein fasta records")) {
+    return {
+      dropLabel: "Drop protein FASTA records here",
+      accept: ".fa,.fasta,.faa,.fa.gz,.fasta.gz,.faa.gz,.gz,.txt"
+    };
+  }
+
+  if (inputType.includes("dna/rna fasta records")) {
+    return {
+      dropLabel: "Drop DNA/RNA FASTA records here",
+      accept: ".fa,.fasta,.fna,.ffn,.fa.gz,.fasta.gz,.fna.gz,.ffn.gz,.gz,.txt"
+    };
+  }
+
+  if (inputType === "fasta records" || inputType.startsWith("fasta records") || inputType.endsWith(" fasta records")) {
+    return {
+      dropLabel: "Drop FASTA records here",
+      accept: ".fa,.fasta,.fna,.faa,.ffn,.fa.gz,.fasta.gz,.fna.gz,.faa.gz,.ffn.gz,.gz,.txt"
+    };
+  }
+
+  if (hasTableInput && inputType.includes("json")) {
+    return {
+      dropLabel: "Drop CSV, TSV, JSON, Excel workbook, or plain-text table here",
+      accept: ".csv,.tsv,.tab,.json,.xlsx,.txt"
+    };
+  }
+
+  if (hasTableInput && inputType.includes("fasta")) {
+    return {
+      dropLabel: "Drop FASTA, compressed FASTA, CSV, TSV, Excel workbook, or plain-text table here",
+      accept: ".fa,.fasta,.fna,.faa,.fa.gz,.fasta.gz,.fna.gz,.faa.gz,.gz,.csv,.tsv,.tab,.xlsx,.txt"
+    };
+  }
+
+  if (hasTableInput && !hasSequenceInput) {
+    return {
+      dropLabel: "Drop CSV, TSV, Excel workbook, or plain-text table here",
+      accept: ".csv,.tsv,.tab,.xlsx,.txt"
+    };
+  }
+
+  if (inputType.includes("pdb") || inputType.includes("mmcif")) {
+    return {
+      dropLabel: "Drop PDB or mmCIF structure here",
+      accept: ".pdb,.cif,.mmcif,.txt"
+    };
+  }
+
+  if (inputType.includes("uniprot") || inputType.includes("genpept")) {
+    return {
+      dropLabel: "Drop UniProt or GenPept flatfile records here",
+      accept: ".gp,.gpep,.uniprot,.txt"
+    };
+  }
+
+  if (inputType.includes("genbank") || inputType.includes("embl") || inputType.includes("ddbj")) {
+    return {
+      dropLabel: "Drop GenBank, DDBJ, or EMBL flatfile records here",
+      accept: ".gb,.gbk,.genbank,.embl,.ddbj,.txt"
+    };
+  }
+
+  if (inputType.includes("protein sequence")) {
+    return {
+      dropLabel: "Drop one plain-text protein sequence or FASTA records here",
+      accept: ".fa,.fasta,.faa,.fa.gz,.fasta.gz,.faa.gz,.gz,.txt,.seq"
+    };
+  }
+
+  if (inputType.includes("dna") || inputType.includes("rna")) {
+    if (hasDnaRnaFlatfileInput) {
+      return {
+        dropLabel: "Drop one plain-text DNA/RNA sequence, FASTA records, or GenBank/DDBJ/EMBL flatfile here",
+        accept: ".fa,.fasta,.fna,.ffn,.fa.gz,.fasta.gz,.fna.gz,.ffn.gz,.gz,.txt,.gb,.gbk,.genbank,.embl,.ddbj,.seq"
+      };
+    }
+    return {
+      dropLabel: "Drop one plain-text DNA/RNA sequence or FASTA records here",
+      accept: ".fa,.fasta,.fna,.ffn,.fa.gz,.fasta.gz,.fna.gz,.ffn.gz,.gz,.txt,.seq"
+    };
+  }
+
+  const alphabet = sequenceInput?.alphabet ?? inputType;
+  if (hasSequenceInput && String(alphabet).includes("protein")) {
+    return {
+      dropLabel: "Drop one plain-text protein sequence or FASTA records here",
+      accept: ".fa,.fasta,.faa,.fa.gz,.fasta.gz,.faa.gz,.gz,.txt,.seq"
+    };
+  }
+
+  if (
+    hasSequenceInput &&
+    (String(alphabet).includes("dna") ||
+      String(alphabet).includes("rna") ||
+      inputType.includes("dna") ||
+      inputType.includes("rna"))
+  ) {
+    if (hasDnaRnaFlatfileInput) {
+      return {
+        dropLabel: "Drop one plain-text DNA/RNA sequence, FASTA records, or GenBank/DDBJ/EMBL flatfile here",
+        accept: ".fa,.fasta,.fna,.ffn,.fa.gz,.fasta.gz,.fna.gz,.ffn.gz,.gz,.txt,.gb,.gbk,.genbank,.embl,.ddbj,.seq"
+      };
+    }
+    return {
+      dropLabel: "Drop one plain-text DNA/RNA sequence or FASTA records here",
+      accept: ".fa,.fasta,.fna,.ffn,.fa.gz,.fasta.gz,.fna.gz,.ffn.gz,.gz,.txt,.seq"
+    };
+  }
+
+  if (hasSequenceInput) {
+    return {
+      dropLabel: "Drop one plain-text sequence or FASTA records here",
+      accept: ".fa,.fasta,.fa.gz,.fasta.gz,.gz,.txt,.seq"
+    };
+  }
+
+  return {
+    dropLabel: "Drop plain-text input here",
+    accept: ".txt,.txt.gz,.csv,.tsv,.tab,.fa,.fasta,.fa.gz,.fasta.gz,.gz,.seq"
+  };
+}
+
 export function createToolInputShellController({
   elements,
   state,
@@ -107,165 +368,7 @@ export function createToolInputShellController({
   }
 
   function getToolInputFileUi(tool) {
-    const metadata = tool?.metadata ?? {};
-    if (metadata.inputRequired === false) {
-      return {
-        dropLabel: "No input file needed",
-        accept: ""
-      };
-    }
-    if (metadata.fileInput) {
-      return {
-        dropLabel: metadata.fileInput.dropLabel ?? "Drop supported input here",
-        accept: metadata.fileInput.accept ?? ".txt"
-      };
-    }
-    const workflowInputs = metadata.workflow?.inputs ?? [];
-    const inputTypeLabel = String(metadata.inputType ?? "").trim();
-    const inputType = inputTypeLabel.toLowerCase();
-    const category = (metadata.category ?? "").toLowerCase();
-    const tags = (metadata.tags ?? []).map((tag) => String(tag).toLowerCase());
-    const sequenceInput = workflowInputs.find((input) => input.kind === "sequence-records");
-    const hasSequenceInput = Boolean(sequenceInput) || inputType.includes("sequence");
-    const hasTableInput =
-      workflowInputs.some((input) => input.kind === "table") ||
-      category.includes("table") ||
-      tags.some((tag) => ["table", "csv", "tsv"].includes(tag));
-    const hasDnaRnaFlatfileInput =
-      inputType.includes("flatfile") ||
-      inputType.includes("genbank") ||
-      inputType.includes("embl") ||
-      inputType.includes("ddbj") ||
-      inputType.includes("annotated dna record");
-
-    if (inputType.includes("markdown")) {
-      return {
-        dropLabel: "Drop Markdown or plain-text notes here",
-        accept: ".md,.markdown,.txt"
-      };
-    }
-
-    if (inputType.includes("vcf")) {
-      return {
-        dropLabel: "Drop VCF or VCF.GZ here",
-        accept: ".vcf,.vcf.gz,.gz,.txt"
-      };
-    }
-
-    if (inputType.includes("sam")) {
-      return {
-        dropLabel: "Drop SAM or compressed SAM here",
-        accept: ".sam,.sam.gz,.gz,.txt"
-      };
-    }
-
-    if (inputType.includes("fastq")) {
-      return {
-        dropLabel: "Drop FASTQ or compressed FASTQ here",
-        accept: ".fastq,.fq,.fastq.gz,.fq.gz,.gz,.txt"
-      };
-    }
-
-    if (inputType.includes("sanger") || inputType.includes("chromatogram")) {
-      return {
-        dropLabel: "Drop AB1, SCF, one base-call sequence, or FASTA record here",
-        accept: ".ab1,.abi,.scf,.json,.txt,.fa,.fasta,.seq"
-      };
-    }
-
-    if (hasTableInput && inputType.includes("fasta")) {
-      return {
-        dropLabel: "Drop FASTA, compressed FASTA, CSV, TSV, Excel workbook, or plain-text table here",
-        accept: ".fa,.fasta,.fna,.faa,.fa.gz,.fasta.gz,.fna.gz,.faa.gz,.gz,.csv,.tsv,.tab,.xlsx,.txt"
-      };
-    }
-
-    if (hasTableInput && !hasSequenceInput) {
-      return {
-        dropLabel: "Drop CSV, TSV, Excel workbook, or plain-text table here",
-        accept: ".csv,.tsv,.tab,.xlsx,.txt"
-      };
-    }
-
-    if (inputType.includes("pdb") || inputType.includes("mmcif")) {
-      return {
-        dropLabel: "Drop PDB or mmCIF structure here",
-        accept: ".pdb,.cif,.mmcif,.txt"
-      };
-    }
-
-    if (inputType.includes("uniprot") || inputType.includes("genpept")) {
-      return {
-        dropLabel: "Drop UniProt or GenPept flatfile record here",
-        accept: ".gp,.gpep,.uniprot,.txt"
-      };
-    }
-
-    if (inputType.includes("genbank") || inputType.includes("embl") || inputType.includes("ddbj")) {
-      return {
-        dropLabel: "Drop GenBank, DDBJ, or EMBL flatfile record here",
-        accept: ".gb,.gbk,.genbank,.embl,.ddbj,.txt"
-      };
-    }
-
-    if (inputType.includes("protein sequence")) {
-      return {
-        dropLabel: "Drop one plain-text protein sequence or FASTA records here",
-        accept: ".fa,.fasta,.faa,.fa.gz,.fasta.gz,.faa.gz,.gz,.txt,.seq"
-      };
-    }
-
-    if (inputType.includes("dna") || inputType.includes("rna")) {
-      if (hasDnaRnaFlatfileInput) {
-        return {
-          dropLabel: "Drop one plain-text DNA/RNA sequence, FASTA records, or GenBank/DDBJ/EMBL flatfile here",
-          accept: ".fa,.fasta,.fna,.ffn,.fa.gz,.fasta.gz,.fna.gz,.ffn.gz,.gz,.txt,.gb,.gbk,.genbank,.embl,.ddbj,.seq"
-        };
-      }
-      return {
-        dropLabel: "Drop one plain-text DNA/RNA sequence or FASTA records here",
-        accept: ".fa,.fasta,.fna,.ffn,.fa.gz,.fasta.gz,.fna.gz,.ffn.gz,.gz,.txt,.seq"
-      };
-    }
-
-    const alphabet = sequenceInput?.alphabet ?? inputType;
-    if (hasSequenceInput && String(alphabet).includes("protein")) {
-      return {
-        dropLabel: "Drop one plain-text protein sequence or FASTA records here",
-        accept: ".fa,.fasta,.faa,.fa.gz,.fasta.gz,.faa.gz,.gz,.txt,.seq"
-      };
-    }
-
-    if (
-      hasSequenceInput &&
-      (String(alphabet).includes("dna") ||
-        String(alphabet).includes("rna") ||
-        inputType.includes("dna") ||
-        inputType.includes("rna"))
-    ) {
-      if (hasDnaRnaFlatfileInput) {
-        return {
-          dropLabel: "Drop one plain-text DNA/RNA sequence, FASTA records, or GenBank/DDBJ/EMBL flatfile here",
-          accept: ".fa,.fasta,.fna,.ffn,.fa.gz,.fasta.gz,.fna.gz,.ffn.gz,.gz,.txt,.gb,.gbk,.genbank,.embl,.ddbj,.seq"
-        };
-      }
-      return {
-        dropLabel: "Drop one plain-text DNA/RNA sequence or FASTA records here",
-        accept: ".fa,.fasta,.fna,.ffn,.fa.gz,.fasta.gz,.fna.gz,.ffn.gz,.gz,.txt,.seq"
-      };
-    }
-
-    if (hasSequenceInput) {
-      return {
-        dropLabel: "Drop one plain-text sequence or FASTA records here",
-        accept: ".fa,.fasta,.fa.gz,.fasta.gz,.gz,.txt,.seq"
-      };
-    }
-
-    return {
-      dropLabel: "Drop plain-text input here",
-      accept: ".txt,.txt.gz,.csv,.tsv,.tab,.fa,.fasta,.fa.gz,.fasta.gz,.gz,.seq"
-    };
+    return getToolInputFileUiForMetadata(tool);
   }
 
   function getDirectInputFileOptionId(tool = state.selectedTool) {

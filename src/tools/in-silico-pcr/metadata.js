@@ -16,7 +16,7 @@ export const inSilicoPcrMetadata = {
     displayOrder: ["primers", "template"],
     panels: [
       { id: "template", label: "Template sequence", dropLabel: "Drop one plain-text template DNA sequence, FASTA records, or GenBank/DDBJ/EMBL template records here", accept: ".fa,.fasta,.fna,.ffn,.fa.gz,.fasta.gz,.fna.gz,.ffn.gz,.gb,.gbk,.genbank,.embl,.ddbj,.gz,.txt,.seq" },
-      { id: "primers", label: "Primer sequences", dropLabel: "Drop one primer sequence or FASTA records here", accept: ".fa,.fasta,.fa.gz,.fasta.gz,.gz,.txt,.seq" }
+      { id: "primers", label: "Primer sequences", dropLabel: "Drop primer sequences or FASTA records here", accept: ".fa,.fasta,.fa.gz,.fasta.gz,.gz,.txt,.seq" }
     ]
   },
   workflow: {

@@ -2369,11 +2369,11 @@ function splitInputExampleParts(tool) {
 const BIOLOGICAL_RECORD_SOURCE_MODES = {
   flatfile: {
     inputFormat: "auto",
-    tabText: "Single annotated record",
-    annotationLabel: "Annotated flatfile record",
-    annotationDropLabel: "Drop GenBank, DDBJ, EMBL, GenPept, or UniProt record here",
+    tabText: "Annotated records",
+    annotationLabel: "Annotated flatfile records",
+    annotationDropLabel: "Drop GenBank, DDBJ, EMBL, GenPept, or UniProt records here",
     annotationPlaceholder:
-      "Paste a GenBank, DDBJ, EMBL, GenPept, or UniProt record here. These flatfile formats carry the sequence and annotation together.",
+      "Paste GenBank, DDBJ, EMBL, GenPept, or UniProt records here. These flatfile formats carry sequence and annotation together.",
     showFasta: false
   },
   gff3Fasta: {
@@ -2406,9 +2406,9 @@ const BIOLOGICAL_RECORD_SOURCE_MODES = {
 const ANNOTATED_DNA_RECORD_SOURCE_MODES = {
   flatfile: {
     ...BIOLOGICAL_RECORD_SOURCE_MODES.flatfile,
-    annotationDropLabel: "Drop GenBank, DDBJ, or EMBL nucleotide record here",
+    annotationDropLabel: "Drop GenBank, DDBJ, or EMBL nucleotide records here",
     annotationPlaceholder:
-      "Paste a GenBank, DDBJ, or EMBL nucleotide record here. These flatfile formats carry the sequence and annotation together."
+      "Paste GenBank, DDBJ, or EMBL nucleotide records here. These flatfile formats carry sequence and annotation together."
   },
   gff3Fasta: BIOLOGICAL_RECORD_SOURCE_MODES.gff3Fasta,
   gtfFasta: BIOLOGICAL_RECORD_SOURCE_MODES.gtfFasta,
@@ -2883,7 +2883,7 @@ function createInSilicoPcrPrimerSection(panel, index, value) {
     key: "primers",
     label: panel?.label ?? "Primer sequences",
     accept: panel?.accept ?? ".fa,.fasta,.fa.gz,.fasta.gz,.gz,.txt,.seq",
-    dropLabel: panel?.dropLabel ?? "Drop one primer sequence or FASTA records here",
+    dropLabel: panel?.dropLabel ?? "Drop primer sequences or FASTA records here",
     value,
     splitInputIndex: index,
     inputRole: "primers"

@@ -129,7 +129,7 @@ export const annotatedDnaRecordExtractorMetadata = {
       {
         id: "annotation",
         label: "Annotated flatfile record or annotation rows",
-        dropLabel: "Drop GenBank, DDBJ, EMBL, GFF3, GTF, or BED record here",
+        dropLabel: "Drop GenBank, DDBJ, EMBL records, GFF3/GTF rows, or BED rows here",
         accept: ".gb,.gbk,.genbank,.embl,.ddbj,.txt,.gff,.gff3,.gtf,.bed",
         placeholder: "Paste a GenBank, DDBJ, EMBL, GFF3, GTF, or BED record here. For paired GFF3 + FASTA, GTF + FASTA, or BED + FASTA, put only the annotation rows in this box."
       },

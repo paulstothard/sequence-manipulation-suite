@@ -15,7 +15,7 @@ export const biologicalRecordFormatConverterMetadata = {
       {
         id: "annotation",
         label: "Flatfile record or annotation rows",
-        dropLabel: "Drop GenBank, DDBJ, EMBL, GenPept, UniProt, GFF3, GTF, or BED record here",
+        dropLabel: "Drop GenBank, DDBJ, EMBL, GenPept, UniProt records, GFF3/GTF rows, or BED rows here",
         accept: ".gb,.gbk,.genbank,.embl,.ddbj,.gp,.gpep,.uniprot,.txt,.gff,.gff3,.gtf,.bed",
         placeholder: "Paste a GenBank, DDBJ, EMBL, GenPept, UniProt, GFF3, GTF, or BED record here. For paired GFF3 + FASTA, GTF + FASTA, or BED + FASTA, put only the annotation rows in this box."
       },
