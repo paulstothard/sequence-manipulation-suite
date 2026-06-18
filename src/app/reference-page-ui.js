@@ -753,7 +753,7 @@ export function createReferencePageController({
     const standardCodons = getCodonsForCode(standardCode);
 
     const controls = document.createElement("div");
-    controls.className = "reference-controls";
+    controls.className = "reference-controls genetic-code-controls";
 
     const label = document.createElement("label");
     label.className = "select-row";

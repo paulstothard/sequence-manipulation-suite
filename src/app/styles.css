@@ -5195,6 +5195,25 @@ legend {
   max-width: 48rem;
 }
 
+.genetic-code-controls {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+  width: 100%;
+  max-width: 78rem;
+  min-width: 0;
+}
+
+.genetic-code-controls .select-row {
+  min-width: 0;
+  width: 100%;
+}
+
+.genetic-code-controls select {
+  box-sizing: border-box;
+  min-width: 0;
+  width: 100%;
+}
+
 .reference-table-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -5230,12 +5249,17 @@ legend {
 }
 
 .genetic-code-stats {
-  grid-template-columns: repeat(auto-fit, minmax(16rem, 24rem));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: 100%;
+  max-width: 78rem;
+  min-width: 0;
 }
 
 .reference-stat {
   display: grid;
   gap: 0.25rem;
+  box-sizing: border-box;
+  min-width: 0;
   padding: 0.75rem;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -5366,15 +5390,20 @@ legend {
 
 .codon-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 21rem), 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.75rem;
   align-items: start;
-  max-width: 58rem;
+  justify-content: start;
+  width: 100%;
+  max-width: 78rem;
+  min-width: 0;
 }
 
 .codon-family-panel {
   display: grid;
   gap: 0.5rem;
+  box-sizing: border-box;
+  min-width: 0;
   padding: 0.65rem;
   border: 1px solid var(--border);
   border-radius: 8px;
