@@ -356,7 +356,24 @@ export function createToolOptionsController({
     parent.append(wrapper);
   }
 
-  function appendToolOptionControl(parent, option, defaultValues) {
+  function normalizeOptionLabel(label) {
+    return String(label ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+  }
+
+  function optionLabelDuplicatesParent(option, parentGroupLabel) {
+    const childLabel = normalizeOptionLabel(option.label);
+    return Boolean(childLabel) && childLabel === normalizeOptionLabel(parentGroupLabel);
+  }
+
+  function createOptionLabelContentForContext(option, parentGroupLabel = "") {
+    const label = createOptionLabelContent(option);
+    if (optionLabelDuplicatesParent(option, parentGroupLabel)) {
+      label.classList.add("visually-hidden");
+    }
+    return label;
+  }
+
+  function appendToolOptionControl(parent, option, defaultValues, parentGroupLabel = "") {
     if (option.type === "group") {
       const group = document.createElement(option.collapsible ? "details" : "section");
       group.className = "option-group";
@@ -385,7 +402,7 @@ export function createToolOptionsController({
       }
       for (const child of option.options ?? []) {
         if (shouldRenderToolOption(child)) {
-          appendToolOptionControl(group, child, defaultValues);
+          appendToolOptionControl(group, child, defaultValues, option.label ?? "");
         }
       }
       parent.append(group);
@@ -418,7 +435,7 @@ export function createToolOptionsController({
       const label = document.createElement("label");
       label.className = "select-row";
       label.dataset.optionId = option.id;
-      label.append(createOptionLabelContent(option));
+      label.append(createOptionLabelContentForContext(option, parentGroupLabel));
       const select = document.createElement("select");
       select.id = option.id;
       select.name = option.id;
@@ -436,7 +453,7 @@ export function createToolOptionsController({
       if (option.label || option.help) {
         const heading = document.createElement("div");
         heading.className = "radio-tab-heading";
-        heading.append(createOptionLabelContent(option));
+        heading.append(createOptionLabelContentForContext(option, parentGroupLabel));
         wrapper.append(heading);
       }
       const tabs = document.createElement("div");
@@ -487,7 +504,7 @@ export function createToolOptionsController({
       const fieldset = document.createElement("fieldset");
       fieldset.dataset.optionId = option.id;
       const legend = document.createElement("legend");
-      legend.append(createOptionLabelContent(option));
+      legend.append(createOptionLabelContentForContext(option, parentGroupLabel));
       fieldset.append(legend);
 
       for (const choice of option.choices) {
@@ -515,7 +532,7 @@ export function createToolOptionsController({
       input.name = option.id;
       input.type = "checkbox";
       input.checked = optionValue === true;
-      label.append(input, createOptionLabelContent(option));
+      label.append(input, createOptionLabelContentForContext(option, parentGroupLabel));
       parent.append(label);
       return;
     }
@@ -525,7 +542,7 @@ export function createToolOptionsController({
       const label = document.createElement("label");
       label.className = "number-row";
       label.dataset.optionId = option.id;
-      label.append(createOptionLabelContent(option));
+      label.append(createOptionLabelContentForContext(option, parentGroupLabel));
       const input = document.createElement("input");
       input.id = option.id;
       input.type = "number";
@@ -542,7 +559,7 @@ export function createToolOptionsController({
       const label = document.createElement("label");
       label.className = "text-row";
       label.dataset.optionId = option.id;
-      label.append(createOptionLabelContent(option));
+      label.append(createOptionLabelContentForContext(option, parentGroupLabel));
       const input = document.createElement("input");
       input.id = option.id;
       input.type = "text";
@@ -569,7 +586,7 @@ export function createToolOptionsController({
       if (hasFileDrop) {
         heading.className = "file-option-heading";
       }
-      heading.append(createOptionLabelContent(option));
+      heading.append(createOptionLabelContentForContext(option, parentGroupLabel));
       const input = document.createElement("textarea");
       input.id = option.id;
       input.name = option.id;

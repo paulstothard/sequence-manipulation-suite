@@ -753,6 +753,7 @@ export function createWorkspaceViewController({
     const overview = document.createElement("section");
     overview.className = "workspace-overview";
     const overviewCopy = document.createElement("div");
+    overviewCopy.className = "workspace-overview-copy";
     const intro = document.createElement("p");
     intro.className = "summary";
     intro.textContent =

@@ -4185,13 +4185,19 @@ legend {
 .workspace-overview {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) max-content;
-  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.9rem;
   align-items: start;
 }
 
+.workspace-overview-copy {
+  display: grid;
+  max-width: 72rem;
+  gap: 0.8rem;
+}
+
 .workspace-overview-stats {
-  margin: 0.4rem 0 0;
+  margin: 0;
   color: var(--muted);
   font-weight: 800;
 }
@@ -4205,7 +4211,7 @@ legend {
 .workspace-top-actions {
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 0.5rem;
 }
 
@@ -4291,7 +4297,7 @@ legend {
 
 .workspace-browser {
   display: grid;
-  grid-template-columns: minmax(16rem, 24rem) minmax(0, 1fr);
+  grid-template-columns: minmax(20rem, 30rem) minmax(26rem, 1fr);
   gap: 1rem;
   align-items: start;
 }
@@ -4609,15 +4615,21 @@ legend {
   top: calc(100% + 0.45rem);
   left: 0;
   display: grid;
-  grid-template-columns: minmax(14rem, 20rem) max-content;
+  grid-template-columns: minmax(0, 1fr) max-content;
   gap: 0.5rem 0.6rem;
   align-items: end;
-  min-width: min(34rem, calc(100vw - 2rem));
+  width: min(46rem, calc(100vw - 2rem));
+  max-width: calc(100vw - 2rem);
   padding: 0.75rem;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--surface-strong);
   box-shadow: 0 0.7rem 1.5rem rgb(0 0 0 / 0.3);
+}
+
+.workflow-recipe-menu .workflow-preset-row,
+.workflow-recipe-menu select {
+  min-width: 0;
 }
 
 .workflow-toolbar-recipe:not([open]) > .workflow-recipe-menu {
@@ -9107,7 +9119,7 @@ legend {
 
   .workflow-recipe-menu {
     grid-template-columns: 1fr;
-    min-width: min(20rem, calc(100vw - 2rem));
+    width: min(20rem, calc(100vw - 2rem));
   }
 
   .workspace-overview,
