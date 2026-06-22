@@ -2344,12 +2344,13 @@ textarea {
 .sequence-editor-inspector-rows dt {
   color: var(--se-muted);
   font-weight: 700;
+  white-space: nowrap;
 }
 
 .sequence-editor-inspector-rows dd {
   min-width: 0;
   margin: 0;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 .sequence-editor-quick-sequence {
@@ -2672,19 +2673,19 @@ textarea {
 .indexed-fasta-source-tabs,
 .indexed-fasta-workflow-tabs,
 .workspace-source-tabs {
-  display: inline-flex;
+  display: flex;
   align-items: flex-end;
+  flex-wrap: wrap;
   justify-self: start;
-  width: fit-content;
+  width: 100%;
   max-width: 100%;
-  gap: 0.1rem;
+  gap: 0.1rem 0.2rem;
   padding: 0;
-  overflow-x: auto;
+  overflow: visible;
   border: 0;
   border-bottom: 1px solid var(--border);
   border-radius: 0;
   background: transparent;
-  scrollbar-width: thin;
 }
 
 .file-source-tab,
@@ -8430,9 +8431,18 @@ legend {
 
 .dna-viewer-range-details {
   align-items: baseline;
-  column-gap: 0.45rem;
-  grid-template-columns: repeat(3, max-content minmax(0, max-content));
-  row-gap: 0.14rem;
+  column-gap: 0.6rem;
+  grid-template-columns: minmax(6.5rem, max-content) minmax(0, 1fr);
+  row-gap: 0.24rem;
+}
+
+.dna-viewer-range-details dt {
+  white-space: nowrap;
+}
+
+.dna-viewer-range-details dd {
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .dna-viewer-selection-actions {

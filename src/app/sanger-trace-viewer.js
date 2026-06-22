@@ -705,6 +705,23 @@ function renderSingleSangerTraceViewer(container, data) {
     drawTrace(canvas, state);
     if (message) setStatus(panel, message);
   };
+  let resizeFrame = 0;
+  const scheduleRender = (message = "") => {
+    if (resizeFrame) return;
+    resizeFrame = requestAnimationFrame(() => {
+      resizeFrame = 0;
+      render(message);
+    });
+  };
+  const resizeObserver = typeof ResizeObserver === "function" ? new ResizeObserver(() => scheduleRender()) : null;
+  resizeObserver?.observe(canvas);
+  cleanupController.signal.addEventListener("abort", () => {
+    resizeObserver?.disconnect();
+    if (resizeFrame) {
+      cancelAnimationFrame(resizeFrame);
+      resizeFrame = 0;
+    }
+  }, { once: true });
   const zoomBy = (factor) => {
     const selected = selectedCall(state);
     const anchor = selected?.displayIndex ?? state.visibleStart + Math.floor(basesPerVisibleWidth(state) / 2);
@@ -920,8 +937,8 @@ function renderSingleSangerTraceViewer(container, data) {
       setStatus(panel, "Release to finish panning.");
     }
   }, listenerOptions);
-  window.addEventListener("resize", () => render(), listenerOptions);
-  window.addEventListener("sms3-theme-change", () => render(), listenerOptions);
+  window.addEventListener("resize", () => scheduleRender(), listenerOptions);
+  window.addEventListener("sms3-theme-change", () => scheduleRender(), listenerOptions);
 
   applyClip.addEventListener("click", () => {
     const start = clamp(Number.parseInt(clipStart.value, 10) || 1, 1, state.calls.length);

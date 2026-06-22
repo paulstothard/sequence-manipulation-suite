@@ -1,5 +1,5 @@
 export const siteConfig = {
-  publicUrl: "https://sms.pslab.ca",
+  publicUrl: "https://stothardresearch.ca/sequence-manipulation-suite/",
   feedbackEmail: "paul.stothard@gmail.com",
   analytics: {
     provider: "Plausible",

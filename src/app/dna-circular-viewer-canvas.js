@@ -2470,11 +2470,19 @@ function installCircularViewer(panel, record, options = {}) {
     ensureZoomedCircularViewHasVisibleCenter(state, record, rect.width, rect.height);
     drawCircularViewer(ctx, canvas, status, record, state);
   }
+  let resizeFrame = 0;
   let stopInertia = () => {};
   const inertiaTracker = createInertiaVelocityTracker();
   function cancelInertia() {
     stopInertia();
     stopInertia = () => {};
+  }
+  function scheduleResize() {
+    if (resizeFrame) return;
+    resizeFrame = requestAnimationFrame(() => {
+      resizeFrame = 0;
+      resize();
+    });
   }
   function zoomAt(clientX, clientY, factor, options = {}) {
     cancelInertia();
@@ -3050,12 +3058,12 @@ function installCircularViewer(panel, record, options = {}) {
       }
     });
   };
-  const onWindowResize = () => resize();
-  const onThemeChange = () => resize();
   window.addEventListener("mousemove", onWindowMouseMove);
   window.addEventListener("mouseup", onWindowMouseUp);
-  window.addEventListener("resize", onWindowResize);
-  window.addEventListener("sms3-theme-change", onThemeChange);
+  window.addEventListener("resize", scheduleResize);
+  window.addEventListener("sms3-theme-change", scheduleResize);
+  const resizeObserver = typeof ResizeObserver === "function" ? new ResizeObserver(scheduleResize) : null;
+  resizeObserver?.observe(canvas);
 
   if (showInspectorPanels) {
     const workspace = createViewerInspectorWorkspace(canvas, selectionPanel, rangePanel);
@@ -3063,14 +3071,19 @@ function installCircularViewer(panel, record, options = {}) {
   } else {
     panel.append(toolbar, searchControls.element, canvas);
   }
-  requestAnimationFrame(resize);
+  scheduleResize();
   return {
     cleanup: () => {
       cancelInertia();
       window.removeEventListener("mousemove", onWindowMouseMove);
       window.removeEventListener("mouseup", onWindowMouseUp);
-      window.removeEventListener("resize", onWindowResize);
-      window.removeEventListener("sms3-theme-change", onThemeChange);
+      window.removeEventListener("resize", scheduleResize);
+      window.removeEventListener("sms3-theme-change", scheduleResize);
+      resizeObserver?.disconnect();
+      if (resizeFrame) {
+        cancelAnimationFrame(resizeFrame);
+        resizeFrame = 0;
+      }
     },
     snapshot: () => makeCircularViewerSnapshot(record, state, searchControls)
   };
