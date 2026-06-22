@@ -8272,17 +8272,23 @@ legend {
 .dna-viewer-selection-panel {
   background: var(--viewer-surface-soft, #f8fafc);
   border-top: 1px solid var(--viewer-border, #d8e1ea);
+  box-sizing: border-box;
   display: grid;
   gap: 0.45rem;
+  justify-self: stretch;
   padding: 0.65rem 0.8rem;
+  width: 100%;
 }
 
 .dna-viewer-range-panel {
   background: var(--viewer-surface-strong, #fbfdff);
   border-top: 1px solid var(--viewer-border, #e2e8f0);
+  box-sizing: border-box;
   display: grid;
   gap: 0.38rem;
+  justify-self: stretch;
   padding: 0.55rem 0.7rem;
+  width: 100%;
 }
 
 .interactive-sequence-viewer-workspace {
@@ -8352,8 +8358,24 @@ legend {
   padding: 0.65rem;
 }
 
-.interactive-sequence-viewer-inspector .dna-viewer-selection-actions {
-  grid-template-columns: 1fr;
+.interactive-sequence-viewer-inspector .dna-viewer-selection-actions,
+.interactive-sequence-viewer-inspector .dna-viewer-range-panel .dna-viewer-selection-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8.75rem, 1fr));
+  width: 100%;
+}
+
+.interactive-sequence-viewer-inspector .dna-viewer-selection-actions button,
+.interactive-sequence-viewer-inspector .dna-viewer-range-panel .dna-viewer-selection-actions button {
+  min-height: 2rem;
+  width: 100%;
+}
+
+.interactive-sequence-viewer-inspector .dna-viewer-range-translation {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 1fr) minmax(4.4rem, auto) auto;
+  width: 100%;
 }
 
 @media (max-width: 1100px) {
