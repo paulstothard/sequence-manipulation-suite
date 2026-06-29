@@ -34,9 +34,9 @@ const DNA_RNA_SYMBOLS = {
   N: new Set(["A", "C", "G", "T", "U"])
 };
 
-const SVG_MAX_RECORDS = 12;
-const SVG_MAX_TOTAL_HITS = 240;
-const SVG_MAX_HITS_PER_RECORD = 80;
+export const TECHNICAL_SEQUENCE_SVG_MAX_RECORDS = 12;
+export const TECHNICAL_SEQUENCE_SVG_MAX_TOTAL_HITS = 240;
+export const TECHNICAL_SEQUENCE_SVG_MAX_HITS_PER_RECORD = 80;
 
 let technicalSequenceDataPromise;
 
@@ -481,15 +481,15 @@ function makeTextMap(scannedRecords) {
 }
 
 function summarizeSvgRecords(scannedRecords) {
-  const drawableRecords = scannedRecords.slice(0, SVG_MAX_RECORDS);
+  const drawableRecords = scannedRecords.slice(0, TECHNICAL_SEQUENCE_SVG_MAX_RECORDS);
   const omittedRecords = Math.max(0, scannedRecords.length - drawableRecords.length);
   const totalHits = scannedRecords.reduce((sum, record) => sum + record.rows.length, 0);
-  const perRecordBase = Math.max(1, Math.floor(SVG_MAX_TOTAL_HITS / Math.max(1, drawableRecords.length)));
+  const perRecordBase = Math.max(1, Math.floor(TECHNICAL_SEQUENCE_SVG_MAX_TOTAL_HITS / Math.max(1, drawableRecords.length)));
   return {
     omittedRecords,
     totalHits,
     records: drawableRecords.map((record) => {
-      const shownLimit = Math.min(SVG_MAX_HITS_PER_RECORD, Math.max(perRecordBase, Math.min(record.rows.length, SVG_MAX_HITS_PER_RECORD)));
+      const shownLimit = Math.min(TECHNICAL_SEQUENCE_SVG_MAX_HITS_PER_RECORD, Math.max(perRecordBase, Math.min(record.rows.length, TECHNICAL_SEQUENCE_SVG_MAX_HITS_PER_RECORD)));
       const shownRows = record.rows.slice(0, shownLimit);
       const omitted = Math.max(0, record.rows.length - shownRows.length);
       return {
@@ -519,7 +519,7 @@ function makeSvgMap(scannedRecords) {
   if (summary.totalHits === 0) {
     return renderSequenceMap({
       title: "Technical sequence map",
-      records: scannedRecords.slice(0, SVG_MAX_RECORDS).map((record) => ({
+      records: scannedRecords.slice(0, TECHNICAL_SEQUENCE_SVG_MAX_RECORDS).map((record) => ({
         title: record.title,
         length: record.sequence.length,
         molecule: "dna",

@@ -1,5 +1,6 @@
 import { vectorContaminationTableColumns } from "../../core/vector-contamination-scanner.js";
 import vectorSummary from "../../reference-data/vector-contamination/summary.js";
+import { VECTOR_CONTAMINATION_SVG_MAP_HIT_THRESHOLD } from "./run.js";
 
 export const vectorContaminationScannerMetadata = {
   id: "vector-contamination-scanner",
@@ -90,6 +91,20 @@ export const vectorContaminationScannerMetadata = {
         { value: "svg-map", label: "Linear contamination map" },
         { value: "interactive-viewer", label: "Linear DNA sequence viewer" },
         { value: "interactive-circular-viewer", label: "Circular DNA sequence viewer" }
+      ]
+    },
+    {
+      id: "advancedLimits",
+      type: "group",
+      label: "Limits",
+      collapsible: true,
+      collapsed: true,
+      options: [
+        {
+          id: "vectorContaminationMapLimitNote",
+          type: "note",
+          text: `Linear contamination map output is capped at ${VECTOR_CONTAMINATION_SVG_MAP_HIT_THRESHOLD.toLocaleString()} shown hits. Table output contains all hit coordinates.`
+        }
       ]
     },
     {

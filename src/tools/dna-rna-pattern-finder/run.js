@@ -20,8 +20,8 @@ export const dnaRnaPatternFinderTableColumns = [
 ];
 const TSV_COLUMNS = dnaRnaPatternFinderTableColumns.map((column) => column.id);
 const DETAILED_REPORT_MATCH_THRESHOLD = 2000;
-const MATCHED_REGION_RECORD_THRESHOLD = 5000;
-const SVG_MAP_MATCH_THRESHOLD = 5000;
+export const DNA_RNA_PATTERN_MATCHED_REGION_RECORD_THRESHOLD = 5000;
+export const DNA_RNA_PATTERN_SVG_MAP_MATCH_THRESHOLD = 5000;
 
 function reverseComplement(sequence) {
   return Array.from(complementDnaRnaSequence(sequence, { preserveCase: false })).reverse().join("");
@@ -242,7 +242,7 @@ function makePatternViewerData(records, pattern, options = {}) {
   });
 }
 
-function makeSvgMap(records, pattern, maxMatches = SVG_MAP_MATCH_THRESHOLD) {
+function makeSvgMap(records, pattern, maxMatches = DNA_RNA_PATTERN_SVG_MAP_MATCH_THRESHOLD) {
   let remaining = maxMatches;
   const mapRecords = records.map((record) => {
     const features = [];
@@ -379,9 +379,9 @@ export function runDnaRnaPatternFinder(input, options = {}, context = {}) {
   context.reportProgress?.({ phase: "building-output", progress: 0.9 });
   const outputFormat = ["tsv", "text-map", "svg-map", "interactive-viewer", "interactive-circular-viewer"].includes(options.outputFormat) ? options.outputFormat : "report";
   const totalMatches = analyzedRecords.reduce((sum, record) => sum + record.matches.length, 0);
-  if (totalMatches > MATCHED_REGION_RECORD_THRESHOLD) {
+  if (totalMatches > DNA_RNA_PATTERN_MATCHED_REGION_RECORD_THRESHOLD) {
     warnings.push(
-      `Matched-region sequence stream was capped at ${MATCHED_REGION_RECORD_THRESHOLD} of ${totalMatches} matches to avoid duplicating a very large hit set. Use the table output for all coordinates.`
+      `Matched-region sequence stream was capped at ${DNA_RNA_PATTERN_MATCHED_REGION_RECORD_THRESHOLD} of ${totalMatches} matches to avoid duplicating a very large hit set. Use the table output for all coordinates.`
     );
   }
   if (outputFormat === "report" && totalMatches > DETAILED_REPORT_MATCH_THRESHOLD) {
@@ -389,13 +389,13 @@ export function runDnaRnaPatternFinder(input, options = {}, context = {}) {
       `Detailed report rows were summarized because this run found ${totalMatches} matches. Use table output for the full hit table.`
     );
   }
-  if (outputFormat === "svg-map" && totalMatches > SVG_MAP_MATCH_THRESHOLD) {
+  if (outputFormat === "svg-map" && totalMatches > DNA_RNA_PATTERN_SVG_MAP_MATCH_THRESHOLD) {
     warnings.push(
-      `SVG match map was capped at ${SVG_MAP_MATCH_THRESHOLD} of ${totalMatches} matches to keep the browser responsive. Use table output for all coordinates.`
+      `SVG match map was capped at ${DNA_RNA_PATTERN_SVG_MAP_MATCH_THRESHOLD} of ${totalMatches} matches to keep the browser responsive. Use table output for all coordinates.`
     );
   }
   const tableRows = makeRows(analyzedRecords);
-  const matchedRegions = makeMatchedRegionRecords(analyzedRecords, MATCHED_REGION_RECORD_THRESHOLD);
+  const matchedRegions = makeMatchedRegionRecords(analyzedRecords, DNA_RNA_PATTERN_MATCHED_REGION_RECORD_THRESHOLD);
   const reportOutput = outputFormat === "report" && totalMatches > DETAILED_REPORT_MATCH_THRESHOLD
     ? makeSummaryReport(analyzedRecords, pattern, options)
     : makeReport(analyzedRecords, pattern, options);

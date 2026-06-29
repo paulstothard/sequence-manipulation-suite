@@ -1,5 +1,9 @@
 import { vcfInfoTagColumns } from "../../core/vcf-genotype-table.js";
 import { makeOptionalReferenceGenomeOptionGroup } from "../reference-genome-options.js";
+import {
+  VCF_GENOTYPE_VIEWER_MAX_RECORDS,
+  VCF_GENOTYPE_VIEWER_MAX_REGION_SPAN
+} from "./run.js";
 
 export const vcfGenotypeTableMetadata = {
   id: "vcf-genotype-table",
@@ -168,6 +172,20 @@ export const vcfGenotypeTableMetadata = {
             { value: "report", label: "Summary report", dependsOnValue: ["metadata", "info-tags", "format-fields", "samples", "variants", "split-info-variants", "genotypes", "region-variants", "region-split-info"] },
             { value: "interactive-viewer", label: "Variant region viewer", dependsOnValue: ["genotypes", "region-variants"] }
           ]
+        }
+      ]
+    },
+    {
+      id: "advancedLimits",
+      type: "group",
+      label: "Limits",
+      collapsible: true,
+      collapsed: true,
+      options: [
+        {
+          id: "variantViewerLimitNote",
+          type: "note",
+          text: `Variant region viewer output is capped at ${VCF_GENOTYPE_VIEWER_MAX_RECORDS.toLocaleString()} contigs/chromosomes and ${VCF_GENOTYPE_VIEWER_MAX_REGION_SPAN.toLocaleString()} bp per displayed region. Table output contains the full selected row set up to the visible Maximum variants to display setting.`
         }
       ]
     },

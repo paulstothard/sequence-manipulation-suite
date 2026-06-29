@@ -1,5 +1,10 @@
 import { geneticCodes } from "../../core/genetic-code.js";
-import { codonAlignmentTableColumns, PAIRWISE_ALIGNMENT_ENGINES, pairwiseAlignmentTableColumns } from "../../core/pairwise-alignment.js";
+import {
+  codonAlignmentTableColumns,
+  PAIRWISE_ALIGNMENT_ENGINES,
+  pairwiseAlignmentDefaultLimits,
+  pairwiseAlignmentTableColumns
+} from "../../core/pairwise-alignment.js";
 
 function makeWorkflow(alphabet) {
   return {
@@ -104,6 +109,26 @@ const commonOptions = [
   }
 ];
 
+const pairwiseLimitsGroup = {
+  id: "advancedLimits",
+  type: "group",
+  label: "Limits",
+  collapsible: true,
+  collapsed: true,
+  options: [
+    {
+      id: "maxAlignmentCells",
+      type: "number",
+      label: "Maximum SMS3 alignment cells",
+      defaultValue: pairwiseAlignmentDefaultLimits.maxAlignmentCells,
+      min: 1000,
+      max: pairwiseAlignmentDefaultLimits.maxAlignmentCells * 10,
+      step: 100000,
+      help: "Applies to the SMS3 affine dynamic-programming matrix. The seq-align engine is run through the bundled local runtime and is not controlled by this SMS3 matrix cap."
+    }
+  ]
+};
+
 export const pairwiseAlignDnaRnaMetadata = {
   id: "pairwise-align-dna-rna",
   name: "Pairwise Align DNA/RNA",
@@ -136,6 +161,7 @@ export const pairwiseAlignDnaRnaMetadata = {
     { ...commonOptions[2], defaultValue: 16 },
     { ...commonOptions[3], defaultValue: 4 },
     ...commonOptions.slice(4),
+    pairwiseLimitsGroup,
     {
       id: "citationNote",
       type: "note",
@@ -159,6 +185,7 @@ export const pairwiseAlignProteinMetadata = {
   workerExport: "runPairwiseAlignProtein",
   options: [
     ...commonOptions,
+    pairwiseLimitsGroup,
     {
       id: "matrixNote",
       type: "note",
@@ -217,6 +244,7 @@ export const pairwiseAlignCodingDnaMetadata = {
         }
       ]
     },
+    pairwiseLimitsGroup,
     {
       id: "methodNote",
       type: "note",

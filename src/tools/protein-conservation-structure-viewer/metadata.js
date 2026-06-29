@@ -1,5 +1,6 @@
 import { proteinStructureConservationColumns } from "../../core/protein-structure-conservation.js";
-import { MULTIPLE_ALIGNMENT_ENGINES } from "../../core/multiple-sequence-alignment.js";
+import { MULTIPLE_ALIGNMENT_ENGINES, multipleAlignmentDefaultLimits } from "../../core/multiple-sequence-alignment.js";
+import { pairwiseAlignmentDefaultLimits } from "../../core/pairwise-alignment.js";
 
 export const proteinConservationStructureViewerMetadata = {
   id: "protein-conservation-structure-viewer",
@@ -167,6 +168,50 @@ export const proteinConservationStructureViewerMetadata = {
             { value: "report", label: "Mapping report" },
             { value: "conservation-tsv", label: "Conservation table" }
           ]
+        }
+      ]
+    },
+    {
+      id: "advancedLimits",
+      type: "group",
+      label: "Limits",
+      collapsible: true,
+      collapsed: true,
+      visibleWhen: { option: "alignmentInputMode", value: "unaligned" },
+      options: [
+        {
+          id: "maxSequences",
+          type: "number",
+          label: "Maximum sequences to align",
+          defaultValue: multipleAlignmentDefaultLimits.maxSequences,
+          min: 2,
+          max: 1000,
+          step: 1,
+          help: "Includes the extracted structure-chain sequence plus the comparison FASTA records."
+        },
+        {
+          id: "maxTotalSymbols",
+          type: "number",
+          label: "Maximum alignment input symbols",
+          defaultValue: multipleAlignmentDefaultLimits.maxTotalSymbols,
+          min: 1000,
+          max: 1000000,
+          step: 1000,
+          help: "Cap on the summed cleaned length of the extracted structure-chain sequence and comparison FASTA records before browser-local alignment."
+        },
+        {
+          id: "maxAlignmentCells",
+          type: "number",
+          label: "Maximum pairwise alignment cells",
+          defaultValue: pairwiseAlignmentDefaultLimits.maxAlignmentCells,
+          min: 1000,
+          max: pairwiseAlignmentDefaultLimits.maxAlignmentCells * 10,
+          step: 100000,
+          visibleWhen: [
+            { option: "alignmentInputMode", value: "unaligned" },
+            { option: "alignmentEngine", value: MULTIPLE_ALIGNMENT_ENGINES.sms3 }
+          ],
+          help: "SMS3 progressive mode uses pairwise dynamic-programming alignments internally; this cap applies to each pairwise matrix."
         }
       ]
     }

@@ -2,6 +2,11 @@ import { geneticCodes, getStartCodons } from "../../core/genetic-code.js";
 import { listCodonUsageReferences } from "../../core/codon-reference.js";
 import { codonUsageReferences } from "../../reference-data/codon-usage/references.js";
 import {
+  RANDOM_MAX_FRAGMENTS_PER_RECORD,
+  RANDOM_MAX_GENERATED_CHARACTERS,
+  RANDOM_MAX_GENERATED_RECORDS,
+  RANDOM_MAX_MUTATIONS_PER_RECORD,
+  RANDOM_MAX_REGION_ROWS,
   randomFragmentTableColumns,
   randomMutationTableColumns,
   randomRegionTableColumns
@@ -62,6 +67,66 @@ const fastaReportTableOutputOptions = [
     ]
   }
 ];
+
+const generatedOutputLimitsGroup = {
+  id: "advancedLimits",
+  type: "group",
+  label: "Limits",
+  collapsible: true,
+  collapsed: true,
+  options: [
+    {
+      id: "generatedOutputLimitNote",
+      type: "note",
+      text: `Generated FASTA output is capped at ${RANDOM_MAX_GENERATED_RECORDS.toLocaleString()} records and ${RANDOM_MAX_GENERATED_CHARACTERS.toLocaleString()} characters. Requests above those caps are reduced with a warning.`
+    }
+  ]
+};
+
+const mutationLimitsGroup = {
+  id: "advancedLimits",
+  type: "group",
+  label: "Limits",
+  collapsible: true,
+  collapsed: true,
+  options: [
+    {
+      id: "mutationLimitNote",
+      type: "note",
+      text: `Mutation event materialization is capped at ${RANDOM_MAX_MUTATIONS_PER_RECORD.toLocaleString()} events per input record. Requests above that cap are reduced with a warning.`
+    }
+  ]
+};
+
+const randomRegionLimitsGroup = {
+  id: "advancedLimits",
+  type: "group",
+  label: "Limits",
+  collapsible: true,
+  collapsed: true,
+  options: [
+    {
+      id: "randomRegionLimitNote",
+      type: "note",
+      text: `Random region materialization is capped at ${RANDOM_MAX_REGION_ROWS.toLocaleString()} regions per input record. Requests above that cap are reduced with a warning.`
+    }
+  ]
+};
+
+const randomFragmentLimitsGroup = {
+  id: "advancedLimits",
+  type: "group",
+  label: "Limits",
+  collapsible: true,
+  collapsed: true,
+  options: [
+    {
+      id: "randomFragmentLimitNote",
+      type: "note",
+      text: `Random DNA fragmentation is capped at ${RANDOM_MAX_FRAGMENTS_PER_RECORD.toLocaleString()} fragments per input record. Requests above that cap are reduced with a warning.`
+    }
+  ]
+};
 
 const dependentOptionGroup = (id, visibleWhen, options, label = "") => ({
   id,
@@ -324,7 +389,8 @@ const mutateOptions = (preserveLabel) => [
   optionGroup("Output and reproducibility", [
     randomSeedOption,
     ...fastaReportTableOutputOptions
-  ])
+  ]),
+  mutationLimitsGroup
 ];
 
 const mutateDnaRnaOptions = (preserveLabel) => [
@@ -357,7 +423,8 @@ const mutateDnaRnaOptions = (preserveLabel) => [
   optionGroup("Output and reproducibility", [
     randomSeedOption,
     ...fastaReportTableOutputOptions
-  ])
+  ]),
+  mutationLimitsGroup
 ];
 
 const randomDnaRnaSequenceOptions = [
@@ -366,7 +433,8 @@ const randomDnaRnaSequenceOptions = [
   { id: "sequenceCount", type: "number", label: "Number of sequences", defaultValue: 1, min: 1, max: 10000 },
   ...dnaRnaCompositionOptions("compositionMode", "Base composition"),
   randomSeedOption,
-  ...fastaReportOutputOptions
+  ...fastaReportOutputOptions,
+  generatedOutputLimitsGroup
 ];
 
 const randomProteinSequenceOptions = [
@@ -385,7 +453,8 @@ const randomProteinSequenceOptions = [
   },
   codonUsageReferenceGroup("residueModelReferenceSettings", { option: "residueModel", value: "codon-usage-reference" }),
   randomSeedOption,
-  ...fastaReportOutputOptions
+  ...fastaReportOutputOptions,
+  generatedOutputLimitsGroup
 ];
 
 const sampleOptions = [
@@ -403,7 +472,8 @@ const sampleOptions = [
     help: "Combined mode builds one residue/base pool from all input records before sampling with replacement."
   },
   randomSeedOption,
-  ...fastaReportOutputOptions
+  ...fastaReportOutputOptions,
+  generatedOutputLimitsGroup
 ];
 
 const regionOptions = [
@@ -432,7 +502,8 @@ const regionOptions = [
   },
   codonUsageReferenceGroup("replacementResidueReferenceSettings", { option: "replacementResidueModel", value: "codon-usage-reference" }),
   randomSeedOption,
-  ...fastaReportTableOutputOptions
+  ...fastaReportTableOutputOptions,
+  randomRegionLimitsGroup
 ];
 
 const dnaRnaRegionOptions = [
@@ -463,7 +534,8 @@ const dnaRnaRegionOptions = [
   },
   ...dnaRnaCompositionOptions("replacementCompositionMode", "Replacement composition").slice(1),
   randomSeedOption,
-  ...fastaReportTableOutputOptions
+  ...fastaReportTableOutputOptions,
+  randomRegionLimitsGroup
 ];
 
 const shuffleOptions = [randomSeedOption, ...fastaReportOutputOptions];
@@ -583,7 +655,8 @@ export const randomCodingDnaMetadata = {
     codonUsageReferenceGroup("codonModelReferenceSettings", { option: "codonModel", value: "codon-usage-reference" }),
     { id: "sequenceCount", type: "number", label: "Number of sequences", defaultValue: 3, min: 1, max: 10000 },
     randomSeedOption,
-    ...fastaReportOutputOptions
+    ...fastaReportOutputOptions,
+    generatedOutputLimitsGroup
   ]
 };
 
@@ -754,6 +827,7 @@ export const randomDnaFragmenterMetadata = {
       help: "When enabled, each fragment has an independent 50% chance of being reported in reverse-complement orientation. Coordinates still refer to the original input strand."
     },
     randomSeedOption,
-    ...fastaReportTableOutputOptions
+    ...fastaReportTableOutputOptions,
+    randomFragmentLimitsGroup
   ]
 };

@@ -1,10 +1,12 @@
 import {
   MULTIPLE_ALIGNMENT_ENGINES,
+  multipleAlignmentDefaultLimits,
   multipleCodingDnaAlignmentTableColumns,
   multipleAlignmentDistanceTableColumns,
   multipleAlignmentIdentityTableColumns,
   multipleAlignmentTableColumns
 } from "../../core/multiple-sequence-alignment.js";
+import { pairwiseAlignmentDefaultLimits } from "../../core/pairwise-alignment.js";
 import { geneticCodes } from "../../core/genetic-code.js";
 
 function buildMetadata(alphabet) {
@@ -94,6 +96,48 @@ function buildMetadata(alphabet) {
           { value: "identity-heatmap", label: "Identity heatmap" }
         ],
         help: "Tree and identity outputs are selected materializations; they can require all-vs-all distance or identity calculations for every record pair."
+      },
+      {
+        id: "advancedLimits",
+        type: "group",
+        label: "Limits",
+        collapsible: true,
+        collapsed: true,
+        options: [
+          {
+            id: "maxSequences",
+            type: "number",
+            label: "Maximum records to align",
+            defaultValue: multipleAlignmentDefaultLimits.maxSequences,
+            min: 2,
+            max: 1000,
+            step: 1,
+            help: "Only the first records up to this limit are aligned."
+          },
+          {
+            id: "maxTotalSymbols",
+            type: "number",
+            label: isCodingDna ? "Maximum input bases in complete codons" : "Maximum input symbols",
+            defaultValue: multipleAlignmentDefaultLimits.maxTotalSymbols,
+            min: 1000,
+            max: 1000000,
+            step: 1000,
+            help: isCodingDna
+              ? "Cap on cleaned complete-codon input bases before protein-guided alignment."
+              : "Cap on the summed cleaned sequence length before alignment."
+          },
+          {
+            id: "maxAlignmentCells",
+            type: "number",
+            label: "Maximum pairwise alignment cells",
+            defaultValue: pairwiseAlignmentDefaultLimits.maxAlignmentCells,
+            min: 1000,
+            max: pairwiseAlignmentDefaultLimits.maxAlignmentCells * 10,
+            step: 100000,
+            visibleWhen: { option: "alignmentEngine", value: MULTIPLE_ALIGNMENT_ENGINES.sms3 },
+            help: "SMS3 progressive mode uses pairwise dynamic-programming alignments internally; this cap applies to each pairwise matrix."
+          }
+        ]
       },
       {
         id: "methodNote",

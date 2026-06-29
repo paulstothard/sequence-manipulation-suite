@@ -1,5 +1,10 @@
 import { plasmidCommonFeatureRecords, plasmidCommonFeatureProvenance } from "../../reference-data/plasmid-common-features/records.js";
 import { plasmidCommonFeatureMatchColumns } from "../../core/plasmid-common-feature-scanner.js";
+import {
+  PLASMID_FEATURE_SVG_MAX_HITS_PER_RECORD,
+  PLASMID_FEATURE_SVG_MAX_RECORDS,
+  PLASMID_FEATURE_SVG_MAX_TOTAL_HITS
+} from "./run.js";
 
 const featureTypes = [...new Set(plasmidCommonFeatureRecords.map((record) => record.type))].sort((left, right) =>
   left.localeCompare(right)
@@ -143,6 +148,20 @@ export const plasmidCommonFeatureScannerMetadata = {
         { value: "svg-map", label: "Linear feature map" },
         { value: "interactive-viewer", label: "Linear DNA sequence viewer" },
         { value: "interactive-circular-viewer", label: "Circular DNA sequence viewer" }
+      ]
+    },
+    {
+      id: "advancedLimits",
+      type: "group",
+      label: "Limits",
+      collapsible: true,
+      collapsed: true,
+      options: [
+        {
+          id: "plasmidFeatureMapLimitNote",
+          type: "note",
+          text: `Linear feature maps show up to ${PLASMID_FEATURE_SVG_MAX_RECORDS.toLocaleString()} records, ${PLASMID_FEATURE_SVG_MAX_TOTAL_HITS.toLocaleString()} hits total, and ${PLASMID_FEATURE_SVG_MAX_HITS_PER_RECORD.toLocaleString()} hits per record. Table output contains all hit coordinates.`
+        }
       ]
     },
     {

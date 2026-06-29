@@ -61,13 +61,13 @@ export const randomFragmentTableColumns = [
   { id: "seed", label: "Seed" }
 ];
 
-const MAX_MUTATIONS_PER_RECORD = 50000;
+export const RANDOM_MAX_MUTATIONS_PER_RECORD = 50000;
 const LARGE_MUTATION_TABLE_ROWS = 10000;
-const MAX_GENERATED_RECORDS = 10000;
-const MAX_GENERATED_CHARACTERS = 5000000;
-const MAX_RANDOM_REGION_ROWS = 50000;
+export const RANDOM_MAX_GENERATED_RECORDS = 10000;
+export const RANDOM_MAX_GENERATED_CHARACTERS = 5000000;
+export const RANDOM_MAX_REGION_ROWS = 50000;
 const LARGE_RANDOM_REGION_ROWS = 10000;
-const MAX_RANDOM_FRAGMENTS_PER_RECORD = 20000;
+export const RANDOM_MAX_FRAGMENTS_PER_RECORD = 20000;
 const LARGE_RANDOM_FRAGMENT_ROWS = 10000;
 
 function clampNonnegativeInteger(value, fallback = 0) {
@@ -84,8 +84,8 @@ function resolveOutputCountAndLength({
   warnings,
   countLabel = "sequence count",
   lengthLabel = "sequence length",
-  maxRecords = MAX_GENERATED_RECORDS,
-  maxCharacters = MAX_GENERATED_CHARACTERS
+  maxRecords = RANDOM_MAX_GENERATED_RECORDS,
+  maxCharacters = RANDOM_MAX_GENERATED_CHARACTERS
 }) {
   let count = clampPositiveInteger(requestedCount, 1);
   let length = clampPositiveInteger(requestedLength, 1);
@@ -290,7 +290,7 @@ function resolveMutationSettings(options, records, protectedPositions, warnings)
   let requestedRows = records.length * (requestedSubstitutionCount + requestedInsertionCount + requestedDeletionCount);
 
   if (mutationMode === "counts") {
-    let remaining = MAX_MUTATIONS_PER_RECORD;
+    let remaining = RANDOM_MAX_MUTATIONS_PER_RECORD;
     substitutionCount = Math.min(substitutionCount, remaining);
     remaining -= substitutionCount;
     insertionCount = Math.min(insertionCount, remaining);
@@ -298,9 +298,9 @@ function resolveMutationSettings(options, records, protectedPositions, warnings)
     deletionCount = Math.min(deletionCount, remaining);
     const requestedTotal = requestedSubstitutionCount + requestedInsertionCount + requestedDeletionCount;
     const limitedTotal = substitutionCount + insertionCount + deletionCount;
-    if (requestedTotal > MAX_MUTATIONS_PER_RECORD) {
+    if (requestedTotal > RANDOM_MAX_MUTATIONS_PER_RECORD) {
       warnings.push(
-        `Requested ${requestedTotal.toLocaleString()} mutation events per record; limited to ${MAX_MUTATIONS_PER_RECORD.toLocaleString()} per record to keep browser output responsive.`
+        `Requested ${requestedTotal.toLocaleString()} mutation events per record; limited to ${RANDOM_MAX_MUTATIONS_PER_RECORD.toLocaleString()} per record to keep browser output responsive.`
       );
     }
     requestedRows = records.length * limitedTotal;
@@ -493,7 +493,7 @@ export async function runRandomCodingDna(input, options = {}, context = {}) {
     warnings,
     countLabel: "sequence count",
     lengthLabel: "codons",
-    maxCharacters: Math.floor(MAX_GENERATED_CHARACTERS / 3)
+    maxCharacters: Math.floor(RANDOM_MAX_GENERATED_CHARACTERS / 3)
   });
   const codingOptions = { ...options, codonCount };
   let codonReferenceDetail = "Internal codon model: equal probability across sense codons";
@@ -710,13 +710,13 @@ export async function runMutateSequence(input, options = {}, context = {}) {
       const result = await mutateSequenceCooperatively(record.sequence, {
         ...options,
         ...mutationSettings,
-        maxEvents: MAX_MUTATIONS_PER_RECORD,
+        maxEvents: RANDOM_MAX_MUTATIONS_PER_RECORD,
         alphabetValues: replacementAlphabetValues(alphabet, { ...options, sourceSequence: record.sequence }),
         protectedStart: protectedPositions.protectedStart,
         protectedEnd: protectedPositions.protectedEnd
       }, random, context);
       if (result.eventsLimited) {
-        warnings.push(`${record.title}: mutation events were limited to ${MAX_MUTATIONS_PER_RECORD.toLocaleString()} rows for browser responsiveness.`);
+        warnings.push(`${record.title}: mutation events were limited to ${RANDOM_MAX_MUTATIONS_PER_RECORD.toLocaleString()} rows for browser responsiveness.`);
       }
       if (mutationSettings.mutationMode === "counts" && result.rows.length < requestedCountEvents) {
         warnings.push(`${record.title}: ${requestedCountEvents.toLocaleString()} mutation events were requested, but ${result.rows.length.toLocaleString()} were possible with the selected protected termini and deletion settings.`);
@@ -786,9 +786,9 @@ export async function runRandomRegions(input, options = {}, context = {}) {
     const outputRecords = [];
     const rows = [];
     const requestedRegionCount = clampNonnegativeInteger(options.regionCount, 0);
-    const regionCount = Math.min(requestedRegionCount, MAX_RANDOM_REGION_ROWS);
-    if (requestedRegionCount > MAX_RANDOM_REGION_ROWS) {
-      warnings.push(`Requested ${requestedRegionCount.toLocaleString()} random regions per record; limited to ${MAX_RANDOM_REGION_ROWS.toLocaleString()} per record to keep table output responsive.`);
+    const regionCount = Math.min(requestedRegionCount, RANDOM_MAX_REGION_ROWS);
+    if (requestedRegionCount > RANDOM_MAX_REGION_ROWS) {
+      warnings.push(`Requested ${requestedRegionCount.toLocaleString()} random regions per record; limited to ${RANDOM_MAX_REGION_ROWS.toLocaleString()} per record to keep table output responsive.`);
     }
     const expectedRows = regionCount * records.length;
     if (expectedRows > LARGE_RANDOM_REGION_ROWS) {
@@ -855,8 +855,8 @@ export async function runRandomDnaFragmenter(input, options = {}, context = {}) 
     const requestedFragments = options.fragmentMode === "target-size"
       ? Math.ceil(records.reduce((sum, record) => sum + record.sequence.length, 0) / Math.max(1, clampPositiveInteger(options.targetSize, 100) - clampNonnegativeInteger(options.overlapLength, 0)))
       : clampPositiveInteger(options.fragmentCount, 1) * records.length;
-    if (requestedFragments > MAX_RANDOM_FRAGMENTS_PER_RECORD * records.length) {
-      warnings.push(`Requested fragment settings can generate more than ${MAX_RANDOM_FRAGMENTS_PER_RECORD.toLocaleString()} fragments per record; settings were limited where needed.`);
+    if (requestedFragments > RANDOM_MAX_FRAGMENTS_PER_RECORD * records.length) {
+      warnings.push(`Requested fragment settings can generate more than ${RANDOM_MAX_FRAGMENTS_PER_RECORD.toLocaleString()} fragments per record; settings were limited where needed.`);
     }
     if (requestedFragments > LARGE_RANDOM_FRAGMENT_ROWS) {
       warnings.push(`This run can generate about ${requestedFragments.toLocaleString()} fragment table rows; TSV and table display may be large.`);
@@ -866,8 +866,8 @@ export async function runRandomDnaFragmenter(input, options = {}, context = {}) 
       context.throwIfCancelled?.();
       const result = randomDnaFragments(record, {
         ...options,
-        fragmentCount: Math.min(clampPositiveInteger(options.fragmentCount, 1), MAX_RANDOM_FRAGMENTS_PER_RECORD),
-        maxFragments: MAX_RANDOM_FRAGMENTS_PER_RECORD
+        fragmentCount: Math.min(clampPositiveInteger(options.fragmentCount, 1), RANDOM_MAX_FRAGMENTS_PER_RECORD),
+        maxFragments: RANDOM_MAX_FRAGMENTS_PER_RECORD
       }, random, seed);
       outputRecords.push(...result.outputRecords.map((fragment) => ({
         title: fragment.title,

@@ -19,7 +19,7 @@ export const extractSubsequencesTableColumns = [
   { id: "sequence", label: "Sequence", type: "string" }
 ];
 const TSV_COLUMNS = extractSubsequencesTableColumns.map((column) => column.id);
-const MAX_OUTPUT_RECORDS = 50000;
+export const EXTRACT_SUBSEQUENCES_MAX_OUTPUT_RECORDS = 50000;
 const LARGE_OUTPUT_RECORDS = 10000;
 const LARGE_OUTPUT_CHARACTERS = 5000000;
 
@@ -348,7 +348,7 @@ export async function runExtractSubsequences(input, options = {}, context = {}) 
       }
     } else {
       for (const [segmentIndex, segment] of outputSegments.entries()) {
-        if (extractedRecords.length >= MAX_OUTPUT_RECORDS) {
+        if (extractedRecords.length >= EXTRACT_SUBSEQUENCES_MAX_OUTPUT_RECORDS) {
           outputLimitHit = true;
           continue;
         }
@@ -377,7 +377,7 @@ export async function runExtractSubsequences(input, options = {}, context = {}) 
   }
 
   if (outputLimitHit) {
-    warnings.push(`Output was limited to ${MAX_OUTPUT_RECORDS.toLocaleString()} FASTA records/table rows. Use joined output or fewer coordinates for very dense extraction.`);
+    warnings.push(`Output was limited to ${EXTRACT_SUBSEQUENCES_MAX_OUTPUT_RECORDS.toLocaleString()} FASTA records/table rows. Use joined output or fewer coordinates for very dense extraction.`);
   }
   if (extractedRecords.length > LARGE_OUTPUT_RECORDS) {
     warnings.push(`This run produced ${extractedRecords.length.toLocaleString()} FASTA records/table rows; browser table display may be large.`);

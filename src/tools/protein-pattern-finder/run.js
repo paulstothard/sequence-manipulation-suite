@@ -19,8 +19,8 @@ export const proteinPatternFinderTableColumns = [
 ];
 const TSV_COLUMNS = proteinPatternFinderTableColumns.map((column) => column.id);
 const DETAILED_REPORT_MATCH_THRESHOLD = 2000;
-const MATCHED_REGION_RECORD_THRESHOLD = 5000;
-const SVG_MAP_MATCH_THRESHOLD = 5000;
+export const PROTEIN_PATTERN_MATCHED_REGION_RECORD_THRESHOLD = 5000;
+export const PROTEIN_PATTERN_SVG_MAP_MATCH_THRESHOLD = 5000;
 
 function makeRows(records) {
   return records.flatMap((record) =>
@@ -142,7 +142,7 @@ function makePatternLegendLabel(pattern, maxLength = 56) {
   return `${displayPattern || "Pattern"} match`;
 }
 
-function makeSvgMap(records, pattern, maxMatches = SVG_MAP_MATCH_THRESHOLD) {
+function makeSvgMap(records, pattern, maxMatches = PROTEIN_PATTERN_SVG_MAP_MATCH_THRESHOLD) {
   let remaining = maxMatches;
   const mapRecords = records.map((record) => {
     const features = [];
@@ -304,9 +304,9 @@ export function runProteinPatternFinder(input, options = {}, context = {}) {
   context.reportProgress?.({ phase: "building-output", progress: 0.9 });
   const outputFormat = ["tsv", "text-map", "svg-map", "interactive-viewer"].includes(options.outputFormat) ? options.outputFormat : "report";
   const totalMatches = analyzedRecords.reduce((sum, record) => sum + record.matches.length, 0);
-  if (totalMatches > MATCHED_REGION_RECORD_THRESHOLD) {
+  if (totalMatches > PROTEIN_PATTERN_MATCHED_REGION_RECORD_THRESHOLD) {
     warnings.push(
-      `Matched-region sequence stream was capped at ${MATCHED_REGION_RECORD_THRESHOLD} of ${totalMatches} matches to avoid duplicating a very large hit set. Use the table output for all coordinates.`
+      `Matched-region sequence stream was capped at ${PROTEIN_PATTERN_MATCHED_REGION_RECORD_THRESHOLD} of ${totalMatches} matches to avoid duplicating a very large hit set. Use the table output for all coordinates.`
     );
   }
   if (outputFormat === "report" && totalMatches > DETAILED_REPORT_MATCH_THRESHOLD) {
@@ -314,13 +314,13 @@ export function runProteinPatternFinder(input, options = {}, context = {}) {
       `Detailed report rows were summarized because this run found ${totalMatches} matches. Use table output for the full hit table.`
     );
   }
-  if (outputFormat === "svg-map" && totalMatches > SVG_MAP_MATCH_THRESHOLD) {
+  if (outputFormat === "svg-map" && totalMatches > PROTEIN_PATTERN_SVG_MAP_MATCH_THRESHOLD) {
     warnings.push(
-      `Linear pattern map was capped at ${SVG_MAP_MATCH_THRESHOLD} of ${totalMatches} matches to keep the browser responsive. Use table output for all coordinates.`
+      `Linear pattern map was capped at ${PROTEIN_PATTERN_SVG_MAP_MATCH_THRESHOLD} of ${totalMatches} matches to keep the browser responsive. Use table output for all coordinates.`
     );
   }
   const tableRows = makeRows(analyzedRecords);
-  const matchedRegions = makeMatchedRegionRecords(analyzedRecords, MATCHED_REGION_RECORD_THRESHOLD);
+  const matchedRegions = makeMatchedRegionRecords(analyzedRecords, PROTEIN_PATTERN_MATCHED_REGION_RECORD_THRESHOLD);
   const reportOutput = outputFormat === "report" && totalMatches > DETAILED_REPORT_MATCH_THRESHOLD
     ? makeSummaryReport(analyzedRecords, pattern, options)
     : makeReport(analyzedRecords, pattern, options);

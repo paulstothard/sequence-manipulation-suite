@@ -8,7 +8,7 @@ import {
 } from "../../core/vector-contamination-scanner.js";
 import { makeTableStream, makeTextStream, makeToolResult } from "../../core/workflow.js";
 
-const SVG_MAP_HIT_THRESHOLD = 5000;
+export const VECTOR_CONTAMINATION_SVG_MAP_HIT_THRESHOLD = 5000;
 const OUTPUT_FORMATS = new Set([
   "report",
   "tsv",
@@ -137,7 +137,7 @@ function makeTextMap(analyzedRecords) {
   });
 }
 
-function makeSvgMap(analyzedRecords, maxHits = SVG_MAP_HIT_THRESHOLD) {
+function makeSvgMap(analyzedRecords, maxHits = VECTOR_CONTAMINATION_SVG_MAP_HIT_THRESHOLD) {
   let remaining = maxHits;
   const mapRecords = analyzedRecords.map((record) => {
     const features = [];
@@ -301,8 +301,8 @@ export async function runVectorContaminationScanner(input, options = {}, context
   });
   const tsv = formatTsv(rows);
   const outputFormat = OUTPUT_FORMATS.has(options.outputFormat) ? options.outputFormat : "report";
-  if (outputFormat === "svg-map" && rows.length > SVG_MAP_HIT_THRESHOLD) {
-    warnings.push(`Linear contamination map output is capped at ${SVG_MAP_HIT_THRESHOLD.toLocaleString()} shown hits. Use the table for complete hit coordinates.`);
+  if (outputFormat === "svg-map" && rows.length > VECTOR_CONTAMINATION_SVG_MAP_HIT_THRESHOLD) {
+    warnings.push(`Linear contamination map output is capped at ${VECTOR_CONTAMINATION_SVG_MAP_HIT_THRESHOLD.toLocaleString()} shown hits. Use the table for complete hit coordinates.`);
   }
   const textMap = outputFormat === "text-map" ? makeTextMap(analyzedRecords) : "";
   const svgMap = outputFormat === "svg-map" ? makeSvgMap(analyzedRecords) : "";

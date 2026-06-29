@@ -13,9 +13,9 @@ import {
 } from "../../reference-data/plasmid-common-features/records.js";
 
 const OUTPUT_FORMATS = new Set(["report", "tsv", "text-map", "svg-map", "interactive-viewer", "interactive-circular-viewer"]);
-const SVG_MAX_RECORDS = 12;
-const SVG_MAX_TOTAL_HITS = 240;
-const SVG_MAX_HITS_PER_RECORD = 80;
+export const PLASMID_FEATURE_SVG_MAX_RECORDS = 12;
+export const PLASMID_FEATURE_SVG_MAX_TOTAL_HITS = 240;
+export const PLASMID_FEATURE_SVG_MAX_HITS_PER_RECORD = 80;
 
 function normalizeDnaForCounting(sequence) {
   return String(sequence ?? "").toUpperCase().replace(/U/g, "T").replace(/[^ACGTRYSWKMBDHVN]/g, "");
@@ -97,13 +97,13 @@ function makeTextMap(scannedRecords) {
 }
 
 function makeSvgMap(scannedRecords) {
-  const drawableRecords = scannedRecords.slice(0, SVG_MAX_RECORDS);
+  const drawableRecords = scannedRecords.slice(0, PLASMID_FEATURE_SVG_MAX_RECORDS);
   const omittedRecords = Math.max(0, scannedRecords.length - drawableRecords.length);
-  const perRecordBase = Math.max(1, Math.floor(SVG_MAX_TOTAL_HITS / Math.max(1, drawableRecords.length)));
+  const perRecordBase = Math.max(1, Math.floor(PLASMID_FEATURE_SVG_MAX_TOTAL_HITS / Math.max(1, drawableRecords.length)));
   return renderSequenceMap({
     title: "Plasmid common feature map",
     records: drawableRecords.map((record) => {
-      const shownLimit = Math.min(SVG_MAX_HITS_PER_RECORD, Math.max(perRecordBase, Math.min(record.rows.length, SVG_MAX_HITS_PER_RECORD)));
+      const shownLimit = Math.min(PLASMID_FEATURE_SVG_MAX_HITS_PER_RECORD, Math.max(perRecordBase, Math.min(record.rows.length, PLASMID_FEATURE_SVG_MAX_HITS_PER_RECORD)));
       const shownRows = record.rows.slice(0, shownLimit);
       const omitted = Math.max(0, record.rows.length - shownRows.length);
       return {

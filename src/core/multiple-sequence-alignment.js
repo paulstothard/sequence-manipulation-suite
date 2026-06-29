@@ -1,6 +1,6 @@
 import { formatFastaRecord, parseSequenceInput } from "./fasta.js";
 import { getGeneticCode, makeCodonMap } from "./genetic-code.js";
-import { alignPairwiseAffine } from "./pairwise-alignment.js";
+import { alignPairwiseAffine, pairwiseAlignmentDefaultLimits } from "./pairwise-alignment.js";
 import { makeAlignmentSvg } from "./alignment-svg.js";
 import { createBioWasmCli, requireBioWasmRuntime } from "./biowasm-runner.js";
 import { makeHeatmapPlotSpec, makeObservablePlotConfig, renderHeatmapPlotSvg } from "./plot-renderer.js";
@@ -45,8 +45,12 @@ export const multipleAlignmentIdentityTableColumns = [
   { id: "distance_space", label: "Distance space", type: "string" }
 ];
 
-const MAX_MSA_SEQUENCES = 25;
-const MAX_MSA_TOTAL_SYMBOLS = 12000;
+export const multipleAlignmentDefaultLimits = Object.freeze({
+  maxSequences: 100,
+  maxTotalSymbols: 250000
+});
+const MAX_MSA_SEQUENCES_OPTION = 1000;
+const MAX_MSA_TOTAL_SYMBOLS_OPTION = 1000000;
 export const MULTIPLE_ALIGNMENT_ENGINES = {
   muscle: "muscle",
   sms3: "sms3-progressive"
@@ -57,6 +61,14 @@ let muscleRunCounter = 0;
 function cleanForAlphabet(record, alphabet) {
   const cleaner = alphabet === "protein" ? cleanProteinSequence : cleanDnaRnaSequence;
   return cleaner(record.sequence, { preserveCase: false, keepGaps: false });
+}
+
+function normalizeLimitInteger(value, fallback, min, max) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.max(min, Math.min(max, parsed));
 }
 
 function normalizeOptions(options = {}) {
@@ -70,7 +82,25 @@ function normalizeOptions(options = {}) {
     matchScore: Number.parseFloat(options.matchScore) || 5,
     mismatchScore: Number.parseFloat(options.mismatchScore) || -4,
     similarScore: Number.parseFloat(options.similarScore) || 1,
-    lineWidth: Math.max(20, Math.min(120, Number.parseInt(options.lineWidth, 10) || 60))
+    lineWidth: Math.max(20, Math.min(120, Number.parseInt(options.lineWidth, 10) || 60)),
+    maxSequences: normalizeLimitInteger(
+      options.maxSequences,
+      multipleAlignmentDefaultLimits.maxSequences,
+      2,
+      MAX_MSA_SEQUENCES_OPTION
+    ),
+    maxTotalSymbols: normalizeLimitInteger(
+      options.maxTotalSymbols,
+      multipleAlignmentDefaultLimits.maxTotalSymbols,
+      1000,
+      MAX_MSA_TOTAL_SYMBOLS_OPTION
+    ),
+    maxAlignmentCells: normalizeLimitInteger(
+      options.maxAlignmentCells,
+      pairwiseAlignmentDefaultLimits.maxAlignmentCells,
+      1000,
+      pairwiseAlignmentDefaultLimits.maxAlignmentCells * 10
+    )
   };
 }
 
@@ -119,7 +149,7 @@ function translateCodonsForAlignment(codons, codonMap) {
   return { protein, ambiguousCodons, stopCodons };
 }
 
-function prepareRecords(input, alphabet) {
+function prepareRecords(input, alphabet, options = {}) {
   const warnings = [];
   const parsed = parseSequenceInput(input, "sequence");
   let charactersRemoved = 0;
@@ -144,13 +174,13 @@ function prepareRecords(input, alphabet) {
   if (records.length < 2) {
     warnings.push("Provide at least two FASTA records for multiple sequence alignment.");
   }
-  if (records.length > MAX_MSA_SEQUENCES) {
-    warnings.push(`Only the first ${MAX_MSA_SEQUENCES} records were aligned.`);
+  if (records.length > options.maxSequences) {
+    warnings.push(`Only the first ${options.maxSequences.toLocaleString()} records were aligned.`);
   }
-  const limitedRecords = records.slice(0, MAX_MSA_SEQUENCES);
+  const limitedRecords = records.slice(0, options.maxSequences);
   const totalSymbols = limitedRecords.reduce((sum, record) => sum + record.sequence.length, 0);
-  if (totalSymbols > MAX_MSA_TOTAL_SYMBOLS) {
-    throw new Error(`Multiple alignment input has ${totalSymbols.toLocaleString()} symbols. Reduce the number or length of sequences for the browser-local multiple aligner.`);
+  if (totalSymbols > options.maxTotalSymbols) {
+    throw new Error(`Multiple alignment input has ${totalSymbols.toLocaleString()} symbols, which exceeds the current ${options.maxTotalSymbols.toLocaleString()}-symbol browser-local alignment limit. Reduce the number or length of sequences, or raise the limit if the browser can handle the run.`);
   }
   return { records: limitedRecords, warnings, charactersRemoved, totalSymbols };
 }
@@ -171,7 +201,8 @@ function pairwiseOptions(options) {
     mismatchScore: options.mismatchScore,
     similarScore: options.similarScore,
     gapOpen: options.gapOpen,
-    gapExtend: options.gapExtend
+    gapExtend: options.gapExtend,
+    maxAlignmentCells: options.maxAlignmentCells
   };
 }
 
@@ -426,7 +457,7 @@ async function alignPreparedMultipleSequencesWithMuscle(prepared, options, conte
 
 export async function alignMultipleSequences(input, rawOptions = {}, context = {}) {
   const options = normalizeOptions(rawOptions);
-  const prepared = prepareRecords(input, options.alphabet);
+  const prepared = prepareRecords(input, options.alphabet, options);
   if (options.alignmentEngine === MULTIPLE_ALIGNMENT_ENGINES.muscle) {
     return alignPreparedMultipleSequencesWithMuscle(prepared, options, context);
   }
@@ -434,6 +465,7 @@ export async function alignMultipleSequences(input, rawOptions = {}, context = {
 }
 
 function prepareCodingDnaRecords(input, rawOptions = {}) {
+  const options = normalizeOptions(rawOptions);
   const warnings = [];
   const code = getGeneticCode(rawOptions.geneticCode ?? "1");
   const codonMap = makeCodonMap(code);
@@ -474,15 +506,16 @@ function prepareCodingDnaRecords(input, rawOptions = {}) {
   if (records.length < 2) {
     warnings.push("Provide at least two coding DNA/RNA FASTA records with at least one complete codon each.");
   }
-  if (records.length > MAX_MSA_SEQUENCES) {
-    warnings.push(`Only the first ${MAX_MSA_SEQUENCES} records were aligned.`);
+  if (records.length > options.maxSequences) {
+    warnings.push(`Only the first ${options.maxSequences.toLocaleString()} records were aligned.`);
   }
-  const limitedRecords = records.slice(0, MAX_MSA_SEQUENCES);
-  const totalSymbols = limitedRecords.reduce((sum, record) => sum + record.codons.length, 0);
-  if (totalSymbols > MAX_MSA_TOTAL_SYMBOLS) {
-    throw new Error(`Multiple coding DNA alignment input has ${totalSymbols.toLocaleString()} codons. Reduce the number or length of sequences for the browser-local multiple aligner.`);
+  const limitedRecords = records.slice(0, options.maxSequences);
+  const totalCodons = limitedRecords.reduce((sum, record) => sum + record.codons.length, 0);
+  const totalSymbols = totalCodons * 3;
+  if (totalSymbols > options.maxTotalSymbols) {
+    throw new Error(`Multiple coding DNA alignment input has ${totalSymbols.toLocaleString()} bases in complete codons, which exceeds the current ${options.maxTotalSymbols.toLocaleString()}-symbol browser-local alignment limit. Reduce the number or length of sequences, or raise the limit if the browser can handle the run.`);
   }
-  return { records: limitedRecords, warnings, charactersRemoved, totalSymbols: totalSymbols * 3, geneticCode: code };
+  return { records: limitedRecords, warnings, charactersRemoved, totalSymbols, geneticCode: code };
 }
 
 function projectProteinMsaToCodons(prepared, proteinAlignment, options) {
@@ -699,7 +732,7 @@ export async function makeMultipleAlignmentIdentityMatrix(input, rawOptions = {}
     : normalizeOptions({ ...rawOptions, alphabet });
   const prepared = alphabet === "coding-dna"
     ? prepareCodingDnaRecords(input, rawOptions)
-    : prepareRecords(input, alphabet);
+    : prepareRecords(input, options.alphabet, options);
   if (prepared.records.length < 2) {
     return { ...prepared, identity: null, options };
   }

@@ -1,4 +1,8 @@
-import { proteinPatternFinderTableColumns } from "./run.js";
+import {
+  PROTEIN_PATTERN_MATCHED_REGION_RECORD_THRESHOLD,
+  PROTEIN_PATTERN_SVG_MAP_MATCH_THRESHOLD,
+  proteinPatternFinderTableColumns
+} from "./run.js";
 
 export const proteinPatternFinderMetadata = {
   id: "protein-pattern-finder",
@@ -61,6 +65,20 @@ export const proteinPatternFinderMetadata = {
         { value: "svg-map", label: "Linear pattern map" },
         { value: "interactive-viewer", label: "Protein sequence viewer" },
         { value: "tsv", label: "Table" }
+      ]
+    },
+    {
+      id: "advancedLimits",
+      type: "group",
+      label: "Limits",
+      collapsible: true,
+      collapsed: true,
+      options: [
+        {
+          id: "patternOutputLimitNote",
+          type: "note",
+          text: `Matched-region sequence streams are capped at ${PROTEIN_PATTERN_MATCHED_REGION_RECORD_THRESHOLD.toLocaleString()} records, and linear pattern maps are capped at ${PROTEIN_PATTERN_SVG_MAP_MATCH_THRESHOLD.toLocaleString()} shown matches. Table output contains all coordinates.`
+        }
       ]
     },
     {

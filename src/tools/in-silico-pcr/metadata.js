@@ -54,8 +54,6 @@ export const inSilicoPcrMetadata = {
     { id: "exactThreePrimeBases", type: "number", label: "Exact 3' bases", defaultValue: 3, min: 0, max: 12, step: 1, help: "Rejects a binding site unless this many bases at the primer 3' end match exactly." },
     { id: "minProductLength", type: "number", label: "Minimum product length", defaultValue: 20, min: 1, step: 1 },
     { id: "maxProductLength", type: "number", label: "Maximum product length", defaultValue: 5000, min: 1, step: 1 },
-    { id: "maxBindingSitesPerTemplate", type: "number", label: "Maximum binding sites per template", defaultValue: 5000, min: 1, max: 100000, step: 100, help: "Stops very broad or degenerate primer searches before they create misleadingly huge tables. A warning is shown when the cap is reached." },
-    { id: "maxProducts", type: "number", label: "Maximum products", defaultValue: 1000, min: 1, max: 100000, step: 100, help: "Stops product enumeration after this many candidate amplicons. A warning is shown when the cap is reached." },
     {
       id: "outputFormat",
       type: "radio",
@@ -70,6 +68,17 @@ export const inSilicoPcrMetadata = {
         { value: "svg-gel", label: "Simulated gel" },
         { value: "interactive-viewer", label: "Linear DNA sequence viewer" },
         { value: "interactive-circular-viewer", label: "Circular DNA sequence viewer" }
+      ]
+    },
+    {
+      id: "advancedLimits",
+      type: "group",
+      label: "Limits",
+      collapsible: true,
+      collapsed: true,
+      options: [
+        { id: "maxBindingSitesPerTemplate", type: "number", label: "Maximum binding sites per template", defaultValue: 5000, min: 1, max: 100000, step: 100, help: "Stops very broad or degenerate primer searches before they create misleadingly huge tables. A warning is shown when the cap is reached." },
+        { id: "maxProducts", type: "number", label: "Maximum products", defaultValue: 1000, min: 1, max: 100000, step: 100, help: "Stops product enumeration after this many candidate amplicons. A warning is shown when the cap is reached." }
       ]
     },
     {

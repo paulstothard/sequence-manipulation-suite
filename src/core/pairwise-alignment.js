@@ -14,7 +14,10 @@ const STATE_M = 0;
 const STATE_X = 1;
 const STATE_Y = 2;
 const STATE_STOP = 3;
-const MAX_ALIGNMENT_CELLS = 2_000_000;
+export const pairwiseAlignmentDefaultLimits = Object.freeze({
+  maxAlignmentCells: 2_000_000
+});
+const MAX_ALIGNMENT_CELLS_OPTION = 20_000_000;
 export const PAIRWISE_ALIGNMENT_ENGINES = {
   seqAlign: "seq-align",
   sms3: "sms3-affine"
@@ -181,7 +184,14 @@ function normalizeOptions(options = {}) {
     gapOpen: -Math.abs(Number.parseFloat(options.gapOpen) || 10),
     gapExtend: -Math.abs(Number.parseFloat(options.gapExtend) || 1),
     lineWidth: Math.max(20, Math.min(120, Number.parseInt(options.lineWidth, 10) || 60)),
-    scoringMatrix: options.scoringMatrix === "blosum62" ? "blosum62" : "identity"
+    scoringMatrix: options.scoringMatrix === "blosum62" ? "blosum62" : "identity",
+    maxAlignmentCells: Math.max(
+      1000,
+      Math.min(
+        MAX_ALIGNMENT_CELLS_OPTION,
+        Number.parseInt(options.maxAlignmentCells, 10) || pairwiseAlignmentDefaultLimits.maxAlignmentCells
+      )
+    )
   };
 }
 
@@ -460,8 +470,8 @@ export async function alignPairwiseAffine(sequenceA, sequenceB, rawOptions = {},
   if (m === 0 || n === 0) {
     throw new Error("Both sequences must contain at least one valid symbol.");
   }
-  if (cells > MAX_ALIGNMENT_CELLS) {
-    throw new Error(`Alignment matrix would require ${cells.toLocaleString()} cells. Reduce sequence length or use a smaller region.`);
+  if (cells > options.maxAlignmentCells) {
+    throw new Error(`Alignment matrix would require ${cells.toLocaleString()} cells, which exceeds the current ${options.maxAlignmentCells.toLocaleString()}-cell SMS3 affine alignment limit. Reduce sequence length, use a smaller region, or raise the limit if the browser can handle the run.`);
   }
 
   const M = new Float64Array(cells);

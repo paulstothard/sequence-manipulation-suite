@@ -3,7 +3,8 @@ import {
   prepareProteinConservationStructureForRun,
   proteinStructureConservationColumns
 } from "../../core/protein-structure-conservation.js";
-import { MULTIPLE_ALIGNMENT_ENGINES } from "../../core/multiple-sequence-alignment.js";
+import { MULTIPLE_ALIGNMENT_ENGINES, multipleAlignmentDefaultLimits } from "../../core/multiple-sequence-alignment.js";
+import { pairwiseAlignmentDefaultLimits } from "../../core/pairwise-alignment.js";
 import { exportDelimitedTable } from "../../core/table.js";
 import { makeTableStream, makeTextStream, makeToolResult } from "../../core/workflow.js";
 
@@ -14,6 +15,14 @@ const FORMATS = new Set(["auto", "pdb", "mmcif"]);
 const ALT_LOCATION_POLICIES = new Set(["preferred", "highest-occupancy", "first", "all"]);
 const ALIGNMENT_INPUT_MODES = new Set(["unaligned", "aligned"]);
 const ALIGNMENT_ENGINES = new Set(Object.values(MULTIPLE_ALIGNMENT_ENGINES));
+
+function normalizeLimitInteger(value, fallback, min, max) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.max(min, Math.min(max, parsed));
+}
 
 function normalizeOptions(options = {}) {
   return {
@@ -27,6 +36,14 @@ function normalizeOptions(options = {}) {
       : MULTIPLE_ALIGNMENT_ENGINES.muscle,
     gapOpen: Number.parseFloat(options.gapOpen) || 10,
     gapExtend: Number.parseFloat(options.gapExtend) || 1,
+    maxSequences: normalizeLimitInteger(options.maxSequences, multipleAlignmentDefaultLimits.maxSequences, 2, 1000),
+    maxTotalSymbols: normalizeLimitInteger(options.maxTotalSymbols, multipleAlignmentDefaultLimits.maxTotalSymbols, 1000, 1000000),
+    maxAlignmentCells: normalizeLimitInteger(
+      options.maxAlignmentCells,
+      pairwiseAlignmentDefaultLimits.maxAlignmentCells,
+      1000,
+      pairwiseAlignmentDefaultLimits.maxAlignmentCells * 10
+    ),
     alignmentRow: String(options.alignmentRow ?? "auto").trim() || "auto",
     representation: REPRESENTATIONS.has(options.representation) ? options.representation : "residue-spheres",
     background: BACKGROUNDS.has(options.background) ? options.background : "white",

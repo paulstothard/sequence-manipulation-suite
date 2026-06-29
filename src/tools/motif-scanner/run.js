@@ -14,11 +14,11 @@ import proteinMotifs from "../../reference-data/motifs/protein-motifs.js";
 import motifProvenance from "../../reference-data/motifs/provenance.js";
 
 const DETAILED_REPORT_MATCH_THRESHOLD = 2000;
-const TEXT_MAP_MATCH_THRESHOLD = 5000;
-const SVG_MAP_MATCH_THRESHOLD = 120;
-const SVG_RECORD_MATCH_THRESHOLD = 30;
-const SVG_LABEL_MATCH_THRESHOLD = 48;
-const SVG_RECORD_LABEL_THRESHOLD = 12;
+export const MOTIF_TEXT_MAP_MATCH_THRESHOLD = 5000;
+export const MOTIF_SVG_MAP_MATCH_THRESHOLD = 120;
+export const MOTIF_SVG_RECORD_MATCH_THRESHOLD = 30;
+export const MOTIF_SVG_LABEL_MATCH_THRESHOLD = 48;
+export const MOTIF_SVG_RECORD_LABEL_THRESHOLD = 12;
 
 function getSelectedMotifs(motifs, options = {}) {
   const motifDatabase = options.motifDatabase ?? "sms3-curated";
@@ -167,7 +167,7 @@ function makeCompactMotifLabel(row) {
   return labels[row.motif_id] ?? fallback;
 }
 
-function makeTextMap(analyzedRecords, config, maxMatches = TEXT_MAP_MATCH_THRESHOLD) {
+function makeTextMap(analyzedRecords, config, maxMatches = MOTIF_TEXT_MAP_MATCH_THRESHOLD) {
   let remaining = maxMatches;
   return renderTextAnnotationMapFromItems(rowsByRecord(analyzedRecords).map((record) => ({
     title: record.title,
@@ -186,7 +186,7 @@ function makeTextMap(analyzedRecords, config, maxMatches = TEXT_MAP_MATCH_THRESH
   });
 }
 
-function allocateSvgMatchCaps(records, maxTotal = SVG_MAP_MATCH_THRESHOLD, maxPerRecord = SVG_RECORD_MATCH_THRESHOLD) {
+function allocateSvgMatchCaps(records, maxTotal = MOTIF_SVG_MAP_MATCH_THRESHOLD, maxPerRecord = MOTIF_SVG_RECORD_MATCH_THRESHOLD) {
   const caps = new Array(records.length).fill(0);
   let remaining = Math.max(0, Number(maxTotal) || 0);
 
@@ -220,14 +220,14 @@ function allocateSvgMatchCaps(records, maxTotal = SVG_MAP_MATCH_THRESHOLD, maxPe
   return caps;
 }
 
-function makeSvgMap(analyzedRecords, config, maxMatches = SVG_MAP_MATCH_THRESHOLD) {
-  let remainingLabels = SVG_LABEL_MATCH_THRESHOLD;
+function makeSvgMap(analyzedRecords, config, maxMatches = MOTIF_SVG_MAP_MATCH_THRESHOLD) {
+  let remainingLabels = MOTIF_SVG_LABEL_MATCH_THRESHOLD;
   const rowRecords = rowsByRecord(analyzedRecords);
   const recordCaps = allocateSvgMatchCaps(rowRecords, maxMatches);
   const records = rowRecords.map((record, recordIndex) => {
     const features = [];
     let recordRemaining = recordCaps[recordIndex] ?? 0;
-    let recordLabelsRemaining = SVG_RECORD_LABEL_THRESHOLD;
+    let recordLabelsRemaining = MOTIF_SVG_RECORD_LABEL_THRESHOLD;
     for (const row of record.rows) {
       if (recordRemaining <= 0) {
         break;
@@ -334,24 +334,24 @@ function getOutputFormat(options, config) {
 function buildMotifScannerOutput({ analyzedRecords, rows, selectedMotifs, recordsProcessed, sequenceLength, alphabet, title, options, config, warnings }) {
   const outputFormat = getOutputFormat(options, config);
   const totalMatches = rows.length;
-  if (outputFormat === "text-map" && totalMatches > TEXT_MAP_MATCH_THRESHOLD) {
+  if (outputFormat === "text-map" && totalMatches > MOTIF_TEXT_MAP_MATCH_THRESHOLD) {
     warnings.push(
-      `Motif text map was capped at ${TEXT_MAP_MATCH_THRESHOLD} of ${totalMatches} matches to keep output manageable. Use table output for all coordinates.`
+      `Motif text map was capped at ${MOTIF_TEXT_MAP_MATCH_THRESHOLD} of ${totalMatches} matches to keep output manageable. Use table output for all coordinates.`
     );
   }
-  if (outputFormat === "svg-map" && totalMatches > SVG_MAP_MATCH_THRESHOLD) {
+  if (outputFormat === "svg-map" && totalMatches > MOTIF_SVG_MAP_MATCH_THRESHOLD) {
     warnings.push(
-      `Linear motif map was capped at ${SVG_MAP_MATCH_THRESHOLD} of ${totalMatches} matches to keep output manageable. Use table output for all coordinates.`
+      `Linear motif map was capped at ${MOTIF_SVG_MAP_MATCH_THRESHOLD} of ${totalMatches} matches to keep output manageable. Use table output for all coordinates.`
     );
   }
-  if (outputFormat === "svg-map" && analyzedRecords.some((record) => record.rows.length > SVG_RECORD_MATCH_THRESHOLD)) {
+  if (outputFormat === "svg-map" && analyzedRecords.some((record) => record.rows.length > MOTIF_SVG_RECORD_MATCH_THRESHOLD)) {
     warnings.push(
-      `Linear motif map matches were distributed across records with a per-record ceiling of ${SVG_RECORD_MATCH_THRESHOLD} matches to avoid misleading empty records and extremely tall dense-hit maps. Use table output for all coordinates.`
+      `Linear motif map matches were distributed across records with a per-record ceiling of ${MOTIF_SVG_RECORD_MATCH_THRESHOLD} matches to avoid misleading empty records and extremely tall dense-hit maps. Use table output for all coordinates.`
     );
   }
-  if (outputFormat === "svg-map" && (totalMatches > SVG_LABEL_MATCH_THRESHOLD || analyzedRecords.some((record) => record.rows.length > SVG_RECORD_LABEL_THRESHOLD))) {
+  if (outputFormat === "svg-map" && (totalMatches > MOTIF_SVG_LABEL_MATCH_THRESHOLD || analyzedRecords.some((record) => record.rows.length > MOTIF_SVG_RECORD_LABEL_THRESHOLD))) {
     warnings.push(
-      `Linear motif map labels were capped at ${SVG_RECORD_LABEL_THRESHOLD} labels per record and ${SVG_LABEL_MATCH_THRESHOLD} labels total to avoid an unreadable map. Use table output for all motif names and coordinates.`
+      `Linear motif map labels were capped at ${MOTIF_SVG_RECORD_LABEL_THRESHOLD} labels per record and ${MOTIF_SVG_LABEL_MATCH_THRESHOLD} labels total to avoid an unreadable map. Use table output for all motif names and coordinates.`
     );
   }
   if (outputFormat === "report" && totalMatches > DETAILED_REPORT_MATCH_THRESHOLD) {

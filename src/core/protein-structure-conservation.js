@@ -688,7 +688,10 @@ export async function prepareProteinConservationStructureForRun(input, options =
       : MULTIPLE_ALIGNMENT_ENGINES.muscle,
     gapOpen: options.gapOpen,
     gapExtend: options.gapExtend,
-    similarScore: options.similarScore
+    similarScore: options.similarScore,
+    maxSequences: options.maxSequences,
+    maxTotalSymbols: options.maxTotalSymbols,
+    maxAlignmentCells: options.maxAlignmentCells
   }, context);
   if (!alignmentResult.alignment) {
     throw new Error("Could not build a protein multiple alignment from the structure chain and comparison sequences.");

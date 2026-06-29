@@ -1,4 +1,8 @@
-import { dnaRnaPatternFinderTableColumns } from "./run.js";
+import {
+  DNA_RNA_PATTERN_MATCHED_REGION_RECORD_THRESHOLD,
+  DNA_RNA_PATTERN_SVG_MAP_MATCH_THRESHOLD,
+  dnaRnaPatternFinderTableColumns
+} from "./run.js";
 
 export const dnaRnaPatternFinderMetadata = {
   id: "dna-rna-pattern-finder",
@@ -73,6 +77,20 @@ export const dnaRnaPatternFinderMetadata = {
         { value: "interactive-viewer", label: "Linear DNA sequence viewer" },
         { value: "interactive-circular-viewer", label: "Circular DNA sequence viewer" },
         { value: "tsv", label: "Table" }
+      ]
+    },
+    {
+      id: "advancedLimits",
+      type: "group",
+      label: "Limits",
+      collapsible: true,
+      collapsed: true,
+      options: [
+        {
+          id: "patternOutputLimitNote",
+          type: "note",
+          text: `Matched-region sequence streams are capped at ${DNA_RNA_PATTERN_MATCHED_REGION_RECORD_THRESHOLD.toLocaleString()} records, and linear pattern maps are capped at ${DNA_RNA_PATTERN_SVG_MAP_MATCH_THRESHOLD.toLocaleString()} shown matches. Table output contains all coordinates.`
+        }
       ]
     },
     {

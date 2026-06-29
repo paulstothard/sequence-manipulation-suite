@@ -1,4 +1,9 @@
-import { technicalSequenceTableColumns } from "./run.js";
+import {
+  TECHNICAL_SEQUENCE_SVG_MAX_HITS_PER_RECORD,
+  TECHNICAL_SEQUENCE_SVG_MAX_RECORDS,
+  TECHNICAL_SEQUENCE_SVG_MAX_TOTAL_HITS,
+  technicalSequenceTableColumns
+} from "./run.js";
 import technicalSequenceSummary from "../../reference-data/technical-sequences/summary.js";
 
 function makeClassChoices(records) {
@@ -167,6 +172,20 @@ export const technicalSequenceScannerMetadata = {
         { value: "svg-map", label: "Linear technical-sequence map" },
         { value: "interactive-viewer", label: "Linear DNA sequence viewer" },
         { value: "interactive-circular-viewer", label: "Circular DNA sequence viewer" }
+      ]
+    },
+    {
+      id: "advancedLimits",
+      type: "group",
+      label: "Limits",
+      collapsible: true,
+      collapsed: true,
+      options: [
+        {
+          id: "technicalSequenceMapLimitNote",
+          type: "note",
+          text: `Linear technical-sequence maps show up to ${TECHNICAL_SEQUENCE_SVG_MAX_RECORDS.toLocaleString()} records, ${TECHNICAL_SEQUENCE_SVG_MAX_TOTAL_HITS.toLocaleString()} hits total, and ${TECHNICAL_SEQUENCE_SVG_MAX_HITS_PER_RECORD.toLocaleString()} hits per record. Table output contains all hit coordinates.`
+        }
       ]
     },
     {

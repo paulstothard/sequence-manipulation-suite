@@ -1,6 +1,13 @@
 import { motifMatchTableColumns } from "../../core/motif-scanner.js";
 import dnaRnaMotifs from "../../reference-data/motifs/dna-rna-motifs.js";
 import proteinMotifs from "../../reference-data/motifs/protein-motifs.js";
+import {
+  MOTIF_SVG_LABEL_MATCH_THRESHOLD,
+  MOTIF_SVG_MAP_MATCH_THRESHOLD,
+  MOTIF_SVG_RECORD_LABEL_THRESHOLD,
+  MOTIF_SVG_RECORD_MATCH_THRESHOLD,
+  MOTIF_TEXT_MAP_MATCH_THRESHOLD
+} from "./run.js";
 
 const databaseLabels = {
   "sms3-curated": "SMS3 curated consensus/pattern motifs",
@@ -96,6 +103,21 @@ const proteinOutputOptions = [
   }
 ];
 
+const motifOutputLimitsGroup = {
+  id: "advancedLimits",
+  type: "group",
+  label: "Limits",
+  collapsible: true,
+  collapsed: true,
+  options: [
+    {
+      id: "motifOutputLimitNote",
+      type: "note",
+      text: `Motif text maps are capped at ${MOTIF_TEXT_MAP_MATCH_THRESHOLD.toLocaleString()} matches. Linear motif maps are capped at ${MOTIF_SVG_MAP_MATCH_THRESHOLD.toLocaleString()} shown matches, ${MOTIF_SVG_RECORD_MATCH_THRESHOLD.toLocaleString()} shown matches per record, ${MOTIF_SVG_LABEL_MATCH_THRESHOLD.toLocaleString()} labels total, and ${MOTIF_SVG_RECORD_LABEL_THRESHOLD.toLocaleString()} labels per record. Table output contains all coordinates.`
+    }
+  ]
+};
+
 export const dnaRnaMotifScannerMetadata = {
   id: "dna-rna-motif-scanner",
   name: "DNA/RNA Motif Scanner",
@@ -158,6 +180,7 @@ export const dnaRnaMotifScannerMetadata = {
     },
     { id: "allowOverlaps", type: "checkbox", label: "Allow overlapping matches", defaultValue: true, help: "Allows motif hits that share one or more sequence positions." },
     ...dnaRnaOutputOptions,
+    motifOutputLimitsGroup,
     {
       id: "methodNote",
       type: "note",
@@ -212,6 +235,7 @@ export const proteinMotifScannerMetadata = {
     },
     { id: "allowOverlaps", type: "checkbox", label: "Allow overlapping matches", defaultValue: true, help: "Allows motif hits that share one or more residue positions." },
     ...proteinOutputOptions,
+    motifOutputLimitsGroup,
     {
       id: "methodNote",
       type: "note",

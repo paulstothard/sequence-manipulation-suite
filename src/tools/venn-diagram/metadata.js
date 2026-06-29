@@ -64,6 +64,20 @@ export const vennDiagramMetadata = {
           ]
         }
       ]
+    },
+    {
+      id: "advancedLimits",
+      type: "group",
+      label: "Limits",
+      collapsible: true,
+      collapsed: true,
+      options: [
+        {
+          id: "vennListLimitNote",
+          type: "note",
+          text: `Venn diagrams are limited to ${VENN_DIAGRAM_MAX_LISTS} lists. Use UpSet Plot for larger list comparisons.`
+        }
+      ]
     }
   ]
 };

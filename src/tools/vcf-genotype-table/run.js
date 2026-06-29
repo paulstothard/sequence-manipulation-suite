@@ -17,8 +17,8 @@ import { readOptionalReferenceGenomeRegion } from "../../core/optional-reference
 const OUTPUT_FORMATS = new Set(["tsv", "xlsx", "report", "interactive-viewer"]);
 const SOURCE_MODES = new Set(["paste-upload", "indexed-vcf"]);
 const INDEXED_REGION_DATA_TYPES = new Set(["genotypes", "region-variants", "region-split-info", "region-viewer"]);
-const MAX_VIEWER_REGION_SPAN = 1000000;
-const MAX_VIEWER_RECORDS = 12;
+export const VCF_GENOTYPE_VIEWER_MAX_REGION_SPAN = 1000000;
+export const VCF_GENOTYPE_VIEWER_MAX_RECORDS = 12;
 
 function normalizeOutputFormat(value, dataType = "") {
   if (dataType === "region-viewer") {
@@ -118,8 +118,8 @@ async function makeVcfViewerData(result, options, warnings, context = {}) {
 
   const records = [];
   for (const [chrom, chromRows] of rowsByChrom) {
-    if (records.length >= MAX_VIEWER_RECORDS) {
-      warnings.push(`Variant viewer was limited to ${MAX_VIEWER_RECORDS} contigs/chromosomes. Use the table for the full set.`);
+    if (records.length >= VCF_GENOTYPE_VIEWER_MAX_RECORDS) {
+      warnings.push(`Variant viewer was limited to ${VCF_GENOTYPE_VIEWER_MAX_RECORDS} contigs/chromosomes. Use the table for the full set.`);
       break;
     }
     const positions = chromRows.map((row) => Number(row.pos)).filter(Number.isFinite);
@@ -133,7 +133,7 @@ async function makeVcfViewerData(result, options, warnings, context = {}) {
     if (!Number.isFinite(span) || span <= 0) {
       continue;
     }
-    if (span > MAX_VIEWER_REGION_SPAN) {
+    if (span > VCF_GENOTYPE_VIEWER_MAX_REGION_SPAN) {
       warnings.push(
         `Skipped ${chrom} in the variant viewer because the displayed span would be ${span.toLocaleString()} bp. Select a smaller genotype region or use the table output.`
       );

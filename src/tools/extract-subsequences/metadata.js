@@ -1,4 +1,4 @@
-import { extractSubsequencesTableColumns } from "./run.js";
+import { EXTRACT_SUBSEQUENCES_MAX_OUTPUT_RECORDS, extractSubsequencesTableColumns } from "./run.js";
 
 const dnaRnaTextFastaFileInput = {
   dropLabel: "Drop one plain-text DNA/RNA sequence or FASTA records here",
@@ -67,6 +67,21 @@ const outputOptions = [
   }
 ];
 
+const outputLimitsGroup = {
+  id: "advancedLimits",
+  type: "group",
+  label: "Limits",
+  collapsible: true,
+  collapsed: true,
+  options: [
+    {
+      id: "outputRecordLimitNote",
+      type: "note",
+      text: `Separate-segment output is capped at ${EXTRACT_SUBSEQUENCES_MAX_OUTPUT_RECORDS.toLocaleString()} FASTA records/table rows. Joined output avoids this segment-row cap.`
+    }
+  ]
+};
+
 function makeWorkflow(alphabet) {
   return {
     inputs: [
@@ -121,7 +136,8 @@ export const extractSubsequencesDnaRnaMetadata = {
       type: "group",
       label: "Output",
       options: outputOptions
-    }
+    },
+    outputLimitsGroup
   ]
 };
 
@@ -154,6 +170,7 @@ export const extractSubsequencesProteinMetadata = {
       type: "group",
       label: "Output",
       options: outputOptions
-    }
+    },
+    outputLimitsGroup
   ]
 };

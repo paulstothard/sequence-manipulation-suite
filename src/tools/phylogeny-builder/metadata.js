@@ -1,6 +1,8 @@
 import {
-  MULTIPLE_ALIGNMENT_ENGINES
+  MULTIPLE_ALIGNMENT_ENGINES,
+  multipleAlignmentDefaultLimits
 } from "../../core/multiple-sequence-alignment.js";
+import { pairwiseAlignmentDefaultLimits } from "../../core/pairwise-alignment.js";
 import {
   PHYLOGENY_OUTPUT_FORMATS,
   PHYLOGENY_SEQUENCE_TYPES,
@@ -108,6 +110,46 @@ export const phylogenyBuilderMetadata = {
             { value: PHYLOGENY_OUTPUT_FORMATS.alignmentReport, label: "Alignment report" }
           ],
           help: "The tree uses neighbor joining from alignment-derived p-distance values. The distance table and aligned FASTA are useful for checking the tree input."
+        }
+      ]
+    },
+    {
+      id: "advancedLimits",
+      type: "group",
+      label: "Limits",
+      collapsible: true,
+      collapsed: true,
+      options: [
+        {
+          id: "maxSequences",
+          type: "number",
+          label: "Maximum records to align",
+          defaultValue: multipleAlignmentDefaultLimits.maxSequences,
+          min: 2,
+          max: 1000,
+          step: 1,
+          help: "Only the first records up to this limit are aligned before tree construction."
+        },
+        {
+          id: "maxTotalSymbols",
+          type: "number",
+          label: "Maximum alignment input symbols",
+          defaultValue: multipleAlignmentDefaultLimits.maxTotalSymbols,
+          min: 1000,
+          max: 1000000,
+          step: 1000,
+          help: "Cap on the summed cleaned sequence length before alignment."
+        },
+        {
+          id: "maxAlignmentCells",
+          type: "number",
+          label: "Maximum pairwise alignment cells",
+          defaultValue: pairwiseAlignmentDefaultLimits.maxAlignmentCells,
+          min: 1000,
+          max: pairwiseAlignmentDefaultLimits.maxAlignmentCells * 10,
+          step: 100000,
+          visibleWhen: { option: "alignmentEngine", value: MULTIPLE_ALIGNMENT_ENGINES.sms3 },
+          help: "SMS3 progressive mode uses pairwise dynamic-programming alignments internally; this cap applies to each pairwise matrix."
         }
       ]
     },
