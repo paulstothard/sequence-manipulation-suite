@@ -44,7 +44,7 @@ export const codonAdaptationIndexMetadata = {
     {
       id: "methodNote",
       type: "note",
-      text: "CAI is the geometric mean of relative adaptiveness weights for codons in the selected reference. Ambiguous, stop, and zero-weight codons are counted but not scored. Citation: Sharp and Li, Nucleic Acids Research 1987."
+      text: "CAI is the geometric mean of relative adaptiveness weights for codons in the selected reference. Ambiguous, stop, and zero-weight codons are counted but not scored.\n\nReferences:\n\nCodon adaptation index: Sharp and Li 1987."
     },
     {
       type: "group",

@@ -169,7 +169,7 @@ export const talenTargetFinderMetadata = {
     {
       id: "citationNote",
       type: "note",
-      text: "Citations: Boch and Bonas, Annu Rev Phytopathol 2010; Bogdanove and Voytas, Science 2011; Miller et al., Nat Biotechnol 2011."
+      text: "References:\n\nTALE DNA-recognition code: Boch and Bonas 2010; Bogdanove and Voytas 2011.\n\nTALEN design/use example: Miller et al. 2011."
     }
   ]
 };

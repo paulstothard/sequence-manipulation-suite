@@ -610,7 +610,12 @@ export function makePcrPrimerDesignReport(result) {
     `GC clamp: ${result.options.gcClampMin}-${result.options.gcClampMax} G/C bases in the 3' five bases`,
     "",
     "Method: SMS3 enumerates local primer-pair candidates, filters by length, GC, approximate Tm, GC clamp, simple self-complementarity, simple 3' complementarity, hairpin-stem checks, and product size, then ranks lower scores first.",
-    "Citations: Wallace RB et al. Nucleic Acids Res. 1979; Marmur J and Doty P. J Mol Biol. 1962; Primer3 oracle comparisons use Untergasser et al. Nucleic Acids Res. 2012.",
+    "",
+    "References:",
+    "",
+    "Wallace rule Tm: Wallace et al. 1979.",
+    "Marmur-Doty Tm approximation: Marmur and Doty 1962.",
+    "Primer3 oracle comparisons: Untergasser et al. 2012.",
     "Note: the browser scorer is intentionally transparent and is not an exact reimplementation of Primer3.",
     ""
   ];

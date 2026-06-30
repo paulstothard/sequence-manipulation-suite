@@ -49,7 +49,7 @@ export const primerOligoPropertiesMetadata = {
     {
       id: "citationNote",
       type: "note",
-      text: "Citations: Wallace RB et al. Nucleic Acids Res. 1979; Marmur J and Doty P. J Mol Biol. 1962."
+      text: "References:\n\nWallace rule Tm: Wallace et al. 1979.\n\nMarmur-Doty Tm approximation: Marmur and Doty 1962."
     }
   ]
 };

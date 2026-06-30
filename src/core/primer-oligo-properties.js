@@ -84,7 +84,11 @@ export function analyzePrimerOligos(input) {
     "",
     `Records: ${records.length}`,
     "Tm method: Wallace rule for oligos shorter than 14 nt; Marmur-Doty GC approximation for longer oligos.",
-    "Citations: Wallace RB et al. Nucleic Acids Res. 1979; Marmur J and Doty P. J Mol Biol. 1962.",
+    "",
+    "References:",
+    "",
+    "Wallace rule Tm: Wallace et al. 1979.",
+    "Marmur-Doty Tm approximation: Marmur and Doty 1962.",
     "",
     ...rows.map((row) => `${row.record}: ${row.length} nt, GC ${row.gc_percent}%, Tm ${row.tm_c} C (${row.tm_method})`)
   ].join("\n");

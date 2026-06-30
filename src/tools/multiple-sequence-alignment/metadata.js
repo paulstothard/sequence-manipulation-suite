@@ -149,7 +149,7 @@ function buildMetadata(alphabet) {
       {
         id: "citationNote",
         type: "note",
-        text: "Citations: MUSCLE v5, Edgar 2022. SMS3 progressive mode follows Needleman-Wunsch/Gotoh pairwise alignment plus Feng-Doolittle-style progressive alignment; protein scoring uses BLOSUM62."
+        text: "References:\n\nMUSCLE v5: Edgar 2022.\n\nSMS3 progressive mode: Needleman and Wunsch 1970; Gotoh 1982; Feng and Doolittle 1987. Protein and coding-DNA scoring use BLOSUM62 (Henikoff and Henikoff 1992)."
       }
     ]
   };

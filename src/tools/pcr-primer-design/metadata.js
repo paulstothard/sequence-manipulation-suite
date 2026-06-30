@@ -195,7 +195,7 @@ export const pcrPrimerDesignMetadata = {
         {
           id: "citationNote",
           type: "note",
-          text: "Citations: Wallace RB et al. Nucleic Acids Res. 1979; Marmur J and Doty P. J Mol Biol. 1962; Untergasser et al. Nucleic Acids Res. 2012."
+          text: "References:\n\nWallace rule Tm: Wallace et al. 1979.\n\nMarmur-Doty Tm approximation: Marmur and Doty 1962.\n\nPrimer3 oracle comparisons: Untergasser et al. 2012."
         }
       ]
     }

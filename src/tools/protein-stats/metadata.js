@@ -66,7 +66,7 @@ export const sequenceStatsProteinMetadata = {
     {
       id: "citationNote",
       type: "note",
-      text: "References: ExPASy ProtParam documentation; EMBOSS pepstats and iep documentation."
+      text: "References:\n\nProtein parameter formulas and constants: ExPASy ProtParam documentation.\n\nOracle/reference behavior: EMBOSS pepstats and iep documentation."
     }
   ]
 };

@@ -1,4 +1,4 @@
-const SVG_CELL_LIMIT = 12000;
+export const DEFAULT_ALIGNMENT_SVG_CELL_LIMIT = 250000;
 const CONSENSUS_BLOCK_GAP_PX = 40;
 const ALIGNMENT_BLOCK_GAP_PX = 44;
 
@@ -17,6 +17,14 @@ function truncateLabel(value, maxLength = 20) {
 
 function normalizeLineWidth(lineWidth) {
   return Math.max(20, Math.min(120, Number.parseInt(lineWidth, 10) || 60));
+}
+
+function normalizeCellLimit(value) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) {
+    return DEFAULT_ALIGNMENT_SVG_CELL_LIMIT;
+  }
+  return Math.max(1, parsed);
 }
 
 function coordinateWidthForRows(rows) {
@@ -45,6 +53,7 @@ export function makeAlignmentSvg({
   consensus = "",
   columnRelations = [],
   lineWidth = 60,
+  maxCells = DEFAULT_ALIGNMENT_SVG_CELL_LIMIT,
   legend = "Green conserved; blue similar; red variable; gray gap.",
   summary = "",
   ariaLabel = "Colored sequence alignment"
@@ -53,8 +62,10 @@ export function makeAlignmentSvg({
   if (alignmentLength === 0 || rows.length === 0) {
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 140" role="img" aria-label="${escapeXml(ariaLabel)}"><style>.title{font:600 18px system-ui,sans-serif;fill:#111827}.note{font:13px system-ui,sans-serif;fill:#475569}</style><rect width="100%" height="100%" fill="white"/><text class="title" x="32" y="48">${escapeXml(title)}</text><text class="note" x="32" y="82">No aligned symbols were available to draw.</text></svg>`;
   }
-  if (alignmentLength * rows.length > SVG_CELL_LIMIT) {
-    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 140" role="img" aria-label="${escapeXml(ariaLabel)} not drawn"><style>.title{font:600 18px system-ui,sans-serif;fill:#111827}.note{font:13px system-ui,sans-serif;fill:#475569}</style><rect width="100%" height="100%" fill="white"/><text class="title" x="32" y="48">Colored alignment not drawn</text><text class="note" x="32" y="82">The alignment has ${(alignmentLength * rows.length).toLocaleString()} displayed cells. Use text, CLUSTAL, FASTA, or TSV output for the complete alignment.</text></svg>`;
+  const displayedCells = alignmentLength * rows.length;
+  const cellLimit = normalizeCellLimit(maxCells);
+  if (displayedCells > cellLimit) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 150" role="img" aria-label="${escapeXml(ariaLabel)} not drawn"><style>.title{font:600 18px system-ui,sans-serif;fill:#111827}.note{font:13px system-ui,sans-serif;fill:#475569}</style><rect width="100%" height="100%" fill="white"/><text class="title" x="32" y="48">Colored alignment not drawn</text><text class="note" x="32" y="82">The alignment has ${displayedCells.toLocaleString()} displayed cells, exceeding the current ${cellLimit.toLocaleString()}-cell colored alignment limit.</text><text class="note" x="32" y="106">Use text, CLUSTAL, FASTA, or TSV output for the complete alignment, or raise the alignment input limit if the browser can handle the SVG.</text></svg>`;
   }
 
   const blockWidth = normalizeLineWidth(lineWidth);

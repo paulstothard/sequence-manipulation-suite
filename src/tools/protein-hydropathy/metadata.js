@@ -55,7 +55,7 @@ export const proteinHydropathyMetadata = {
     {
       id: "citationNote",
       type: "note",
-      text: "Reference: Kyte J, Doolittle RF. J Mol Biol. 1982;157:105-132. Values from ExPASy ProtScale."
+      text: "References:\n\nKyte-Doolittle hydropathy scale: Kyte and Doolittle 1982.\n\nScale values: ExPASy ProtScale."
     }
   ]
 };

@@ -156,7 +156,7 @@ export const phylogenyBuilderMetadata = {
     {
       id: "methodsAndCitations",
       type: "note",
-      text: "Citations: MUSCLE v5, Edgar 2022. Neighbor joining follows Saitou and Nei 1987 using alignment-derived p-distance values. Use the tree as a quick local review or teaching phylogeny; full phylogenetic inference may need model selection, bootstrapping, and external validation."
+      text: "References:\n\nMUSCLE v5: Edgar 2022.\n\nSMS3 progressive alignment: Needleman and Wunsch 1970; Gotoh 1982; Feng and Doolittle 1987.\n\nNeighbor joining: Saitou and Nei 1987 using alignment-derived p-distance values. Use the tree as a quick local review or teaching phylogeny; full phylogenetic inference may need model selection, bootstrapping, and external validation."
     }
   ]
 };

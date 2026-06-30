@@ -361,16 +361,20 @@ async function alignPreparedMultipleSequencesWithSms3(prepared, options, context
 
   const titleToRecord = new Map(prepared.records.map((record) => [record.title, record]));
   const finalTitles = profile.titles.map((title, index) => index === 0 ? center.title : title);
-  const ordered = finalTitles.map((title, index) => ({
-    title,
-    aligned: profile.aligned[index],
-    record: titleToRecord.get(title) ?? center
+  const alignedByTitle = new Map(finalTitles.map((title, index) => [title, profile.aligned[index]]));
+  const ordered = prepared.records.map((record) => ({
+    title: record.title,
+    aligned: alignedByTitle.get(record.title),
+    record: titleToRecord.get(record.title) ?? record
   }));
+  if (ordered.some((item) => typeof item.aligned !== "string")) {
+    throw new Error("SMS3 progressive alignment did not return every submitted sequence.");
+  }
   const alignment = summarizeMsa(
     ordered.map((item) => item.record),
     ordered.map((item) => item.title),
     ordered.map((item) => item.aligned),
-    0,
+    centerIndex,
     centerScores,
     { ...options, alignmentEngine: MULTIPLE_ALIGNMENT_ENGINES.sms3 },
     { engine: MULTIPLE_ALIGNMENT_ENGINES.sms3 }
@@ -381,7 +385,7 @@ async function alignPreparedMultipleSequencesWithSms3(prepared, options, context
 function parseMuscleAlignedFasta(alignedFasta, internalRecords, options) {
   const parsed = parseSequenceInput(alignedFasta, "sequence");
   const byInternalTitle = new Map(internalRecords.map((record) => [record.internalTitle, record]));
-  const ordered = [];
+  const alignedByInternalTitle = new Map();
   const expectedLength = parsed[0]?.sequence?.length ?? 0;
 
   for (const record of parsed) {
@@ -393,14 +397,16 @@ function parseMuscleAlignedFasta(alignedFasta, internalRecords, options) {
     if (expectedLength > 0 && aligned.length !== expectedLength) {
       throw new Error("MUSCLE returned aligned sequences with inconsistent lengths.");
     }
-    ordered.push({
-      record: original,
-      title: original.title,
-      aligned
-    });
+    alignedByInternalTitle.set(record.title, aligned);
   }
 
-  if (ordered.length !== internalRecords.length) {
+  const ordered = internalRecords.map((record) => ({
+    record,
+    title: record.title,
+    aligned: alignedByInternalTitle.get(record.internalTitle)
+  }));
+
+  if (ordered.some((item) => typeof item.aligned !== "string")) {
     throw new Error("MUSCLE did not return every submitted sequence.");
   }
 
@@ -796,8 +802,8 @@ export function makeMultipleAlignmentReport(result) {
       ? "MUSCLE multiple sequence alignment via BioWasm"
       : "progressive star alignment using a center sequence selected from pairwise global alignments";
   const references = usesMuscle
-    ? "References: Edgar 2022 for MUSCLE v5; BioWasm/Aioli browser runtime. Tree and identity outputs are SMS3 post-processing."
-    : "References: Needleman and Wunsch 1970; Gotoh 1982; Feng and Doolittle 1987; Henikoff and Henikoff 1992 for BLOSUM62 protein scoring.";
+    ? "References:\n\nMUSCLE v5: Edgar 2022.\nBioWasm/Aioli browser runtime.\nTree and identity outputs are SMS3 post-processing."
+    : "References:\n\nGlobal pairwise alignment: Needleman and Wunsch 1970.\nAffine gap model: Gotoh 1982.\nProgressive alignment: Feng and Doolittle 1987.\nProtein and coding-DNA scoring use BLOSUM62 (Henikoff and Henikoff 1992).";
   return [
     "Multiple sequence alignment",
     "",
@@ -1093,6 +1099,7 @@ export function makeMultipleAlignmentSvg(alignment, options = {}) {
     })),
     consensus: alignment.consensus,
     lineWidth: options.lineWidth,
+    maxCells: options.maxCells,
     legend: isCodingDna
       ? "Green codon translates to a fully conserved amino acid; blue codon translates to a majority-conserved amino acid; red variable; gray codon gap."
       : "Green fully conserved; blue majority conserved; red variable; gray gap column.",

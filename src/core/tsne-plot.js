@@ -307,6 +307,11 @@ export function makeTsneReport(result) {
     `Random seed: ${runOptions.seed ?? "n/a"}`,
     `Engine: bhtsne ${runOptions.version ?? BIOWASM_BHTSNE_VERSION} via vendored BioWasm/Aioli`,
     "Method note: rows are embedded with Barnes-Hut t-SNE after complete-row filtering and optional column scaling.",
-    "References: van der Maaten and Hinton 2008; van der Maaten 2014; BioWasm/Aioli browser runtime."
+    "",
+    "References:",
+    "",
+    "t-SNE: van der Maaten and Hinton 2008.",
+    "Barnes-Hut t-SNE: van der Maaten 2014.",
+    "BioWasm/Aioli browser runtime."
   ].join("\n").trimEnd() + "\n";
 }

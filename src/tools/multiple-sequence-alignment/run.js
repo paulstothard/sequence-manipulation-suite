@@ -106,7 +106,11 @@ async function runMultipleAlignment(input, options = {}, alphabet, context = {})
   const translatedProteinFasta = alphabet === "coding-dna" ? makeMultipleCodingDnaProteinFasta(prepared.alignment, options.lineWidth) : "";
   const clustal = makeMultipleAlignmentClustal(prepared.alignment, options.lineWidth);
   const tsv = makeMultipleAlignmentTsv(prepared.alignment);
-  const svg = makeMultipleAlignmentSvg(prepared.alignment, { alphabet, lineWidth: options.lineWidth });
+  const svg = makeMultipleAlignmentSvg(prepared.alignment, {
+    alphabet,
+    lineWidth: options.lineWidth,
+    maxCells: options.maxTotalSymbols
+  });
   const isTreeOutput = outputFormat === "nj-tree" || outputFormat === "nj-tree-svg";
   const treeReport = isTreeOutput ? makeMultipleAlignmentTreeReport(prepared.alignment) : "";
   const treeSvg = outputFormat === "nj-tree-svg" ? makeMultipleAlignmentTreeSvg(prepared.alignment) : "";

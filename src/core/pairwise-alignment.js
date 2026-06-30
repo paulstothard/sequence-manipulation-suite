@@ -943,7 +943,13 @@ export function makePairwiseAlignmentReport(records, alignment, options = {}) {
     `Sequence A aligned range: ${alignment.startA}-${alignment.endA}`,
     `Sequence B aligned range: ${alignment.startB}-${alignment.endB}`,
     "",
-    `References: Needleman and Wunsch 1970; Smith and Waterman 1981; Gotoh 1982${alignment.alphabet === "protein" ? "; Henikoff and Henikoff 1992" : ""}${alignment.engine === PAIRWISE_ALIGNMENT_ENGINES.seqAlign ? "; seq-align/BioWasm browser runtime" : ""}.`
+    "References:",
+    "",
+    "Global alignment: Needleman and Wunsch 1970.",
+    "Local alignment: Smith and Waterman 1981.",
+    "Affine gap model: Gotoh 1982.",
+    ...(alignment.alphabet === "protein" ? ["BLOSUM62: Henikoff and Henikoff 1992."] : []),
+    ...(alignment.engine === PAIRWISE_ALIGNMENT_ENGINES.seqAlign ? ["seq-align/BioWasm browser runtime."] : [])
   ];
   return lines.join("\n");
 }
@@ -1049,7 +1055,14 @@ export function makePairwiseCodonAlignmentReport(records, alignment) {
     `Sequence A nucleotide range: ${alignment.nucleotideStartA}-${alignment.nucleotideEndA}`,
     `Sequence B nucleotide range: ${alignment.nucleotideStartB}-${alignment.nucleotideEndB}`,
     "",
-    `References: Needleman and Wunsch 1970; Smith and Waterman 1981; Gotoh 1982; Henikoff and Henikoff 1992${alignment.engine === PAIRWISE_ALIGNMENT_ENGINES.seqAlign ? "; seq-align/BioWasm browser runtime" : ""}. Genetic code assignments follow NCBI transl_table definitions.`
+    "References:",
+    "",
+    "Global alignment: Needleman and Wunsch 1970.",
+    "Local alignment: Smith and Waterman 1981.",
+    "Affine gap model: Gotoh 1982.",
+    "BLOSUM62: Henikoff and Henikoff 1992.",
+    ...(alignment.engine === PAIRWISE_ALIGNMENT_ENGINES.seqAlign ? ["seq-align/BioWasm browser runtime."] : []),
+    "Genetic code assignments follow NCBI transl_table definitions."
   ].join("\n");
 }
 

@@ -197,7 +197,7 @@ export const crisprGuideDesignMetadata = {
     {
       id: "citationNote",
       type: "note",
-      text: "Citations: Jinek et al. Science 2012; Cong et al. Science 2013; Mali et al. Science 2013."
+      text: "References:\n\nCas9 guide system: Jinek et al. 2012.\n\nMammalian CRISPR-Cas editing examples: Cong et al. 2013; Mali et al. 2013."
     }
   ]
 };

@@ -148,7 +148,7 @@ export const sirnaDesignMetadata = {
     {
       id: "citationNote",
       type: "note",
-      text: "Citations: Reynolds et al. Nat Biotechnol. 2004; Ui-Tei et al. Nucleic Acids Res. 2004."
+      text: "References:\n\nsiRNA design rules: Reynolds et al. 2004; Ui-Tei et al. 2004."
     }
   ]
 };

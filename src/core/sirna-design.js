@@ -839,7 +839,10 @@ export function makeSirnaDesignReport(result) {
     "",
     "Assumption: input is the direct/sense transcript sequence. DNA input is treated as the coding-equivalent sequence and converted to RNA by replacing T with U. Coordinates are 1-based on the submitted direct sequence.",
     "Method: candidates are ranked with transparent Reynolds-style and Ui-Tei-style rule scores. Optional reference hit counting is an ungapped local mismatch comparison of candidate target windows against the reference sequence provided.",
-    "Citations: Reynolds et al. Nat Biotechnol. 2004; Ui-Tei et al. Nucleic Acids Res. 2004.",
+    "",
+    "References:",
+    "",
+    "siRNA design rules: Reynolds et al. 2004; Ui-Tei et al. 2004.",
     ""
   ];
   if (result.rows.length === 0) {

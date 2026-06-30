@@ -118,7 +118,10 @@ function makeReport(records) {
     lines.push(
       "Method: average peptide-residue masses plus H2O; EMBOSS Epk.dat pKa defaults with termini included."
     );
-    lines.push("References: ExPASy ProtParam; EMBOSS pepstats and iep.");
+    lines.push("References:");
+    lines.push("");
+    lines.push("Protein parameter formulas and constants: ExPASy ProtParam documentation.");
+    lines.push("Oracle/reference behavior: EMBOSS pepstats and iep documentation.");
     lines.push("");
   }
 

@@ -165,7 +165,7 @@ export const pairwiseAlignDnaRnaMetadata = {
     {
       id: "citationNote",
       type: "note",
-      text: "References: Needleman and Wunsch 1970; Smith and Waterman 1981; Gotoh 1982. DNA/RNA ambiguity symbols are scored by IUPAC set overlap."
+      text: "References:\n\nGlobal alignment: Needleman and Wunsch 1970.\n\nLocal alignment: Smith and Waterman 1981.\n\nAffine gap model: Gotoh 1982.\n\nDNA/RNA ambiguity symbols are scored by IUPAC set overlap."
     }
   ]
 };
@@ -194,7 +194,7 @@ export const pairwiseAlignProteinMetadata = {
     {
       id: "citationNote",
       type: "note",
-      text: "References: Needleman and Wunsch 1970; Smith and Waterman 1981; Gotoh 1982; Henikoff and Henikoff 1992."
+      text: "References:\n\nGlobal alignment: Needleman and Wunsch 1970.\n\nLocal alignment: Smith and Waterman 1981.\n\nAffine gap model: Gotoh 1982.\n\nBLOSUM62: Henikoff and Henikoff 1992."
     }
   ]
 };
@@ -253,7 +253,7 @@ export const pairwiseAlignCodingDnaMetadata = {
     {
       id: "citationNote",
       type: "note",
-      text: "References: Needleman and Wunsch 1970; Smith and Waterman 1981; Gotoh 1982; Henikoff and Henikoff 1992. Genetic code assignments follow NCBI transl_table definitions."
+      text: "References:\n\nGlobal alignment: Needleman and Wunsch 1970.\n\nLocal alignment: Smith and Waterman 1981.\n\nAffine gap model: Gotoh 1982.\n\nBLOSUM62: Henikoff and Henikoff 1992.\n\nGenetic code assignments follow NCBI transl_table definitions."
     }
   ]
 };

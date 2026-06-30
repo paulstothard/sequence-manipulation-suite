@@ -187,7 +187,7 @@ export const dnaRnaSequenceSetReciprocalBestMatchMetadata = {
     {
       id: "citationNote",
       type: "note",
-      text: "Alignment verification uses affine-gap dynamic programming; see Needleman and Wunsch 1970, Smith and Waterman 1981, and Gotoh 1982. The seq-align option runs the bundled public-domain build locally in browser runs."
+      text: "References:\n\nGlobal alignment: Needleman and Wunsch 1970.\n\nLocal alignment: Smith and Waterman 1981.\n\nAffine gap model: Gotoh 1982.\n\nThe seq-align option runs the bundled public-domain build locally in browser runs."
     }
   ]
 };
@@ -236,7 +236,7 @@ export const proteomeReciprocalBestMatchMetadata = {
     {
       id: "citationNote",
       type: "note",
-      text: "Alignment verification uses BLOSUM62 and affine-gap dynamic programming; see Henikoff and Henikoff 1992 and Gotoh 1982. The seq-align option runs the bundled public-domain build locally in browser runs."
+      text: "References:\n\nBLOSUM62: Henikoff and Henikoff 1992.\n\nAffine gap model: Gotoh 1982.\n\nThe seq-align option runs the bundled public-domain build locally in browser runs."
     }
   ]
 };

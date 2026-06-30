@@ -948,6 +948,10 @@ textarea,
   min-height: 0;
 }
 
+.input-panel > :is(#dropZone, #markdownInputTools, #sequenceInput, #splitInputPanel):not([hidden]) {
+  margin-top: 0.8rem;
+}
+
 textarea {
   min-height: 21rem;
   margin-top: 0.8rem;
@@ -3844,6 +3848,10 @@ legend {
   line-height: 1.4;
 }
 
+.option-note p {
+  margin: 0;
+}
+
 .option-summary-card {
   display: grid;
   gap: 0.45rem;
@@ -6600,23 +6608,30 @@ legend {
   --viewer-focus: var(--ps-focus);
   color-scheme: var(--app-output-color-scheme);
   background: var(--ps-surface);
+  container-type: inline-size;
   color: var(--ps-text);
-  min-width: 42rem;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .protein-structure-toolbar {
-  align-items: end;
+  align-items: start;
   background: var(--ps-surface-soft);
   border-bottom: 1px solid var(--ps-border);
   display: grid;
-  gap: 0.55rem;
-  grid-template-columns: minmax(13rem, 1fr) minmax(27rem, 1.55fr) auto auto;
-  padding: 0.55rem 0.65rem;
+  gap: 0.55rem 0.8rem;
+  grid-template-columns: minmax(22rem, 1fr) minmax(17.5rem, 26.25rem) minmax(18rem, 26.25rem) max-content;
+  grid-template-areas:
+    "heading settings settings settings"
+    "layers layers search actions";
+  padding: 0.55rem 0.7rem;
 }
 
 .protein-structure-heading {
   display: grid;
   gap: 0.18rem;
+  grid-area: heading;
+  min-width: 0;
 }
 
 .protein-structure-title {
@@ -6624,6 +6639,7 @@ legend {
   font-size: 0.88rem;
   font-weight: 800;
   line-height: 1.12;
+  min-width: 0;
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -6633,10 +6649,13 @@ legend {
 .protein-structure-status {
   color: var(--ps-muted);
   font-size: 0.76rem;
+  min-width: 0;
 }
 
 .protein-structure-setting-group,
 .protein-structure-toggle-group,
+.protein-structure-layer-group,
+.protein-structure-opacity-group,
 .protein-structure-action-group {
   align-items: end;
   display: flex;
@@ -6645,7 +6664,9 @@ legend {
 }
 
 .protein-structure-setting-group {
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
+  grid-area: settings;
+  justify-content: flex-end;
 }
 
 .protein-structure-toggle-group,
@@ -6653,38 +6674,213 @@ legend {
   justify-content: flex-end;
 }
 
-.protein-structure-toggle-group {
-  align-items: stretch;
+.protein-structure-layer-group {
+  align-items: center;
   display: grid;
-  grid-template-columns: repeat(3, minmax(10.75rem, 1fr));
+  gap: 0.35rem 0.55rem;
+  grid-area: layers;
+  grid-template-columns: max-content minmax(17.5rem, 26.25rem);
+  justify-content: start;
 }
 
-.protein-structure-overlay-control {
-  align-items: stretch;
-  background: var(--ps-surface);
-  border: 1px solid var(--ps-border);
-  border-radius: 8px;
+.protein-structure-toggle-group {
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.protein-structure-opacity-group {
   display: grid;
-  gap: 0.35rem;
-  min-width: 0;
-  padding: 0.38rem;
+  gap: 0.3rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr));
+  max-width: 26.25rem;
+  width: min(26.25rem, 100%);
+}
+
+.protein-structure-layer-group:has(.protein-structure-opacity-group[hidden]) {
+  grid-template-columns: max-content;
 }
 
 .protein-structure-action-group {
   align-items: center;
   display: flex;
+  grid-area: actions;
+  justify-content: flex-end;
   min-width: 0;
+}
+
+.protein-structure-search-group {
+  align-items: stretch;
+  display: grid;
+  gap: 0.28rem;
+  grid-area: search;
+  max-width: 26.25rem;
+  min-width: min(18rem, 100%);
+  width: min(26.25rem, 100%);
+}
+
+.protein-structure-search-label {
+  color: var(--ps-muted);
+  display: grid;
+  font-size: 0.7rem;
+  font-weight: 800;
+  gap: 0.18rem;
+  min-width: 0;
+}
+
+.protein-structure-search-row {
+  display: grid;
+  gap: 0.3rem;
+  grid-template-columns: minmax(0, 1fr) max-content;
+}
+
+.protein-structure-search-row input {
+  background: var(--ps-surface);
+  border: 1px solid var(--ps-border-strong);
+  border-radius: 6px;
+  color: var(--ps-text);
+  font-size: 0.76rem;
+  font-weight: 750;
+  min-height: 2.05rem;
+  min-width: 0;
+  padding: 0 0.5rem;
+  width: 100%;
+}
+
+.protein-structure-search-button,
+.protein-structure-selection-chip button {
+  background: var(--ps-surface);
+  border: 1px solid var(--ps-border-strong);
+  border-radius: 6px;
+  color: var(--ps-text);
+  cursor: pointer;
+  font-size: 0.68rem;
+  font-weight: 800;
+  min-height: 1.8rem;
+  padding: 0 0.45rem;
+}
+
+.protein-structure-selection-chips {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.protein-structure-highlight-colors {
+  align-items: center;
+  border: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.24rem;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.protein-structure-highlight-colors legend {
+  color: var(--ps-muted);
+  float: left;
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1.35;
+  margin-right: 0.2rem;
+  padding: 0;
+}
+
+.protein-structure-highlight-color {
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  height: 1.25rem;
+  justify-content: center;
+  padding: 0.12rem;
+  position: relative;
+  width: 1.25rem;
+}
+
+.protein-structure-highlight-color input {
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  position: absolute;
+}
+
+.protein-structure-highlight-color span {
+  border: 1px solid rgb(255 255 255 / 0.42);
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px rgb(15 23 42 / 0.28);
+  display: block;
+  height: 0.82rem;
+  width: 0.82rem;
+}
+
+.protein-structure-highlight-color:has(input:checked) {
+  border-color: var(--protein-structure-selection-color, var(--ps-accent));
+  background: color-mix(in srgb, var(--protein-structure-selection-color, var(--ps-accent)) 18%, transparent);
+}
+
+.protein-structure-highlight-color:has(input:focus-visible) {
+  outline: 2px solid var(--ps-focus);
+  outline-offset: 2px;
+}
+
+.protein-structure-selection-empty {
+  color: var(--ps-muted);
+  font-size: 0.68rem;
+  font-weight: 750;
+}
+
+.protein-structure-selection-chip {
+  align-items: center;
+  background: color-mix(in srgb, var(--ps-surface) 82%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ps-border) 72%, transparent);
+  border-radius: 999px;
+  display: inline-flex;
+  gap: 0.25rem;
+  max-width: 100%;
+  min-width: 0;
+  padding: 0.16rem 0.25rem 0.16rem 0.18rem;
+}
+
+.protein-structure-selection-number {
+  align-items: center;
+  background: color-mix(in srgb, var(--protein-structure-selection-color, var(--ps-accent)) 18%, transparent);
+  border: 1px solid var(--protein-structure-selection-color, var(--ps-accent));
+  border-radius: 999px;
+  color: var(--ps-text);
+  display: inline-flex;
+  font-size: 0.66rem;
+  font-weight: 900;
+  height: 1.25rem;
+  justify-content: center;
+  min-width: 1.25rem;
+}
+
+.protein-structure-selection-label {
+  color: var(--ps-text);
+  font-size: 0.69rem;
+  font-weight: 800;
+  max-width: 10rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .protein-structure-control {
   color: var(--ps-muted);
   display: grid;
-  flex: 1 1 9.25rem;
+  flex: 0 1 16.5rem;
   font-size: 0.74rem;
   font-weight: 800;
   gap: 0.22rem;
-  max-width: 12rem;
-  min-width: 8.75rem;
+  max-width: 18.75rem;
+  min-width: min(15rem, 100%);
+  width: 16.5rem;
 }
 
 .protein-structure-control select {
@@ -6692,7 +6888,7 @@ legend {
   border: 1px solid var(--ps-border-strong);
   border-radius: 6px;
   color: var(--ps-text);
-  min-height: 2.2rem;
+  min-height: 2.05rem;
   padding: 0 0.45rem;
   width: 100%;
 }
@@ -6704,27 +6900,22 @@ legend {
 
 .protein-structure-check {
   align-items: center;
-  background: var(--ps-surface-soft);
-  border: 1px solid var(--ps-border-strong);
-  border-radius: 8px;
+  background: color-mix(in srgb, var(--ps-surface) 72%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ps-border) 76%, transparent);
+  border-radius: 999px;
   box-sizing: border-box;
-  color: var(--ps-text);
+  color: var(--ps-muted);
   display: inline-flex;
   font-size: 0.76rem;
   font-weight: 800;
-  gap: 0.32rem;
-  height: 2.2rem;
+  gap: 0.25rem;
+  height: 1.72rem;
   justify-content: center;
-  min-width: 5.9rem;
-  padding: 0 0.65rem;
+  min-width: 0;
+  padding: 0 0.58rem;
   position: relative;
   transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
   white-space: nowrap;
-}
-
-.protein-structure-overlay-control .protein-structure-check {
-  min-width: 0;
-  width: 100%;
 }
 
 .protein-structure-check:has(input:checked) {
@@ -6751,63 +6942,38 @@ legend {
 .protein-structure-check span {
   align-items: center;
   display: inline-flex;
-  gap: 0.38rem;
+  gap: 0.28rem;
   pointer-events: none;
 }
 
 .protein-structure-check span::before {
-  background: var(--ps-border-strong);
-  border-radius: 999px;
-  box-shadow: inset 0 0 0 1px rgb(15 23 42 / 0.08);
-  content: "";
-  height: 0.5rem;
+  content: "○";
+  color: color-mix(in srgb, var(--ps-muted) 82%, transparent);
+  font-size: 0.75rem;
+  font-weight: 900;
+  line-height: 1;
   transition: background-color 0.12s ease, box-shadow 0.12s ease;
-  width: 0.5rem;
 }
 
 .protein-structure-check:has(input:checked) span::before {
-  background: var(--ps-accent);
-  box-shadow: 0 0 0 3px rgb(20 184 166 / 0.16);
+  content: "✓";
+  color: var(--ps-accent-strong);
 }
 
 .protein-structure-opacity-control {
   align-items: center;
-  background: var(--ps-surface-soft);
+  background: color-mix(in srgb, var(--ps-surface) 82%, transparent);
   border: 1px solid color-mix(in srgb, var(--ps-border) 72%, transparent);
-  border-radius: 8px;
+  border-radius: 7px;
   color: var(--ps-muted);
   display: inline-grid;
   font-size: 0.68rem;
   font-weight: 800;
   gap: 0.16rem 0.35rem;
-  grid-template-columns: minmax(5.7rem, max-content) 5.4rem 2.2rem;
-  min-height: 2.2rem;
-  padding: 0 0.5rem;
+  grid-template-columns: minmax(4.9rem, max-content) minmax(3.8rem, 1fr) 2.1rem;
+  min-height: 1.92rem;
+  padding: 0 0.42rem;
   white-space: nowrap;
-}
-
-.protein-structure-overlay-control .protein-structure-opacity-control {
-  grid-template-columns: minmax(0, 1fr) 2.45rem;
-  min-width: 0;
-  width: 100%;
-}
-
-.protein-structure-overlay-control .protein-structure-opacity-control span {
-  grid-column: 1 / -1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.protein-structure-overlay-control .protein-structure-opacity-control input {
-  grid-column: 1;
-}
-
-.protein-structure-overlay-control .protein-structure-opacity-control output {
-  grid-column: 2;
-}
-
-.protein-structure-opacity-control.is-disabled {
-  opacity: 0.58;
 }
 
 .protein-structure-opacity-control input {
@@ -6824,6 +6990,7 @@ legend {
 
 .protein-structure-buttons {
   justify-content: end;
+  min-width: 0;
 }
 
 .protein-structure-buttons button[aria-pressed="true"] {
@@ -6836,6 +7003,13 @@ legend {
   gap: 0.28rem;
   min-width: 4rem;
   padding: 0 0.55rem;
+}
+
+.dna-viewer-buttons .protein-structure-orientation-button {
+  font-size: 0.7rem;
+  font-weight: 850;
+  min-width: 3.2rem;
+  padding: 0 0.42rem;
 }
 
 .dna-viewer-buttons .protein-structure-spin-button {
@@ -6855,23 +7029,26 @@ legend {
   font-weight: 750;
   line-height: 1.2;
   min-height: 2rem;
-  overflow: hidden;
+  overflow-wrap: anywhere;
   padding: 0.45rem 0.65rem;
   text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .protein-structure-canvas-host {
   background: var(--ps-surface);
   height: min(68vh, 42rem);
   min-height: 32rem;
+  overflow: hidden;
   position: relative;
   width: 100%;
 }
 
 .protein-structure-canvas-host canvas {
   display: block;
+  height: 100% !important;
+  max-width: 100%;
+  width: 100% !important;
 }
 
 .protein-structure-tooltip {
@@ -6928,20 +7105,24 @@ legend {
 }
 
 .protein-structure-details {
-  align-items: center;
+  align-items: start;
   background: var(--ps-surface-soft);
   border-top: 1px solid var(--ps-border);
   display: grid;
-  gap: 0.45rem;
+  gap: 0.34rem 0.55rem;
   grid-template-columns: minmax(0, 1fr) max-content;
-  padding: 0.55rem 0.65rem;
+  min-width: 0;
+  padding: 0.38rem 0.55rem;
 }
 
 .protein-structure-details-empty,
 .protein-structure-details-heading {
   color: var(--ps-text);
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   font-weight: 850;
+  line-height: 1.2;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .protein-structure-details-empty {
@@ -6950,36 +7131,55 @@ legend {
 
 .protein-structure-details-info {
   display: grid;
-  gap: 0.28rem;
+  gap: 0.3rem;
   min-width: 0;
 }
 
 .protein-structure-details-grid {
-  display: grid;
-  gap: 0.24rem 0.55rem;
-  grid-template-columns: repeat(3, max-content max-content);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.35rem;
   margin: 0;
+  min-width: 0;
 }
 
-.protein-structure-details-grid dt {
+.protein-structure-details-chip {
+  align-items: baseline;
+  background: color-mix(in srgb, var(--ps-surface) 78%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ps-border) 70%, transparent);
+  border-radius: 999px;
+  display: inline-flex;
+  gap: 0.26rem;
+  max-width: 100%;
+  min-width: 0;
+  padding: 0.14rem 0.4rem;
+}
+
+.protein-structure-details-chip dt {
   color: var(--ps-muted);
-  font-size: 0.72rem;
+  font-size: 0.66rem;
   font-weight: 800;
+  white-space: nowrap;
 }
 
-.protein-structure-details-grid dd {
+.protein-structure-details-chip dd {
   color: var(--ps-text);
-  font-size: 0.74rem;
+  font-size: 0.69rem;
   font-weight: 750;
   margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .protein-structure-details-actions {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
-  gap: 0.35rem;
+  gap: 0.3rem;
   justify-content: flex-end;
+  min-width: 0;
 }
 
 .protein-structure-copy-button {
@@ -7034,11 +7234,18 @@ legend {
 @media (max-width: 1280px) {
   .protein-structure-toolbar {
     align-items: stretch;
+    grid-template-areas:
+      "heading"
+      "settings"
+      "layers"
+      "search"
+      "actions";
     grid-template-columns: 1fr;
   }
 
   .protein-structure-setting-group {
     flex-wrap: wrap;
+    justify-content: flex-start;
   }
 
   .protein-structure-toggle-group,
@@ -7047,8 +7254,16 @@ legend {
     justify-content: flex-start;
   }
 
-  .protein-structure-toggle-group {
-    grid-template-columns: repeat(auto-fit, minmax(10.75rem, 1fr));
+  .protein-structure-opacity-group {
+    grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr));
+  }
+
+  .protein-structure-layer-group {
+    grid-template-columns: 1fr;
+  }
+
+  .protein-structure-search-group {
+    max-width: 26.25rem;
   }
 
   .protein-structure-action-group {
@@ -7056,12 +7271,73 @@ legend {
     min-width: 0;
   }
 
-  .protein-structure-control {
-    max-width: none;
+  .protein-structure-details,
+  .protein-structure-details-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@container (max-width: 72rem) {
+  .protein-structure-toolbar {
+    align-items: stretch;
+    grid-template-areas:
+      "heading"
+      "settings"
+      "layers"
+      "search"
+      "actions";
+    grid-template-columns: 1fr;
+  }
+
+  .protein-structure-setting-group {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .protein-structure-toggle-group,
+  .protein-structure-action-group,
+  .protein-structure-buttons {
+    justify-content: flex-start;
+  }
+
+  .protein-structure-opacity-group {
+    grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr));
+  }
+
+  .protein-structure-layer-group {
+    grid-template-columns: 1fr;
+  }
+
+  .protein-structure-search-group {
+    max-width: 26.25rem;
+  }
+
+  .protein-structure-action-group {
+    align-items: center;
+    min-width: 0;
   }
 
   .protein-structure-details,
   .protein-structure-details-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .protein-structure-control {
+    flex-basis: 100%;
+    max-width: 100%;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .protein-structure-search-group {
+    max-width: 100%;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .protein-structure-search-row {
     grid-template-columns: 1fr;
   }
 }

@@ -48,6 +48,13 @@ function appendSection(lines, title, entries) {
   lines.push("", title, ...content);
 }
 
+function formatCitationLines(citations = []) {
+  return citations
+    .map((citation) => citation.text)
+    .filter(Boolean)
+    .map((text) => `Method/source note: ${text}`);
+}
+
 function capitalize(value) {
   const text = String(value ?? "");
   return text ? `${text.slice(0, 1).toUpperCase()}${text.slice(1)}` : "";
@@ -87,10 +94,6 @@ export function buildOutputDescriptionText({
   appVersion = "",
   config = outputDescriptionConfig
 }) {
-  const citationText = (tool?.citations ?? [])
-    .map((citation) => citation.text)
-    .filter(Boolean)
-    .join("; ");
   const processedUnitLabel = pluralUnitLabel(result?.processedUnitLabel ?? "base");
   const optionLines = stableOptionEntries(options).map(
     ([key, value]) => `${key}: ${formatOptionValue(value)}`
@@ -123,8 +126,8 @@ export function buildOutputDescriptionText({
       : "SHA-256: not calculated for this run."
   ]);
 
-  appendSection(lines, "Citations", [
-    citationText ? `Method/source notes: ${citationText}` : "",
+  appendSection(lines, "References", [
+    ...formatCitationLines(tool?.citations ?? []),
     config.sms3Citation ? `SMS3: ${config.sms3Citation}` : ""
   ]);
 

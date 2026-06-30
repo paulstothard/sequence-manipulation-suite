@@ -519,7 +519,13 @@ export function makeTalenReport(result) {
   if (result.rows.length > 20) {
     lines.push(`- ${result.rows.length - 20} additional pair(s) are available in the TSV output.`);
   }
-  lines.push("", "Citations: Boch and Bonas, Annu Rev Phytopathol 2010; Bogdanove and Voytas, Science 2011; Miller et al., Nat Biotechnol 2011.");
+  lines.push(
+    "",
+    "References:",
+    "",
+    "TALE DNA-recognition code: Boch and Bonas 2010; Bogdanove and Voytas 2011.",
+    "TALEN design/use example: Miller et al. 2011."
+  );
   if (result.warnings.length > 0) {
     lines.push("", "Warnings:");
     for (const warning of result.warnings) {

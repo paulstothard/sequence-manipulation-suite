@@ -751,14 +751,30 @@ export function createToolOptionsController({
     }
 
     if (option.type === "note") {
-      const note = document.createElement("p");
-      note.className = "option-note";
-      if (option.id) {
-        note.dataset.optionId = option.id;
-      }
-      note.textContent = option.text;
-      parent.append(note);
+      appendOptionNote(parent, option);
     }
+  }
+
+  function appendOptionNote(parent, option) {
+    const note = document.createElement("div");
+    note.className = "option-note";
+    if (option.id) {
+      note.dataset.optionId = option.id;
+    }
+    const paragraphs = String(option.text ?? "")
+      .split(/\n\s*\n/)
+      .map((paragraph) => paragraph.trim())
+      .filter(Boolean);
+    if (paragraphs.length <= 1) {
+      note.textContent = paragraphs[0] ?? "";
+    } else {
+      for (const paragraphText of paragraphs) {
+        const paragraph = document.createElement("p");
+        paragraph.textContent = paragraphText;
+        note.append(paragraph);
+      }
+    }
+    parent.append(note);
   }
 
   function appendOptionReferenceTable(parent, option) {
