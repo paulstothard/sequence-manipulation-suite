@@ -16,6 +16,7 @@ const SORT_ORDERS = new Set(["divergence", "similarity", "input"]);
 const COLOR_MODES = new Set(["adaptive", "fixed"]);
 const LOOM_COLOR_MODES = new Set(["reference", "identity"]);
 const DEFAULT_COLOR_SCHEME = "magma-ocean";
+const PAF_CIGAR_RE = /(\d+)([MIDNSHP=X])/gu;
 
 let minimap2CliPromise = null;
 let runCounter = 0;
@@ -339,6 +340,175 @@ function minimap2Error(stderr) {
   return "";
 }
 
+function optionalPafTag(fields, prefix) {
+  return fields.slice(12).find((field) => field.startsWith(prefix))?.slice(prefix.length) ?? "";
+}
+
+function makePafBlock({
+  comparison,
+  comparisonSequence,
+  comparisonLength,
+  reference,
+  referenceLength,
+  referenceStart,
+  referenceEnd,
+  comparisonStart,
+  comparisonEnd,
+  referenceContig,
+  comparisonContig,
+  referenceContigStart,
+  referenceContigEnd,
+  comparisonContigStart,
+  comparisonContigEnd,
+  strand,
+  matches,
+  blockLength,
+  mapq,
+  engine
+}) {
+  return {
+    comparison,
+    comparisonSequence,
+    comparisonLength,
+    reference,
+    referenceLength,
+    referenceStart,
+    referenceEnd,
+    comparisonStart,
+    comparisonEnd,
+    referenceContig,
+    comparisonContig,
+    referenceContigStart,
+    referenceContigEnd,
+    comparisonContigStart,
+    comparisonContigEnd,
+    strand,
+    matches,
+    blockLength,
+    identity: blockLength > 0 ? (matches / blockLength) * 100 : 0,
+    mapq: Number.isFinite(mapq) ? mapq : "",
+    engine
+  };
+}
+
+function splitPafCigarBlocks({
+  cigar,
+  comparison,
+  comparisonSequence,
+  comparisonLength,
+  reference,
+  referenceLength,
+  referenceStart,
+  comparisonStart,
+  referenceContig,
+  comparisonContig,
+  referenceContigStart,
+  comparisonContigStart,
+  strand,
+  matches,
+  mapq,
+  engine,
+  minBlockLength
+}) {
+  const operations = [...String(cigar ?? "").matchAll(PAF_CIGAR_RE)]
+    .map((match) => ({ length: Number.parseInt(match[1], 10), op: match[2] }))
+    .filter(({ length }) => Number.isFinite(length) && length > 0);
+  if (operations.length === 0) return null;
+
+  const matchLikeBases = operations
+    .filter(({ op }) => op === "M" || op === "=" || op === "X")
+    .reduce((sum, { length }) => sum + length, 0);
+  const estimatedMatchRate = matchLikeBases > 0
+    ? clamp(matches / matchLikeBases, 0, 1)
+    : 0;
+
+  const splitGapLength = Math.max(1, Number(minBlockLength) || DEFAULT_MIN_BLOCK_LENGTH);
+  const blocks = [];
+  let referencePos = referenceStart;
+  let comparisonPos = comparisonStart;
+  let chunkReferenceStart = null;
+  let chunkComparisonStart = null;
+  let chunkReferenceEnd = referenceStart;
+  let chunkComparisonEnd = comparisonStart;
+  let chunkBlockLength = 0;
+  let chunkMatches = 0;
+
+  const openChunk = () => {
+    if (chunkReferenceStart === null) {
+      chunkReferenceStart = referencePos;
+      chunkComparisonStart = comparisonPos;
+    }
+  };
+  const closeChunk = () => {
+    if (chunkReferenceStart === null || chunkComparisonStart === null) return;
+    if (
+      chunkBlockLength >= splitGapLength &&
+      (chunkReferenceEnd > chunkReferenceStart || chunkComparisonEnd > chunkComparisonStart)
+    ) {
+      blocks.push(makePafBlock({
+        comparison,
+        comparisonSequence,
+        comparisonLength,
+        reference,
+        referenceLength,
+        referenceStart: chunkReferenceStart,
+        referenceEnd: chunkReferenceEnd,
+        comparisonStart: chunkComparisonStart,
+        comparisonEnd: chunkComparisonEnd,
+        referenceContig,
+        comparisonContig,
+        referenceContigStart: chunkReferenceStart - referenceStart + referenceContigStart,
+        referenceContigEnd: chunkReferenceEnd - referenceStart + referenceContigStart,
+        comparisonContigStart: chunkComparisonStart - comparisonStart + comparisonContigStart,
+        comparisonContigEnd: chunkComparisonEnd - comparisonStart + comparisonContigStart,
+        strand,
+        matches: Math.round(chunkMatches),
+        blockLength: chunkBlockLength,
+        mapq,
+        engine
+      }));
+    }
+    chunkReferenceStart = null;
+    chunkComparisonStart = null;
+    chunkBlockLength = 0;
+    chunkMatches = 0;
+  };
+
+  for (const { length, op } of operations) {
+    const isLargeGap = (op === "I" || op === "D" || op === "N") && length >= splitGapLength;
+    if (isLargeGap) {
+      closeChunk();
+      if (op === "D" || op === "N") referencePos += length;
+      if (op === "I") comparisonPos += length;
+      chunkReferenceEnd = referencePos;
+      chunkComparisonEnd = comparisonPos;
+      continue;
+    }
+
+    if (op === "M" || op === "=" || op === "X") {
+      openChunk();
+      referencePos += length;
+      comparisonPos += length;
+      chunkReferenceEnd = referencePos;
+      chunkComparisonEnd = comparisonPos;
+      chunkBlockLength += length;
+      chunkMatches += op === "=" ? length : op === "X" ? 0 : length * estimatedMatchRate;
+    } else if (op === "D" || op === "N") {
+      openChunk();
+      referencePos += length;
+      chunkReferenceEnd = referencePos;
+      chunkBlockLength += length;
+    } else if (op === "I") {
+      openChunk();
+      comparisonPos += length;
+      chunkComparisonEnd = comparisonPos;
+      chunkBlockLength += length;
+    }
+  }
+  closeChunk();
+  return blocks;
+}
+
 export function buildGenomeComparisonMinimap2Args(options, referencePath, comparisonPath) {
   const normalized = normalizeOptions(options);
   const args = [];
@@ -388,13 +558,14 @@ async function runBioWasmMinimap2(reference, comparisons, options, context = {})
     throw error;
   }
   return {
-    blocks: parsePafBlocks(String(result?.stdout ?? ""), "minimap2", safeRecords.nameMaps),
+    blocks: parsePafBlocks(String(result?.stdout ?? ""), "minimap2", safeRecords.nameMaps, options),
     engineMessage: `minimap2 ${MINIMAP2_VERSION}`,
     command: `minimap2 ${args.slice(0, -2).join(" ")} reference.fasta comparisons.fasta`.replace(/\s+/gu, " ").trim()
   };
 }
 
-export function parsePafBlocks(pafText, engine = "minimap2", nameMaps = {}) {
+export function parsePafBlocks(pafText, engine = "minimap2", nameMaps = {}, options = {}) {
+  const normalized = normalizeOptions(options);
   const blocks = [];
   const comparisonNames = nameMaps.comparisonNames ?? new Map();
   const referenceNames = nameMaps.referenceNames ?? new Map();
@@ -427,20 +598,28 @@ export function parsePafBlocks(pafText, engine = "minimap2", nameMaps = {}) {
     }
     const comparisonOffset = comparisonOffsets.get(comparisonId) ?? 0;
     const referenceOffset = referenceOffsets.get(referenceId) ?? 0;
-    blocks.push({
+    const comparisonLength = comparisonLengths.get(comparisonId) ??
+      (Number.isFinite(comparisonRecordLength) ? comparisonRecordLength : 0);
+    const referenceLength = referenceLengths.get(referenceId) ??
+      (Number.isFinite(referenceRecordLength) ? referenceRecordLength : 0);
+    const comparisonStart = comparisonOffset + comparisonRecordStart;
+    const comparisonEnd = comparisonOffset + comparisonRecordEnd;
+    const referenceStart = referenceOffset + referenceRecordStart;
+    const referenceEnd = referenceOffset + referenceRecordEnd;
+    const comparisonContig = comparisonContigs.get(comparisonId) ?? comparisonId;
+    const referenceContig = referenceContigs.get(referenceId) ?? referenceId;
+    const commonBlock = {
       comparison,
       comparisonSequence: comparison,
-      comparisonLength: comparisonLengths.get(comparisonId) ??
-        (Number.isFinite(comparisonRecordLength) ? comparisonRecordLength : 0),
+      comparisonLength,
       reference,
-      referenceLength: referenceLengths.get(referenceId) ??
-        (Number.isFinite(referenceRecordLength) ? referenceRecordLength : 0),
-      referenceStart: referenceOffset + referenceRecordStart,
-      referenceEnd: referenceOffset + referenceRecordEnd,
-      comparisonStart: comparisonOffset + comparisonRecordStart,
-      comparisonEnd: comparisonOffset + comparisonRecordEnd,
-      referenceContig: referenceContigs.get(referenceId) ?? referenceId,
-      comparisonContig: comparisonContigs.get(comparisonId) ?? comparisonId,
+      referenceLength,
+      referenceStart,
+      referenceEnd,
+      comparisonStart,
+      comparisonEnd,
+      referenceContig,
+      comparisonContig,
       referenceContigStart: referenceRecordStart,
       referenceContigEnd: referenceRecordEnd,
       comparisonContigStart: comparisonRecordStart,
@@ -448,10 +627,22 @@ export function parsePafBlocks(pafText, engine = "minimap2", nameMaps = {}) {
       strand,
       matches,
       blockLength,
-      identity: blockLength > 0 ? (matches / blockLength) * 100 : 0,
-      mapq: Number.isFinite(mapq) ? mapq : "",
+      mapq,
       engine
-    });
+    };
+    const cigar = optionalPafTag(fields, "cg:Z:");
+    if (cigar) {
+      const splitBlocks = splitPafCigarBlocks({
+        ...commonBlock,
+        cigar,
+        minBlockLength: normalized.minBlockLength
+      });
+      if (splitBlocks !== null) {
+        blocks.push(...splitBlocks);
+        continue;
+      }
+    }
+    blocks.push(makePafBlock(commonBlock));
   }
   return blocks;
 }
