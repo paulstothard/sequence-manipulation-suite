@@ -160,6 +160,7 @@ const VCF_FILTER_TOOL_ID = "vcf-filter";
 const ALIGNMENT_VIEWER_TOOL_ID = "alignment-viewer";
 const FASTA_REGION_EXTRACTOR_TOOL_ID = "indexed-fasta-region-extractor";
 const READ_MAPPING_COVERAGE_TOOL_ID = "read-mapping-coverage";
+const GFF_GTF_FEATURE_EXTRACTOR_TOOL_ID = "gff-gtf-feature-extractor";
 const BIOLOGICAL_RECORD_FORMAT_CONVERTER_TOOL_ID = "biological-record-format-converter";
 const ANNOTATED_DNA_RECORD_EXTRACTOR_TOOL_ID = "annotated-dna-record-extractor";
 const LINEAR_DNA_SEQUENCE_VIEWER_TOOL_ID = "dna-sequence-viewer";
@@ -1212,6 +1213,7 @@ function renderSplitInputPanel(tool) {
   for (const index of displayIndexes) {
     appendSection(index, makePanel(index));
   }
+  loadGffGtfFeatureExtractorModeExampleIfSafe();
   if (splitInput.allowAdd) {
     const parsedMaxPanels = Number.parseInt(splitInput.maxPanels, 10);
     const maxPanels = Number.isFinite(parsedMaxPanels) && parsedMaxPanels > 0 ? parsedMaxPanels : Infinity;
@@ -1780,7 +1782,50 @@ function setAlignmentViewerMode(optionId, mode) {
   setToolOptionValue(optionId, mode);
   dispatchToolOptionChange(optionId);
   updateAlignmentViewerInputUi();
+  if (optionId === "referenceGenomeMode") {
+    const panel = document.querySelector("#alignmentViewerInputPanel");
+    loadAlignmentViewerReferenceModeExampleIfSafe(panel, mode);
+    updateAlignmentViewerInputUi();
+  }
   clearToolOutput();
+}
+
+function loadAlignmentViewerReferenceModeExampleIfSafe(panel, mode) {
+  if (!panel || !ALIGNMENT_VIEWER_REFERENCE_MODES[mode]) {
+    return;
+  }
+  const examples = makeAlignmentViewerReferenceModeExamples();
+  const nextExample = examples[mode];
+  if (!nextExample) {
+    return;
+  }
+  const allReferenceInputs = [
+    panel.querySelector("#referenceGenomeFastaFileText"),
+    ...panel.querySelectorAll("[data-alignment-viewer-reference-input]")
+  ].filter(Boolean);
+  const knownReferenceExamples = Object.values(examples).flatMap((item) => [
+    item.annotation ?? "",
+    item.fasta ?? ""
+  ]);
+  if (!allReferenceInputs.every((input) => canReplaceExampleInput(input.value, knownReferenceExamples))) {
+    return;
+  }
+  const loadedInput = panel.querySelector("#referenceGenomeFastaFileText");
+  const flatfileInput = panel.querySelector('[data-alignment-viewer-reference-input="flatfile"]');
+  const annotationInput = panel.querySelector(`[data-alignment-viewer-reference-input="${mode}-annotation"]`);
+  const fastaInput = panel.querySelector(`[data-alignment-viewer-reference-input="${mode}-fasta"]`);
+  if (mode === "loaded" && loadedInput) {
+    loadedInput.value = formatExampleInputForDisplay(nextExample.annotation);
+    return;
+  }
+  if (mode === "flatfile" && flatfileInput) {
+    flatfileInput.value = formatExampleInputForDisplay(nextExample.annotation);
+    return;
+  }
+  if (ALIGNMENT_VIEWER_PAIRED_REFERENCE_MODES.has(mode) && annotationInput && fastaInput) {
+    annotationInput.value = formatExampleInputForDisplay(nextExample.annotation);
+    fastaInput.value = formatExampleInputForDisplay(nextExample.fasta);
+  }
 }
 
 function updateAlignmentViewerCard(card, mode, modes) {
@@ -2011,6 +2056,7 @@ function createReadMappingReferenceSection(splitInput, referenceExample) {
   const section = document.createElement("section");
   section.className = "split-input-section read-mapping-reference-section";
   section.dataset.readMappingReferenceSection = "true";
+  section.dataset.sequenceExample = referenceExample ?? "";
   const heading = document.createElement("div");
   heading.className = "split-input-heading";
   const title = document.createElement("h4");
@@ -2149,6 +2195,7 @@ function createReadMappingReadsSection(splitInput, readsExample) {
   const section = document.createElement("section");
   section.className = "split-input-section read-mapping-reads-section";
   section.dataset.readMappingReadsSection = "true";
+  section.dataset.singleReadsExample = readsExample ?? "";
   const heading = document.createElement("div");
   heading.className = "split-input-heading";
   const title = document.createElement("h4");
@@ -2328,9 +2375,36 @@ function setReadMappingCoverageReadLayout(mode, { clearOutput = true } = {}) {
     panel.hidden = panel.dataset.readMappingLayoutPanel !== readLayout;
   });
   if (clearOutput) {
+    loadReadMappingReadsExampleIfSafe(section, readLayout);
+  }
+  if (clearOutput) {
     clearToolOutput();
     updateInputActionButtons();
     updateToolOptionSuggestions();
+  }
+}
+
+function loadReadMappingReadsExampleIfSafe(section, readLayout) {
+  const singleInput = section.querySelector('[data-read-mapping-input="reads-single"]');
+  const r1Input = section.querySelector('[data-read-mapping-input="reads-r1"]');
+  const r2Input = section.querySelector('[data-read-mapping-input="reads-r2"]');
+  if (!singleInput || !r1Input || !r2Input) {
+    return;
+  }
+  const examples = {
+    single: section.dataset.singleReadsExample ?? "",
+    r1: READ_MAPPING_PAIRED_READ_EXAMPLES.r1,
+    r2: READ_MAPPING_PAIRED_READ_EXAMPLES.r2
+  };
+  const knownExamples = Object.values(examples);
+  if (![singleInput, r1Input, r2Input].every((input) => canReplaceExampleInput(input.value, knownExamples))) {
+    return;
+  }
+  if (readLayout === "paired") {
+    r1Input.value = formatExampleInputForDisplay(examples.r1);
+    r2Input.value = formatExampleInputForDisplay(examples.r2);
+  } else {
+    singleInput.value = formatExampleInputForDisplay(examples.single);
   }
 }
 
@@ -2350,9 +2424,50 @@ function setReadMappingCoverageReferenceMode(mode, { clearOutput = true } = {}) 
     panel.hidden = panel.dataset.readMappingReferencePanel !== referenceMode;
   });
   if (clearOutput) {
+    loadReadMappingReferenceModeExampleIfSafe(section, referenceMode);
+  }
+  if (clearOutput) {
     clearToolOutput();
     updateInputActionButtons();
     updateToolOptionSuggestions();
+  }
+}
+
+function loadReadMappingReferenceModeExampleIfSafe(section, referenceMode) {
+  const sequenceExample = section.dataset.sequenceExample ?? "";
+  const examples = makeReadMappingReferenceModeExamples(sequenceExample);
+  const nextExample = examples[referenceMode];
+  if (!nextExample) {
+    return;
+  }
+  const allReferenceInputs = Array.from(section.querySelectorAll("[data-read-mapping-input]"));
+  const knownReferenceExamples = Object.values(examples).flatMap((item) => [
+    item.annotation ?? "",
+    item.fasta ?? ""
+  ]);
+  if (!allReferenceInputs.every((input) => canReplaceExampleInput(input.value, knownReferenceExamples))) {
+    return;
+  }
+  if (referenceMode === "sequence") {
+    const sequenceInput = section.querySelector('[data-read-mapping-input="reference"]');
+    if (sequenceInput) {
+      sequenceInput.value = formatExampleInputForDisplay(nextExample.annotation);
+    }
+    return;
+  }
+  if (referenceMode === "flatfile") {
+    const flatfileInput = section.querySelector('[data-read-mapping-input="reference-flatfile"]');
+    if (flatfileInput) {
+      flatfileInput.value = formatExampleInputForDisplay(nextExample.annotation);
+    }
+    return;
+  }
+  const modePrefix = referenceMode.replace("-fasta", "");
+  const annotationInput = section.querySelector(`[data-read-mapping-input="reference-${modePrefix}-annotation"]`);
+  const fastaInput = section.querySelector(`[data-read-mapping-input="reference-${modePrefix}-fasta"]`);
+  if (annotationInput && fastaInput) {
+    annotationInput.value = formatExampleInputForDisplay(nextExample.annotation);
+    fastaInput.value = formatExampleInputForDisplay(nextExample.fasta);
   }
 }
 
@@ -2513,6 +2628,261 @@ chrDemo\t12\t24\trepeat_region\t0\t-`,
     fasta: `>chrDemo demo contig
 ATGAAACCCGGGTTTAAACCCGGGTTT`
   }
+};
+
+const PCR_TEMPLATE_FASTA_EXAMPLE = `>pUC19_lac_mcs_region
+TTGACCATGATTACGCCAAGCTTGCATGCCTGCAGGTCGACTCTAGAGGATCCCCGGGTACCGAGCTCGAATTC
+GTAATCATGGTCATAGCTGTTTCCTGTGTGAAATTGTTATCCGCTCACAATTCCACACAACATACGAGCCGGAA
+GCATAAAGTGTAAAGCCTGGGGTGCCTAATGAGTGAGCTAACTCACATTAATTGCGTTGCGCTCACTGCCCGCT
+TTCCAGTCGGGAAACCTGTCGTGCCAGCTGCATTAATGAATCGGCCAACGCGCGGGGAGAGGCGGTTTGCGTAT
+TGGGCGCTCTTCCGCTTCCTCGCTCACTGACTCGCTGCGCTCGGTCGTTCGGCTGCGGCGAGCGGTATCAGCTC`;
+
+const PCR_TEMPLATE_FLATFILE_EXAMPLE = `LOCUS       PUC19PCR        319 bp    DNA     linear   SYN 01-JAN-2026
+DEFINITION  Synthetic pUC19 PCR template.
+ACCESSION   PUC19PCR
+FEATURES             Location/Qualifiers
+     source          1..319
+                     /organism="synthetic construct"
+     misc_feature    1..20
+                     /label="lac_forward_20"
+     misc_feature    300..319
+                     /label="lac_reverse_20"
+ORIGIN
+        1 ttgaccatga ttacgccaag cttgcatgcc tgcaggtcga ctctagagga tccccgggta
+       61 ccgagctcga attcgtaatc atggtcatag ctgtttcctg tgtgaaattg ttatccgctc
+      121 acaattccac acaacatacg agccggaagc ataaagtgta aagcctgggg tgcctaatga
+      181 gtgagctaac tcacattaat tgcgttgcgc tcactgcccg ctttccagtc gggaaacctg
+      241 tcgtgccagc tgcattataa tcggccaacg cgcggggaga ggcggtttgc gtattgggcg
+      301 ctcttccgct tcctcgctc
+//`;
+
+const PCR_TEMPLATE_MODE_EXAMPLES = {
+  sequence: {
+    annotation: PCR_TEMPLATE_FASTA_EXAMPLE,
+    fasta: ""
+  },
+  flatfile: {
+    annotation: PCR_TEMPLATE_FLATFILE_EXAMPLE,
+    fasta: ""
+  },
+  gff3Fasta: {
+    annotation: `##gff-version 3
+pUC19_lac_mcs_region\tSMS3\tmisc_feature\t1\t20\t.\t+\t.\tID=lac_forward_site;Name=lac_forward_20
+pUC19_lac_mcs_region\tSMS3\tmisc_feature\t300\t319\t.\t-\t.\tID=lac_reverse_site;Name=lac_reverse_20`,
+    fasta: PCR_TEMPLATE_FASTA_EXAMPLE
+  },
+  gtfFasta: {
+    annotation: `pUC19_lac_mcs_region\tSMS3\tmisc_feature\t1\t20\t.\t+\t.\tgene_id "lac_forward_site"; gene_name "lac_forward_20";
+pUC19_lac_mcs_region\tSMS3\tmisc_feature\t300\t319\t.\t-\t.\tgene_id "lac_reverse_site"; gene_name "lac_reverse_20";`,
+    fasta: PCR_TEMPLATE_FASTA_EXAMPLE
+  },
+  bedFasta: {
+    annotation: `pUC19_lac_mcs_region\t0\t20\tlac_forward_20\t0\t+
+pUC19_lac_mcs_region\t299\t319\tlac_reverse_20\t0\t-`,
+    fasta: PCR_TEMPLATE_FASTA_EXAMPLE
+  }
+};
+
+const GFF_GTF_FEATURE_EXTRACTOR_MODE_EXAMPLES = {
+  gtf: {
+    annotation: `chr_demo\tSMS3\tgene\t7\t132\t.\t+\t.\tgene_id "geneA"; gene_name "demo_gene_A";
+chr_demo\tSMS3\ttranscript\t7\t132\t.\t+\t.\tgene_id "geneA"; transcript_id "txA"; gene_name "demo_transcript_A";
+chr_demo\tSMS3\texon\t7\t60\t.\t+\t.\tgene_id "geneA"; transcript_id "txA";
+chr_demo\tSMS3\texon\t90\t132\t.\t+\t.\tgene_id "geneA"; transcript_id "txA";
+chr_demo\tSMS3\tCDS\t13\t60\t.\t+\t0\tgene_id "geneA"; transcript_id "txA"; product "demo_peptide_A";
+chr_demo\tSMS3\tCDS\t90\t125\t.\t+\t0\tgene_id "geneA"; transcript_id "txA"; product "demo_peptide_A";
+chr_demo\tSMS3\tgene\t145\t198\t.\t-\t.\tgene_id "geneB"; gene_name "demo_gene_B";
+chr_demo\tSMS3\ttranscript\t145\t198\t.\t-\t.\tgene_id "geneB"; transcript_id "txB"; gene_name "demo_transcript_B";
+chr_demo\tSMS3\texon\t145\t198\t.\t-\t.\tgene_id "geneB"; transcript_id "txB";
+chr_demo\tSMS3\tCDS\t151\t195\t.\t-\t0\tgene_id "geneB"; transcript_id "txB"; product "demo_peptide_B";`,
+    fasta: `>chr_demo
+TTTTTTATGGCTGCTGCTGAACTGAAACCGTTTAAACCGGCTGATGCTGCTGCTTAATTTTTTT
+GGGGGGGGGGATGACCGGTACCGCTGCTGATGAAGCTGCTGCTGCTGCTGCTGCTTAATTTTTT
+CCCCCCATGAAAGGTGCTGATGCTGCTGCTGCTGCTGCTGCTTAAAGGATCCGGATCCGGATCC`
+  }
+};
+
+function normalizeDisplayedInputValue(value) {
+  return String(value ?? "").trim();
+}
+
+function exampleTextMatchesInput(value, example) {
+  const normalizedValue = normalizeDisplayedInputValue(value);
+  return normalizedValue === normalizeDisplayedInputValue(example) ||
+    normalizedValue === normalizeDisplayedInputValue(formatExampleInputForDisplay(example ?? ""));
+}
+
+function canReplaceExampleInput(value, examples) {
+  const normalizedValue = normalizeDisplayedInputValue(value);
+  return !normalizedValue || examples.some((example) => exampleTextMatchesInput(normalizedValue, example));
+}
+
+function isGffGtfFeatureExtractorTool(tool = state.selectedTool) {
+  return tool?.metadata?.id === GFF_GTF_FEATURE_EXTRACTOR_TOOL_ID;
+}
+
+function getGffGtfFeatureExtractorModeExamples(tool = state.selectedTool) {
+  const [gff3Annotation = "", gff3Fasta = ""] = splitInputExampleParts(tool);
+  const gff3 = { annotation: gff3Annotation, fasta: gff3Fasta };
+  return {
+    auto: gff3,
+    gff3,
+    ...GFF_GTF_FEATURE_EXTRACTOR_MODE_EXAMPLES
+  };
+}
+
+function loadGffGtfFeatureExtractorModeExampleIfSafe() {
+  if (!isGffGtfFeatureExtractorTool()) {
+    return;
+  }
+  const inputFormat = getToolOptionValue("inputFormat", "auto");
+  const examples = getGffGtfFeatureExtractorModeExamples();
+  const nextExample = examples[inputFormat];
+  if (!nextExample) {
+    return;
+  }
+  const textareas = Array.from(elements.splitInputPanel.querySelectorAll(".split-input-textarea"));
+  const annotationInput = textareas.find((textarea) => textarea.dataset.splitInputIndex === "0");
+  const fastaInput = textareas.find((textarea) => textarea.dataset.splitInputIndex === "1");
+  if (!annotationInput || !fastaInput) {
+    return;
+  }
+  const knownAnnotationExamples = Object.values(examples).map((item) => item.annotation ?? "");
+  const knownFastaExamples = Object.values(examples).map((item) => item.fasta ?? "");
+  const canReplaceAnnotation = canReplaceExampleInput(annotationInput.value, knownAnnotationExamples);
+  const canReplaceFasta = canReplaceExampleInput(fastaInput.value, knownFastaExamples);
+  if (!canReplaceAnnotation || !canReplaceFasta) {
+    return;
+  }
+  annotationInput.value = formatExampleInputForDisplay(nextExample.annotation);
+  fastaInput.value = formatExampleInputForDisplay(nextExample.fasta);
+  updateInputActionButtons();
+  updateToolOptionSuggestions();
+}
+
+function sequenceFromFastaText(fastaText) {
+  return String(fastaText ?? "")
+    .split(/\r?\n/u)
+    .filter((line) => !line.startsWith(">"))
+    .join("")
+    .replace(/[^A-Za-z]/gu, "")
+    .toUpperCase();
+}
+
+function referenceNameFromFastaText(fastaText, fallback = "reference") {
+  const header = String(fastaText ?? "").split(/\r?\n/u).find((line) => line.startsWith(">")) ?? "";
+  return header.replace(/^>/u, "").trim().split(/\s+/u)[0] || fallback;
+}
+
+function formatGenBankOrigin(sequence) {
+  const normalized = String(sequence ?? "").toLowerCase();
+  const rows = [];
+  for (let index = 0; index < normalized.length; index += 60) {
+    const chunk = normalized.slice(index, index + 60);
+    const grouped = chunk.match(/.{1,10}/gu)?.join(" ") ?? chunk;
+    rows.push(`${String(index + 1).padStart(9, " ")} ${grouped}`);
+  }
+  return rows.join("\n");
+}
+
+function makeFlatfileReferenceExample(fastaText, {
+  locus = referenceNameFromFastaText(fastaText),
+  definition = "Synthetic SMS3 reference example.",
+  topology = "linear"
+} = {}) {
+  const sequence = sequenceFromFastaText(fastaText);
+  return `LOCUS       ${locus.slice(0, 16).padEnd(16, " ")} ${String(sequence.length).padStart(11, " ")} bp    DNA     ${topology.padEnd(8, " ")} SYN 01-JAN-2026
+DEFINITION  ${definition}
+ACCESSION   ${locus}
+FEATURES             Location/Qualifiers
+     source          1..${sequence.length}
+                     /organism="synthetic construct"
+ORIGIN
+${formatGenBankOrigin(sequence)}
+//`;
+}
+
+function makeAlignmentViewerReferenceModeExamples() {
+  const name = referenceNameFromFastaText(alignmentViewerReferenceExample, "NC_001422.1");
+  return {
+    loaded: {
+      annotation: alignmentViewerReferenceExample,
+      fasta: ""
+    },
+    flatfile: {
+      annotation: makeFlatfileReferenceExample(alignmentViewerReferenceExample, {
+        locus: name,
+        definition: "PhiX174 reference for the SMS3 alignment viewer example."
+      }),
+      fasta: ""
+    },
+    "gff3-fasta": {
+      annotation: `##gff-version 3
+${name}\tSMS3\tregion\t3920\t4130\t.\t+\t.\tID=alignment_region;Name=alignment viewer example region`,
+      fasta: alignmentViewerReferenceExample
+    },
+    "gtf-fasta": {
+      annotation: `${name}\tSMS3\tregion\t3920\t4130\t.\t+\t.\tgene_id "alignment_region"; gene_name "alignment viewer example region";`,
+      fasta: alignmentViewerReferenceExample
+    },
+    "bed-fasta": {
+      annotation: `${name}\t3919\t4130\talignment_viewer_example_region\t0\t+`,
+      fasta: alignmentViewerReferenceExample
+    }
+  };
+}
+
+function makeReadMappingReferenceModeExamples(referenceExample) {
+  const fasta = String(referenceExample ?? "").trim();
+  const name = referenceNameFromFastaText(fasta, "coverage_demo_reference");
+  return {
+    sequence: {
+      annotation: fasta,
+      fasta: ""
+    },
+    flatfile: {
+      annotation: makeFlatfileReferenceExample(fasta, {
+        locus: name,
+        definition: "Reference for the SMS3 read mapping coverage example."
+      }),
+      fasta: ""
+    },
+    "gff3-fasta": {
+      annotation: `##gff-version 3
+${name}\tSMS3\tregion\t1\t120\t.\t+\t.\tID=left_amplicon;Name=left amplicon
+${name}\tSMS3\tregion\t128\t238\t.\t+\t.\tID=center_peak;Name=center peak`,
+      fasta
+    },
+    "gtf-fasta": {
+      annotation: `${name}\tSMS3\tgene\t1\t120\t.\t+\t.\tgene_id "left_amplicon"; gene_name "left amplicon";
+${name}\tSMS3\texon\t128\t238\t.\t+\t.\tgene_id "center_peak"; gene_name "center peak";`,
+      fasta
+    },
+    "bed-fasta": {
+      annotation: `${name}\t0\t120\tleft_amplicon\t0\t+
+${name}\t127\t238\tcenter_peak\t0\t+`,
+      fasta
+    }
+  };
+}
+
+const READ_MAPPING_PAIRED_READ_EXAMPLES = {
+  r1: `@coverage_pair_1/1
+GAGTGCCGGTATTGGACATC
++
+IIIIIIIIIIIIIIIIIIII
+@coverage_pair_2/1
+CGCTACGAGAGCGTATGTAC
++
+IIIIIIIIIIIIIIIIIIII`,
+  r2: `@coverage_pair_1/2
+ATAGTCTGTTCTCATTCGCT
++
+IIIIIIIIIIIIIIIIIIII
+@coverage_pair_2/2
+CTACGGTTCATTAGGTGCAC
++
+IIIIIIIIIIIIIIIIIIII`
 };
 
 function isBiologicalRecordFormatConverterTool(tool = state.selectedTool) {
@@ -2784,17 +3154,15 @@ function loadBiologicalRecordModeExampleIfSafe(panel, sourceMode) {
   if (!nextExample) {
     return;
   }
-  const knownAnnotationExamples = Object.values(examples).map((item) => String(item.annotation ?? "").trim());
-  const knownFastaExamples = Object.values(examples).map((item) => String(item.fasta ?? "").trim());
-  const annotationValue = annotationInput.value.trim();
-  const fastaValue = fastaInput.value.trim();
-  const canReplaceAnnotation = !annotationValue || knownAnnotationExamples.includes(annotationValue);
-  const canReplaceFasta = !fastaValue || knownFastaExamples.includes(fastaValue);
+  const knownAnnotationExamples = Object.values(examples).map((item) => item.annotation ?? "");
+  const knownFastaExamples = Object.values(examples).map((item) => item.fasta ?? "");
+  const canReplaceAnnotation = canReplaceExampleInput(annotationInput.value, knownAnnotationExamples);
+  const canReplaceFasta = canReplaceExampleInput(fastaInput.value, knownFastaExamples);
   if (!canReplaceAnnotation || !canReplaceFasta) {
     return;
   }
-  annotationInput.value = nextExample.annotation;
-  fastaInput.value = nextExample.fasta;
+  annotationInput.value = formatExampleInputForDisplay(nextExample.annotation);
+  fastaInput.value = formatExampleInputForDisplay(nextExample.fasta);
 }
 
 function createInSilicoPcrTextPane({
@@ -2918,6 +3286,7 @@ function createInSilicoPcrTemplateSection(panel, index, value) {
   wrapper.id = "inSilicoPcrTemplateInputPanel";
   wrapper.dataset.sourceMode = "sequence";
   wrapper.dataset.pcrInputSection = "template";
+  wrapper.dataset.sequenceExample = value ?? "";
 
   const tabs = createTabbedInputWorkflowTabs({
     document,
@@ -2926,7 +3295,7 @@ function createInSilicoPcrTemplateSection(panel, index, value) {
     ariaLabel: "Template input type",
     className: "bio-record-source-tabs pcr-template-source-tabs",
     tabClassName: "bio-record-source-tab",
-    onSelect: (mode) => setInSilicoPcrTemplateSourceMode(mode)
+    onSelect: (mode) => setInSilicoPcrTemplateSourceMode(mode, { maybeLoadExample: true })
   });
 
   const sourceCard = document.createElement("section");
@@ -2957,7 +3326,7 @@ function createInSilicoPcrTemplateSection(panel, index, value) {
   return wrapper;
 }
 
-function setInSilicoPcrTemplateSourceMode(mode, { clearOutput = true } = {}) {
+function setInSilicoPcrTemplateSourceMode(mode, { clearOutput = true, maybeLoadExample = false } = {}) {
   const panel = document.querySelector("#inSilicoPcrTemplateInputPanel");
   if (!panel) {
     return;
@@ -3006,11 +3375,46 @@ function setInSilicoPcrTemplateSourceMode(mode, { clearOutput = true } = {}) {
   if (fastaFileInput) {
     fastaFileInput.setAttribute("aria-label", config.fastaLabel ?? "Template FASTA sequence");
   }
+  if (maybeLoadExample) {
+    loadInSilicoPcrTemplateModeExampleIfSafe(panel, sourceMode);
+  }
   if (clearOutput) {
     clearToolOutput();
     updateInputActionButtons();
     updateToolOptionSuggestions();
   }
+}
+
+function loadInSilicoPcrTemplateModeExampleIfSafe(panel, sourceMode) {
+  const annotationInput = panel.querySelector('[data-pcr-input="template-primary"]');
+  const fastaInput = panel.querySelector('[data-pcr-input="template-fasta"]');
+  if (!annotationInput || !fastaInput) {
+    return;
+  }
+  const sequenceExample = panel.dataset.sequenceExample ?? PCR_TEMPLATE_FASTA_EXAMPLE;
+  const examples = {
+    ...PCR_TEMPLATE_MODE_EXAMPLES,
+    sequence: {
+      annotation: sequenceExample,
+      fasta: ""
+    }
+  };
+  const nextExample = examples[sourceMode];
+  if (!nextExample) {
+    return;
+  }
+  const knownPrimaryExamples = Object.values(examples).flatMap((item) => [
+    item.annotation ?? "",
+    item.fasta ?? ""
+  ]);
+  const knownFastaExamples = Object.values(examples).map((item) => item.fasta ?? "");
+  const canReplacePrimary = canReplaceExampleInput(annotationInput.value, knownPrimaryExamples);
+  const canReplaceFasta = canReplaceExampleInput(fastaInput.value, knownFastaExamples);
+  if (!canReplacePrimary || !canReplaceFasta) {
+    return;
+  }
+  annotationInput.value = formatExampleInputForDisplay(nextExample.annotation);
+  fastaInput.value = formatExampleInputForDisplay(nextExample.fasta);
 }
 
 function getInSilicoPcrInputText() {
@@ -5076,6 +5480,13 @@ elements.toolOptions.addEventListener("change", (event) => {
   updatePcrPrimerDesignUi({
     applyPreset: event.target?.name === "designPreset" || event.target?.id === "designPreset"
   });
+  if (
+    (event.target?.name === "inputFormat" || event.target?.id === "inputFormat") &&
+    isGffGtfFeatureExtractorTool()
+  ) {
+    loadGffGtfFeatureExtractorModeExampleIfSafe();
+    clearToolOutput();
+  }
   updateMarkdownInputUi();
 });
 elements.toolOptions.addEventListener("click", (event) => {

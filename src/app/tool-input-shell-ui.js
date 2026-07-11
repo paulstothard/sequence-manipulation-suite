@@ -367,6 +367,65 @@ export function createToolInputShellController({
       );
   }
 
+  function normalizeExampleValue(value) {
+    return String(value ?? "").trim();
+  }
+
+  function inputMatchesExample(value, example) {
+    const normalizedValue = normalizeExampleValue(value);
+    return normalizedValue === normalizeExampleValue(example) ||
+      normalizedValue === normalizeExampleValue(formatExampleInputForDisplay(example ?? ""));
+  }
+
+  function canReplaceInputWithExample(value, examples) {
+    const normalizedValue = normalizeExampleValue(value);
+    return !normalizedValue || examples.some((example) => inputMatchesExample(normalizedValue, example));
+  }
+
+  function getKnownInputModeExamples(tool = state.selectedTool) {
+    return [
+      tool?.example ?? "",
+      ...flattenOptions(tool?.metadata?.options ?? [])
+        .filter((option) => option.type === "file" && option.placement === "input" && option.pasteArea === true)
+        .map((option) => option.example ?? "")
+    ];
+  }
+
+  function maybeLoadReadLayoutExampleIfSafe(tool = state.selectedTool) {
+    const readLayoutOption = getInputReadLayoutOption(tool);
+    if (!readLayoutOption || tool?.metadata?.splitInput) {
+      return;
+    }
+    const knownExamples = getKnownInputModeExamples(tool);
+    const activeExamples = getActiveInputFileOptionExamples(tool);
+    const activeLayout = getActiveInputReadLayout(tool);
+    const pasteTextareas = Array.from(elements.inputPanel.querySelectorAll(".input-placement-options textarea"));
+    if (activeLayout === "paired") {
+      const canReplaceSequenceInput = canReplaceInputWithExample(elements.sequenceInput.value, knownExamples);
+      const canReplacePairedInputs = activeExamples.every((option) => {
+        const textarea = elements.inputPanel.querySelector(`#${option.id}Text`);
+        return textarea && canReplaceInputWithExample(textarea.value, knownExamples);
+      });
+      if (!canReplaceSequenceInput || !canReplacePairedInputs) {
+        return;
+      }
+      for (const option of activeExamples) {
+        const textarea = elements.inputPanel.querySelector(`#${option.id}Text`);
+        if (textarea) {
+          textarea.value = formatExampleInputForDisplay(option.example);
+        }
+      }
+      return;
+    }
+    const canReplaceSequenceInput = canReplaceInputWithExample(elements.sequenceInput.value, knownExamples);
+    const canReplacePasteInputs = pasteTextareas.every((textarea) =>
+      canReplaceInputWithExample(textarea.value, knownExamples)
+    );
+    if (canReplaceSequenceInput && canReplacePasteInputs && String(tool?.example ?? "").trim()) {
+      elements.sequenceInput.value = formatExampleInputForDisplay(tool.example);
+    }
+  }
+
   function getToolInputFileUi(tool) {
     return getToolInputFileUiForMetadata(tool);
   }
@@ -502,6 +561,7 @@ export function createToolInputShellController({
       .querySelectorAll("input[name='readLayout']")
       .forEach((input) => input.addEventListener("change", () => {
         updateReadLayoutMainInputVisibility(tool);
+        maybeLoadReadLayoutExampleIfSafe(tool);
         setTimeout(() => updateReadLayoutMainInputVisibility(tool), 0);
       }));
     updateReadLayoutMainInputVisibility(tool);
