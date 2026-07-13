@@ -31,6 +31,51 @@ function pluralize(count, singular, plural = `${singular}s`) {
   return `${count.toLocaleString()} ${count === 1 ? singular : plural}`;
 }
 
+export function isAdvancedWorkflowOutput(stream, outputs = []) {
+  if (!stream) {
+    return true;
+  }
+  if (stream.hidden || stream.advanced || stream.kind === "warnings" || stream.kind === "stats-records" || stream.kind === "text-records") {
+    return true;
+  }
+  return stream.id === "primary" && outputs.some((output) => output.id !== "primary" && output.kind !== "warnings");
+}
+
+export function getUserSelectableWorkflowOutputs(tool) {
+  const outputs = tool?.metadata?.workflow?.outputs ?? [];
+  const visible = outputs.filter((stream) => !isAdvancedWorkflowOutput(stream, outputs));
+  return visible.length > 0 ? visible : outputs.filter((stream) => stream.kind !== "warnings");
+}
+
+export function getWorkflowOutputPriority(stream) {
+  const priorityById = {
+    orfRecords: 1,
+    proteinRecords: 2,
+    sequenceRecords: 3,
+    table: 4,
+    translations: 4,
+    matchedRegions: 5,
+    fasta: 6,
+    nucleotideFasta: 6,
+    proteinFasta: 6,
+    report: 7,
+    groupedText: 8,
+    tsv: 9,
+    plot: 10,
+    overview: 10,
+    sequenceExtractor: 11,
+    viewer: 11,
+    figure: 11,
+    primary: 20
+  };
+  return priorityById[stream?.id] ?? 15;
+}
+
+export function getRecommendedWorkflowOutputId(tool) {
+  const outputs = getUserSelectableWorkflowOutputs(tool);
+  return [...outputs].sort((left, right) => getWorkflowOutputPriority(left) - getWorkflowOutputPriority(right))[0]?.id ?? "primary";
+}
+
 export function createWorkflowBuilderController({
   elements,
   state,
@@ -104,14 +149,16 @@ export function createWorkflowBuilderController({
     if (value.kind === "viewer") {
       const rawText = JSON.stringify(value.viewer ?? value, null, 2);
       const viewerDescription = describeViewerStream(value);
+      const isSequenceExtractor = (value.viewerType ?? value.viewer?.viewerType) === "sequence-extractor";
       return {
         text: rawText,
         rawText,
         summary: `Workflow output: ${viewerDescription} (${pluralize(value.viewer?.records?.length ?? 0, "record")})`,
         outputLabel: describeViewerStream(value, "label"),
         isTsv: false,
-        viewer: value.viewer,
-        filename: "sms3-workflow-viewer.json",
+        viewer: isSequenceExtractor ? null : value.viewer,
+        sequenceExtractor: isSequenceExtractor ? value.viewer : null,
+        filename: isSequenceExtractor ? "sms3-workflow-sequence-extractor.json" : "sms3-workflow-viewer.json",
         mimeType: "application/json;charset=utf-8"
       };
     }
@@ -617,50 +664,6 @@ export function createWorkflowBuilderController({
   function getWorkflowOutputAtInsertionPoint(workflow) {
     const insertionIndex = getWorkflowInsertionIndex(workflow);
     return insertionIndex > 0 ? getWorkflowOutputAtIndex(workflow, insertionIndex - 1) : undefined;
-  }
-
-  function isAdvancedWorkflowOutput(stream, outputs = []) {
-    if (!stream) {
-      return true;
-    }
-    if (stream.hidden || stream.advanced || stream.kind === "warnings" || stream.kind === "stats-records" || stream.kind === "text-records") {
-      return true;
-    }
-    return stream.id === "primary" && outputs.some((output) => output.id !== "primary" && output.kind !== "warnings");
-  }
-
-  function getUserSelectableWorkflowOutputs(tool) {
-    const outputs = tool?.metadata.workflow?.outputs ?? [];
-    const visible = outputs.filter((stream) => !isAdvancedWorkflowOutput(stream, outputs));
-    return visible.length > 0 ? visible : outputs.filter((stream) => stream.kind !== "warnings");
-  }
-
-  function getWorkflowOutputPriority(stream) {
-    const priorityById = {
-      orfRecords: 1,
-      proteinRecords: 2,
-      sequenceRecords: 3,
-      table: 4,
-      translations: 4,
-      matchedRegions: 5,
-      fasta: 6,
-      nucleotideFasta: 6,
-      proteinFasta: 6,
-      report: 7,
-      groupedText: 8,
-      tsv: 9,
-      plot: 10,
-      overview: 10,
-      viewer: 11,
-      figure: 11,
-      primary: 20
-    };
-    return priorityById[stream?.id] ?? 15;
-  }
-
-  function getRecommendedWorkflowOutputId(tool) {
-    const outputs = getUserSelectableWorkflowOutputs(tool);
-    return [...outputs].sort((left, right) => getWorkflowOutputPriority(left) - getWorkflowOutputPriority(right))[0]?.id ?? "primary";
   }
 
   function getWorkflowFieldChoicesForStream(stream) {

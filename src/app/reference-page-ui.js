@@ -1,9 +1,9 @@
 import { geneticCodes, getCodonsForCode } from "../core/genetic-code.js";
-import { complementDnaRnaSequence } from "../core/sequence.js";
 import { restrictionEnzymeRecords } from "../reference-data/restriction-enzymes/records.js";
 import { compareToolCategories } from "../tools/categories.js";
 import { appendShowcase as appendGeneratedShowcase } from "./showcase-page.js";
 import { getRestrictionOverhangLabel } from "./reference-page-data.js";
+import { makeRestrictionCutDiagram } from "./restriction-cut-diagram-ui.js";
 
 const CODON_BASE_ORDER = ["T", "C", "A", "G"];
 
@@ -419,27 +419,37 @@ export function createReferencePageController({
     const sectionWrap = document.createElement("div");
     sectionWrap.className = "tool-summary-sections";
     const sectionsByCategory = new Map();
+    const recordsByCategory = new Map();
 
     for (const record of records) {
-      if (!sectionsByCategory.has(record.category)) {
-        const section = document.createElement("section");
-        section.className = "tool-summary-section";
-        section.dataset.toolSummarySection = "";
-        const header = document.createElement("div");
-        header.className = "tool-summary-section-header";
-        const heading = document.createElement("h2");
-        heading.textContent = record.category;
-        const sectionCount = document.createElement("span");
-        sectionCount.className = "tool-summary-section-count";
-        sectionCount.setAttribute("aria-live", "polite");
-        header.append(heading, sectionCount);
-        const grid = document.createElement("div");
-        grid.className = "tool-summary-grid";
-        section.append(header, grid);
-        sectionWrap.append(section);
-        sectionsByCategory.set(record.category, { section, grid, sectionCount });
+      if (!recordsByCategory.has(record.category)) {
+        recordsByCategory.set(record.category, []);
       }
-      sectionsByCategory.get(record.category).grid.append(makeToolSummaryCard(record));
+      recordsByCategory.get(record.category).push(record);
+    }
+
+    const orderedCategories = [...recordsByCategory.entries()]
+      .sort((left, right) => compareToolCategories(left[0], right[0]));
+    for (const [category, categoryRecords] of orderedCategories) {
+      const section = document.createElement("section");
+      section.className = "tool-summary-section";
+      section.dataset.toolSummarySection = "";
+      const header = document.createElement("div");
+      header.className = "tool-summary-section-header";
+      const heading = document.createElement("h2");
+      heading.textContent = category;
+      const sectionCount = document.createElement("span");
+      sectionCount.className = "tool-summary-section-count";
+      sectionCount.setAttribute("aria-live", "polite");
+      header.append(heading, sectionCount);
+      const grid = document.createElement("div");
+      grid.className = "tool-summary-grid";
+      for (const record of categoryRecords) {
+        grid.append(makeToolSummaryCard(record));
+      }
+      section.append(header, grid);
+      sectionWrap.append(section);
+      sectionsByCategory.set(category, { section, grid, sectionCount });
     }
 
     const empty = document.createElement("p");
@@ -473,63 +483,6 @@ export function createReferencePageController({
     updateFilter();
 
     appendTopicNotesAndCitations(topic);
-  }
-
-  function makeRestrictionCutDiagram(enzyme) {
-    const recognition = String(enzyme.recognition ?? "").toUpperCase();
-    const complement = complementDnaRnaSequence(recognition, { preserveCase: false });
-    const cutTop = Number.parseInt(enzyme.cutTop, 10);
-    const cutBottom = Number.parseInt(enzyme.cutBottom, 10);
-    const left = Math.min(cutTop, cutBottom);
-    const right = Math.max(cutTop, cutBottom);
-    const hasOverhang = right > left;
-    const diagram = document.createElement("div");
-    diagram.className = "restriction-cut-diagram";
-    diagram.style.setProperty("--site-length", String(Math.max(1, recognition.length)));
-    diagram.style.setProperty("--top-cut", String(Number.isFinite(cutTop) ? cutTop : 0));
-    diagram.style.setProperty("--bottom-cut", String(Number.isFinite(cutBottom) ? cutBottom : 0));
-    diagram.setAttribute(
-      "aria-label",
-      `${enzyme.name} recognition site ${recognition}; top strand cut after ${cutTop}; bottom strand cut after ${cutBottom}.`
-    );
-
-    const makeStrand = (sequence, startLabel, endLabel, strandClass) => {
-      const row = document.createElement("div");
-      row.className = `restriction-cut-strand ${strandClass}`;
-
-      const start = document.createElement("span");
-      start.className = "restriction-strand-end";
-      start.textContent = startLabel;
-      row.append(start);
-
-      const bases = document.createElement("span");
-      bases.className = "restriction-bases";
-      bases.setAttribute("aria-hidden", "true");
-      for (const [index, base] of Array.from(sequence).entries()) {
-        const span = document.createElement("span");
-        span.className = hasOverhang && index >= left && index < right
-          ? "restriction-base overhang-region"
-          : "restriction-base";
-        span.textContent = base;
-        bases.append(span);
-      }
-      const marker = document.createElement("span");
-      marker.className = `restriction-cut-marker ${strandClass}`;
-      bases.append(marker);
-      row.append(bases);
-
-      const end = document.createElement("span");
-      end.className = "restriction-strand-end";
-      end.textContent = endLabel;
-      row.append(end);
-      return row;
-    };
-
-    diagram.append(
-      makeStrand(recognition, "5'", "3'", "top"),
-      makeStrand(complement, "3'", "5'", "bottom")
-    );
-    return diagram;
   }
 
   function appendRestrictionEnzymeReference(topic) {

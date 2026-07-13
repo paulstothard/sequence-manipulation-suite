@@ -66,7 +66,12 @@ function addQualifier(qualifiers, rawLine) {
   }
   const name = match[1];
   const rawValue = match[2] ?? "true";
-  const value = rawValue.replace(/^"|"$/g, "");
+  // Double quotes delimit INSDC qualifier values. Apostrophes inside that
+  // value (for example lacZ' or 'lacZ') are biological notation and must not
+  // be treated as delimiters.
+  const value = rawValue.startsWith('"')
+    ? rawValue.slice(1, rawValue.endsWith('"') ? -1 : undefined)
+    : rawValue;
   if (!qualifiers[name]) {
     qualifiers[name] = [];
   }
@@ -80,7 +85,11 @@ function appendQualifierContinuation(qualifiers, rawLine) {
     return;
   }
   const values = qualifiers[name];
-  values[values.length - 1] = `${values[values.length - 1]}${rawLine.trim().replace(/"$/g, "")}`;
+  const previous = values[values.length - 1];
+  const continuation = rawLine.trim().replace(/"$/g, "");
+  const compactQualifier = name === "translation" || name === "replace" || name === "rpt_unit_seq";
+  const separator = previous && continuation && !compactQualifier ? " " : "";
+  values[values.length - 1] = `${previous}${separator}${continuation}`;
 }
 
 function splitLocationParts(text) {

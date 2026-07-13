@@ -6,11 +6,20 @@ import {
 
 let nextRequestId = 1;
 
+export function makeToolWorkerUrl(pageUrl = globalThis.location?.href, moduleUrl = import.meta.url) {
+  const workerUrl = new URL("../workers/tool-worker.js", moduleUrl);
+  if (pageUrl) {
+    const build = new URL(pageUrl).searchParams.get("build");
+    if (build) workerUrl.searchParams.set("build", build);
+  }
+  return workerUrl;
+}
+
 export class ToolWorkerClient {
   constructor({ workerFactory } = {}) {
     this.workerFactory =
       workerFactory ??
-      (() => new Worker(new URL("../workers/tool-worker.js", import.meta.url), { type: "module" }));
+      (() => new Worker(makeToolWorkerUrl(), { type: "module" }));
     this.worker = null;
     this.pending = new Map();
   }

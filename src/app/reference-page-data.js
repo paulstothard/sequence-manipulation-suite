@@ -157,7 +157,7 @@ function makeLicenseAttributionRows() {
 
 function formatToolSummaryContract(contracts, fallback) {
   const visibleContracts = (contracts ?? []).filter((contract) =>
-    contract.id !== "primary" || (contracts ?? []).length === 1
+    contract.catalogVisible !== false && (contract.id !== "primary" || (contracts ?? []).length === 1)
   );
   const labels = visibleContracts
     .map((contract) => describeWorkflowStreamChoice(contract))
@@ -268,11 +268,7 @@ export function makeReferenceTopics(sortedTools) {
     summary: `Search registered SMS3 tools by name, category, tag, input, output, or ID. ${sortedTools.length.toLocaleString()} tools are listed by category with compact summaries and expandable metadata.`,
     interactive: "tool-summary",
     records: makeToolSummaryRecords(sortedTools),
-    notes: [
-      "Compact cards show the user-facing summary plus high-level inputs, outputs, and tags for scanning.",
-      "Details sections show when-to-use text, concise input/output lists, limits, notes, direct-link IDs, tags, and metadata checks.",
-      "Warnings from metadata checks are shown on compact cards; normal OK checks are kept inside Details."
-    ],
+    notes: [],
     citations: []
   },
   {

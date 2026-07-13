@@ -40,12 +40,15 @@ import {
   circularDnaViewerExample,
   linearDnaViewerExample
 } from "../examples/dna-viewer-examples.js";
+import { defaultSequenceExtractorExample } from "../examples/sequence-extractor-examples.js";
 import { proteinSequenceViewerMetadata } from "./protein-sequence-viewer/metadata.js";
 import { runProteinSequenceViewer } from "./protein-sequence-viewer/run.js";
 import { alignmentViewerMetadata } from "./alignment-viewer/metadata.js";
 import { runAlignmentViewer } from "./alignment-viewer/run.js";
 import { sequenceEditorMetadata } from "./sequence-editor/metadata.js";
 import { runSequenceEditor } from "./sequence-editor/run.js";
+import { sequenceExtractorMetadata } from "./sequence-extractor/metadata.js";
+import { runSequenceExtractor } from "./sequence-extractor/run.js";
 import {
   sangerTraceAssemblyMetadata,
   sangerTraceReferenceComparisonMetadata,
@@ -579,6 +582,15 @@ TTTACGTNNNNRYSWKMBDHVATGCGTACGTACGTNNNNATGAAACCCGGGTTTAAACCCGGG`
     example: `>NM_000546.6_p53_editing_fragment
 ATGGAGGAGCCGCAGTCAGATCCTAGCGTCGAGCCCCCTCTGAGTCAGGAAACATTTTCAGACCT
 GGGCAACTGACCGTGCAAGTCACAGACTTGGCTGTCCCAGAATGCAAGAAGCCCAGACGGAAACCG`
+  },
+  {
+    metadata: sequenceExtractorMetadata,
+    run: runSequenceExtractor,
+    example: `${defaultSequenceExtractorExample.annotation}
+##SEQUENCE_EXTRACTOR_PART##
+${defaultSequenceExtractorExample.fasta}
+##SEQUENCE_EXTRACTOR_PART##
+${defaultSequenceExtractorExample.primers}`
   },
   lazyExampleTool({
     metadata: sangerTraceViewerMetadata,

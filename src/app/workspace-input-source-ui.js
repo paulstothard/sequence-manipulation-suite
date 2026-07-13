@@ -88,7 +88,8 @@ function appendWorkspaceSequencePicker({ parent, labelText, compatible, selected
 
 function splitInputCanUseWorkspaceSourcePanel(tool) {
   return Boolean(
-    tool?.metadata?.splitInput?.separator === "##FASTA" &&
+    (tool?.metadata?.splitInput?.separator === "##FASTA" ||
+      tool?.metadata?.splitInput?.workspaceSourcePanel === true) &&
     toolAcceptsWorkspaceSequences(tool?.metadata)
   );
 }

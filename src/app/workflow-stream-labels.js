@@ -4,6 +4,11 @@ const viewerStreamLabels = {
     label: "Linear DNA sequence viewer",
     heading: "Linear DNA Sequence Viewer"
   },
+  "sequence-extractor": {
+    sentence: "interactive sequence extraction workspace",
+    label: "Interactive sequence extraction workspace",
+    heading: "Interactive Sequence Extractor"
+  },
   "protein-sequence-viewer": {
     sentence: "protein sequence viewer",
     label: "Protein sequence viewer",
@@ -26,7 +31,8 @@ const genericViewerTitles = new Set([
   "linear dna sequence viewer",
   "circular dna sequence viewer",
   "protein sequence viewer",
-  "protein structure viewer"
+  "protein structure viewer",
+  "interactive sequence extractor"
 ]);
 
 export function describeViewerStream(stream, style = "sentence") {

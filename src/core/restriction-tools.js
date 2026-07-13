@@ -86,12 +86,20 @@ function normalizeEnzymeIds(enzymeIds, records) {
 function makeOrientationPatterns(enzyme) {
   const forward = enzyme.recognition.toUpperCase().replace(/[^A-Z]/g, "");
   const reverse = reverseComplement(forward);
-  const patterns = [{ strand: "+", pattern: forward, cutOffset: enzyme.cutTop }];
+  const patterns = [{
+    strand: "+",
+    pattern: forward,
+    cutOffset: enzyme.cutTop,
+    topOffset: enzyme.cutTop,
+    bottomOffset: enzyme.cutBottom
+  }];
   if (reverse !== forward) {
     patterns.push({
       strand: "-",
       pattern: reverse,
-      cutOffset: forward.length - enzyme.cutBottom
+      cutOffset: forward.length - enzyme.cutBottom,
+      topOffset: forward.length - enzyme.cutBottom,
+      bottomOffset: forward.length - enzyme.cutTop
     });
   }
   return patterns;
@@ -127,6 +135,11 @@ export function findRestrictionSites(sequence, enzymes, context = {}) {
           context.throwIfCancelled?.();
         }
         const sequenceContext = makeSequenceContext(sequence, match.start, match.end);
+        const topCutAfter = match.start + orientation.topOffset - 1;
+        const bottomCutAfter = match.start + orientation.bottomOffset - 1;
+        const overhangSequence = String(sequence)
+          .slice(Math.min(topCutAfter, bottomCutAfter), Math.max(topCutAfter, bottomCutAfter))
+          .toUpperCase();
         hits.push({
           enzyme: enzyme.name,
           enzyme_id: enzyme.id,
@@ -134,8 +147,10 @@ export function findRestrictionSites(sequence, enzymes, context = {}) {
           strand: orientation.strand,
           site_start: match.start,
           site_end: match.end,
-          cut_after: match.start + orientation.cutOffset - 1,
+          cut_after: topCutAfter,
+          complement_cut_after: bottomCutAfter,
           overhang: enzyme.overhang,
+          overhang_sequence: overhangSequence,
           ...sequenceContext
         });
       }

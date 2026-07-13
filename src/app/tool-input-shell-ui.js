@@ -288,6 +288,7 @@ export function createToolInputShellController({
     isSangerTraceViewerTool,
     isTabbedInputWorkflowTool,
     isVcfTabbedInputTool,
+    loadSequenceExtractorModeExample,
     renderSplitInputPanel,
     resetToolOutputViewer,
     setFastaRegionSourceMode,
@@ -806,6 +807,9 @@ export function createToolInputShellController({
     const activeFileOptionExamples = getActiveInputFileOptionExamples(state.selectedTool);
     if (state.selectedTool.metadata.splitInput) {
       renderSplitInputPanel(state.selectedTool);
+      if (state.selectedTool.metadata.id === "sequence-extractor") {
+        loadSequenceExtractorModeExample?.({ force: true });
+      }
     } else if (activeFileOptionExamples.length > 0) {
       elements.sequenceInput.value = "";
       elements.inputPanel.querySelectorAll(".input-placement-options input[type='file']").forEach((input) => {

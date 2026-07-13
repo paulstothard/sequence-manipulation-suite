@@ -1,4 +1,5 @@
 import { tools } from "../tools/registry.js";
+import { sequenceExtractorExamples } from "../examples/sequence-extractor-examples.js";
 import { compareToolCategories } from "../tools/categories.js";
 import { ToolWorkerClient } from "./worker-client.js";
 import { describeStream } from "./workflow-stream-labels.js";
@@ -169,6 +170,7 @@ const GENOME_FIGURE_TOOL_ID = "genome-figure";
 const CIRCULAR_GENOME_FIGURE_TOOL_ID = "circular-genome-figure";
 const LINEAR_GENOME_FIGURE_TOOL_ID = "linear-genome-figure";
 const SEQUENCE_EDITOR_TOOL_ID = "sequence-editor";
+const SEQUENCE_EXTRACTOR_TOOL_ID = "sequence-extractor";
 const PROTEIN_STRUCTURE_VIEWER_TOOL_ID = "protein-structure-viewer";
 const PROTEIN_CONSERVATION_STRUCTURE_VIEWER_TOOL_ID = "protein-conservation-structure-viewer";
 const toolWorkerClient = new ToolWorkerClient();
@@ -542,6 +544,7 @@ const toolInputShell = createToolInputShellController({
     isSangerTraceViewerTool,
     isTabbedInputWorkflowTool,
     isVcfTabbedInputTool,
+    loadSequenceExtractorModeExample: loadSequenceExtractorModeExampleIfSafe,
     renderSplitInputPanel,
     resetToolOutputViewer,
     setFastaRegionSourceMode,
@@ -1214,6 +1217,7 @@ function renderSplitInputPanel(tool) {
     appendSection(index, makePanel(index));
   }
   loadGffGtfFeatureExtractorModeExampleIfSafe();
+  loadSequenceExtractorModeExampleIfSafe();
   if (splitInput.allowAdd) {
     const parsedMaxPanels = Number.parseInt(splitInput.maxPanels, 10);
     const maxPanels = Number.isFinite(parsedMaxPanels) && parsedMaxPanels > 0 ? parsedMaxPanels : Infinity;
@@ -2760,6 +2764,50 @@ function loadGffGtfFeatureExtractorModeExampleIfSafe() {
   updateToolOptionSuggestions();
 }
 
+function isSequenceExtractorTool(tool = state.selectedTool) {
+  return tool?.metadata?.id === SEQUENCE_EXTRACTOR_TOOL_ID;
+}
+
+function loadSequenceExtractorModeExampleIfSafe({ force = false } = {}) {
+  if (!isSequenceExtractorTool()) return;
+  const sourceMode = document.querySelector("#biologicalRecordInputPanel")?.dataset.sourceMode ?? "flatfile";
+  const inputFormat = {
+    sequence: "sequence",
+    flatfile: "genbank",
+    gff3Fasta: "gff3-fasta",
+    gtfFasta: "gtf-fasta",
+    bedFasta: "bed-fasta"
+  }[sourceMode] ?? "genbank";
+  const nextExample = sequenceExtractorExamples[inputFormat];
+  if (!nextExample) return;
+  const textareas = Array.from(elements.splitInputPanel.querySelectorAll(".split-input-textarea"));
+  const annotationInput = textareas.find((textarea) => textarea.dataset.splitInputIndex === "0");
+  const fastaInput = textareas.find((textarea) => textarea.dataset.splitInputIndex === "1");
+  const primerInput = textareas.find((textarea) => textarea.dataset.splitInputIndex === "2");
+  if (!annotationInput || !fastaInput || !primerInput) return;
+
+  const examples = Object.values(sequenceExtractorExamples);
+  const matchesKnownExample = (value, knownExamples) => {
+    const normalized = normalizeDisplayedInputValue(value);
+    return !normalized || knownExamples.some((example) =>
+      normalized === normalizeDisplayedInputValue(example) ||
+      normalized === normalizeDisplayedInputValue(formatExampleInputForDisplay(example))
+    );
+  };
+  const safeToReplace = [
+    [annotationInput, examples.map((item) => item.annotation)],
+    [fastaInput, examples.map((item) => item.fasta)],
+    [primerInput, examples.map((item) => item.primers)]
+  ].every(([textarea, knownExamples]) => matchesKnownExample(textarea.value, knownExamples));
+  if (!force && !safeToReplace) return;
+
+  annotationInput.value = formatExampleInputForDisplay(nextExample.annotation);
+  fastaInput.value = formatExampleInputForDisplay(nextExample.fasta);
+  primerInput.value = formatExampleInputForDisplay(nextExample.primers);
+  updateInputActionButtons();
+  updateToolOptionSuggestions();
+}
+
 function sequenceFromFastaText(fastaText) {
   return String(fastaText ?? "")
     .split(/\r?\n/u)
@@ -2913,11 +2961,12 @@ function isBiologicalRecordTabbedInputTool(tool = state.selectedTool) {
     isAnnotatedDnaRecordExtractorTool(tool) ||
     isStandaloneDnaSequenceViewerTool(tool) ||
     isGenomeFigureTool(tool) ||
-    isSequenceEditorTool(tool);
+    isSequenceEditorTool(tool) ||
+    isSequenceExtractorTool(tool);
 }
 
 function getBiologicalRecordSourceModes(tool = state.selectedTool) {
-  if (isStandaloneDnaSequenceViewerTool(tool) || isGenomeFigureTool(tool) || isSequenceEditorTool(tool)) {
+  if (isStandaloneDnaSequenceViewerTool(tool) || isGenomeFigureTool(tool) || isSequenceEditorTool(tool) || isSequenceExtractorTool(tool)) {
     return DNA_SEQUENCE_VIEWER_SOURCE_MODES;
   }
   return isAnnotatedDnaRecordExtractorTool(tool) ||
@@ -2989,6 +3038,16 @@ function renderBiologicalRecordTabbedInput(tool) {
 
   sourceCard.append(tabs, pairedInputGrid);
   wrapper.append(sourceCard);
+  if (isSequenceExtractorTool(tool)) {
+    const primerSection = createBiologicalRecordInputSection({
+      key: "primers",
+      panel: splitInput.panels?.[2],
+      index: 2,
+      value: exampleParts[2] ?? ""
+    });
+    primerSection.classList.add("bio-record-primer-card");
+    wrapper.append(primerSection);
+  }
   elements.splitInputPanel.append(wrapper);
   setBiologicalRecordSourceMode(biologicalRecordSourceModeFromInputFormat(getToolOptionValue("inputFormat", "auto")), {
     syncOption: false
@@ -3143,7 +3202,15 @@ function loadBiologicalRecordModeExampleIfSafe(panel, sourceMode) {
   if (!annotationInput || !fastaInput) {
     return;
   }
-  const examples = {
+  const examples = isSequenceExtractorTool()
+    ? {
+        sequence: sequenceExtractorExamples.sequence,
+        flatfile: sequenceExtractorExamples.genbank,
+        gff3Fasta: sequenceExtractorExamples["gff3-fasta"],
+        gtfFasta: sequenceExtractorExamples["gtf-fasta"],
+        bedFasta: sequenceExtractorExamples["bed-fasta"]
+      }
+    : {
     flatfile: {
       annotation: panel.dataset.flatfileExample ?? "",
       fasta: ""
@@ -3163,6 +3230,13 @@ function loadBiologicalRecordModeExampleIfSafe(panel, sourceMode) {
   }
   annotationInput.value = formatExampleInputForDisplay(nextExample.annotation);
   fastaInput.value = formatExampleInputForDisplay(nextExample.fasta);
+  const primerInput = panel.querySelector('[data-bio-record-section="primers"] .split-input-textarea');
+  if (primerInput && nextExample.primers && canReplaceExampleInput(
+    primerInput.value,
+    Object.values(sequenceExtractorExamples).map((item) => item.primers ?? "")
+  )) {
+    primerInput.value = formatExampleInputForDisplay(nextExample.primers);
+  }
 }
 
 function createInSilicoPcrTextPane({
@@ -3432,6 +3506,9 @@ function updateBiologicalRecordFormatConverterInputUi() {
   if (!isBiologicalRecordTabbedInputTool()) {
     return;
   }
+  if (isSequenceExtractorTool()) {
+    return;
+  }
   setBiologicalRecordSourceMode(biologicalRecordSourceModeFromInputFormat(getToolOptionValue("inputFormat", "auto")), {
     syncOption: false,
     maybeLoadExample: true
@@ -3446,11 +3523,17 @@ function getBiologicalRecordFormatConverterInputText() {
   const sourceMode = panel.dataset.sourceMode ?? "flatfile";
   const annotation = panel.querySelector('[data-bio-record-section="annotation"] .split-input-textarea')?.value ?? "";
   const sourceModes = getBiologicalRecordSourceModes();
-  if (sourceMode === "flatfile" || sourceModes[sourceMode]?.showFasta === false) {
+  const fasta = sourceMode === "flatfile" || sourceModes[sourceMode]?.showFasta === false
+    ? ""
+    : (panel.querySelector('[data-bio-record-section="fasta"] .split-input-textarea')?.value ?? "");
+  const separator = state.selectedTool?.metadata?.splitInput?.separator ?? "##FASTA";
+  if (isSequenceExtractorTool()) {
+    const primers = panel.querySelector('[data-bio-record-section="primers"] .split-input-textarea')?.value ?? "";
+    return [annotation, fasta, primers].join(`\n${separator}\n`);
+  }
+  if (!fasta) {
     return annotation;
   }
-  const fasta = panel.querySelector('[data-bio-record-section="fasta"] .split-input-textarea')?.value ?? "";
-  const separator = state.selectedTool?.metadata?.splitInput?.separator ?? "##FASTA";
   return [annotation, fasta].join(`\n${separator}\n`);
 }
 
@@ -5159,13 +5242,40 @@ async function runSelectedWorkflow() {
       }
     });
     const formatted = formatWorkflowValue(result.value);
+    const inputStep = workflow.steps.find((step) => step.type === "input");
+    const workflowSource = inputStep?.workspaceSource;
+    const outputStep = workflow.steps.at(-1);
+    const outputUsesWorkspaceSourceDirectly = Boolean(
+      workflowSource &&
+      outputStep?.type === "tool" &&
+      (
+        outputStep.input?.from === inputStep.id ||
+        (!outputStep.input && workflow.steps.indexOf(outputStep) === workflow.steps.indexOf(inputStep) + 1)
+      )
+    );
+    if (outputUsesWorkspaceSourceDirectly) {
+      const workspaceLayerContext = {
+        sequenceId: workflowSource.id,
+        alphabet: workflowSource.alphabet
+      };
+      formatted.viewer = attachWorkspaceFeatureLayersToViewer(
+        formatted.viewer,
+        state.workspaceFeatureLayers,
+        workspaceLayerContext
+      );
+      formatted.sequenceExtractor = attachWorkspaceFeatureLayersToViewer(
+        formatted.sequenceExtractor,
+        state.workspaceFeatureLayers,
+        workspaceLayerContext
+      );
+    }
     state.workflowRunSummary = {
       status: "Completed",
       output: formatted.summary?.replace(/^Workflow output:\s*/i, "") || formatted.outputLabel || "",
       stepCount: result.steps.length
     };
     renderWorkflowView();
-    const hasWorkflowVisual = Boolean(formatted.svg || formatted.viewer || formatted.figure);
+    const hasWorkflowVisual = Boolean(formatted.svg || formatted.viewer || formatted.figure || formatted.sequenceExtractor);
     elements.workflowOutput.value = formatted.text;
     elements.workflowOutput.dataset.rawOutput = formatted.rawText;
     elements.workflowOutput.dataset.filename = formatted.filename ?? "sms3-workflow-output.txt";
@@ -5176,7 +5286,8 @@ async function runSelectedWorkflow() {
     renderWorkflowTableOutput(formatted.tableStream, Boolean(formatted.tableStream));
     renderVisualOutput("workflow", formatted.svg, {
       viewer: formatted.viewer,
-      figure: formatted.figure
+      figure: formatted.figure,
+      sequenceExtractor: formatted.sequenceExtractor
     });
     elements.workflowOutput.hidden = Boolean(formatted.tableStream || hasWorkflowVisual);
     setOutputSearchRowVisible("workflow", Boolean(formatted.tableStream || (!hasWorkflowVisual && formatted.text)));
@@ -5464,6 +5575,13 @@ elements.toolOptions.addEventListener("input", (event) => {
   updateProteinStructureViewerUi();
   sangerTraceWorkspace.update();
   updatePcrPrimerDesignUi();
+  if (
+    (event.target?.name === "inputFormat" || event.target?.id === "inputFormat") &&
+    isSequenceExtractorTool()
+  ) {
+    loadSequenceExtractorModeExampleIfSafe();
+    clearToolOutput();
+  }
 });
 elements.toolOptions.addEventListener("change", (event) => {
   handleProteinStructureChainControlChange(event.target);
@@ -5485,6 +5603,13 @@ elements.toolOptions.addEventListener("change", (event) => {
     isGffGtfFeatureExtractorTool()
   ) {
     loadGffGtfFeatureExtractorModeExampleIfSafe();
+    clearToolOutput();
+  }
+  if (
+    (event.target?.name === "inputFormat" || event.target?.id === "inputFormat") &&
+    isSequenceExtractorTool()
+  ) {
+    loadSequenceExtractorModeExampleIfSafe();
     clearToolOutput();
   }
   updateMarkdownInputUi();

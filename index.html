@@ -509,6 +509,11 @@
     <script src="./src/vendor/observablehq-plot/plot.umd.min.js"></script>
     <script src="./src/vendor/exceljs/exceljs.min.js"></script>
     <script src="./src/vendor/3dmol/3Dmol-min.js"></script>
-    <script type="module" src="./src/app/app.js"></script>
+    <script type="module">
+      const appUrl = new URL("./src/app/app.js", import.meta.url);
+      const build = new URLSearchParams(globalThis.location.search).get("build");
+      if (build) appUrl.searchParams.set("build", build);
+      await import(appUrl);
+    </script>
   </body>
 </html>

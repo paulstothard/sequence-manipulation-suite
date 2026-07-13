@@ -18,6 +18,14 @@ function viewerFromValue(value = {}) {
   return null;
 }
 
+function visualViewerFromResult(result = {}) {
+  return result?.visual?.sequenceExtractor ?? result?.visual?.viewer ?? null;
+}
+
+function visualViewerSourceId(result = {}) {
+  return result?.visual?.sequenceExtractor ? "visual.sequenceExtractor" : "visual.viewer";
+}
+
 function viewerValueToSequenceLayerGroups(value = {}, context = {}) {
   if (value?.kind === "collection") {
     return (value.items ?? []).flatMap((item, index) =>
@@ -76,7 +84,7 @@ export function getResultWorkspaceSequenceDrafts(result = {}, context = {}) {
 }
 
 export function getResultWorkspaceFeatureLayerDrafts(result = {}, context = {}) {
-  const viewer = result?.visual?.viewer;
+  const viewer = visualViewerFromResult(result);
   if (!viewer?.records?.length) {
     return [];
   }
@@ -84,7 +92,7 @@ export function getResultWorkspaceFeatureLayerDrafts(result = {}, context = {}) 
     viewerRecordToWorkspaceFeatureLayers(record, {
       ...context,
       alphabet: viewer.alphabet ?? record.alphabet,
-      sourceStreamId: context.sourceStreamId ?? "visual.viewer",
+      sourceStreamId: context.sourceStreamId ?? visualViewerSourceId(result),
       recordId: record.id,
       recordTitle: record.title
     })
@@ -92,9 +100,9 @@ export function getResultWorkspaceFeatureLayerDrafts(result = {}, context = {}) 
 }
 
 export function getResultWorkspaceSequenceLayerGroups(result = {}, context = {}) {
-  return viewerValueToSequenceLayerGroups(result?.visual?.viewer, {
+  return viewerValueToSequenceLayerGroups(visualViewerFromResult(result), {
     ...context,
-    sourceStreamId: context.sourceStreamId ?? "visual.viewer"
+    sourceStreamId: context.sourceStreamId ?? visualViewerSourceId(result)
   });
 }
 

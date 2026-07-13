@@ -1,4 +1,5 @@
 import { renderObservablePlotPreview } from "./plot-preview-ui.js";
+import { renderSequenceExtractorWorkspace } from "./sequence-extractor-workspace-ui.js";
 import { alignmentViewerReferenceExample } from "../examples/alignment-viewer-example.js";
 import { vcfExtractorReferenceExample } from "../examples/vcf-extractor-example.js";
 
@@ -328,7 +329,7 @@ function makeShowcaseItems({ tools, flattenOptions, getDefaultOptionValues, comp
   return tools.flatMap((tool) => {
     const outputOption = getShowcaseOutputOption(tool.metadata, flattenOptions);
     const toolOptionOverrides = SHOWCASE_TOOL_OPTION_OVERRIDES.get(tool.metadata.id) ?? {};
-    return (outputOption?.choices ?? [])
+    const optionItems = (outputOption?.choices ?? [])
       .filter((choice) => isShowcaseVisualChoice(tool, choice))
       .map((choice) => {
         const options = {
@@ -345,6 +346,19 @@ function makeShowcaseItems({ tools, flattenOptions, getDefaultOptionValues, comp
           options
         };
       });
+    const declaredItems = (tool.metadata.showcaseOutputs ?? []).map((output) => ({
+      id: `${tool.metadata.id}:${output.id}`,
+      toolId: tool.metadata.id,
+      title: `${tool.metadata.name}: ${output.label}`,
+      summary: output.summary ?? `Generated from the bundled ${tool.metadata.name} example using the ${output.label} output.`,
+      outputLabel: output.label,
+      options: {
+        ...getDefaultOptionValues(tool.metadata.options ?? []),
+        ...toolOptionOverrides,
+        ...(output.options ?? {})
+      }
+    }));
+    return [...optionItems, ...declaredItems];
   }).sort((left, right) => {
     const leftTool = tools.find((tool) => tool.metadata.id === left.toolId);
     const rightTool = tools.find((tool) => tool.metadata.id === right.toolId);
@@ -485,6 +499,9 @@ async function renderShowcaseCard(card, item, token, context) {
     } else if (svg) {
       preview.insertAdjacentHTML("beforeend", svg);
       preview.querySelectorAll("svg").forEach(normalizeShowcaseSvg);
+    } else if (result.visual?.sequenceExtractor) {
+      preview.classList.add("showcase-preview-viewer");
+      renderSequenceExtractorWorkspace(preview, result.visual.sequenceExtractor);
     } else if (result.visual?.viewer) {
       preview.classList.add("showcase-preview-viewer");
       renderShowcaseViewer(preview, result.visual.viewer, context);

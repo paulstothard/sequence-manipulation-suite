@@ -49,8 +49,30 @@ function encodeGffAttribute(value) {
   return encodeURIComponent(String(value ?? "").replace(/\s+/g, " ").trim()).replaceAll("%20", " ");
 }
 
+export function formatGeneNameForDisplay(value) {
+  return String(value ?? "")
+    .replace(/^'/u, "′")
+    .replace(/'$/u, "′");
+}
+
+const standardNameFirstFeatureTypes = new Set([
+  "protein_bind",
+  "regulatory"
+]);
+
 function featureName(feature) {
-  return feature.gene || feature.locus_tag || feature.protein_id || feature.product || feature.feature;
+  const standardName = firstQualifier(feature, "standard_name");
+  if (standardName && standardNameFirstFeatureTypes.has(String(feature.feature ?? "").toLowerCase())) {
+    return standardName;
+  }
+  return formatGeneNameForDisplay(feature.gene) ||
+    feature.locus_tag ||
+    feature.protein_id ||
+    feature.product ||
+    standardName ||
+    firstQualifier(feature, "label") ||
+    firstQualifier(feature, "note") ||
+    feature.feature;
 }
 
 function parseGff3Attributes(text) {
@@ -706,17 +728,29 @@ export function makeBiologicalRecordViewerRecords(records, options = {}) {
         layout: "stacked",
         items: record.features
           .filter((feature) => feature.parsedLocation?.supported && feature.parsedLocation.start && feature.parsedLocation.end)
-          .map((feature) => ({
-            start: feature.parsedLocation.start,
-            end: feature.parsedLocation.end,
-            strand: feature.parsedLocation.strand,
-            parts: featureParts(feature, record.sequence?.length ?? 0),
-            label: featureName(feature),
-            type: feature.feature,
-            gene: feature.gene,
-            locus_tag: feature.locus_tag,
-            product: feature.product
-          }))
+          .map((feature) => {
+            const standardName = firstQualifier(feature, "standard_name");
+            return {
+              start: feature.parsedLocation.start,
+              end: feature.parsedLocation.end,
+              strand: feature.parsedLocation.strand,
+              parts: featureParts(feature, record.sequence?.length ?? 0),
+              label: featureName(feature),
+              type: feature.feature,
+              gene: formatGeneNameForDisplay(feature.gene),
+              geneQualifier: feature.gene,
+              locus_tag: feature.locus_tag,
+              product: feature.product,
+              proteinId: feature.protein_id,
+              standardName,
+              boundMoiety: firstQualifier(feature, "bound_moiety"),
+              regulatoryClass: firstQualifier(feature, "regulatory_class"),
+              translation: feature.translation,
+              translationTable: firstQualifier(feature, "transl_table"),
+              codonStart: firstQualifier(feature, "codon_start"),
+              translationSource: feature.translation ? "record" : ""
+            };
+          })
       }]
     }));
 }
