@@ -132,7 +132,7 @@
               </div>
               <div class="tool-heading-actions">
                 <div id="toolTags" class="tags"></div>
-                <a id="toolFeedbackLink" class="tool-feedback-link" href="mailto:paul.stothard@gmail.com">Send tool feedback</a>
+                <button id="toolFeedbackLink" class="tool-feedback-link" type="button">Send tool feedback</button>
               </div>
             </div>
 
@@ -504,6 +504,42 @@
         </section>
       </main>
     </div>
+
+    <dialog id="feedbackDialog" class="feedback-dialog" aria-labelledby="feedbackDialogTitle">
+      <form class="feedback-dialog-panel" method="dialog">
+        <div class="feedback-dialog-heading">
+          <div>
+            <p class="eyebrow">Support</p>
+            <h2 id="feedbackDialogTitle">Send feedback</h2>
+          </div>
+          <button id="feedbackDialogClose" class="feedback-dialog-close" type="submit" value="cancel" aria-label="Close feedback dialog">Close</button>
+        </div>
+        <p class="summary">
+          Review or edit the prepared message before sending.
+        </p>
+        <label class="feedback-dialog-field">
+          <span>To</span>
+          <input id="feedbackRecipient" type="email" readonly />
+        </label>
+        <label class="feedback-dialog-field">
+          <span>Subject</span>
+          <input id="feedbackSubject" type="text" />
+        </label>
+        <label class="feedback-dialog-field">
+          <span>Message</span>
+          <textarea id="feedbackMessage" rows="14" spellcheck="true"></textarea>
+        </label>
+        <p class="feedback-dialog-note">
+          Screenshots can help with visual or interaction problems. Attach one in your email if useful. If no email
+          window opens, copy the message into your preferred email service.
+        </p>
+        <p id="feedbackDialogStatus" class="feedback-dialog-status" aria-live="polite"></p>
+        <div class="feedback-dialog-actions">
+          <button id="feedbackCopy" class="feedback-dialog-action" type="button">Copy message</button>
+          <a id="feedbackOpenEmail" class="feedback-dialog-action primary-button" href="mailto:paul.stothard@gmail.com">Open email app</a>
+        </div>
+      </form>
+    </dialog>
 
     <script src="./src/vendor/d3/d3.min.js"></script>
     <script src="./src/vendor/observablehq-plot/plot.umd.min.js"></script>

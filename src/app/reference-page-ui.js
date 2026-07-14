@@ -1,9 +1,11 @@
 import { geneticCodes, getCodonsForCode } from "../core/genetic-code.js";
+import { complementDnaRnaSequence } from "../core/sequence.js";
 import { restrictionEnzymeRecords } from "../reference-data/restriction-enzymes/records.js";
 import { compareToolCategories } from "../tools/categories.js";
 import { appendShowcase as appendGeneratedShowcase } from "./showcase-page.js";
 import { getRestrictionOverhangLabel } from "./reference-page-data.js";
 import { makeRestrictionCutDiagram } from "./restriction-cut-diagram-ui.js";
+import { makeFragmentEndsVisual } from "./sequence-extractor-workspace-ui.js";
 
 const CODON_BASE_ORDER = ["T", "C", "A", "G"];
 
@@ -591,6 +593,300 @@ export function createReferencePageController({
     appendTopicNotesAndCitations(topic);
   }
 
+  function appendAssemblyMethodReference(topic) {
+    const complementSequence = (sequence) => Array.from(
+      complementDnaRnaSequence(sequence, { preserveCase: false })
+    ).join("").replaceAll("U", "T");
+
+    const makeStrandDiagram = (record, { stage = "product" } = {}) => {
+      const strands = document.createElement("div");
+      strands.className = "assembly-reference-strands assembly-reference-product-strands";
+      const annealedNicks = record.productStrandModel?.annealedNickCoordinates ?? [];
+      const visibleNicks = stage === "annealed"
+        ? annealedNicks
+        : ["lic", "slic"].includes(record.id)
+          ? annealedNicks
+          : record.productJunctionStatus === "nicked"
+            ? annealedNicks.filter((nick) => nick.state !== "sealable")
+            : [];
+      strands.classList.toggle("is-nicked", visibleNicks.length > 0);
+      strands.setAttribute("aria-label", `${stage === "annealed" ? "Annealed displayed junction" : "Predicted double-stranded product"}: ${record.productSequence || "No product"}`);
+      for (const [strandIndex, termini] of [[0, ["5′", "3′"]], [1, ["3′", "5′"]]]) {
+        const strandName = strandIndex === 0 ? "top" : "bottom";
+        const strandSegments = record.productStrandModel?.[strandName] ?? record.productSegments;
+        const productRow = document.createElement("div");
+        productRow.className = `assembly-reference-strand-row${strandIndex === 1 ? " is-complement" : ""}`;
+        const left = document.createElement("span");
+        left.className = "assembly-reference-terminus";
+        left.textContent = termini[0];
+        const productTrack = document.createElement("code");
+        productTrack.className = "assembly-reference-product-track";
+        let coordinate = 0;
+        for (const segment of strandSegments) {
+          const productSegment = document.createElement("span");
+          const segmentClass = segment.kind === "overlap"
+            ? "is-overlap"
+            : segment.fragmentIndex === 0
+              ? "is-fragment-1"
+              : segment.fragmentIndex === 1
+                ? "is-fragment-2"
+                : "is-product";
+          productSegment.className = segmentClass;
+          coordinate += segment.sequence.length;
+          const nick = visibleNicks.find((candidate) => candidate.strand === strandName && candidate.coordinate === coordinate);
+          if (nick) {
+            productSegment.classList.add("has-nick-after", `is-${nick.state || "unknown"}-nick`);
+            productSegment.title = `${segment.label}, ${strandName} strand; backbone nick ${nick.state || "state unknown"}`;
+          } else {
+            productSegment.title = `${segment.label}, ${strandName} strand`;
+          }
+          if (strandIndex === 0 && stage === "product") {
+            productSegment.dataset.assemblyProductSegment = segment.kind === "overlap"
+              ? "overlap"
+              : `fragment-${(segment.fragmentIndex ?? 0) + 1}`;
+          }
+          productSegment.style.setProperty("--assembly-segment-bases", String(segment.sequence.length));
+          productSegment.textContent = strandIndex === 0
+            ? segment.sequence
+            : complementSequence(segment.sequence);
+          productTrack.append(productSegment);
+        }
+        const right = document.createElement("span");
+        right.className = "assembly-reference-terminus";
+        right.textContent = termini[1];
+        productRow.append(left, productTrack, right);
+        strands.append(productRow);
+      }
+      return strands;
+    };
+
+    const scope = document.createElement("aside");
+    scope.className = "assembly-reference-scope";
+    const scopeTitle = document.createElement("strong");
+    scopeTitle.textContent = "Scope of the SMS3 prediction";
+    const scopeText = document.createElement("p");
+    scopeText.textContent = "SMS3 predicts sequence compatibility and the structural feasibility of the displayed junctions; it does not predict experimental efficiency, and a linear left-to-right preview does not by itself validate a complete circular plasmid.";
+    scope.append(scopeTitle, scopeText);
+    elements.selectedReferenceBody.append(scope);
+
+    const methodSection = document.createElement("section");
+    methodSection.className = "reference-subsection assembly-reference-method-overview";
+    const methodHeading = document.createElement("h3");
+    methodHeading.textContent = "Cloning and joining approaches";
+    const methodIntroduction = document.createElement("p");
+    methodIntroduction.className = "summary";
+    methodIntroduction.textContent = "The method descriptions below summarize the molecular mechanism, typical use, required fragment ends, and practical considerations.";
+    const methodGrid = document.createElement("div");
+    methodGrid.className = "assembly-reference-method-grid";
+    for (const record of topic.records) {
+      const methodCard = document.createElement("article");
+      methodCard.className = "assembly-reference-method-card";
+      const methodTitle = document.createElement("h4");
+      methodTitle.textContent = record.label;
+      const principle = document.createElement("p");
+      principle.textContent = record.principle;
+      const methodFacts = document.createElement("dl");
+      methodFacts.className = "assembly-reference-facts";
+      for (const [label, value] of [
+        ["Typical use", record.use],
+        ["Required fragment ends", record.requirements],
+        ["Practical considerations", record.limitations]
+      ]) {
+        const term = document.createElement("dt");
+        term.textContent = label;
+        const detail = document.createElement("dd");
+        detail.textContent = value;
+        methodFacts.append(term, detail);
+      }
+      methodCard.append(methodTitle, principle, methodFacts);
+      methodGrid.append(methodCard);
+    }
+    methodSection.append(methodHeading, methodIntroduction, methodGrid);
+    elements.selectedReferenceBody.append(methodSection);
+
+    const modelSection = document.createElement("section");
+    modelSection.className = "reference-subsection assembly-reference-sms3-model";
+    const modelHeading = document.createElement("h3");
+    modelHeading.textContent = "How Sequence Extractor models these methods";
+    const modelNote = document.createElement("aside");
+    modelNote.className = "assembly-reference-model-note";
+    const modelTitle = document.createElement("strong");
+    modelTitle.textContent = "Prediction scope";
+    const modelText = document.createElement("span");
+    modelText.textContent = "Sequence Extractor evaluates fragments from left to right in their displayed order using their sequences, structured ends, and recorded chemistry. Circular closure is checked only when a circular preview is explicitly requested.";
+    modelNote.append(modelTitle, modelText);
+    modelSection.append(modelHeading, modelNote);
+    appendReferenceTable({
+      columns: ["Method", "Input state", "Mechanism", "Predicted in-vitro state", "What SMS3 checks", "Not evaluated"],
+      rows: topic.records.map((record) => [
+        record.label,
+        record.inputState,
+        record.mechanism,
+        record.predictedState,
+        record.predictionRule,
+        record.notEvaluated
+      ])
+    }, modelSection);
+    elements.selectedReferenceBody.append(modelSection);
+
+    const exampleSection = document.createElement("section");
+    exampleSection.className = "reference-subsection assembly-reference-examples";
+    const heading = document.createElement("h3");
+    heading.textContent = "SMS3 worked predictions";
+    const introduction = document.createElement("p");
+    introduction.className = "summary";
+    introduction.textContent = "Each card is an explicitly labelled single-junction demonstration. It does not validate the other end of an insert, every junction in a multi-part design, or circular closure.";
+    const colorExplanation = document.createElement("p");
+    colorExplanation.className = "summary assembly-reference-color-explanation";
+    colorExplanation.textContent = "Product colors trace sequence origin: teal and purple mark bases assigned to one fragment, while orange marks homologous sequence present in both fragments and represented once in the product. Cohesive-end and TA-junction bases retain their fragment color.";
+    const symbolLegend = document.createElement("aside");
+    symbolLegend.className = "assembly-reference-symbol-legend";
+    const legendTitle = document.createElement("strong");
+    legendTitle.textContent = "Diagram legend";
+    const legendList = document.createElement("ul");
+    for (const [className, label] of [
+      ["is-fragment-1", "Fragment 1 sequence (teal; also labelled by fragment name)"],
+      ["is-fragment-2", "Fragment 2 sequence (purple; also labelled by fragment name)"],
+      ["is-overlap", "Homologous sequence present in both inputs and represented once (orange)"],
+      ["is-nick", "│ backbone nick; its label reports whether the nick is sealable"],
+      ["is-gap", "Empty base-grid positions indicate a recessed strand or gap"],
+      ["is-chemistry", "5′-P is a 5′ phosphate; 3′-OH is a 3′ hydroxyl"],
+      ["is-origin", "Captions distinguish supplied ends from ends generated during a reaction"]
+    ]) {
+      const item = document.createElement("li");
+      item.className = className;
+      item.textContent = label;
+      legendList.append(item);
+    }
+    symbolLegend.append(legendTitle, legendList);
+    const cards = document.createElement("div");
+    cards.className = "assembly-reference-card-grid";
+
+    for (const record of topic.records) {
+      const card = document.createElement("section");
+      card.className = "assembly-reference-card";
+      card.dataset.assemblyMethodCard = record.id;
+
+      const cardHeader = document.createElement("div");
+      cardHeader.className = "assembly-reference-card-header";
+      const title = document.createElement("span");
+      title.className = "assembly-reference-card-title";
+      title.textContent = record.label;
+      cardHeader.append(title);
+
+      const body = document.createElement("div");
+      body.className = "assembly-reference-card-body";
+
+      const sequenceExample = document.createElement("div");
+      sequenceExample.className = "assembly-reference-diagram";
+      const sequenceHeading = document.createElement("strong");
+      sequenceHeading.className = "assembly-reference-diagram-title";
+      sequenceHeading.textContent = "Supplied input fragments";
+      const fragmentFlow = document.createElement("div");
+      fragmentFlow.className = "assembly-reference-fragment-flow";
+      for (const [fragmentIndex, fragment] of record.fragments.entries()) {
+        const displayProduct = record.fragmentDisplayProducts[fragmentIndex];
+        const fragmentBlock = document.createElement("div");
+        fragmentBlock.className = `assembly-reference-fragment is-fragment-${fragmentIndex + 1}`;
+        const label = document.createElement("strong");
+        label.textContent = `${fragmentIndex + 1}. ${fragment.title}`;
+        const fragmentMeta = document.createElement("span");
+        fragmentMeta.className = "assembly-reference-fragment-meta";
+        const inputOrigin = ["gibson", "slic"].includes(record.id)
+          ? "supplied dsDNA"
+          : record.id === "lic"
+            ? "supplied prepared end"
+            : record.id === "golden-gate"
+              ? "post-digestion, assembly-ready end"
+              : "supplied end";
+        fragmentMeta.textContent = `reference fragment · ${fragment.sequence.length.toLocaleString()} bp · linear · ${inputOrigin}`;
+        const endVisual = makeFragmentEndsVisual(displayProduct, {
+          flankLength: 24,
+          omitUnknownChemistry: true
+        });
+        endVisual.classList.add("assembly-reference-fragment-end-visual");
+        fragmentBlock.append(label, fragmentMeta, endVisual);
+        fragmentFlow.append(fragmentBlock);
+      }
+      sequenceExample.append(sequenceHeading, fragmentFlow);
+
+      if (record.category === "end-based") {
+        const annealed = document.createElement("div");
+        annealed.className = "assembly-reference-annealed-junction";
+        const annealedTitle = document.createElement("strong");
+        annealedTitle.textContent = "Annealed displayed junction before ligation";
+        const annealedStrands = makeStrandDiagram(record, { stage: "annealed" });
+        const nickStates = document.createElement("p");
+        nickStates.className = "assembly-reference-nick-states";
+        nickStates.textContent = (record.productStrandModel?.annealedNickCoordinates ?? [])
+          .map((nick) => `${nick.strand === "top" ? "Top" : "Bottom"} strand: ${nick.state === "sealable" ? "sealable nick" : nick.state === "blocked" ? "nick requires repair" : "sealability unknown"}`)
+          .join(" · ");
+        annealed.append(annealedTitle, annealedStrands, nickStates);
+        sequenceExample.append(annealed);
+      }
+
+      const product = document.createElement("div");
+      product.className = "assembly-reference-product";
+      const productHeader = document.createElement("div");
+      const productLabel = document.createElement("strong");
+      productLabel.textContent = "Predicted product";
+      const productLength = document.createElement("span");
+      productLength.textContent = `${record.productSequence.length.toLocaleString()} bp`;
+      productHeader.append(productLabel, productLength);
+      const productStrands = makeStrandDiagram(record);
+      const productLegend = document.createElement("div");
+      productLegend.className = "assembly-reference-product-legend";
+      const legendItems = record.productSegments.map((segment) => ({
+        className: segment.kind === "overlap"
+          ? "is-overlap"
+          : segment.fragmentIndex === 0
+            ? "is-fragment-1"
+            : segment.fragmentIndex === 1
+              ? "is-fragment-2"
+              : "is-product",
+        label: segment.kind === "overlap"
+          ? segment.label
+          : `${(segment.fragmentIndex ?? 0) + 1}. ${segment.label}`
+      }));
+      for (const item of legendItems) {
+        const legendItem = document.createElement("span");
+        legendItem.className = item.className;
+        legendItem.textContent = item.label;
+        productLegend.append(legendItem);
+      }
+      const previewSummary = document.createElement("p");
+      previewSummary.textContent = record.resultSummary;
+      const productChemistry = document.createElement("p");
+      productChemistry.className = "assembly-reference-product-chemistry";
+      productChemistry.textContent = record.productChemistry;
+      if (record.overlapIntermediate) {
+        productChemistry.append(` · Idealized geometry: ${record.overlapIntermediate.nicks} nicks, ${record.overlapIntermediate.gaps} gaps, ${record.overlapIntermediate.flaps} flaps.`);
+      }
+      product.append(productHeader, productLegend, productStrands, productChemistry, previewSummary);
+
+      const source = document.createElement("p");
+      source.className = "assembly-reference-card-source";
+      source.append(record.sources.length === 1 ? "Method source: " : "Method sources: ");
+      for (const [sourceIndex, citation] of record.sources.entries()) {
+        if (sourceIndex > 0) source.append("; ");
+        const sourceLink = document.createElement("a");
+        sourceLink.href = citation.url;
+        sourceLink.target = "_blank";
+        sourceLink.rel = "noreferrer";
+        sourceLink.textContent = citation.label;
+        source.append(sourceLink);
+      }
+
+      body.append(sequenceExample, product, source);
+      card.append(cardHeader, body);
+      cards.append(card);
+    }
+
+    exampleSection.append(heading, introduction, colorExplanation, symbolLegend, cards);
+    elements.selectedReferenceBody.append(exampleSection);
+    appendTopicNotesAndCitations(topic);
+  }
+
   function getAminoAcidHighlightOptions(codons) {
     const present = new Set(codons.map((item) => item.aa));
     const ordered = "ACDEFGHIKLMNPQRSTVWYBJOUXZ".split("").filter((aa) => present.has(aa));
@@ -978,6 +1274,11 @@ export function createReferencePageController({
 
     if (topic.interactive === "restriction-enzymes") {
       appendRestrictionEnzymeReference(topic);
+      return;
+    }
+
+    if (topic.interactive === "assembly-methods") {
+      appendAssemblyMethodReference(topic);
       return;
     }
 

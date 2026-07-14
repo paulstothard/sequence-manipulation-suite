@@ -9,6 +9,19 @@ import { findRestrictionSites, selectRestrictionEnzymes } from "./restriction-to
 import { cleanDnaRnaSequence, complementDnaRnaSequence } from "./sequence.js";
 import { getGeneticCode } from "./genetic-code.js";
 import { restrictionEnzymeRecords } from "../reference-data/restriction-enzymes/records.js";
+import {
+  endStrandPolarities,
+  fragmentDuplexMetrics,
+  fragmentEndGeometry,
+  normalizeEndChemistryValue,
+  protrudingStrandForGeometry,
+  reverseComplementFragmentEnd,
+  syncEndFromTermini,
+  withDefaultEndChemistry,
+  withPhysicalEndModel
+} from "./fragment-ends.js";
+
+export { fragmentEndGeometry } from "./fragment-ends.js";
 
 export const SEQUENCE_EXTRACTOR_SEPARATOR = "##SEQUENCE_EXTRACTOR_PART##";
 
@@ -207,88 +220,56 @@ function recordSequence(record) {
   return String(record?.sequence ?? "").toUpperCase();
 }
 
-const END_CHEMISTRY_VALUES = new Set(["present", "absent", "blocked", "unknown"]);
-
-function normalizeEndChemistryValue(value, fallback = "unknown") {
-  const normalized = String(value || "").toLowerCase();
-  return END_CHEMISTRY_VALUES.has(normalized) ? normalized : fallback;
-}
-
-function defaultEndChemistry(source) {
-  if (source === "restriction") {
-    return { fivePrimePhosphate: "present", threePrimeHydroxyl: "present" };
-  }
-  if (source === "primer") {
-    return { fivePrimePhosphate: "absent", threePrimeHydroxyl: "present" };
-  }
-  return { fivePrimePhosphate: "unknown", threePrimeHydroxyl: "present" };
-}
-
-function withDefaultEndChemistry(end, source = end?.kind) {
-  const defaults = defaultEndChemistry(source);
-  return {
-    ...end,
-    fivePrimePhosphate: normalizeEndChemistryValue(end?.fivePrimePhosphate, defaults.fivePrimePhosphate),
-    threePrimeHydroxyl: normalizeEndChemistryValue(end?.threePrimeHydroxyl, defaults.threePrimeHydroxyl)
-  };
-}
-
-function makeBluntEnd(label, position, source = "coordinate") {
-  return withDefaultEndChemistry({
+function makeBluntEnd(label, position, source = "coordinate", side = "left") {
+  return withPhysicalEndModel(withDefaultEndChemistry({
     kind: source,
     label,
     position,
     overhang: "blunt",
     compatibilityKey: "blunt"
-  }, source);
+  }, source), side);
 }
 
-function makeSingleRestrictionEnd(site) {
+function makeSingleRestrictionEnd(site, side) {
   const overhang = String(site?.overhang || "unknown");
   const overhangSequence = String(site?.overhangSequence ?? site?.overhang_sequence ?? "").toUpperCase();
   const recognition = String(site?.recognition || "").toUpperCase();
-  return withDefaultEndChemistry({
+  return withPhysicalEndModel(withDefaultEndChemistry({
     kind: "restriction",
     label: site?.enzyme || site?.label || "Restriction cut",
     position: Number(site?.cutAfter ?? site?.cut_after),
     recognition,
+    cleavageType: site?.cleavageType ?? site?.cleavage_type,
+    cutNotation: site?.cutNotation ?? site?.cut_notation,
     overhang,
     overhangSequence,
     compatibilityKey: overhang === "blunt" ? "blunt" : `${overhang}:${overhangSequence || recognition}`
-  }, "restriction");
+  }, "restriction"), side);
 }
 
-function makeRestrictionEnd(site) {
+function makeRestrictionEnd(site, side) {
   const alternatives = Array.isArray(site?.groupedSites)
-    ? site.groupedSites.map((candidate) => makeSingleRestrictionEnd(candidate))
+    ? site.groupedSites.map((candidate) => makeSingleRestrictionEnd(candidate, side))
     : [];
   if (alternatives.length > 1) {
-    return withDefaultEndChemistry({
+    return withPhysicalEndModel(withDefaultEndChemistry({
       kind: "restriction",
       label: site?.enzyme || site?.label || "Restriction sites",
       position: Number(site?.cutAfter ?? site?.cut_after),
       overhang: "multiple",
       alternatives,
       compatibilityKey: "multiple"
-    }, "restriction");
+    }, "restriction"), side);
   }
-  return alternatives[0] ?? makeSingleRestrictionEnd(site);
+  return alternatives[0] ?? makeSingleRestrictionEnd(site, side);
 }
 
-function makePrimerEnd(site) {
-  return makeBluntEnd(site?.name || site?.primer || site?.label || "Primer end", site?.start, "primer");
+function makePrimerEnd(site, side) {
+  return makeBluntEnd(site?.name || site?.primer || site?.label || "Primer end", site?.start, "primer", side);
 }
 
 function fragmentEndAlternatives(end) {
   return Array.isArray(end?.alternatives) && end.alternatives.length > 0 ? end.alternatives : end ? [end] : [];
-}
-
-function normalizedEndGeometry(end) {
-  const overhang = String(end?.overhang || "unknown").toLowerCase();
-  return {
-    overhang,
-    sequence: String(end?.overhangSequence || "").toUpperCase()
-  };
 }
 
 function endGeometryKey(geometry) {
@@ -323,42 +304,64 @@ function assessLigationChemistry(leftEnd, rightEnd, geometryCompatible) {
   }
   const left = commonEndChemistry(leftEnd);
   const right = commonEndChemistry(rightEnd);
-  const bonds = [
-    phosphodiesterBondState(right.fivePrimePhosphate, left.threePrimeHydroxyl),
-    phosphodiesterBondState(left.fivePrimePhosphate, right.threePrimeHydroxyl)
+  const strandBonds = [
+    {
+      strand: "top",
+      state: phosphodiesterBondState(right.fivePrimePhosphate, left.threePrimeHydroxyl),
+      fivePrimePhosphate: right.fivePrimePhosphate,
+      threePrimeHydroxyl: left.threePrimeHydroxyl
+    },
+    {
+      strand: "bottom",
+      state: phosphodiesterBondState(left.fivePrimePhosphate, right.threePrimeHydroxyl),
+      fivePrimePhosphate: left.fivePrimePhosphate,
+      threePrimeHydroxyl: right.threePrimeHydroxyl
+    }
   ];
+  const bonds = strandBonds.map((bond) => bond.state);
   if (bonds.includes("unknown")) {
     return {
       status: "unknown",
       sealability: "unknown",
       sealableBonds: null,
-      label: "Ligation chemistry unknown",
+      strandBonds,
+      label: "Backbone-nick sealability is unknown",
       warning: "End geometry matches, but 5′ phosphate or 3′ hydroxyl state is unknown. Treat or define the fragment ends before relying on this ligation."
     };
   }
   const sealableBonds = bonds.filter((state) => state === "sealable").length;
-  if (sealableBonds === 2) return { status: "sealed", sealability: "sealable", sealableBonds, label: "Fully sealable junction" };
+  if (sealableBonds === 2) {
+    return {
+      status: "sealed",
+      sealability: "sealable",
+      sealableBonds,
+      strandBonds,
+      label: "Both backbone nicks are sealable"
+    };
+  }
   if (sealableBonds === 1) {
     return {
       status: "nicked",
       sealability: "sealable",
       sealableBonds,
-      label: "One sealable bond; one nick remains",
-      warning: "This ligation can form one phosphodiester bond, leaving one nick that is not sealed in vitro."
+      strandBonds,
+      label: `${strandBonds.find((bond) => bond.state === "sealable")?.strand === "top" ? "Top" : "Bottom"}-strand backbone nick is sealable; ${strandBonds.find((bond) => bond.state === "blocked")?.strand === "top" ? "top" : "bottom"}-strand nick remains`,
+      warning: "One backbone nick can be sealed in vitro; the other requires repair or a change in terminal chemistry."
     };
   }
   return {
     status: "unsealed",
     sealability: "not-sealable",
     sealableBonds,
-    label: "No sealable phosphodiester bond",
+    strandBonds,
+    label: "Neither backbone nick is sealable",
     warning: "These ends can match geometrically but cannot be covalently joined with their current end chemistry."
   };
 }
 
 export function assessFragmentEndCompatibility(leftFragmentRightEnd, rightFragmentLeftEnd) {
-  const leftGeometries = fragmentEndAlternatives(leftFragmentRightEnd).map((end) => normalizedEndGeometry(end));
-  const rightGeometries = fragmentEndAlternatives(rightFragmentLeftEnd).map((end) => normalizedEndGeometry(end));
+  const leftGeometries = fragmentEndAlternatives(leftFragmentRightEnd).map((end) => fragmentEndGeometry(end, "right"));
+  const rightGeometries = fragmentEndAlternatives(rightFragmentLeftEnd).map((end) => fragmentEndGeometry(end, "left"));
   const matches = new Map();
   for (const left of leftGeometries) {
     for (const right of rightGeometries) {
@@ -415,9 +418,27 @@ export const FRAGMENT_END_TREATMENTS = Object.freeze([
   },
   {
     id: "single-strand-nuclease",
-    label: "Remove overhangs with nuclease",
+    label: "Trim overhangs with nuclease",
     enzyme: "Mung bean nuclease",
     method: "Single-stranded overhang removal"
+  },
+  {
+    id: "add-3-prime-a",
+    label: "Add 3′ A overhangs",
+    enzyme: "Taq DNA polymerase",
+    method: "Single-nucleotide 3′ A-tailing"
+  },
+  {
+    id: "complete-end-repair",
+    label: "Complete end repair",
+    enzyme: "End-repair enzyme mixture",
+    method: "End polishing, 5′ phosphorylation, and 3′-OH restoration"
+  },
+  {
+    id: "activate-topo-ta-vector",
+    label: "Prepare TOPO TA vector ends",
+    enzyme: "Vaccinia DNA topoisomerase I",
+    method: "Covalent topoisomerase-I loading on 3′ T vector ends"
   }
 ]);
 
@@ -431,14 +452,21 @@ function cloneEnd(end) {
   if (!end) return end;
   return {
     ...end,
-    alternatives: Array.isArray(end.alternatives) ? end.alternatives.map((alternative) => ({ ...alternative })) : end.alternatives
+    alternatives: Array.isArray(end.alternatives) ? end.alternatives.map((alternative) => cloneEnd(alternative)) : end.alternatives,
+    termini: end.termini
+      ? {
+          ...end.termini,
+          top: end.termini.top ? { ...end.termini.top } : end.termini.top,
+          bottom: end.termini.bottom ? { ...end.termini.bottom } : end.termini.bottom
+        }
+      : end.termini
   };
 }
 
-function treatmentEndGeometry(end) {
+function treatmentEndGeometry(end, side) {
   const alternatives = fragmentEndAlternatives(end);
   const geometries = new Map(alternatives.map((candidate) => {
-    const geometry = normalizedEndGeometry(candidate);
+    const geometry = fragmentEndGeometry(candidate, side);
     return [endGeometryKey(geometry), geometry];
   }));
   return geometries.size === 1 ? geometries.values().next().value : null;
@@ -447,36 +475,71 @@ function treatmentEndGeometry(end) {
 export function applicableFragmentEndTreatments(product = {}, target = "both") {
   const selectedSides = treatmentTargets(["left", "right", "both"].includes(target) ? target : "both");
   const ends = selectedSides.map((side) => product.ends?.[side]).filter(Boolean);
-  const geometries = ends.map((end) => treatmentEndGeometry(end));
+  const geometries = selectedSides
+    .filter((side) => product.ends?.[side])
+    .map((side) => treatmentEndGeometry(product.ends[side], side));
   const geometryCanChange = geometries.length > 0 &&
     geometries.every(Boolean) &&
     geometries.some((geometry) => geometry.overhang !== "blunt" && geometry.overhang !== "unknown");
-  const canPhosphorylate = ends.some((end) => commonEndChemistry(end).fivePrimePhosphate !== "present");
-  const canDephosphorylate = ends.some((end) => commonEndChemistry(end).fivePrimePhosphate !== "absent");
+  const canPhosphorylate = ends.some((end) => ["absent", "unknown"].includes(commonEndChemistry(end).fivePrimePhosphate));
+  const canDephosphorylate = ends.some((end) => ["present", "unknown"].includes(commonEndChemistry(end).fivePrimePhosphate));
+  const canATail = selectedSides.some((side) => {
+    const end = product.ends?.[side];
+    const geometry = end ? treatmentEndGeometry(end, side) : null;
+    return geometry?.overhang === "blunt" && commonEndChemistry(end).threePrimeHydroxyl === "present";
+  });
+  const canActivateTopoTa = selectedSides.some((side) => {
+    const end = product.ends?.[side];
+    const geometry = end ? treatmentEndGeometry(end, side) : null;
+    return geometry?.overhang === "3 prime" &&
+      geometry.sequence === "T" &&
+      String(end?.terminalActivation || "").toLowerCase() !== "topoisomerase-i-bound";
+  });
   return FRAGMENT_END_TREATMENTS.filter((treatment) => {
     if (treatment.id === "phosphorylate") return canPhosphorylate;
     if (treatment.id === "dephosphorylate") return canDephosphorylate;
+    if (treatment.id === "add-3-prime-a") return canATail;
+    if (treatment.id === "complete-end-repair") return ends.length > 0;
+    if (treatment.id === "activate-topo-ta-vector") return canActivateTopoTa;
     return geometryCanChange;
   });
 }
 
-function setEndChemistry(end, updates) {
-  const updated = { ...end, ...updates };
+function setEndChemistry(end, side, updates) {
+  const updated = withPhysicalEndModel({ ...end, ...updates }, side);
   if (Array.isArray(end?.alternatives)) {
-    updated.alternatives = end.alternatives.map((alternative) => ({ ...alternative, ...updates }));
+    updated.alternatives = end.alternatives.map((alternative) => setEndChemistry(alternative, side, updates));
   }
   return updated;
 }
 
-function setEndGeometry(end, overhang, overhangSequence, treatment) {
-  return {
+function setEndGeometry(end, side, overhang, physicalOverhangSequence, treatment) {
+  const physical = withPhysicalEndModel(end, side);
+  const polarities = endStrandPolarities(side);
+  const protrudingStrand = protrudingStrandForGeometry(overhang, side);
+  const termini = {
+    version: 1,
+    side,
+    top: {
+      ...physical.termini.top,
+      strand: "top",
+      polarity: polarities.top,
+      protruding: protrudingStrand === "top",
+      overhangSequence: protrudingStrand === "top" ? String(physicalOverhangSequence || "").toUpperCase() : ""
+    },
+    bottom: {
+      ...physical.termini.bottom,
+      strand: "bottom",
+      polarity: polarities.bottom,
+      protruding: protrudingStrand === "bottom",
+      overhangSequence: protrudingStrand === "bottom" ? String(physicalOverhangSequence || "").toUpperCase() : ""
+    }
+  };
+  return syncEndFromTermini({
     ...end,
     alternatives: undefined,
-    overhang,
-    overhangSequence,
-    compatibilityKey: overhang === "blunt" ? "blunt" : `${overhang}:${overhangSequence}`,
     treatedBy: treatment
-  };
+  }, termini);
 }
 
 function treatmentLabel(type) {
@@ -570,41 +633,171 @@ export function applyFragmentEndTreatment(product = {}, options = {}) {
     left: cloneEnd(product.ends?.left),
     right: cloneEnd(product.ends?.right)
   };
+  const beforeDuplex = fragmentDuplexMetrics({ ...product, ends: originalEnds });
   const ends = { left: cloneEnd(originalEnds.left), right: cloneEnd(originalEnds.right) };
   let sequence = String(product.sequence || "").toUpperCase();
   const originalSequence = sequence;
   let leftTrim = 0;
   let rightTrim = 0;
   let appendedSequence = "";
+  const endResults = {};
 
   for (const side of selectedSides) {
     const end = ends[side];
     if (!end) return { product: null, error: `The fragment has no ${side} end to treat.` };
+    const result = {
+      side,
+      changed: false,
+      basesAdded: 0,
+      basesRemoved: 0,
+      action: ""
+    };
     if (type === "phosphorylate") {
-      ends[side] = setEndChemistry(end, { fivePrimePhosphate: "present" });
+      const chemistry = commonEndChemistry(end);
+      if (["absent", "unknown"].includes(chemistry.fivePrimePhosphate)) {
+        ends[side] = setEndChemistry(end, side, { fivePrimePhosphate: "present" });
+        result.changed = true;
+        result.action = chemistry.fivePrimePhosphate === "absent"
+          ? "5′-OH was phosphorylated."
+          : "Starting 5′ chemistry was unknown; an accessible terminus was modeled as phosphorylated.";
+      } else {
+        result.action = chemistry.fivePrimePhosphate === "present"
+          ? "Already 5′-phosphorylated; unchanged."
+          : "5′ terminus is blocked; unchanged.";
+      }
+      result.after = cloneEnd(ends[side]);
+      endResults[side] = result;
       continue;
     }
     if (type === "dephosphorylate") {
-      ends[side] = setEndChemistry(end, { fivePrimePhosphate: "absent" });
+      const chemistry = commonEndChemistry(end);
+      if (["present", "unknown"].includes(chemistry.fivePrimePhosphate)) {
+        ends[side] = setEndChemistry(end, side, { fivePrimePhosphate: "absent" });
+        result.changed = true;
+        result.action = chemistry.fivePrimePhosphate === "present"
+          ? "5′ phosphate was removed."
+          : "Starting 5′ chemistry was unknown; an accessible terminus was modeled as dephosphorylated.";
+      } else {
+        result.action = chemistry.fivePrimePhosphate === "absent"
+          ? "Already 5′-OH; unchanged."
+          : "5′ terminus is blocked; unchanged.";
+      }
+      result.after = cloneEnd(ends[side]);
+      endResults[side] = result;
       continue;
     }
-    const geometry = treatmentEndGeometry(end);
+    const geometry = treatmentEndGeometry(end, side);
     if (!geometry) return { product: null, error: `The ${side} end has multiple possible geometries; choose a specific restriction enzyme first.` };
     const overhangLength = Array.from(geometry.sequence).length;
+    if (type === "add-3-prime-a") {
+      const chemistry = commonEndChemistry(end);
+      if (geometry.overhang !== "blunt") {
+        result.action = `This end has a ${geometry.overhang === "5 prime" ? "5′" : geometry.overhang === "3 prime" ? "3′" : "non-blunt"} overhang and was unchanged; blunt it before A-tailing.`;
+      } else if (chemistry.threePrimeHydroxyl !== "present") {
+        result.action = chemistry.threePrimeHydroxyl === "blocked"
+          ? "The 3′ terminus is blocked and was unchanged."
+          : "The 3′-hydroxyl state is unknown, so this end was unchanged.";
+      } else {
+        ends[side] = setEndGeometry(end, side, "3 prime", "A", treatmentLabel(type));
+        result.changed = true;
+        result.basesAdded = 1;
+        result.action = "One unpaired A was added to the blunt 3′ terminus.";
+        if (side === "right") {
+          sequence += "A";
+          appendedSequence += "A";
+        }
+      }
+      result.after = cloneEnd(ends[side]);
+      endResults[side] = result;
+      continue;
+    }
+    if (type === "complete-end-repair") {
+      const actions = [];
+      if (geometry.overhang === "5 prime") {
+        result.basesAdded = overhangLength;
+        actions.push(`${overhangLength.toLocaleString()} complementary nucleotide${overhangLength === 1 ? " was" : "s were"} added to fill the 5′ overhang${geometry.sequence ? ` ${geometry.sequence}` : ""}`);
+        if (side === "right") {
+          const filledSequence = reverseComplement(geometry.sequence);
+          sequence += filledSequence;
+          appendedSequence += filledSequence;
+        }
+      } else if (geometry.overhang === "3 prime") {
+        result.basesRemoved = overhangLength;
+        actions.push(`${overhangLength.toLocaleString()} protruding 3′ nucleotide${overhangLength === 1 ? " was" : "s were"} removed${geometry.sequence ? ` (${geometry.sequence})` : ""}`);
+        if (side === "right" && overhangLength > 0) {
+          sequence = sequence.slice(0, -overhangLength);
+          rightTrim += overhangLength;
+        }
+      } else {
+        actions.push("the end was already blunt");
+      }
+      const chemistry = commonEndChemistry(end);
+      if (chemistry.fivePrimePhosphate !== "present") actions.push("the 5′ terminus was phosphorylated");
+      else actions.push("the 5′ phosphate was retained");
+      if (chemistry.threePrimeHydroxyl !== "present") actions.push("a usable 3′-OH was restored");
+      else actions.push("the 3′-OH was retained");
+      ends[side] = setEndChemistry(
+        setEndGeometry(end, side, "blunt", "", treatmentLabel(type)),
+        side,
+        { fivePrimePhosphate: "present", threePrimeHydroxyl: "present" }
+      );
+      result.changed = geometry.overhang !== "blunt" ||
+        chemistry.fivePrimePhosphate !== "present" ||
+        chemistry.threePrimeHydroxyl !== "present";
+      result.action = `${actions.join("; ")}.`;
+      result.after = cloneEnd(ends[side]);
+      endResults[side] = result;
+      continue;
+    }
+    if (type === "activate-topo-ta-vector") {
+      if (geometry.overhang !== "3 prime" || geometry.sequence !== "T") {
+        result.action = "This end is not a single-nucleotide 3′ T vector end and was unchanged.";
+      } else if (String(end.terminalActivation || "").toLowerCase() === "topoisomerase-i-bound") {
+        result.action = "Topoisomerase I is already bound; unchanged.";
+      } else {
+        ends[side] = {
+          ...setEndChemistry(end, side, { threePrimeHydroxyl: "blocked" }),
+          terminalActivation: "topoisomerase-i-bound",
+          activationMethod: definition.method,
+          treatedBy: treatmentLabel(type)
+        };
+        result.changed = true;
+        result.action = "Vaccinia topoisomerase I was modeled as covalently bound to the activated vector terminus.";
+      }
+      result.after = cloneEnd(ends[side]);
+      endResults[side] = result;
+      continue;
+    }
     if (geometry.overhang === "blunt") {
       ends[side] = { ...end, treatedBy: treatmentLabel(type) };
+      result.action = "Already blunt; unchanged.";
+      result.after = cloneEnd(ends[side]);
+      endResults[side] = result;
       continue;
     }
     if (type === "polymerase-end-repair") {
+      if (geometry.overhang === "5 prime") {
+        result.changed = true;
+        result.basesAdded = overhangLength;
+        result.action = `${overhangLength.toLocaleString()} complementary nucleotide${overhangLength === 1 ? " was" : "s were"} added to fill the 5′ overhang${geometry.sequence ? ` ${geometry.sequence}` : ""}.`;
+      } else if (geometry.overhang === "3 prime") {
+        result.changed = true;
+        result.basesRemoved = overhangLength;
+        result.action = `${overhangLength.toLocaleString()} protruding 3′ nucleotide${overhangLength === 1 ? " was" : "s were"} removed${geometry.sequence ? ` (${geometry.sequence})` : ""}.`;
+      }
       if (side === "right" && geometry.overhang === "5 prime") {
-        sequence += geometry.sequence;
-        appendedSequence += geometry.sequence;
+        const filledSequence = reverseComplement(geometry.sequence);
+        sequence += filledSequence;
+        appendedSequence += filledSequence;
       }
       if (side === "right" && geometry.overhang === "3 prime" && overhangLength > 0) {
         sequence = sequence.slice(0, -overhangLength);
         rightTrim += overhangLength;
       }
     } else if (type === "single-strand-nuclease") {
+      result.changed = true;
+      result.basesRemoved = overhangLength;
+      result.action = `${geometry.overhang === "5 prime" ? "5′" : "3′"} overhang${geometry.sequence ? ` ${geometry.sequence}` : ""} was removed (${overhangLength.toLocaleString()} nt).`;
       if (side === "left" && geometry.overhang === "5 prime" && overhangLength > 0) {
         sequence = sequence.slice(overhangLength);
         leftTrim += overhangLength;
@@ -614,9 +807,12 @@ export function applyFragmentEndTreatment(product = {}, options = {}) {
         rightTrim += overhangLength;
       }
     }
-    ends[side] = setEndGeometry(end, "blunt", "", treatmentLabel(type));
+    ends[side] = setEndGeometry(end, side, "blunt", "", treatmentLabel(type));
+    result.after = cloneEnd(ends[side]);
+    endResults[side] = result;
   }
 
+  const afterDuplex = fragmentDuplexMetrics({ ...product, sequence, ends });
   const operation = {
     id: treatmentOperationId(product, type, target),
     operation: "end-treatment",
@@ -628,7 +824,11 @@ export function applyFragmentEndTreatment(product = {}, options = {}) {
     beforeSequence: originalSequence,
     afterSequence: sequence,
     before: originalEnds,
-    after: ends
+    after: ends,
+    beforeDuplex,
+    afterDuplex,
+    molecularSpanChange: afterDuplex.duplexSpan - beforeDuplex.duplexSpan,
+    endResults
   };
   const treatedProduct = {
     ...product,
@@ -636,6 +836,7 @@ export function applyFragmentEndTreatment(product = {}, options = {}) {
     directSequence: sequence,
     reverseComplement: reverseComplement(sequence),
     length: sequence.length,
+    ...afterDuplex,
     ends,
     treatments: [...(product.treatments || []), operation],
     warnings: []
@@ -797,7 +998,10 @@ export function reverseComplementExtractedProduct(product = {}) {
     endpointA: product.endpointB,
     endpointB: product.endpointA,
     ends: product.ends
-      ? { left: product.ends.right, right: product.ends.left }
+      ? {
+          left: reverseComplementFragmentEnd(product.ends.right, "right", "left"),
+          right: reverseComplementFragmentEnd(product.ends.left, "left", "right")
+        }
       : product.ends,
     parts: Array.isArray(product.parts) ? [...product.parts].reverse() : product.parts,
     segments: Array.isArray(product.segments)
@@ -845,8 +1049,8 @@ export function extractCoordinateRange(record, start, end, options = {}) {
     endpointA: options.endpointA,
     endpointB: options.endpointB,
     ends: {
-      left: makeBluntEnd("Start coordinate", productStart),
-      right: makeBluntEnd("End coordinate", productEnd)
+      left: makeBluntEnd("Start coordinate", productStart, "coordinate", "left"),
+      right: makeBluntEnd("End coordinate", productEnd, "coordinate", "right")
     },
     warnings: []
   };
@@ -883,8 +1087,8 @@ export function extractRestrictionFragment(record, firstSite, secondSite, option
     endpointA: firstSite,
     endpointB: secondSite,
     ends: {
-      left: makeRestrictionEnd(startSite),
-      right: makeRestrictionEnd(endSite)
+      left: makeRestrictionEnd(startSite, "left"),
+      right: makeRestrictionEnd(endSite, "right")
     },
     warnings: first === second ? ["The selected restriction cuts are at the same boundary."] : []
   };
@@ -931,8 +1135,8 @@ export function extractPrimerProduct(record, firstSite, secondSite, options = {}
     endpointA: forward,
     endpointB: reverse,
     ends: {
-      left: makePrimerEnd(forward),
-      right: makePrimerEnd(reverse)
+      left: makePrimerEnd(forward, "left"),
+      right: makePrimerEnd(reverse, "right")
     },
     segments: [
       { type: "forward-primer", sequence: forwardPrimer },

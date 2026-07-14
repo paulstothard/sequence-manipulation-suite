@@ -74,6 +74,8 @@ export function makeRestrictionViewerTracks(record, options = {}) {
         recognition: hit.recognition,
         strand: hit.strand,
         enzymeId: hit.enzyme_id,
+        cleavageType: hit.cleavage_type,
+        cutNotation: hit.cut_notation,
         complementCutAfter: hit.complement_cut_after,
         overhang: hit.overhang,
         overhangSequence: hit.overhang_sequence

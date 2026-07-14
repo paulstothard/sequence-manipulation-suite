@@ -200,6 +200,14 @@ const elements = {
   feedbackLink: document.querySelector("#feedbackLink"),
   workspaceBody: document.querySelector("#workspaceBody"),
   feedbackTemplates: document.querySelector("#feedbackTemplates"),
+  feedbackDialog: document.querySelector("#feedbackDialog"),
+  feedbackDialogTitle: document.querySelector("#feedbackDialogTitle"),
+  feedbackRecipient: document.querySelector("#feedbackRecipient"),
+  feedbackSubject: document.querySelector("#feedbackSubject"),
+  feedbackMessage: document.querySelector("#feedbackMessage"),
+  feedbackDialogStatus: document.querySelector("#feedbackDialogStatus"),
+  feedbackCopy: document.querySelector("#feedbackCopy"),
+  feedbackOpenEmail: document.querySelector("#feedbackOpenEmail"),
   workflowRecipeTab: document.querySelector("#workflowRecipeTab"),
   workflowSavedTab: document.querySelector("#workflowSavedTab"),
   workflowRecipePanel: document.querySelector("#workflowRecipePanel"),
@@ -586,9 +594,7 @@ Example sequence or use case:
 
 What happened?
 
-What did you expect?
-
-Input, options, and browser:
+Expected result:
 `
   },
   {
@@ -970,7 +976,6 @@ function renderSelectedTool() {
   const markdownWorkspaceState = isMarkdownNotebook ? readMarkdownWorkspaceState() : null;
   elements.toolCategory.textContent = metadata.category;
   elements.toolTitle.textContent = metadata.name;
-  elements.toolFeedbackLink.href = makeToolFeedbackLink(metadata);
   elements.toolFeedbackLink.setAttribute("aria-label", `Send feedback about ${metadata.name}`);
   elements.toolSummary.textContent = metadata.summary;
   elements.runTool.textContent = getRunButtonLabel(state.selectedTool);
@@ -4522,36 +4527,66 @@ function restoreCurrentToolDefaults() {
   clearToolOutput();
 }
 
-function makeMailtoLink(template) {
+function makeFeedbackDraft(template) {
   const body = `${template.body}
 
 SMS3 version: ${elements.appVersion.textContent || "unknown"}
 Current page: ${window.location.href}
 Public site: ${siteConfig.publicUrl}
 `;
-  return `mailto:${siteConfig.feedbackEmail}?subject=${encodeURIComponent(template.subject)}&body=${encodeURIComponent(body)}`;
+  return { subject: template.subject, body };
 }
 
-function makeToolFeedbackLink(metadata) {
+function makeMailtoLink({ subject, body }) {
+  return `mailto:${siteConfig.feedbackEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
+function makeToolFeedbackDraft(metadata) {
   const subject = `SMS3 tool feedback: ${metadata.name}`;
   const body = `Tool: ${metadata.name}
-Tool id: ${metadata.id}
 
-What would you like to share?
+Feedback or issue:
 
-Feedback, request, or issue:
+Steps to reproduce (optional):
 
-Relevant options, steps, browser, or operating system:
-
-For incorrect output or a bug, what did you expect?
-
-Do not include private sequence, table, or output content unless you intentionally choose to add it.
+Expected result (optional):
 
 SMS3 version: ${elements.appVersion.textContent || "unknown"}
 Current page: ${window.location.href}
 Public site: ${siteConfig.publicUrl}
 `;
-  return `mailto:${siteConfig.feedbackEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  return { subject, body };
+}
+
+function updateFeedbackMailtoLink() {
+  elements.feedbackOpenEmail.href = makeMailtoLink({
+    subject: elements.feedbackSubject.value,
+    body: elements.feedbackMessage.value
+  });
+}
+
+function openFeedbackDialog(draft, title = "Send feedback") {
+  elements.feedbackDialogTitle.textContent = title;
+  elements.feedbackRecipient.value = siteConfig.feedbackEmail;
+  elements.feedbackSubject.value = draft.subject;
+  elements.feedbackMessage.value = draft.body;
+  elements.feedbackDialogStatus.textContent = "";
+  updateFeedbackMailtoLink();
+  if (!elements.feedbackDialog.open) {
+    elements.feedbackDialog.showModal();
+  }
+}
+
+async function copyPreparedFeedback() {
+  const prepared = `To: ${siteConfig.feedbackEmail}\nSubject: ${elements.feedbackSubject.value}\n\n${elements.feedbackMessage.value}`;
+  try {
+    await navigator.clipboard.writeText(prepared);
+    elements.feedbackDialogStatus.textContent = `Copied. Send the message to ${siteConfig.feedbackEmail}.`;
+  } catch {
+    elements.feedbackMessage.focus();
+    elements.feedbackMessage.select();
+    elements.feedbackDialogStatus.textContent = `Copy the selected message and send it to ${siteConfig.feedbackEmail}.`;
+  }
 }
 
 function renderFeedbackTemplates() {
@@ -4559,14 +4594,17 @@ function renderFeedbackTemplates() {
   const note = document.createElement("p");
   note.className = "summary feedback-config-note";
   note.textContent =
-    `Feedback mail opens to ${siteConfig.feedbackEmail}. Planned public URL: ${siteConfig.publicUrl}. ` +
+    `Feedback is addressed to ${siteConfig.feedbackEmail}. You can open an email app or copy the prepared message. Planned public URL: ${siteConfig.publicUrl}. ` +
     `${siteConfig.analytics.provider} analytics is ${siteConfig.analytics.status}; ${siteConfig.analytics.note}`;
   elements.feedbackTemplates.append(note);
 
   for (const template of feedbackTemplates) {
-    const link = document.createElement("a");
+    const link = document.createElement("button");
+    link.type = "button";
     link.className = "feedback-template";
-    link.href = makeMailtoLink(template);
+    link.addEventListener("click", () => {
+      openFeedbackDialog(makeFeedbackDraft(template), template.title);
+    });
 
     const title = document.createElement("strong");
     title.textContent = template.title;
@@ -5487,6 +5525,16 @@ elements.workspaceLink.addEventListener("click", () => {
 elements.feedbackLink.addEventListener("click", () => {
   selectFeedback();
 });
+elements.toolFeedbackLink.addEventListener("click", () => {
+  if (!state.selectedTool) {
+    return;
+  }
+  const { metadata } = state.selectedTool;
+  openFeedbackDialog(makeToolFeedbackDraft(metadata), `Feedback about ${metadata.name}`);
+});
+elements.feedbackSubject.addEventListener("input", updateFeedbackMailtoLink);
+elements.feedbackMessage.addEventListener("input", updateFeedbackMailtoLink);
+elements.feedbackCopy.addEventListener("click", copyPreparedFeedback);
 elements.workflowRecipeTab.addEventListener("click", () => {
   setWorkflowSourceMode("recipe");
   requestAnimationFrame(focusWorkflowRecipePicker);

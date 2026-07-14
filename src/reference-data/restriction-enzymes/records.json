@@ -180,6 +180,17 @@
     "source": "NEB recognition-specificity list; REBASE database literature"
   },
   {
+    "id": "bbsi",
+    "name": "BbsI",
+    "recognition": "GAAGAC",
+    "cutTop": 8,
+    "cutBottom": 12,
+    "overhang": "5 prime",
+    "cleavageType": "Type IIS",
+    "cutNotation": "GAAGAC(2/6)",
+    "source": "NEB recognition-specificity list; REBASE database literature"
+  },
+  {
     "id": "bcli",
     "name": "BclI",
     "recognition": "TGATCA",
@@ -243,6 +254,17 @@
     "source": "NEB recognition-specificity list; REBASE database literature"
   },
   {
+    "id": "bsai",
+    "name": "BsaI",
+    "recognition": "GGTCTC",
+    "cutTop": 7,
+    "cutBottom": 11,
+    "overhang": "5 prime",
+    "cleavageType": "Type IIS",
+    "cutNotation": "GGTCTC(1/5)",
+    "source": "NEB recognition-specificity list; REBASE database literature"
+  },
+  {
     "id": "bsiei",
     "name": "BsiEI",
     "recognition": "CGRYCG",
@@ -258,6 +280,17 @@
     "cutTop": 1,
     "cutBottom": 5,
     "overhang": "5 prime",
+    "source": "NEB recognition-specificity list; REBASE database literature"
+  },
+  {
+    "id": "bsmbi",
+    "name": "BsmBI",
+    "recognition": "CGTCTC",
+    "cutTop": 7,
+    "cutBottom": 11,
+    "overhang": "5 prime",
+    "cleavageType": "Type IIS",
+    "cutNotation": "CGTCTC(1/5)",
     "source": "NEB recognition-specificity list; REBASE database literature"
   },
   {
@@ -429,6 +462,17 @@
     "cutTop": 3,
     "cutBottom": 3,
     "overhang": "blunt",
+    "source": "NEB recognition-specificity list; REBASE database literature"
+  },
+  {
+    "id": "esp3i",
+    "name": "Esp3I",
+    "recognition": "CGTCTC",
+    "cutTop": 7,
+    "cutBottom": 11,
+    "overhang": "5 prime",
+    "cleavageType": "Type IIS",
+    "cutNotation": "CGTCTC(1/5)",
     "source": "NEB recognition-specificity list; REBASE database literature"
   },
   {
@@ -807,6 +851,17 @@
     "cutTop": 1,
     "cutBottom": 5,
     "overhang": "5 prime",
+    "source": "NEB recognition-specificity list; REBASE database literature"
+  },
+  {
+    "id": "sapi",
+    "name": "SapI",
+    "recognition": "GCTCTTC",
+    "cutTop": 8,
+    "cutBottom": 11,
+    "overhang": "5 prime",
+    "cleavageType": "Type IIS",
+    "cutNotation": "GCTCTTC(1/4)",
     "source": "NEB recognition-specificity list; REBASE database literature"
   },
   {

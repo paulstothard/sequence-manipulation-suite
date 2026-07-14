@@ -137,6 +137,12 @@ export function findRestrictionSites(sequence, enzymes, context = {}) {
         const sequenceContext = makeSequenceContext(sequence, match.start, match.end);
         const topCutAfter = match.start + orientation.topOffset - 1;
         const bottomCutAfter = match.start + orientation.bottomOffset - 1;
+        if (
+          topCutAfter < 0 || topCutAfter > sequence.length ||
+          bottomCutAfter < 0 || bottomCutAfter > sequence.length
+        ) {
+          continue;
+        }
         const overhangSequence = String(sequence)
           .slice(Math.min(topCutAfter, bottomCutAfter), Math.max(topCutAfter, bottomCutAfter))
           .toUpperCase();
@@ -144,6 +150,8 @@ export function findRestrictionSites(sequence, enzymes, context = {}) {
           enzyme: enzyme.name,
           enzyme_id: enzyme.id,
           recognition: enzyme.recognition,
+          cleavage_type: enzyme.cleavageType,
+          cut_notation: enzyme.cutNotation,
           strand: orientation.strand,
           site_start: match.start,
           site_end: match.end,

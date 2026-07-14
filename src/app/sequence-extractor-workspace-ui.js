@@ -6,9 +6,14 @@ import {
   extractCoordinateRange,
   extractPrimerProduct,
   extractRestrictionFragment,
-  joinExtractedProducts,
   reverseComplementExtractedProduct
 } from "../core/sequence-extractor.js";
+import {
+  FRAGMENT_ASSEMBLY_METHODS,
+  applyFragmentAssembly,
+  previewFragmentAssembly
+} from "../core/fragment-assembly.js";
+import { fragmentDuplexMetrics, fragmentEndGeometry } from "../core/fragment-ends.js";
 import { complementDnaRnaSequence } from "../core/sequence.js";
 import { formatFastaRecord } from "../core/fasta.js";
 import { downloadText } from "./file-download.js";
@@ -154,7 +159,11 @@ export function makeRestrictionSiteTarget(site, siteCount = 1) {
     label,
     groupedSites: [site],
     siteCounts: [{ name: label, count }],
-    siteFrequency: count === 1 ? "Single cutter (1 site)" : `Repeated cutter (${count} sites)`,
+    siteFrequency: count === 1
+      ? "Single cutter (1 site)"
+      : count === 2
+        ? "Cuts twice (2 sites)"
+        : `Repeated cutter (${count} sites)`,
     parts: Number.isFinite(Number(site.siteStart)) && Number.isFinite(Number(site.siteEnd))
       ? [{ start: Number(site.siteStart), end: Number(site.siteEnd) }]
       : [],
@@ -227,26 +236,62 @@ export function nonOverlappingCoordinateTickIndexes(measurements, minimumGap = 6
   return visible;
 }
 
-export function translationCodonPlacement(codonPositions, blockStart, blockEnd) {
+export function translationCodonPlacements(codonPositions, blockStart, blockEnd) {
   const positions = codonPositions.map(Number).filter(Number.isFinite);
-  if (positions.length === 0) return null;
+  if (positions.length === 0) return [];
   const directStart = Math.min(...positions);
   const directEnd = Math.max(...positions);
   const centerPosition = positions.length >= 3
     ? positions[1]
     : positions[Math.floor((positions.length - 1) / 2)];
-  if (centerPosition < blockStart || centerPosition > blockEnd) return null;
-  const contiguousInBlock = positions.length === 3 &&
-    directEnd - directStart === 2 &&
-    directStart >= blockStart &&
-    directEnd <= blockEnd;
-  return {
+  const visiblePositions = Array.from(new Set(positions
+    .filter((position) => position >= blockStart && position <= blockEnd)))
+    .sort((left, right) => left - right);
+  if (visiblePositions.length === 0) return [];
+  const visibleRanges = [];
+  for (const position of visiblePositions) {
+    const previous = visibleRanges.at(-1);
+    if (previous && previous.visibleEnd + 1 === position) previous.visibleEnd = position;
+    else visibleRanges.push({ visibleStart: position, visibleEnd: position });
+  }
+  const crossesBlock = positions.some((position) => position < blockStart || position > blockEnd);
+  return visibleRanges.map(({ visibleStart, visibleEnd }) => ({
     centerPosition,
     directStart,
     directEnd,
-    gridStart: (contiguousInBlock ? directStart : centerPosition) - blockStart + 1,
-    span: contiguousInBlock ? 3 : 1,
-    crossesBlock: directStart < blockStart || directEnd > blockEnd
+    visibleStart,
+    visibleEnd,
+    gridStart: visibleStart - blockStart + 1,
+    span: visibleEnd - visibleStart + 1,
+    containsCenter: centerPosition >= visibleStart && centerPosition <= visibleEnd,
+    crossesBlock
+  }));
+}
+
+export function translationCodonPlacement(codonPositions, blockStart, blockEnd) {
+  const placements = translationCodonPlacements(codonPositions, blockStart, blockEnd);
+  return placements.find((placement) => placement.containsCenter) ?? placements[0] ?? null;
+}
+
+export function intervalPlacementForBlock(intervalStart, intervalEnd, blockStart, blockEnd) {
+  const sourceStart = Number(intervalStart);
+  const sourceEnd = Number(intervalEnd);
+  const visibleBlockStart = Number(blockStart);
+  const visibleBlockEnd = Number(blockEnd);
+  if (![sourceStart, sourceEnd, visibleBlockStart, visibleBlockEnd].every(Number.isFinite) ||
+      sourceEnd < sourceStart || visibleBlockEnd < visibleBlockStart ||
+      sourceEnd < visibleBlockStart || sourceStart > visibleBlockEnd) {
+    return null;
+  }
+  const visibleStart = Math.max(sourceStart, visibleBlockStart);
+  const visibleEnd = Math.min(sourceEnd, visibleBlockEnd);
+  return {
+    clippedLeft: sourceStart < visibleBlockStart,
+    clippedRight: sourceEnd > visibleBlockEnd,
+    gridStart: visibleStart - visibleBlockStart + 1,
+    span: visibleEnd - visibleStart + 1,
+    visibleEnd,
+    visibleStart
   };
 }
 
@@ -279,14 +324,15 @@ function applyDirectionalClass(element, target) {
   }
 }
 
-function describeFragmentEnd(end) {
+function describeFragmentEnd(end, side) {
   if (!end) return "Unknown";
   if (Array.isArray(end.alternatives) && end.alternatives.length > 0) {
-    return end.alternatives.map((alternative) => describeFragmentEnd(alternative)).join("; ");
+    return end.alternatives.map((alternative) => describeFragmentEnd(alternative, side)).join("; ");
   }
-  if (end.overhang === "blunt") return `Blunt · ${end.label || "end"}`;
-  const overhang = end.overhang === "5 prime" ? "5′ overhang" : end.overhang === "3 prime" ? "3′ overhang" : end.overhang;
-  const sequence = end.overhangSequence ? ` ${end.overhangSequence}` : "";
+  const geometry = fragmentEndGeometry(end, side);
+  if (geometry.overhang === "blunt") return `Blunt · ${end.label || "end"}`;
+  const overhang = geometry.overhang === "5 prime" ? "5′ overhang" : geometry.overhang === "3 prime" ? "3′ overhang" : geometry.overhang;
+  const sequence = geometry.sequence ? ` ${geometry.sequence}` : "";
   return `${overhang}${sequence} · ${end.label || "end"}`;
 }
 
@@ -359,7 +405,61 @@ function makeCompatibilityResults(compatibility) {
   return results;
 }
 
-function summarizeFragmentEndVisual(end) {
+function makeAssemblyPreviewResults(preview) {
+  const methodId = preview?.method?.id;
+  const junction = preview?.junctions?.[0];
+  if (!methodId || methodId === "direct-ligation") {
+    return makeCompatibilityResults(junction?.compatibility || {});
+  }
+  const results = document.createElement("div");
+  results.className = "sequence-extractor-stack-compatibility";
+  const addResult = (label, value, state) => {
+    const row = document.createElement("span");
+    row.className = `sequence-extractor-stack-compatibility-result is-${state}`;
+    const heading = document.createElement("strong");
+    heading.textContent = label;
+    row.append(heading, document.createTextNode(value));
+    results.append(row);
+  };
+  if (["gibson", "lic", "slic", "user-assembly"].includes(methodId)) {
+    addResult(
+      "Terminal overlap",
+      junction?.overlap ? `${junction.overlap.length.toLocaleString()} bp` : "Not found",
+      junction?.overlap ? "compatible" : "incompatible"
+    );
+    addResult(
+      "Predicted product",
+      methodId === "gibson" ? "Filled and sealed" : "Idealized annealed intermediate; cellular repair expected",
+      preview.ready ? (methodId === "gibson" ? "compatible" : "conditional") : "incompatible"
+    );
+    return results;
+  }
+  if (methodId === "site-specific-recombination") {
+    addResult(
+      "Recombination sites",
+      junction?.recombination?.compatible ? "Compatible" : "Incompatible",
+      junction?.recombination?.compatible ? "compatible" : "incompatible"
+    );
+    addResult(
+      "Crossover sequence",
+      junction?.recombination?.resultingJunctionSequence ? "Defined" : "Missing",
+      junction?.recombination?.resultingJunctionSequence ? "compatible" : "conditional"
+    );
+    return results;
+  }
+  addResult(
+    "Method requirements",
+    junction?.methodCompatible ? "Satisfied" : "Not satisfied",
+    junction?.methodCompatible ? "compatible" : "incompatible"
+  );
+  const chemistryOutcome = methodId === "topo-ta"
+    ? { label: junction?.ready ? "TOPO-activated" : "Activation missing", state: junction?.ready ? "compatible" : "conditional" }
+    : ligationChemistryOutcome(junction?.compatibility);
+  addResult("Junction chemistry", chemistryOutcome.label, chemistryOutcome.state);
+  return results;
+}
+
+function summarizeFragmentEndVisual(end, side) {
   const alternatives = Array.isArray(end?.alternatives) && end.alternatives.length > 0
     ? end.alternatives
     : end
@@ -370,9 +470,8 @@ function summarizeFragmentEndVisual(end) {
   }
   const geometries = new Map();
   for (const alternative of alternatives) {
-    const overhang = String(alternative.overhang || "unknown");
-    const sequence = String(alternative.overhangSequence || "").toUpperCase();
-    geometries.set(`${overhang}:${sequence}`, { overhang, sequence });
+    const geometry = fragmentEndGeometry(alternative, side);
+    geometries.set(`${geometry.overhang}:${geometry.sequence}`, geometry);
   }
   const labels = Array.from(new Set(alternatives.map((alternative) => alternative.label).filter(Boolean)));
   const kinds = Array.from(new Set(alternatives.map((alternative) => alternative.kind).filter(Boolean)));
@@ -406,13 +505,15 @@ function fragmentSequenceCell(text, kind = "base", overhang = false, position = 
   return { kind, overhang, position, text };
 }
 
+const fragmentPreviewProducts = new WeakMap();
+
 function complementPreviewSequence(sequence) {
   return Array.from(complementDnaRnaSequence(sequence, { preserveCase: false }));
 }
 
 function fragmentPreviewExtensionColumns(product) {
-  const left = summarizeFragmentEndVisual(product?.ends?.left);
-  const right = summarizeFragmentEndVisual(product?.ends?.right);
+  const left = summarizeFragmentEndVisual(product?.ends?.left, "left");
+  const right = summarizeFragmentEndVisual(product?.ends?.right, "right");
   return (left.overhang === "3 prime" ? Array.from(left.sequence).length : 0) +
     (right.overhang === "5 prime" ? Array.from(right.sequence).length : 0);
 }
@@ -430,8 +531,8 @@ export function fragmentPreviewFlankLengthForColumns(product, maxColumns, maximu
 export function makeFragmentSequencePreview(product, flankLength = 6) {
   const sequence = String(product?.sequence || "").toUpperCase();
   const safeFlankLength = Math.max(1, Math.floor(Number(flankLength) || 6));
-  const left = summarizeFragmentEndVisual(product?.ends?.left);
-  const right = summarizeFragmentEndVisual(product?.ends?.right);
+  const left = summarizeFragmentEndVisual(product?.ends?.left, "left");
+  const right = summarizeFragmentEndVisual(product?.ends?.right, "right");
   const sequenceCharacters = Array.from(sequence);
   const visibleCharacters = sequenceCharacters.length > safeFlankLength * 2
     ? [
@@ -460,13 +561,13 @@ export function makeFragmentSequencePreview(product, flankLength = 6) {
       bottom[index] = fragmentSequenceCell("", "gap");
     }
   } else if (left.overhang === "3 prime" && leftOverhangLength > 0) {
-    const extension = complementPreviewSequence(left.sequence);
+    const extension = Array.from(left.sequence).reverse();
     top.unshift(...extension.map(() => fragmentSequenceCell("", "gap")));
     bottom.unshift(...extension.map((base) => fragmentSequenceCell(base, "base", true)));
   }
 
   if (right.overhang === "5 prime" && rightOverhangLength > 0) {
-    const extension = complementPreviewSequence(right.sequence);
+    const extension = Array.from(right.sequence).reverse();
     top.push(...extension.map(() => fragmentSequenceCell("", "gap")));
     bottom.push(...extension.map((base) => fragmentSequenceCell(base, "base", true)));
   } else if (right.overhang === "3 prime") {
@@ -487,7 +588,7 @@ export function makeFragmentSequencePreview(product, flankLength = 6) {
   };
 }
 
-function fragmentEndCaption(summary, side) {
+function fragmentEndCaption(summary, side, options = {}) {
   const geometry = summary.overhang === "blunt"
     ? "blunt"
     : summary.overhang === "5 prime"
@@ -498,7 +599,11 @@ function fragmentEndCaption(summary, side) {
           ? `${summary.variantCount} possible ends`
           : "unknown end";
   const source = summary.labels.join(" / ");
-  return `${side === "left" ? "L" : "R"} · ${geometry}${source ? ` · ${source}` : ""} · ${compactFragmentEndChemistry(summary)}`;
+  const chemistry = compactFragmentEndChemistry(summary);
+  const chemistrySuffix = options.omitUnknownChemistry && chemistry.includes("?")
+    ? ""
+    : ` · ${chemistry}`;
+  return `${side === "left" ? "L" : "R"} · ${geometry}${source ? ` · ${source}` : ""}${chemistrySuffix}`;
 }
 
 function makeFragmentSequenceRow(cells, startLabel, endLabel, rowName) {
@@ -510,9 +615,24 @@ function makeFragmentSequenceRow(cells, startLabel, endLabel, rowName) {
   const sequence = document.createElement("span");
   sequence.className = "sequence-extractor-fragment-sequence";
   sequence.style.setProperty("--sequence-extractor-fragment-columns", String(cells.length));
-  for (const cell of cells) {
+  const occupiedIndexes = cells
+    .map((cell, index) => cell.kind === "gap" ? -1 : index)
+    .filter((index) => index >= 0);
+  const firstOccupied = occupiedIndexes[0] ?? -1;
+  const lastOccupied = occupiedIndexes.at(-1) ?? -1;
+  for (const [index, cell] of cells.entries()) {
     const base = document.createElement("span");
     base.className = `sequence-extractor-fragment-base is-${cell.kind}${cell.overhang ? " is-overhang" : ""}`;
+    if (index === firstOccupied) {
+      base.classList.add("is-left-terminus");
+      base.dataset.terminus = startLabel;
+    }
+    if (index === lastOccupied) {
+      base.classList.add("is-right-terminus");
+      base.dataset.terminus = endLabel;
+    }
+    if (cell.overhang && !cells[index - 1]?.overhang) base.classList.add("is-overhang-start");
+    if (cell.overhang && !cells[index + 1]?.overhang) base.classList.add("is-overhang-end");
     base.textContent = cell.text;
     base.setAttribute("aria-hidden", cell.kind === "gap" ? "true" : "false");
     sequence.append(base);
@@ -558,25 +678,27 @@ function fitFragmentSequenceRows(visual, product) {
   renderFragmentSequenceRows(strands, product, flankLength);
 }
 
-function makeFragmentEndsVisual(product) {
-  const preview = makeFragmentSequencePreview(product);
+export function makeFragmentEndsVisual(product, options = {}) {
+  const flankLength = Math.max(1, Math.floor(Number(options.flankLength) || 6));
+  const preview = makeFragmentSequencePreview(product, flankLength);
   const visual = document.createElement("div");
   visual.className = "sequence-extractor-stack-end-visual";
-  visual.setAttribute("aria-label", `Fragment ends. Left: ${describeFragmentEnd(product?.ends?.left)}. Right: ${describeFragmentEnd(product?.ends?.right)}.`);
+  fragmentPreviewProducts.set(visual, product);
+  visual.setAttribute("aria-label", `Fragment ends. Left: ${describeFragmentEnd(product?.ends?.left, "left")}. Right: ${describeFragmentEnd(product?.ends?.right, "right")}.`);
   const captions = document.createElement("div");
   captions.className = "sequence-extractor-fragment-end-captions";
   const left = document.createElement("span");
   left.className = "is-left";
-  left.textContent = fragmentEndCaption(preview.left, "left");
-  left.title = describeFragmentEnd(product?.ends?.left);
+  left.textContent = fragmentEndCaption(preview.left, "left", options);
+  left.title = describeFragmentEnd(product?.ends?.left, "left");
   const right = document.createElement("span");
   right.className = "is-right";
-  right.textContent = fragmentEndCaption(preview.right, "right");
-  right.title = describeFragmentEnd(product?.ends?.right);
+  right.textContent = fragmentEndCaption(preview.right, "right", options);
+  right.title = describeFragmentEnd(product?.ends?.right, "right");
   captions.append(left, right);
   const strands = document.createElement("div");
   strands.className = "sequence-extractor-fragment-strands";
-  renderFragmentSequenceRows(strands, product, 6);
+  renderFragmentSequenceRows(strands, product, flankLength);
   visual.append(captions, strands);
   return visual;
 }
@@ -585,7 +707,8 @@ function makeExpandedFragmentDuplex(product) {
   const preview = makeFragmentSequencePreview(product);
   const panel = document.createElement("section");
   panel.className = "sequence-extractor-stack-duplex";
-  panel.setAttribute("aria-label", `Aligned fragment duplex. Left: ${describeFragmentEnd(product?.ends?.left)}. Right: ${describeFragmentEnd(product?.ends?.right)}.`);
+  fragmentPreviewProducts.set(panel, product);
+  panel.setAttribute("aria-label", `Aligned fragment duplex. Left: ${describeFragmentEnd(product?.ends?.left, "left")}. Right: ${describeFragmentEnd(product?.ends?.right, "right")}.`);
   const heading = document.createElement("h5");
   heading.textContent = "Aligned duplex";
   const captions = document.createElement("div");
@@ -593,11 +716,11 @@ function makeExpandedFragmentDuplex(product) {
   const left = document.createElement("span");
   left.className = "is-left";
   left.textContent = fragmentEndCaption(preview.left, "left");
-  left.title = describeFragmentEnd(product?.ends?.left);
+  left.title = describeFragmentEnd(product?.ends?.left, "left");
   const right = document.createElement("span");
   right.className = "is-right";
   right.textContent = fragmentEndCaption(preview.right, "right");
-  right.title = describeFragmentEnd(product?.ends?.right);
+  right.title = describeFragmentEnd(product?.ends?.right, "right");
   captions.append(left, right);
   const strands = document.createElement("div");
   strands.className = "sequence-extractor-fragment-strands";
@@ -645,7 +768,16 @@ function makeAssemblyProvenanceDetails(product) {
     `${sourceCount.toLocaleString()} ${sourceCount === 1 ? "fragment" : "fragments"} · ${junctionCount.toLocaleString()} ${junctionCount === 1 ? "junction" : "junctions"}`
   );
   const method = document.createElement("p");
-  method.textContent = `Method: ${provenance.method || "assembly"}`;
+  method.textContent = `Method: ${provenance.assembly?.methodLabel || provenance.method || "assembly"}`;
+  const methodNote = provenance.assembly?.digestionModel
+    ? document.createElement("p")
+    : null;
+  if (methodNote) {
+    methodNote.className = "sequence-extractor-assembly-method-note";
+    methodNote.textContent = provenance.assembly.recognitionSitesRemoved
+      ? `Recognition sites removed. ${provenance.assembly.digestionModel}`
+      : provenance.assembly.digestionModel;
+  }
   const sourceHeading = document.createElement("h5");
   sourceHeading.textContent = "Source fragments";
   const sourceList = document.createElement("ul");
@@ -659,10 +791,17 @@ function makeAssemblyProvenanceDetails(product) {
   const junctionList = document.createElement("ul");
   for (const junction of provenance.junctions ?? []) {
     const item = document.createElement("li");
-    item.textContent = `${junction.leftName} → ${junction.rightName} · between ${Number(junction.position).toLocaleString()} and ${(Number(junction.position) + 1).toLocaleString()} · ${junction.label}${junction.chemistryLabel ? ` · ${junction.chemistryLabel}` : ""}`;
+    const location = junction.overlapStart != null && junction.overlapEnd != null
+      ? `overlap ${Number(junction.overlapStart).toLocaleString()}–${Number(junction.overlapEnd).toLocaleString()}`
+      : junction.recombinationStart != null && junction.recombinationEnd != null
+        ? `recombined site ${Number(junction.recombinationStart).toLocaleString()}–${Number(junction.recombinationEnd).toLocaleString()}`
+        : `between ${Number(junction.position).toLocaleString()} and ${(Number(junction.position) + 1).toLocaleString()}`;
+    item.textContent = `${junction.leftName} → ${junction.rightName} · ${location} · ${junction.label}${junction.chemistryLabel ? ` · ${junction.chemistryLabel}` : ""}`;
     junctionList.append(item);
   }
-  details.append(summary, method, sourceHeading, sourceList, junctionHeading, junctionList);
+  details.append(summary, method);
+  if (methodNote) details.append(methodNote);
+  details.append(sourceHeading, sourceList, junctionHeading, junctionList);
   if (provenance.operations?.length) {
     const operationHeading = document.createElement("h5");
     operationHeading.textContent = "Operations";
@@ -671,10 +810,16 @@ function makeAssemblyProvenanceDetails(product) {
     for (const operation of provenance.operations) {
       const item = document.createElement("li");
       if (operation.operation === "end-treatment") {
-        const target = operation.target === "both" ? "both ends" : `${operation.target} end`;
+        const target = operation.target === "both" ? "whole fragment" : `${operation.target} end`;
         item.textContent = `${operation.label} · ${target} · ${operation.enzyme || operation.method || "method not recorded"}${operation.method ? ` · ${operation.method}` : ""}`;
       } else if (operation.operation === "join") {
         item.textContent = `Join ${operation.leftName} → ${operation.rightName} · ${operation.compatibility}`;
+      } else if (operation.operation === "overlap-assembly") {
+        item.textContent = `${operation.method === "gibson" ? "Gibson Assembly / NEBuilder HiFi" : operation.method === "lic" ? "LIC" : operation.method === "slic" ? "SLIC" : "USER"} · ${operation.leftName} → ${operation.rightName} · ${Number(operation.overlapLength).toLocaleString()} bp overlap · ${(operation.steps || []).join(" → ")}`;
+      } else if (operation.operation === "topo-ta-assembly") {
+        item.textContent = `TOPO TA · ${operation.leftName} → ${operation.rightName} · ${operation.mechanism}`;
+      } else if (operation.operation === "site-specific-recombination") {
+        item.textContent = `${operation.method} · ${operation.leftType} × ${operation.rightType} → ${operation.resultingType}`;
       } else {
         item.textContent = operation.label || operation.operation || "Operation";
       }
@@ -688,11 +833,12 @@ function makeAssemblyProvenanceDetails(product) {
 function makeTreatmentDuplexSnapshot(label, product) {
   const snapshot = document.createElement("section");
   snapshot.className = "sequence-extractor-stack-treatment-duplex";
+  fragmentPreviewProducts.set(snapshot, product);
   const heading = document.createElement("h6");
   heading.textContent = label;
   const captions = document.createElement("div");
   captions.className = "sequence-extractor-fragment-end-captions";
-  const preview = makeFragmentSequencePreview(product, 4);
+  const preview = makeFragmentSequencePreview(product);
   const left = document.createElement("span");
   left.className = "is-left";
   left.textContent = fragmentEndCaption(preview.left, "left");
@@ -702,7 +848,7 @@ function makeTreatmentDuplexSnapshot(label, product) {
   captions.append(left, right);
   const strands = document.createElement("div");
   strands.className = "sequence-extractor-fragment-strands";
-  renderFragmentSequenceRows(strands, product, 4);
+  renderFragmentSequenceRows(strands, product, 6);
   snapshot.append(heading, captions, strands);
   return snapshot;
 }
@@ -774,52 +920,54 @@ function makeFragmentTreatmentDetails(product, options = {}) {
 
   const controls = document.createElement("div");
   controls.className = "sequence-extractor-stack-treatment-controls";
-  const targetLabel = document.createElement("label");
-  targetLabel.textContent = "Apply to";
-  const targetSelect = document.createElement("select");
-  targetSelect.setAttribute("aria-label", "Fragment ends to treat");
-  for (const [value, label] of [["both", "Both ends"], ["left", "Left end"], ["right", "Right end"]]) {
-    const option = document.createElement("option");
-    option.value = value;
-    option.textContent = label;
-    targetSelect.append(option);
-  }
-  targetLabel.append(targetSelect);
   const treatmentLabel = document.createElement("label");
   treatmentLabel.textContent = "Treatment";
   const treatmentSelect = document.createElement("select");
   treatmentSelect.setAttribute("aria-label", "Fragment end treatment");
   treatmentLabel.append(treatmentSelect);
-  const method = document.createElement("p");
+  const method = document.createElement("div");
   method.className = "sequence-extractor-stack-treatment-method";
+  const methodLabel = document.createElement("strong");
+  methodLabel.textContent = "Method";
+  const methodValue = document.createElement("span");
+  method.append(methodLabel, methodValue);
   const apply = makeButton("Apply treatment", "sequence-extractor-stack-treatment-apply", () => {});
   const undo = makeButton("Undo last treatment", "sequence-extractor-stack-treatment-undo", () => onUndo?.());
   undo.disabled = !canUndo;
   const actions = document.createElement("div");
   actions.className = "sequence-extractor-stack-treatment-actions";
   actions.append(apply, undo);
-  controls.append(targetLabel, treatmentLabel, actions);
+  controls.append(treatmentLabel, actions);
+  const scopeNote = document.createElement("p");
+  scopeNote.className = "sequence-extractor-stack-treatment-scope";
+  scopeNote.textContent = "Applied to every compatible end on this fragment; incompatible or already-correct ends remain unchanged.";
 
   const preview = document.createElement("div");
   preview.className = "sequence-extractor-stack-treatment-preview";
+  const fitTreatmentDuplexPreviews = () => {
+    for (const snapshot of preview.querySelectorAll(".sequence-extractor-stack-treatment-duplex")) {
+      const snapshotProduct = fragmentPreviewProducts.get(snapshot);
+      if (snapshotProduct) fitFragmentSequenceRows(snapshot, snapshotProduct);
+    }
+  };
   let proposedProduct = null;
   let applicableTreatments = [];
   const updatePreview = () => {
     preview.replaceChildren();
     const selectedTreatment = applicableTreatments.find((treatment) => treatment.id === treatmentSelect.value);
-    method.textContent = selectedTreatment
-      ? `Method · ${selectedTreatment.enzyme} · ${selectedTreatment.method}`
-      : "No applicable treatment for the selected end.";
+    methodValue.textContent = selectedTreatment
+      ? `${selectedTreatment.enzyme} · ${selectedTreatment.method}`
+      : "No applicable treatment for this fragment.";
     if (!selectedTreatment) {
       proposedProduct = null;
       apply.disabled = true;
       preview.classList.add("is-error");
       const error = document.createElement("p");
-      error.textContent = "Choose an end with an applicable treatment.";
+      error.textContent = "Choose an applicable treatment.";
       preview.append(error);
       return;
     }
-    const result = applyFragmentEndTreatment(product, { type: treatmentSelect.value, target: targetSelect.value });
+    const result = applyFragmentEndTreatment(product, { type: treatmentSelect.value, target: "both" });
     proposedProduct = result.product;
     apply.disabled = !proposedProduct;
     preview.classList.toggle("is-error", !proposedProduct);
@@ -829,12 +977,63 @@ function makeFragmentTreatmentDetails(product, options = {}) {
       preview.append(error);
       return;
     }
-    const sides = targetSelect.value === "both" ? ["left", "right"] : [targetSelect.value];
-    const changes = sides.map((side) => `${side === "left" ? "L" : "R"}: ${describeFragmentEnd(proposedProduct.ends?.[side])} · ${compactFragmentEndChemistry(proposedProduct.ends?.[side])}`);
-    const lengthChange = Number(proposedProduct.length) - Number(product.length);
-    const resultSummary = document.createElement("p");
+    const sides = ["left", "right"];
+    const operation = proposedProduct.treatments?.at(-1);
+    const beforeMetrics = fragmentDuplexMetrics(product);
+    const afterMetrics = fragmentDuplexMetrics(proposedProduct);
+    const lengthChange = afterMetrics.strandLengths.top - beforeMetrics.strandLengths.top;
+    const spanChange = afterMetrics.duplexSpan - beforeMetrics.duplexSpan;
+    const resultSummary = document.createElement("div");
     resultSummary.className = "sequence-extractor-stack-treatment-result";
-    resultSummary.textContent = `Result · ${changes.join("; ")} · Length ${Number(product.length).toLocaleString()} → ${Number(proposedProduct.length).toLocaleString()} bp${lengthChange === 0 ? "" : ` (${lengthChange > 0 ? "+" : ""}${lengthChange.toLocaleString()} nt)`}`;
+    const resultHeading = document.createElement("h6");
+    resultHeading.textContent = "Predicted result";
+    resultSummary.append(resultHeading);
+    for (const side of sides) {
+      const row = document.createElement("div");
+      row.className = `sequence-extractor-stack-treatment-result-row is-${side}`;
+      const label = document.createElement("strong");
+      label.textContent = side === "left" ? "Left end" : "Right end";
+      const value = document.createElement("span");
+      value.className = "sequence-extractor-stack-treatment-result-value";
+      const geometry = document.createElement("span");
+      geometry.textContent = describeFragmentEnd(proposedProduct.ends?.[side], side);
+      const endChemistry = document.createElement("span");
+      endChemistry.className = "sequence-extractor-stack-treatment-result-chemistry";
+      endChemistry.textContent = compactFragmentEndChemistry(proposedProduct.ends?.[side]);
+      value.append(geometry, endChemistry);
+      const action = document.createElement("span");
+      action.className = "sequence-extractor-stack-treatment-result-action";
+      action.textContent = operation?.endResults?.[side]?.action || "No reported change.";
+      row.append(label, value);
+      row.append(action);
+      resultSummary.append(row);
+    }
+    const lengthRow = document.createElement("div");
+    lengthRow.className = "sequence-extractor-stack-treatment-result-row is-length";
+    const lengthLabel = document.createElement("strong");
+    lengthLabel.textContent = "DNA span";
+    const lengthValue = document.createElement("span");
+    lengthValue.className = "sequence-extractor-stack-treatment-result-value";
+    const lengthTransition = document.createElement("span");
+    lengthTransition.textContent = `Displayed 5′→3′ strand · ${beforeMetrics.strandLengths.top.toLocaleString()} → ${afterMetrics.strandLengths.top.toLocaleString()} nt`;
+    lengthValue.append(lengthTransition);
+    if (lengthChange !== 0) {
+      const lengthDelta = document.createElement("span");
+      lengthDelta.className = "sequence-extractor-stack-treatment-result-delta";
+      lengthDelta.textContent = `${lengthChange > 0 ? "+" : ""}${lengthChange.toLocaleString()} nt`;
+      lengthValue.append(lengthDelta);
+    }
+    const spanTransition = document.createElement("span");
+    spanTransition.textContent = `Aligned duplex span · ${beforeMetrics.duplexSpan.toLocaleString()} → ${afterMetrics.duplexSpan.toLocaleString()} nt`;
+    lengthValue.append(spanTransition);
+    if (spanChange !== 0) {
+      const spanDelta = document.createElement("span");
+      spanDelta.className = "sequence-extractor-stack-treatment-result-delta";
+      spanDelta.textContent = `${spanChange > 0 ? "+" : ""}${spanChange.toLocaleString()} columns`;
+      lengthValue.append(spanDelta);
+    }
+    lengthRow.append(lengthLabel, lengthValue);
+    resultSummary.append(lengthRow);
     const duplexes = document.createElement("div");
     duplexes.className = "sequence-extractor-stack-treatment-duplexes";
     duplexes.append(
@@ -846,10 +1045,11 @@ function makeFragmentTreatmentDetails(product, options = {}) {
       duplexes,
       makeTreatmentCompatibilityReport(product, proposedProduct, previousProduct, nextProduct)
     );
+    if (details.open) requestAnimationFrame(fitTreatmentDuplexPreviews);
   };
   const updateTreatments = () => {
     const previousValue = treatmentSelect.value;
-    applicableTreatments = applicableFragmentEndTreatments(product, targetSelect.value);
+    applicableTreatments = applicableFragmentEndTreatments(product, "both");
     treatmentSelect.replaceChildren();
     for (const treatment of applicableTreatments) {
       const option = document.createElement("option");
@@ -863,13 +1063,15 @@ function makeFragmentTreatmentDetails(product, options = {}) {
     updatePreview();
   };
   treatmentSelect.addEventListener("change", updatePreview);
-  targetSelect.addEventListener("change", updateTreatments);
+  details.addEventListener("toggle", () => {
+    if (details.open) requestAnimationFrame(fitTreatmentDuplexPreviews);
+  });
   apply.addEventListener("click", () => {
     if (proposedProduct) onApply?.(proposedProduct);
   });
   updateTreatments();
 
-  details.append(summary, chemistry, controls, method, preview);
+  details.append(summary, chemistry, controls, scopeNote, method, preview);
   if (product.treatments?.length) {
     const history = document.createElement("div");
     history.className = "sequence-extractor-stack-treatment-history";
@@ -878,7 +1080,7 @@ function makeFragmentTreatmentDetails(product, options = {}) {
     const list = document.createElement("ol");
     for (const treatment of product.treatments) {
       const item = document.createElement("li");
-      item.textContent = `${treatment.label} · ${treatment.target === "both" ? "both ends" : `${treatment.target} end`} · ${treatment.enzyme || treatment.method || "method not recorded"}`;
+      item.textContent = `${treatment.label} · ${treatment.target === "both" ? "whole fragment" : `${treatment.target} end`} · ${treatment.enzyme || treatment.method || "method not recorded"}`;
       list.append(item);
     }
     history.append(historySummary, list);
@@ -1019,7 +1221,7 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
   let selectionStackCounter = 0;
   let shownSelectionId = null;
   let lastStackJoin = null;
-  let productStackNotice = "";
+  let assemblyMethodId = "direct-ligation";
   let draggedSelectionId = null;
   let selectionTopology = "linear";
   let showFeatures = true;
@@ -1030,6 +1232,11 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
   let translationMode = "cds";
   let renderedLineWidth = 0;
   let resizeFrame = 0;
+  let selectionScrollFrame = 0;
+  let pageScrollFrame = 0;
+  let pendingRenderPageScroll = null;
+  let fragmentStackScrollTop = 0;
+  let resetFragmentStackScroll = false;
   let baseElementsByPosition = new Map();
   let hoverHighlightedElements = [];
   let hoverAnchor = null;
@@ -1042,6 +1249,11 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
   main.className = "sequence-extractor-main";
   const toolbar = document.createElement("div");
   toolbar.className = "sequence-extractor-toolbar";
+  const captureToolbarPageScroll = () => {
+    pendingRenderPageScroll = capturePageScrollState();
+  };
+  toolbar.addEventListener("pointerdown", captureToolbarPageScroll);
+  toolbar.addEventListener("keydown", captureToolbarPageScroll);
   const recordControl = document.createElement("label");
   recordControl.className = "sequence-extractor-toolbar-field sequence-extractor-record-control";
   const recordLabel = document.createElement("span");
@@ -1110,6 +1322,11 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
   featureTypeActions.append(showAllFeatureTypes, hideAllFeatureTypes);
   featureTypePanel.append(featureTypeActions, featureTypeList);
   featureTypeDetails.append(featureTypeSummary, featureTypePanel);
+  featureTypeDetails.addEventListener("toggle", () => {
+    if (featureTypeDetails.open) {
+      requestAnimationFrame(positionFeatureTypePanel);
+    }
+  });
   const cutToggle = document.createElement("label");
   cutToggle.className = "sequence-extractor-toolbar-toggle";
   const cutCheckbox = document.createElement("input");
@@ -1122,7 +1339,12 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
   cutToggle.append(cutCheckbox, document.createTextNode("Restriction sites"));
   const cutLegend = document.createElement("span");
   cutLegend.className = "sequence-extractor-cut-legend";
-  cutLegend.innerHTML = '<span class="unique" aria-hidden="true"></span>single <span class="repeated" aria-hidden="true"></span>repeated';
+  cutLegend.title = "Restriction-site frequency in the current sequence";
+  cutLegend.innerHTML = [
+    '<span class="unique" aria-hidden="true"></span>single',
+    '<span class="double" aria-hidden="true"></span>cuts twice',
+    '<span class="repeated" aria-hidden="true"></span>3+ cuts'
+  ].join(" ");
   const cutCoverage = document.createElement("span");
   cutCoverage.className = "sequence-extractor-cut-coverage";
   cutCoverage.setAttribute("aria-live", "polite");
@@ -1150,7 +1372,6 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
   const coordinate = document.createElement("input");
   coordinate.type = "number";
   coordinate.min = "1";
-  coordinate.placeholder = "Coordinate";
   coordinate.setAttribute("aria-label", "Jump to coordinate");
   const coordinateControl = document.createElement("label");
   coordinateControl.className = "sequence-extractor-toolbar-field sequence-extractor-coordinate-control";
@@ -1163,6 +1384,54 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
   });
   const status = document.createElement("span");
   status.className = "sequence-extractor-toolbar-status";
+  const documentBar = document.createElement("div");
+  documentBar.className = "sequence-extractor-document-bar";
+  const printHeader = document.createElement("header");
+  printHeader.className = "sequence-extractor-print-header";
+  const printHeading = document.createElement("h1");
+  printHeading.textContent = "Sequence Extractor";
+  const printRecordTitle = document.createElement("strong");
+  printRecordTitle.className = "sequence-extractor-print-record-title";
+  const printMetadata = document.createElement("span");
+  printMetadata.className = "sequence-extractor-print-metadata";
+  printHeader.append(printHeading, printRecordTitle, printMetadata);
+  const printActions = document.createElement("div");
+  printActions.className = "sequence-extractor-print-actions";
+  const printSequenceView = () => {
+    featureTypeDetails.open = false;
+    hideHoverCard();
+    const record = activeRecord();
+    const panelLabel = records.length > 1 ? `Panel ${recordIndex + 1} of ${records.length} · ` : "";
+    const translationLabel = translationSelect.selectedOptions[0]?.textContent || "Translations hidden";
+    printRecordTitle.textContent = record.title;
+    printMetadata.textContent = `${panelLabel}${record.length.toLocaleString()} bp · ${selectionTopology} · ${translationLabel} · ${showFeatures ? "features shown" : "features hidden"} · ${showCuts ? "restriction sites shown" : "restriction sites hidden"}`;
+    container.classList.add("sequence-extractor-print-target");
+    document.body.classList.add("sequence-extractor-printing");
+
+    const previousDocumentTitle = document.title;
+    document.title = `${record.title} - Sequence Extractor`;
+    const printMedia = typeof window.matchMedia === "function" ? window.matchMedia("print") : null;
+    let cleanedUp = false;
+    const cleanup = () => {
+      if (cleanedUp) return;
+      cleanedUp = true;
+      document.body.classList.remove("sequence-extractor-printing");
+      container.classList.remove("sequence-extractor-print-target");
+      document.title = previousDocumentTitle;
+      window.removeEventListener("afterprint", cleanup);
+      printMedia?.removeEventListener?.("change", handlePrintMediaChange);
+    };
+    const handlePrintMediaChange = (event) => {
+      if (!event.matches) cleanup();
+    };
+    window.addEventListener("afterprint", cleanup);
+    printMedia?.addEventListener?.("change", handlePrintMediaChange);
+    window.print();
+  };
+  const printView = makeButton("Print / save PDF", "sequence-extractor-print-view", printSequenceView);
+  printView.title = "Print this complete color sequence view, or save it as a color PDF; choose grayscale in the system print dialog if needed";
+  printActions.append(printView);
+  documentBar.append(status, printActions);
   const allFeatureTracks = records.flatMap((record) => (record.tracks ?? []).filter((track) => track.type === "features"));
   const featureSearch = createViewerSearchControls({
     onSearch: runFeatureSearch,
@@ -1190,7 +1459,7 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
     jump,
     featureSearch.element,
     translationNote,
-    status
+    documentBar
   );
   const documentView = document.createElement("div");
   documentView.className = "sequence-extractor-document";
@@ -1204,7 +1473,7 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
   hoverCard.className = "sequence-extractor-hover-card";
   hoverCard.setAttribute("role", "tooltip");
   hoverCard.hidden = true;
-  shell.append(main, inspector, hoverCard);
+  shell.append(printHeader, main, inspector, hoverCard);
   container.append(shell);
 
   function targetSequenceRanges(target) {
@@ -1336,6 +1605,7 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
         reverseCuts.length > 0 ? `${reverseCuts.map((position) => position.toLocaleString()).join(", ")} (reverse)` : ""
       ].filter(Boolean).join(" · ");
       rows.push(
+        ["Class", Array.from(new Set(restrictionSites(target).map((site) => site.cleavageType).filter(Boolean))).join(" · ")],
         ["Cuts after", cutDescription],
         ["Ends", describeRestrictionEnds(target)],
         ["Sites in record", describeRestrictionSiteCounts(target)]
@@ -1393,11 +1663,21 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
       const topCut = itemPosition(site);
       const bottomCut = Number(site.complementCutAfter ?? site.complement_cut_after);
       if (![start, end, topCut, bottomCut].every(Number.isFinite)) continue;
-      const sequence = activeRecord().sequence.slice(start - 1, end).toUpperCase();
-      if (!sequence) continue;
+      const displayLeftBoundary = Math.min(start - 1, topCut, bottomCut);
+      const displayRightBoundary = Math.max(end, topCut, bottomCut);
+      const displaySequence = activeRecord().sequence.slice(displayLeftBoundary, displayRightBoundary).toUpperCase();
+      const recognitionSequence = activeRecord().sequence.slice(start - 1, end).toUpperCase();
+      if (!displaySequence || !recognitionSequence) continue;
       const key = `${start}:${end}:${topCut}:${bottomCut}`;
       if (!groups.has(key)) {
-        groups.set(key, { bottomCut, end, names: [], sequence, start, topCut });
+        groups.set(key, {
+          bottomCut: bottomCut - displayLeftBoundary,
+          displaySequence,
+          names: [],
+          recognitionSequence,
+          recognitionStart: start - displayLeftBoundary - 1,
+          topCut: topCut - displayLeftBoundary
+        });
       }
       groups.get(key).names.push(site.enzyme || site.label || target.label);
     }
@@ -1416,9 +1696,11 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
       }
       item.append(makeRestrictionCutDiagram({
         name: Array.from(new Set(group.names)).join(" / "),
-        recognition: group.sequence,
-        cutTop: group.topCut - group.start + 1,
-        cutBottom: group.bottomCut - group.start + 1
+        recognition: group.recognitionSequence,
+        displaySequence: group.displaySequence,
+        recognitionStart: group.recognitionStart,
+        cutTop: group.topCut,
+        cutBottom: group.bottomCut
       }));
       container.append(item);
     }
@@ -1464,11 +1746,32 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
   }
 
   function attachHoverInfo(button, target) {
+    const refreshLinkedCodonHover = () => {
+      if (target.kind !== "amino-acid" || !button.dataset.targetKey) return;
+      requestAnimationFrame(() => {
+        const selector = `[data-target-key="${CSS.escape(button.dataset.targetKey)}"]`;
+        const linkedElements = Array.from(documentView.querySelectorAll(selector));
+        const active = linkedElements.some((element) => element.matches(":hover, :focus"));
+        linkedElements.forEach((element) => element.classList.toggle("linked-codon-hover", active));
+      });
+    };
     button.removeAttribute("title");
-    button.addEventListener("pointerenter", () => showHoverCard(button, target));
-    button.addEventListener("pointerleave", hideHoverCard);
-    button.addEventListener("focus", () => showHoverCard(button, target));
-    button.addEventListener("blur", hideHoverCard);
+    button.addEventListener("pointerenter", () => {
+      showHoverCard(button, target);
+      refreshLinkedCodonHover();
+    });
+    button.addEventListener("pointerleave", () => {
+      hideHoverCard();
+      refreshLinkedCodonHover();
+    });
+    button.addEventListener("focus", () => {
+      showHoverCard(button, target);
+      refreshLinkedCodonHover();
+    });
+    button.addEventListener("blur", () => {
+      hideHoverCard();
+      refreshLinkedCodonHover();
+    });
   }
 
   function registerBaseElement(button, position) {
@@ -1497,6 +1800,24 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
 
   function activeHiddenFeatureTypes() {
     return hiddenFeatureTypesByRecord[recordIndex] ?? new Set();
+  }
+
+  function positionFeatureTypePanel() {
+    if (!featureTypeDetails.open || !featureTypeDetails.isConnected) return;
+    const mainBounds = main.getBoundingClientRect();
+    const controlBounds = featureTypeDetails.getBoundingClientRect();
+    const edgePadding = 8;
+    const availableWidth = Math.max(0, mainBounds.width - edgePadding * 2);
+    const desiredWidth = Math.min(416, availableWidth);
+    const mainLeft = mainBounds.left + edgePadding;
+    const mainRight = mainBounds.right - edgePadding;
+    let panelLeft = controlBounds.left;
+    if (panelLeft + desiredWidth > mainRight) {
+      panelLeft = controlBounds.right - desiredWidth;
+    }
+    panelLeft = Math.max(mainLeft, Math.min(panelLeft, mainRight - desiredWidth));
+    featureTypePanel.style.width = `${Math.floor(desiredWidth)}px`;
+    featureTypePanel.style.left = `${Math.round(panelLeft - controlBounds.left)}px`;
   }
 
   function updateFeatureTypeControl() {
@@ -1545,7 +1866,6 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
     selected = target;
     endpoints = [];
     product = null;
-    productStackNotice = "";
     if (needsRender) renderDocument();
     else renderDocumentHighlights();
     renderInspector();
@@ -1566,7 +1886,7 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
   }
 
   function selectionStackEntryName(entry) {
-    return entry?.name || entry?.product?.title || entry?.product?.type || "Selected region";
+    return entry?.name || entry?.product?.title || entry?.product?.type || "Fragment";
   }
 
   function makeSelectionStackEntry(nextProduct, overrides = {}) {
@@ -1617,7 +1937,9 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
     }
     lastStackJoin = null;
     const entry = makeSelectionStackEntry(nextProduct);
-    selectionStack = [...selectionStack, entry].slice(-MAX_SELECTION_STACK_ITEMS);
+    selectionStack = [entry, ...selectionStack].slice(0, MAX_SELECTION_STACK_ITEMS);
+    fragmentStackScrollTop = 0;
+    resetFragmentStackScroll = true;
     if (shownSelectionId && !selectionStack.some((candidate) => candidate.id === shownSelectionId)) {
       shownSelectionId = null;
     }
@@ -1678,7 +2000,6 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
     entry.product = treatedProduct;
     if (product === previousProduct) product = treatedProduct;
     lastStackJoin = null;
-    productStackNotice = `${treatedProduct.treatments?.at(-1)?.label || "End treatment"} applied to ${selectionStackEntryName(entry)}.`;
     renderInspector();
     renderDocumentHighlights();
   }
@@ -1690,7 +2011,6 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
     entry.product = previousProduct;
     if (product === currentProduct) product = previousProduct;
     lastStackJoin = null;
-    productStackNotice = `Undid the last end treatment on ${selectionStackEntryName(entry)}.`;
     renderInspector();
     renderDocumentHighlights();
   }
@@ -1710,7 +2030,7 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
     renderInspector();
   }
 
-  function joinSelectionStackEntries(leftId, rightId) {
+  function joinSelectionStackEntries(leftId, rightId, methodId = assemblyMethodId) {
     const leftIndex = selectionStack.findIndex((entry) => entry.id === leftId);
     const rightIndex = selectionStack.findIndex((entry) => entry.id === rightId);
     if (leftIndex < 0 || rightIndex !== leftIndex + 1) return;
@@ -1718,11 +2038,9 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
     const rightEntry = selectionStack[rightIndex];
     const leftName = selectionStackEntryName(leftEntry);
     const rightName = selectionStackEntryName(rightEntry);
-    const joined = joinExtractedProducts(leftEntry.product, rightEntry.product, {
-      leftId: leftEntry.id,
-      leftName,
-      rightId: rightEntry.id,
-      rightName,
+    const joined = applyFragmentAssembly(methodId, [leftEntry.product, rightEntry.product], {
+      ids: [leftEntry.id, rightEntry.id],
+      names: [leftName, rightName],
       title: `${leftName} + ${rightName}`
     });
     if (!joined.product) return;
@@ -1741,7 +2059,11 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
       sourceRecordId: undefined,
       sourceRecordTitle: `Assembly · ${sourceCount.toLocaleString()} source fragment${sourceCount === 1 ? "" : "s"}`
     });
-    selectionStack = [...remaining, assemblyEntry].slice(-MAX_SELECTION_STACK_ITEMS);
+    selectionStack = [
+      ...remaining.slice(0, leftIndex),
+      assemblyEntry,
+      ...remaining.slice(leftIndex)
+    ].slice(0, MAX_SELECTION_STACK_ITEMS);
     selected = null;
     endpoints = [];
     product = joined.product;
@@ -1769,9 +2091,14 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
 
   function setProduct(nextProduct) {
     product = nextProduct;
-    productStackNotice = "";
     const stackResult = addSelectionStackItem(nextProduct);
     shownSelectionId = stackResult.entry?.id ?? null;
+    if (stackResult.entry) {
+      selected = null;
+      endpoints = [];
+      product = null;
+      hideHoverCard();
+    }
     renderInspector();
     renderDocumentHighlights();
   }
@@ -1866,37 +2193,74 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
     });
   }
 
+  function captureSelectionScrollState() {
+    return {
+      windowX: window.scrollX,
+      windowY: window.scrollY,
+      documentTop: documentView.scrollTop,
+      documentLeft: documentView.scrollLeft
+    };
+  }
+
+  function capturePageScrollState() {
+    return {
+      windowX: window.scrollX,
+      windowY: window.scrollY
+    };
+  }
+
+  function keepPageScrollStable(scrollState) {
+    if (!scrollState) return;
+    if (pageScrollFrame) cancelAnimationFrame(pageScrollFrame);
+    window.scrollTo(scrollState.windowX, scrollState.windowY);
+    pageScrollFrame = requestAnimationFrame(() => {
+      pageScrollFrame = 0;
+      window.scrollTo(scrollState.windowX, scrollState.windowY);
+    });
+  }
+
+  function restoreSelectionScrollState(scrollState) {
+    if (!scrollState) return;
+    documentView.scrollTop = scrollState.documentTop;
+    documentView.scrollLeft = scrollState.documentLeft;
+    window.scrollTo(scrollState.windowX, scrollState.windowY);
+  }
+
+  function keepSelectionScrollStable(scrollState) {
+    if (selectionScrollFrame) cancelAnimationFrame(selectionScrollFrame);
+    restoreSelectionScrollState(scrollState);
+    selectionScrollFrame = requestAnimationFrame(() => {
+      selectionScrollFrame = 0;
+      restoreSelectionScrollState(scrollState);
+    });
+  }
+
   function selectTarget(target) {
+    const scrollState = captureSelectionScrollState();
     if (target && sameTarget(selected, target)) target = null;
     selected = target;
     if (!target) {
       endpoints = [];
       product = null;
-      productStackNotice = "";
     } else if (endpoints.length === 1 && endpointFamily(endpoints[0]) === endpointFamily(target)) {
       endpoints = [endpoints[0], target];
       product = extractEndpointPair(endpoints[0], endpoints[1]);
       const stackResult = addSelectionStackItem(product);
       if (product?.type !== "pcr-product" && stackResult.entry) shownSelectionId = stackResult.entry.id;
-      productStackNotice = product?.type === "pcr-product"
-        ? stackResult.added
-          ? "Added to selected regions."
-          : stackResult.entry?.product?.orientationReversed
-            ? "Already in selected regions in reverse-complement orientation."
-            : "Already in selected regions."
-        : "";
-      if (product?.type === "restriction-fragment") {
+      if (stackResult.entry) {
         selected = null;
+        endpoints = [];
+        product = null;
         hideHoverCard();
         if (documentView.contains(document.activeElement)) document.activeElement?.blur?.();
       }
     } else {
       endpoints = [target];
       product = null;
-      productStackNotice = "";
     }
     renderInspector();
     renderDocumentHighlights();
+    keepSelectionScrollStable(scrollState);
   }
 
   documentView.addEventListener("click", (event) => {
@@ -1905,53 +2269,73 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
   });
 
   function fitSelectionStackFragmentPreviews() {
-    for (const visual of inspector.querySelectorAll(".sequence-extractor-stack-end-visual, .sequence-extractor-stack-duplex")) {
+    for (const visual of inspector.querySelectorAll(".sequence-extractor-stack-end-visual, .sequence-extractor-stack-duplex, .sequence-extractor-stack-treatment-duplex")) {
       if (visual.getClientRects().length === 0) continue;
       const selectionId = visual.closest(".sequence-extractor-stack-item")?.dataset.selectionId;
       const entry = selectionStack.find((candidate) => candidate.id === selectionId);
-      if (entry) fitFragmentSequenceRows(visual, entry.product);
+      const previewProduct = fragmentPreviewProducts.get(visual) ?? entry?.product;
+      if (previewProduct) fitFragmentSequenceRows(visual, previewProduct);
     }
   }
 
+  function clearCurrentInteraction() {
+    selected = null;
+    endpoints = [];
+    product = null;
+    renderInspector();
+    renderDocumentHighlights();
+  }
+
   function renderInspector() {
+    const previousStackList = inspector.querySelector(".sequence-extractor-stack-list");
+    if (previousStackList && !resetFragmentStackScroll) fragmentStackScrollTop = previousStackList.scrollTop;
+    const restoreFragmentStackScrollTop = resetFragmentStackScroll ? 0 : fragmentStackScrollTop;
+    resetFragmentStackScroll = false;
     inspector.textContent = "";
+    inspector.classList.toggle("has-scrollable-stack", selectionStack.length >= 2);
     const heading = document.createElement("div");
     heading.className = "sequence-extractor-inspector-heading";
     const headingText = document.createElement("div");
     headingText.className = "sequence-extractor-inspector-heading-text";
     const title = document.createElement("h3");
-    title.textContent = "Selection";
+    title.textContent = "Inspector";
     const note = document.createElement("span");
-    note.textContent = "Item, range, and product";
+    note.textContent = "Inspect sequence items and build fragments";
     headingText.append(title, note);
-    const clear = makeButton("Clear", "sequence-extractor-clear", () => {
-      selected = null;
-      endpoints = [];
-      product = null;
-      productStackNotice = "";
-      renderInspector();
-      renderDocumentHighlights();
-    });
+    const clear = makeButton("Clear current", "sequence-extractor-clear", clearCurrentInteraction);
+    clear.hidden = !selected && endpoints.length === 0 && !product;
     heading.append(headingText, clear);
     const body = document.createElement("div");
     body.className = "sequence-extractor-inspector-body";
     inspector.append(heading, body);
 
     const pendingPrimerPair = endpoints.length === 1 && endpoints[0]?.kind === "primer";
-    const completedPcrProduct = endpoints.length === 2 && product?.type === "pcr-product" && product.sequence;
-    if (selected && !completedPcrProduct) {
+    if (selected) {
       const selectedRanges = targetSequenceRanges(selected);
       const selectedSequenceLength = selectedRanges.reduce((sum, range) => sum + range.end - range.start + 1, 0);
       const selectedSection = document.createElement("section");
-      selectedSection.className = "sequence-extractor-inspector-section";
+      selectedSection.className = "sequence-extractor-inspector-section sequence-extractor-selected-item";
+      const selectedRole = document.createElement("span");
+      selectedRole.className = "sequence-extractor-inspector-section-label";
+      selectedRole.textContent = "Current item";
       const selectedTitle = document.createElement("h4");
-      selectedTitle.textContent = selected.label || selected.type || "Selection";
-      selectedSection.append(selectedTitle);
+      selectedTitle.textContent = selected.label || selected.type || "Item";
+      const selectedHeaderText = document.createElement("div");
+      selectedHeaderText.className = "sequence-extractor-inspector-section-heading-text";
+      selectedHeaderText.append(selectedRole, selectedTitle);
+      const dismissSelected = makeButton("×", "sequence-extractor-inspector-section-dismiss", clearCurrentInteraction);
+      dismissSelected.setAttribute("aria-label", "Clear current item and fragment builder");
+      dismissSelected.title = "Clear current item";
+      const selectedHeader = document.createElement("div");
+      selectedHeader.className = "sequence-extractor-inspector-section-heading";
+      selectedHeader.append(selectedHeaderText, dismissSelected);
+      selectedSection.append(selectedHeader);
+      const selectedIsPoint = selectedRanges.length === 1 && selectedRanges[0].start === selectedRanges[0].end;
       appendDetails(selectedSection, [
         ["Type", selected.kind === "feature" ? humanizeFeatureType(selected.type) : selected.type || selected.kind],
-        ["Coordinate", selected.position],
-        ["Coordinates", selectedRanges.length > 0 ? selectedRanges.map((range) => `${range.start}-${range.end}`).join(", ") : ""],
-        ["Length", selectedRanges.length > 0 ? `${selectedSequenceLength} bp` : ""],
+        [selected.kind === "restriction-site" ? "Cut position" : "Position", selected.kind === "restriction-site" ? selected.position : selectedIsPoint ? selectedRanges[0].start : ""],
+        ["Coordinates", !selectedIsPoint && selectedRanges.length > 0 ? selectedRanges.map((range) => `${range.start}-${range.end}`).join(", ") : ""],
+        ["Length", !selectedIsPoint && selectedRanges.length > 0 ? `${selectedSequenceLength} bp` : ""],
         ["Strand", selected.kind === "restriction-site" ? "" : describeStrand(selected.strand)],
         ["Frame", selected.frame],
         ["Base", selected.base],
@@ -1980,90 +2364,207 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
       const selectedActions = document.createElement("div");
       selectedActions.className = "sequence-extractor-actions";
       if (selected.kind === "feature" || selected.kind === "amino-acid") {
-        const actionLabel = selected.kind === "feature" ? "Extract feature" : "Extract codon";
+        const actionLabel = selected.kind === "feature" ? "Add feature as fragment" : "Add codon as fragment";
         selectedActions.append(makeButton(actionLabel, "", () => setProduct(selected.kind === "amino-acid"
           ? extractAminoAcidCodon(selected)
           : extractCoordinateRange(activeRecord(), selected.start, selected.end, { strand: selected.strand, type: "selection" }))));
       } else if (selected.kind === "base" && selected.position) {
-        selectedActions.append(makeButton("Extract base", "", () => setProduct(extractCoordinateRange(activeRecord(), selected.position, selected.position))));
+        selectedActions.append(makeButton("Add 1 bp fragment", "", () => setProduct(extractCoordinateRange(activeRecord(), selected.position, selected.position))));
       }
       if (selectedActions.childElementCount > 0) selectedSection.append(selectedActions);
       body.append(selectedSection);
     }
 
-    const endpointSection = document.createElement("section");
-    endpointSection.className = "sequence-extractor-inspector-section";
-    const endpointTitle = document.createElement("h4");
-    endpointTitle.textContent = pendingPrimerPair || completedPcrProduct ? "PCR product" : "Selection range";
-    endpointSection.append(endpointTitle);
-    const endpointText = document.createElement("p");
-    endpointText.textContent = completedPcrProduct
-      ? `${endpoints.map((endpoint) => endpoint.label || endpoint.kind).join(" → ")} · ${product.length.toLocaleString()} bp${product.wrapsOrigin ? " · wraps origin" : ""}. ${productStackNotice || "Added to selected regions."}`
-      : pendingPrimerPair
-        ? `Start primer: ${endpoints[0].label || "primer"} @ ${endpoints[0].position ?? endpoints[0].start}. Choose a highlighted compatible primer to create the PCR product.`
+    if (endpoints.length > 0 && !product?.sequence) {
+      const endpointSection = document.createElement("section");
+      endpointSection.className = "sequence-extractor-inspector-section sequence-extractor-fragment-builder";
+      const endpointRole = document.createElement("span");
+      endpointRole.className = "sequence-extractor-inspector-section-label";
+      endpointRole.textContent = "Fragment builder";
+      const endpointTitle = document.createElement("h4");
+      endpointTitle.textContent = pendingPrimerPair ? "Choose a second primer" : "Choose a second endpoint";
+      const endpointHeaderText = document.createElement("div");
+      endpointHeaderText.className = "sequence-extractor-inspector-section-heading-text";
+      endpointHeaderText.append(endpointRole, endpointTitle);
+      const dismissEndpoint = makeButton("×", "sequence-extractor-inspector-section-dismiss", clearCurrentInteraction);
+      dismissEndpoint.setAttribute("aria-label", "Cancel fragment building");
+      dismissEndpoint.title = "Cancel fragment building";
+      const endpointHeader = document.createElement("div");
+      endpointHeader.className = "sequence-extractor-inspector-section-heading";
+      endpointHeader.append(endpointHeaderText, dismissEndpoint);
+      const endpointProgress = document.createElement("div");
+      endpointProgress.className = "sequence-extractor-fragment-builder-progress";
+      const endpointProgressLabel = document.createElement("strong");
+      endpointProgressLabel.textContent = pendingPrimerPair ? "First primer" : "First endpoint";
+      const endpointProgressValue = document.createElement("span");
+      endpointProgressValue.textContent = `${endpoints[0].label || endpoints[0].kind} · coordinate ${endpoints[0].position ?? endpoints[0].start}`;
+      endpointProgress.append(endpointProgressLabel, endpointProgressValue);
+      endpointSection.append(endpointHeader, endpointProgress);
+      const endpointText = document.createElement("p");
+      endpointText.textContent = pendingPrimerPair
+        ? "Compatible opposite-strand primers are highlighted in the sequence. Choose one to create the PCR fragment."
         : endpoints.length === 2
-          ? endpoints.map((endpoint) => `${endpoint.label || endpoint.kind} @ ${endpoint.position ?? endpoint.start}`).join(" → ")
-          : endpoints.length === 1
-            ? `Start: ${endpoints[0].label || endpoints[0].kind} @ ${endpoints[0].position ?? endpoints[0].start}. Click a compatible second item to extract.`
-            : "Click an item to set the start, then click a compatible second item to extract.";
-    endpointSection.append(endpointText);
-    if (pendingPrimerPair) {
-      const compatiblePrimers = compatiblePrimerCandidates(endpoints[0]);
-      const pairActions = document.createElement("div");
-      pairActions.className = "sequence-extractor-primer-pair-actions";
-      if (compatiblePrimers.length === 0) {
-        const noPair = document.createElement("p");
-        noPair.textContent = "No compatible opposite-strand primer sites are available with the current topology.";
-        pairActions.append(noPair);
-      } else {
-        const pairLabel = document.createElement("span");
-        pairLabel.textContent = compatiblePrimers.length === 1
-          ? "Compatible primer"
-          : `${compatiblePrimers.length.toLocaleString()} compatible primers`;
-        pairActions.append(pairLabel);
-        for (const candidate of compatiblePrimers.slice(0, 6)) {
-          const pairButton = makeButton(
-            `Create PCR product with ${candidate.target.label} · ${candidate.length.toLocaleString()} bp`,
-            "sequence-extractor-primer-pair-action",
-            () => selectTarget(candidate.target)
-          );
-          pairActions.append(pairButton);
+          ? product?.warnings?.join(" ") || endpoints.map((endpoint) => `${endpoint.label || endpoint.kind} @ ${endpoint.position ?? endpoint.start}`).join(" → ")
+          : "Choose a compatible second endpoint to create the fragment. The completed fragment will be added below.";
+      endpointSection.append(endpointText);
+      if (pendingPrimerPair) {
+        const compatiblePrimers = compatiblePrimerCandidates(endpoints[0]);
+        const pairActions = document.createElement("div");
+        pairActions.className = "sequence-extractor-primer-pair-actions";
+        if (compatiblePrimers.length === 0) {
+          const noPair = document.createElement("p");
+          noPair.textContent = "No compatible opposite-strand primer sites are available with the current topology.";
+          pairActions.append(noPair);
+        } else {
+          const pairLabel = document.createElement("span");
+          pairLabel.textContent = compatiblePrimers.length === 1
+            ? "Compatible primer"
+            : `${compatiblePrimers.length.toLocaleString()} compatible primers`;
+          pairActions.append(pairLabel);
+          for (const candidate of compatiblePrimers.slice(0, 6)) {
+            const pairButton = makeButton(
+              `Create PCR fragment with ${candidate.target.label} · ${candidate.length.toLocaleString()} bp`,
+              "sequence-extractor-primer-pair-action",
+              () => selectTarget(candidate.target)
+            );
+            pairActions.append(pairButton);
+          }
+          if (compatiblePrimers.length > 6) {
+            const remainder = document.createElement("p");
+            remainder.textContent = `${(compatiblePrimers.length - 6).toLocaleString()} additional compatible primer sites are highlighted in the sequence.`;
+            pairActions.append(remainder);
+          }
         }
-        if (compatiblePrimers.length > 6) {
-          const remainder = document.createElement("p");
-          remainder.textContent = `${(compatiblePrimers.length - 6).toLocaleString()} additional compatible primer sites are highlighted in the sequence.`;
-          pairActions.append(remainder);
-        }
+        endpointSection.append(pairActions);
       }
-      endpointSection.append(pairActions);
+      body.append(endpointSection);
     }
-    body.append(endpointSection);
 
     const stackSection = document.createElement("section");
     stackSection.className = "sequence-extractor-inspector-section sequence-extractor-stack";
+    stackSection.setAttribute("aria-label", "Fragments");
     const stackHeading = document.createElement("div");
     stackHeading.className = "sequence-extractor-stack-heading";
     const stackTitle = document.createElement("h4");
-    stackTitle.textContent = "Selected regions";
+    stackTitle.textContent = "Fragments";
     const stackCount = document.createElement("span");
-    stackCount.textContent = `${selectionStack.length}/${MAX_SELECTION_STACK_ITEMS}`;
+    stackCount.textContent = `${selectionStack.length} of ${MAX_SELECTION_STACK_ITEMS} fragments`;
     stackHeading.append(stackTitle, stackCount);
+    let assemblyControls = null;
     if (selectionStack.length >= 2) {
-      const leftEntry = selectionStack.at(-2);
-      const rightEntry = selectionStack.at(-1);
-      const bottomCompatibility = assessFragmentEndCompatibility(leftEntry.product.ends?.right, rightEntry.product.ends?.left);
-      const joinBottom = makeButton("Join bottom two", "sequence-extractor-stack-join-bottom", () => joinSelectionStackEntries(leftEntry.id, rightEntry.id));
-      joinBottom.disabled = !bottomCompatibility.joinable;
-      joinBottom.title = bottomCompatibility.joinable
-        ? `${selectionStackEntryName(leftEntry)} → ${selectionStackEntryName(rightEntry)} · ${bottomCompatibility.label} · ${bottomCompatibility.ligation.label}`
-        : bottomCompatibility.compatible
-          ? `${bottomCompatibility.label} · ${bottomCompatibility.ligation.label}. Treat the fragment ends before joining.`
-          : `${bottomCompatibility.leftDescription} cannot join ${bottomCompatibility.rightDescription}`;
-      stackHeading.append(joinBottom);
+      const leftEntry = selectionStack[0];
+      const rightEntry = selectionStack[1];
+      const names = [selectionStackEntryName(leftEntry), selectionStackEntryName(rightEntry)];
+      const topPreview = previewFragmentAssembly(assemblyMethodId, [leftEntry.product, rightEntry.product], { names });
+      assemblyControls = document.createElement("div");
+      assemblyControls.className = "sequence-extractor-stack-assembly-controls";
+      const methodField = document.createElement("div");
+      methodField.className = "sequence-extractor-assembly-method-field";
+      const methodHeader = document.createElement("div");
+      methodHeader.className = "sequence-extractor-assembly-method-header";
+      const methodLabel = document.createElement("label");
+      methodLabel.className = "sequence-extractor-assembly-method-label";
+      methodLabel.htmlFor = "sequence-extractor-assembly-method";
+      methodLabel.textContent = "Cloning / joining method";
+      const methodHelp = document.createElement("details");
+      methodHelp.className = "sequence-extractor-assembly-help";
+      const methodHelpToggle = document.createElement("summary");
+      methodHelpToggle.textContent = "?";
+      methodHelpToggle.setAttribute("aria-label", "About cloning and fragment-joining methods");
+      const methodHelpPopover = document.createElement("span");
+      methodHelpPopover.className = "sequence-extractor-assembly-help-popover";
+      methodHelpPopover.setAttribute("popover", "manual");
+      methodHelpPopover.append("SMS3 evaluates the displayed fragment order using end geometry, terminal chemistry, Type IIS overhangs, or sequence overlap. ");
+      const methodReferenceLink = document.createElement("a");
+      methodReferenceLink.href = "#reference=dna-cloning-methods";
+      methodReferenceLink.target = "_blank";
+      methodReferenceLink.rel = "noopener noreferrer";
+      methodReferenceLink.textContent = "Open examples and method references in a new tab";
+      methodHelpPopover.append(methodReferenceLink);
+      methodHelp.append(methodHelpToggle, methodHelpPopover);
+      const positionMethodHelp = () => {
+        requestAnimationFrame(() => {
+          if (!methodHelp.open) return;
+          const margin = 12;
+          const width = Math.min(320, Math.max(180, window.innerWidth - margin * 2));
+          methodHelpPopover.style.width = `${width}px`;
+          const toggleRect = methodHelpToggle.getBoundingClientRect();
+          const popoverRect = methodHelpPopover.getBoundingClientRect();
+          const height = popoverRect.height || 96;
+          const left = Math.min(
+            Math.max(margin, toggleRect.right - width),
+            Math.max(margin, window.innerWidth - width - margin)
+          );
+          let top = toggleRect.bottom + 8;
+          if (top + height > window.innerHeight - margin) {
+            top = toggleRect.top - height - 8;
+          }
+          top = Math.min(
+            Math.max(margin, top),
+            Math.max(margin, window.innerHeight - height - margin)
+          );
+          methodHelpPopover.style.setProperty("--sequence-extractor-help-left", `${left}px`);
+          methodHelpPopover.style.setProperty("--sequence-extractor-help-top", `${top}px`);
+        });
+      };
+      const closeMethodHelpOnViewportChange = () => {
+        methodHelp.open = false;
+      };
+      methodHelp.addEventListener("toggle", () => {
+        if (methodHelp.open) {
+          methodHelpPopover.showPopover();
+          positionMethodHelp();
+          window.addEventListener("scroll", closeMethodHelpOnViewportChange, { capture: true, once: true });
+          window.addEventListener("resize", closeMethodHelpOnViewportChange, { once: true });
+        } else if (methodHelpPopover.matches(":popover-open")) {
+          methodHelpPopover.hidePopover();
+          window.removeEventListener("scroll", closeMethodHelpOnViewportChange, { capture: true });
+          window.removeEventListener("resize", closeMethodHelpOnViewportChange);
+        }
+      });
+      const methodSelect = document.createElement("select");
+      methodSelect.id = "sequence-extractor-assembly-method";
+      methodSelect.setAttribute("aria-label", "Cloning or joining method for the top two fragments");
+      const stackEnds = selectionStack.flatMap((entry) => [entry.product?.ends?.left, entry.product?.ends?.right]).filter(Boolean);
+      const hasTopoActivation = stackEnds.some((end) => String(end.terminalActivation || end.activation || "").toLowerCase() === "topoisomerase-i-bound");
+      const hasUserActivation = stackEnds.some((end) => ["user-generated-overhang", "user-excised"].includes(String(end.terminalActivation || end.activation || "").toLowerCase()));
+      const hasRecombinationSites = stackEnds.some((end) => end.recombinationSite);
+      const visibleMethods = FRAGMENT_ASSEMBLY_METHODS.filter((candidate) => {
+        if (candidate.id === "topo-ta") return hasTopoActivation;
+        if (candidate.id === "user-assembly") return hasUserActivation;
+        if (candidate.id === "site-specific-recombination") return hasRecombinationSites;
+        return true;
+      });
+      if (!visibleMethods.some((method) => method.id === assemblyMethodId)) assemblyMethodId = "direct-ligation";
+      for (const method of visibleMethods) {
+        const option = document.createElement("option");
+        option.value = method.id;
+        option.textContent = method.label;
+        option.selected = method.id === assemblyMethodId;
+        methodSelect.append(option);
+      }
+      methodSelect.title = visibleMethods.find((method) => method.id === assemblyMethodId)?.description || "";
+      methodSelect.addEventListener("change", () => {
+        assemblyMethodId = methodSelect.value;
+        lastStackJoin = null;
+        renderInspector();
+      });
+      methodHeader.append(methodLabel, methodHelp);
+      methodField.append(methodHeader, methodSelect);
+      const assembleTop = makeButton("Assemble top two", "sequence-extractor-stack-join-top", () => {
+        joinSelectionStackEntries(leftEntry.id, rightEntry.id, assemblyMethodId);
+      });
+      assembleTop.disabled = !topPreview.ready;
+      assembleTop.title = `${topPreview.method?.label || "Assembly"}: ${topPreview.summary}${topPreview.warnings.length ? ` ${topPreview.warnings.join(" ")}` : ""}`;
+      const assemblySummary = document.createElement("span");
+      assemblySummary.className = `sequence-extractor-stack-assembly-summary is-${topPreview.ready ? "ready" : "blocked"}`;
+      assemblySummary.textContent = [topPreview.summary, ...(topPreview.warnings ?? [])].filter(Boolean).join(" ");
+      assemblyControls.append(methodField, assembleTop, assemblySummary);
     }
     if (lastStackJoin) {
-      stackHeading.append(makeButton("Undo join", "sequence-extractor-stack-undo-join", undoLastSelectionStackJoin));
+      stackHeading.append(makeButton("Undo assembly", "sequence-extractor-stack-undo-join", undoLastSelectionStackJoin));
     }
+    if (assemblyControls) stackHeading.append(assemblyControls);
     if (selectionStack.length > 0) {
       stackHeading.append(makeButton("Clear all", "sequence-extractor-stack-clear", () => {
         lastStackJoin = null;
@@ -2072,7 +2573,6 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
         endpoints = [];
         product = null;
         shownSelectionId = null;
-        productStackNotice = "";
         renderInspector();
         renderDocumentHighlights();
       }));
@@ -2084,38 +2584,64 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
       sharedStackNote.textContent = `Shared across ${records.length.toLocaleString()} sequence panels`;
       stackSection.append(sharedStackNote);
     }
+    const stackList = document.createElement("div");
+    stackList.className = `sequence-extractor-stack-list${selectionStack.length >= 2 ? " is-scrollable" : ""}`;
+    stackList.setAttribute("aria-label", "Fragment stack entries");
+    if (selectionStack.length > 0) stackList.tabIndex = 0;
+    stackList.addEventListener("scroll", () => {
+      fragmentStackScrollTop = stackList.scrollTop;
+    }, { passive: true });
+    stackList.addEventListener("dragover", (event) => {
+      if (!draggedSelectionId || !stackList.classList.contains("is-scrollable")) return;
+      const bounds = stackList.getBoundingClientRect();
+      const edgeSize = Math.min(72, Math.max(36, bounds.height * 0.16));
+      const distanceFromTop = event.clientY - bounds.top;
+      const distanceFromBottom = bounds.bottom - event.clientY;
+      if (distanceFromTop < edgeSize) {
+        stackList.scrollTop -= Math.ceil((edgeSize - distanceFromTop) / 4);
+      } else if (distanceFromBottom < edgeSize) {
+        stackList.scrollTop += Math.ceil((edgeSize - distanceFromBottom) / 4);
+      }
+    });
+    stackSection.append(stackList);
 
     if (selectionStack.length === 0) {
-      const empty = document.createElement("p");
-      empty.textContent = "Completed two-point selections and extracted features appear here.";
-      stackSection.append(empty);
+      const empty = document.createElement("div");
+      empty.className = "sequence-extractor-stack-empty";
+      const emptyTitle = document.createElement("strong");
+      emptyTitle.textContent = "No fragments yet";
+      const emptyText = document.createElement("span");
+      emptyText.textContent = "Complete a two-endpoint extraction or use an “Add … as fragment” action. Finished fragments stay here for treatment, reordering, and assembly.";
+      empty.append(emptyTitle, emptyText);
+      stackList.append(empty);
     }
 
     for (const [entryIndex, entry] of selectionStack.entries()) {
       const entryProduct = entry.product;
+      const entryGroup = document.createElement("div");
+      entryGroup.className = "sequence-extractor-stack-entry-group";
       if (entryIndex > 0) {
         const previousEntry = selectionStack[entryIndex - 1];
         const previousName = selectionStackEntryName(previousEntry);
         const entryName = selectionStackEntryName(entry);
-        const compatibility = assessFragmentEndCompatibility(previousEntry.product.ends?.right, entryProduct.ends?.left);
+        const methodPreview = previewFragmentAssembly(assemblyMethodId, [previousEntry.product, entryProduct], {
+          names: [previousName, entryName]
+        });
+        const compatibility = methodPreview.junctions[0]?.compatibility || assessFragmentEndCompatibility(previousEntry.product.ends?.right, entryProduct.ends?.left);
         const joinControl = document.createElement("div");
-        const compatibilityClass = !compatibility.compatible
+        const compatibilityClass = !methodPreview.geometryCompatible
           ? "incompatible"
-          : compatibility.ligation.status === "sealed"
+          : methodPreview.ready
             ? "compatible"
-            : compatibility.ligation.status === "unsealed"
-              ? "incompatible"
-              : "conditional";
+            : "conditional";
         joinControl.className = `sequence-extractor-stack-join-control is-${compatibilityClass}`;
-        const joinButton = makeButton("Join", "sequence-extractor-stack-join", () => joinSelectionStackEntries(previousEntry.id, entry.id));
-        joinButton.disabled = !compatibility.joinable;
-        joinButton.setAttribute("aria-label", `Join ${previousName} then ${entryName}`);
-        const compatibilityResults = makeCompatibilityResults(compatibility);
-        compatibilityResults.title = compatibility.compatible
-          ? `${previousName} right end and ${entryName} left end: ${compatibility.label}; ${compatibility.ligation.label}`
-          : `${previousName} right: ${compatibility.leftDescription}; ${entryName} left: ${compatibility.rightDescription}`;
+        const joinButton = makeButton("Assemble", "sequence-extractor-stack-join", () => joinSelectionStackEntries(previousEntry.id, entry.id, assemblyMethodId));
+        joinButton.disabled = !methodPreview.ready;
+        joinButton.setAttribute("aria-label", `${methodPreview.method?.label || "Assemble"}: ${previousName}, then ${entryName}`);
+        const compatibilityResults = makeAssemblyPreviewResults(methodPreview);
+        compatibilityResults.title = `${methodPreview.method?.label || "Assembly"}: ${methodPreview.summary}${methodPreview.warnings.length ? ` ${methodPreview.warnings.join(" ")}` : ""}`;
         joinControl.append(joinButton, compatibilityResults);
-        stackSection.append(joinControl);
+        entryGroup.append(joinControl);
       }
       const item = document.createElement("article");
       item.className = "sequence-extractor-stack-item sequence-extractor-product";
@@ -2125,8 +2651,9 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
       item.addEventListener("dragover", (event) => {
         if (!draggedSelectionId || draggedSelectionId === entry.id) return;
         event.preventDefault();
-        const bounds = item.getBoundingClientRect();
-        const placeAfter = event.clientY >= bounds.top + bounds.height / 2;
+        const sourceIndex = selectionStack.findIndex((candidate) => candidate.id === draggedSelectionId);
+        const targetIndex = selectionStack.findIndex((candidate) => candidate.id === entry.id);
+        const placeAfter = sourceIndex < targetIndex;
         clearStackDropIndicators();
         item.classList.add(placeAfter ? "is-drop-after" : "is-drop-before");
         item.dataset.dropPosition = placeAfter ? "after" : "before";
@@ -2139,12 +2666,14 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
         event.preventDefault();
         const sourceId = event.dataTransfer?.getData("text/plain") || draggedSelectionId;
         const placeAfter = item.dataset.dropPosition === "after";
+        draggedSelectionId = null;
+        stackList.classList.remove("is-reordering");
         clearStackDropIndicators();
         reorderSelectionStackItem(sourceId, entry.id, placeAfter);
       });
       const itemHeading = document.createElement("div");
       itemHeading.className = "sequence-extractor-stack-item-heading";
-      const defaultItemTitle = entryProduct.title || entryProduct.type || "Selected region";
+      const defaultItemTitle = entryProduct.title || entryProduct.type || "Fragment";
       const itemTitle = entry.name || defaultItemTitle;
       const dragHandle = makeButton("⋮⋮", "sequence-extractor-stack-drag-handle", () => {});
       dragHandle.draggable = true;
@@ -2152,12 +2681,14 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
       dragHandle.setAttribute("aria-label", `Drag ${itemTitle} to reorder`);
       dragHandle.addEventListener("dragstart", (event) => {
         draggedSelectionId = entry.id;
+        stackList.classList.add("is-reordering");
         item.classList.add("is-dragging");
         event.dataTransfer?.setData("text/plain", entry.id);
         if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
       });
       dragHandle.addEventListener("dragend", () => {
         draggedSelectionId = null;
+        stackList.classList.remove("is-reordering");
         item.classList.remove("is-dragging");
         clearStackDropIndicators();
       });
@@ -2188,12 +2719,9 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
       const removeEntry = () => {
         lastStackJoin = null;
         selectionStack = selectionStack.filter((candidate) => candidate.id !== entry.id);
-        if (product === entryProduct) {
-          selected = null;
-          endpoints = [];
-          product = null;
-          productStackNotice = "";
-        }
+        selected = null;
+        endpoints = [];
+        product = null;
         if (shownSelectionId === entry.id) shownSelectionId = null;
         renderInspector();
         renderDocumentHighlights();
@@ -2218,7 +2746,7 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
       renameInput.type = "text";
       renameInput.maxLength = 80;
       renameInput.value = itemTitle;
-      renameInput.setAttribute("aria-label", "Name selected region");
+      renameInput.setAttribute("aria-label", "Name fragment");
       const saveRename = () => {
         lastStackJoin = null;
         entry.name = renameInput.value.trim() || undefined;
@@ -2243,7 +2771,7 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
       removeConfirmation.className = "sequence-extractor-stack-remove-confirmation";
       removeConfirmation.hidden = true;
       const removeWarning = document.createElement("span");
-      removeWarning.textContent = "Remove this selected region?";
+      removeWarning.textContent = "Remove this fragment?";
       confirmRemove = makeButton("Remove", "sequence-extractor-stack-remove-confirm", removeEntry);
       confirmRemove.setAttribute("aria-label", `Confirm removal of ${itemTitle}`);
       const cancelRemove = makeButton("Cancel", "sequence-extractor-stack-remove-cancel", () => {
@@ -2307,9 +2835,9 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
         ["Translation source", entryProduct.translationSource],
         ["Computed genetic code", entryProduct.geneticCodeLabel],
         ["Input CDS transl_table", entryProduct.recordTranslationTable],
-        ["Left end", describeFragmentEnd(entryProduct.ends?.left)],
+        ["Left end", describeFragmentEnd(entryProduct.ends?.left, "left")],
         ["Left chemistry", describeFragmentEndChemistry(entryProduct.ends?.left)],
-        ["Right end", describeFragmentEnd(entryProduct.ends?.right)],
+        ["Right end", describeFragmentEnd(entryProduct.ends?.right, "right")],
         ["Right chemistry", describeFragmentEndChemistry(entryProduct.ends?.right)]
       ]);
       const treatmentDetails = makeFragmentTreatmentDetails(entryProduct, {
@@ -2358,10 +2886,14 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
         message.textContent = warning;
         item.append(message);
       }
-      stackSection.append(item);
+      entryGroup.append(item);
+      stackList.append(entryGroup);
     }
     body.append(stackSection);
-    requestAnimationFrame(fitSelectionStackFragmentPreviews);
+    requestAnimationFrame(() => {
+      stackList.scrollTop = Math.min(restoreFragmentStackScrollTop, Math.max(0, stackList.scrollHeight - stackList.clientHeight));
+      fitSelectionStackFragmentPreviews();
+    });
   }
 
   function makeAnnotationRow(items, blockStart, blockEnd, kind, record) {
@@ -2407,7 +2939,13 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
           }
           const target = makeRestrictionSiteTarget(site, siteFrequencies[index]);
           const button = makeButton(target.label, "sequence-extractor-restriction-subtarget", () => selectTarget(target));
-          button.classList.add(siteFrequencies[index] === 1 ? "is-unique-cutter" : "is-repeated-cutter");
+          button.classList.add(
+            siteFrequencies[index] === 1
+              ? "is-unique-cutter"
+              : siteFrequencies[index] === 2
+                ? "is-double-cutter"
+                : "is-repeated-cutter"
+          );
           button.dataset.targetKey = `${target.kind}-${position}-${target.label}`;
           attachHoverInfo(button, target);
           group.append(button);
@@ -2424,6 +2962,8 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
         content.append(group);
       } else {
         const target = makePrimerTarget(item);
+        const placement = intervalPlacementForBlock(item.start, item.end, blockStart, blockEnd);
+        if (!placement) continue;
         const button = makeButton(target.label, "sequence-extractor-annotation-target", () => selectTarget(target));
         applyDirectionalClass(button, target);
         button.textContent = "";
@@ -2434,11 +2974,13 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
         label.className = "sequence-extractor-primer-label";
         label.textContent = target.label;
         button.append(texture, label);
-        const labelSpan = Math.max(4, Math.min(columnCount, Number(item.end) - Number(item.start) + 1));
-        const labelStart = Math.max(1, Math.min(columnCount - labelSpan + 1, coordinateColumn - Math.floor(labelSpan / 2)));
-        button.style.gridColumn = `${labelStart} / span ${labelSpan}`;
+        button.classList.toggle("is-clipped-left", placement.clippedLeft);
+        button.classList.toggle("is-clipped-right", placement.clippedRight);
+        button.style.gridColumn = `${placement.gridStart} / span ${placement.span}`;
         button.title = `${target.label}: ${item.start}-${item.end}; ${item.strand} strand; ${item.mismatches || 0} mismatch(es)`;
         button.dataset.targetKey = `${target.kind}-${position}-${target.label}`;
+        button.dataset.segmentEnd = String(placement.visibleEnd);
+        button.dataset.segmentStart = String(placement.visibleStart);
         attachHoverInfo(button, target);
         content.append(button);
       }
@@ -2484,25 +3026,26 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
       const target = makeSequenceExtractorFeatureTarget(item);
       const featureStyle = getViewerFeatureTypeStyle(target);
       for (const part of parts) {
-        const start = Math.max(blockStart, part.start);
-        const end = Math.min(blockEnd, part.end);
+        const placement = intervalPlacementForBlock(part.start, part.end, blockStart, blockEnd);
+        if (!placement) continue;
         const button = makeButton("", "sequence-extractor-feature-target", () => selectTarget(target));
         applyDirectionalClass(button, target);
         button.setAttribute("aria-label", target.label);
-        const beginsInBlock = part.start >= blockStart && part.start <= blockEnd;
         const label = document.createElement("span");
         label.className = "sequence-extractor-feature-label";
         label.textContent = target.label;
         button.append(label);
-        if (!beginsInBlock) {
-          button.classList.add("is-continuation");
-        }
+        button.classList.toggle("is-continuation", placement.clippedLeft);
+        button.classList.toggle("is-clipped-left", placement.clippedLeft);
+        button.classList.toggle("is-clipped-right", placement.clippedRight);
         button.style.setProperty("--sequence-extractor-feature-stroke", featureStyle.stroke);
         button.style.setProperty("--sequence-extractor-feature-fill", featureStyle.fill);
-        button.style.gridColumn = `${start - blockStart + 1} / span ${Math.max(1, end - start + 1)}`;
+        button.style.gridColumn = `${placement.gridStart} / span ${placement.span}`;
         button.style.gridRow = String(lane + 1);
         button.dataset.targetKey = `${target.kind}-${target.position}-${target.label}`;
         button.dataset.featureType = target.type;
+        button.dataset.segmentEnd = String(placement.visibleEnd);
+        button.dataset.segmentStart = String(placement.visibleStart);
         button.title = `${target.type}: ${target.start}-${target.end}${target.strand ? ` (${target.strand})` : ""}${target.product ? `; ${target.product}` : ""}`;
         attachHoverInfo(button, target);
         content.append(button);
@@ -2547,6 +3090,38 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
     };
   }
 
+  function appendTranslationCodonSegments(cells, placements, target, aminoAcid, className, title) {
+    const targetKey = `${target.kind}-${target.position}-${target.label}`;
+    for (const placement of placements) {
+      const button = makeButton("", className, () => selectTarget(target));
+      const label = document.createElement("span");
+      label.className = "sequence-extractor-aa-label";
+      label.textContent = placement.containsCenter ? aminoAcid : "";
+      button.append(label);
+      button.setAttribute("aria-label", target.label);
+      button.classList.toggle("is-codon-continuation", !placement.containsCenter);
+      button.title = title;
+      button.style.gridColumn = `${placement.gridStart} / span ${placement.span}`;
+      button.style.gridRow = "1";
+      button.style.setProperty("--sequence-extractor-aa-segment-columns", String(placement.span));
+      if (placement.containsCenter) {
+        button.style.setProperty(
+          "--sequence-extractor-aa-label-column",
+          String(placement.centerPosition - placement.visibleStart + 1)
+        );
+      }
+      button.dataset.codonStart = String(placement.directStart);
+      button.dataset.codonEnd = String(placement.directEnd);
+      button.dataset.codonCenter = String(placement.centerPosition);
+      button.dataset.codonCrossesWrap = String(placement.crossesBlock);
+      button.dataset.codonSegmentStart = String(placement.visibleStart);
+      button.dataset.codonSegmentEnd = String(placement.visibleEnd);
+      button.dataset.targetKey = targetKey;
+      attachHoverInfo(button, target);
+      cells.append(button);
+    }
+  }
+
   function makeFrameTranslationRow(record, blockStart, blockEnd, frameOffset, strand) {
     const row = document.createElement("div");
     row.className = "sequence-extractor-sequence-row sequence-extractor-translation-row sequence-extractor-computed-translation-row";
@@ -2563,9 +3138,10 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
       const positions = strand === "+"
         ? [codonIndex + 1, codonIndex + 2, codonIndex + 3]
         : [record.length - codonIndex, record.length - codonIndex - 1, record.length - codonIndex - 2];
-      const placement = translationCodonPlacement(positions, blockStart, blockEnd);
-      if (!placement) continue;
-      const { centerPosition, directStart, directEnd } = placement;
+      const placements = translationCodonPlacements(positions, blockStart, blockEnd);
+      if (placements.length === 0) continue;
+      const directStart = Math.min(...positions);
+      const directEnd = Math.max(...positions);
       const codon = sourceSequence.slice(codonIndex, codonIndex + 3);
       const aminoAcid = translateCodon(codon, codonMap);
       const target = makeTranslationTarget({
@@ -2577,17 +3153,14 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
         translationSource: "Computed from DNA",
         geneticCodeLabel: `${selectedGeneticCode.id}. ${selectedGeneticCode.name}`
       });
-      const button = makeButton(aminoAcid, "sequence-extractor-aa", () => selectTarget(target));
-      button.title = `${aminoAcid}: ${codon}, bases ${directStart}-${directEnd}, computed frame ${frame}, genetic code ${selectedGeneticCode.id}`;
-      button.style.gridColumn = `${placement.gridStart} / span ${placement.span}`;
-      button.style.gridRow = "1";
-      button.dataset.codonStart = String(directStart);
-      button.dataset.codonEnd = String(directEnd);
-      button.dataset.codonCenter = String(centerPosition);
-      button.dataset.codonCrossesWrap = String(placement.crossesBlock);
-      button.dataset.targetKey = `${target.kind}-${target.position}-${target.label}`;
-      attachHoverInfo(button, target);
-      cells.append(button);
+      appendTranslationCodonSegments(
+        cells,
+        placements,
+        target,
+        aminoAcid,
+        "sequence-extractor-aa",
+        `${aminoAcid}: ${codon}, bases ${directStart}-${directEnd}, computed frame ${frame}, genetic code ${selectedGeneticCode.id}`
+      );
     }
     row.append(label, cells);
     return row;
@@ -2621,9 +3194,10 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
         for (let aminoAcidIndex = 0; aminoAcidIndex < recordTranslation.length; aminoAcidIndex += 1) {
           const codonPositions = codingPositions.slice(aminoAcidIndex * 3, aminoAcidIndex * 3 + 3);
           if (codonPositions.length === 0) break;
-          const placement = translationCodonPlacement(codonPositions, blockStart, blockEnd);
-          if (!placement) continue;
-          const { centerPosition, directStart, directEnd } = placement;
+          const placements = translationCodonPlacements(codonPositions, blockStart, blockEnd);
+          if (placements.length === 0) continue;
+          const directStart = Math.min(...codonPositions);
+          const directEnd = Math.max(...codonPositions);
           const codon = codonPositions.map((position) => {
             const base = record.sequence[position - 1] || "N";
             return item.strand === "-" ? reverseComplement(base) : base;
@@ -2640,17 +3214,14 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
             codonStart
           });
           target.feature = item.label || item.gene || item.product || "CDS";
-          const button = makeButton(aminoAcid, "sequence-extractor-aa sequence-extractor-cds-aa", () => selectTarget(target));
-          button.title = `${target.feature}: ${aminoAcid} from input CDS /translation; ${codon || "partial codon"}, bases ${directStart}-${directEnd}`;
-          button.style.gridColumn = `${placement.gridStart} / span ${placement.span}`;
-          button.style.gridRow = "1";
-          button.dataset.codonStart = String(directStart);
-          button.dataset.codonEnd = String(directEnd);
-          button.dataset.codonCenter = String(centerPosition);
-          button.dataset.codonCrossesWrap = String(placement.crossesBlock);
-          button.dataset.targetKey = `${target.kind}-${target.position}-${target.label}`;
-          attachHoverInfo(button, target);
-          cells.append(button);
+          appendTranslationCodonSegments(
+            cells,
+            placements,
+            target,
+            aminoAcid,
+            "sequence-extractor-aa sequence-extractor-cds-aa",
+            `${target.feature}: ${aminoAcid} from input CDS /translation; ${codon || "partial codon"}, bases ${directStart}-${directEnd}`
+          );
         }
         row.append(label, cells);
         return row;
@@ -2710,6 +3281,8 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
   }
 
   function renderDocument() {
+    const pageScroll = pendingRenderPageScroll ?? capturePageScrollState();
+    pendingRenderPageScroll = null;
     const scrollAnchor = captureDocumentScrollAnchor();
     hideHoverCard();
     documentView.textContent = "";
@@ -2855,6 +3428,7 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
     );
     renderDocumentHighlights();
     restoreDocumentScrollAnchor(scrollAnchor);
+    keepPageScrollStable(pageScroll);
   }
 
   function captureDocumentScrollAnchor() {
@@ -2924,7 +3498,6 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
     selected = null;
     endpoints = [];
     product = null;
-    productStackNotice = "";
     updateFeatureTypeControl();
     renderDocument();
     runFeatureSearch("features", featureSearch.input.value);
@@ -2935,7 +3508,6 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
     selected = null;
     endpoints = [];
     product = null;
-    productStackNotice = "";
     renderDocument();
     renderInspector();
   });
@@ -2957,6 +3529,7 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
           updateFeatureLabelPresentation();
         }
         fitSelectionStackFragmentPreviews();
+        positionFeatureTypePanel();
       });
     });
     observer.observe(main);
