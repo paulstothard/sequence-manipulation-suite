@@ -1142,7 +1142,7 @@ export function renderProteinStructureViewer(container, payload = {}) {
     surfaceOpacity: normalizeProteinStructureOpacity(payload.settings?.surfaceOpacity, DEFAULT_SURFACE_OPACITY),
     conservationColorMap: makeConservationColorMap(conservation),
     residueOnlyPicking: payload.settings?.residueOnlyPicking === true || Boolean(conservation),
-    selectedStructureColor: DEFAULT_STRUCTURE_SELECTION_COLOR,
+    selectedStructureColor: payload.settings?.selectedStructureColor || DEFAULT_STRUCTURE_SELECTION_COLOR,
     selectedStructureItems: []
   };
   const conservationDetails = makeConservationDetailMap(conservation);
@@ -1285,6 +1285,15 @@ export function renderProteinStructureViewer(container, payload = {}) {
     renderStructureSearchOptions(findControl.datalist, structureSearchIndex.entries);
     styleViewer(viewer, settings, viewerModels);
     fitStructure(viewer);
+    if (
+      Array.isArray(payload.initialView) &&
+      payload.initialView.length >= 8 &&
+      payload.initialView.every((value) => Number.isFinite(Number(value))) &&
+      typeof viewer.setView === "function"
+    ) {
+      viewer.setView(payload.initialView.map(Number));
+      viewer.render();
+    }
     const copyDetails = async (text, message = "Details copied") => {
       try {
         await navigator.clipboard?.writeText(text);
@@ -1599,6 +1608,21 @@ export function renderProteinStructureViewer(container, payload = {}) {
     viewer.render();
   });
   resizeObserver.observe(viewerHost);
+  container._sms3PortableViewerSnapshot = () => ({
+    settings: {
+      representation: settings.representation,
+      colorScheme: settings.colorScheme,
+      background: settings.background,
+      showHetAtoms: settings.showHetAtoms,
+      showWaters: settings.showWaters,
+      showSurface: settings.showSurface,
+      ligandOpacity: settings.ligandOpacity,
+      waterOpacity: settings.waterOpacity,
+      surfaceOpacity: settings.surfaceOpacity,
+      selectedStructureColor: settings.selectedStructureColor
+    },
+    view: typeof viewer.getView === "function" ? viewer.getView().map(Number) : []
+  });
   container._sms3VisualCleanup = () => {
     hideTooltip(tooltip);
     if (hoverFrame) {
@@ -1606,6 +1630,7 @@ export function renderProteinStructureViewer(container, payload = {}) {
       hoverFrame = 0;
     }
     resizeObserver.disconnect();
+    container._sms3PortableViewerSnapshot = null;
     try {
       viewer.spin(false);
       viewer.clear?.();

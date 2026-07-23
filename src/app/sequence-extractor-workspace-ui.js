@@ -394,13 +394,19 @@ function makeCompatibilityResults(compatibility) {
   geometry.className = `sequence-extractor-stack-compatibility-result is-${compatibility.compatible ? "compatible" : "incompatible"}`;
   const geometryLabel = document.createElement("strong");
   geometryLabel.textContent = "End geometry";
-  geometry.append(geometryLabel, document.createTextNode(compatibility.compatible ? "Compatible" : "Incompatible"));
+  const geometryValue = document.createElement("span");
+  geometryValue.className = "sequence-extractor-stack-compatibility-value";
+  geometryValue.textContent = compatibility.compatible ? "Compatible" : "Incompatible";
+  geometry.append(geometryLabel, geometryValue);
   const chemistryOutcome = ligationChemistryOutcome(compatibility);
   const chemistry = document.createElement("span");
   chemistry.className = `sequence-extractor-stack-compatibility-result is-${chemistryOutcome.state}`;
   const chemistryLabel = document.createElement("strong");
   chemistryLabel.textContent = "Ligation chemistry";
-  chemistry.append(chemistryLabel, document.createTextNode(chemistryOutcome.label));
+  const chemistryValue = document.createElement("span");
+  chemistryValue.className = "sequence-extractor-stack-compatibility-value";
+  chemistryValue.textContent = chemistryOutcome.label;
+  chemistry.append(chemistryLabel, chemistryValue);
   results.append(geometry, chemistry);
   return results;
 }
@@ -418,7 +424,10 @@ function makeAssemblyPreviewResults(preview) {
     row.className = `sequence-extractor-stack-compatibility-result is-${state}`;
     const heading = document.createElement("strong");
     heading.textContent = label;
-    row.append(heading, document.createTextNode(value));
+    const resultValue = document.createElement("span");
+    resultValue.className = "sequence-extractor-stack-compatibility-value";
+    resultValue.textContent = value;
+    row.append(heading, resultValue);
     results.append(row);
   };
   if (["gibson", "lic", "slic", "user-assembly"].includes(methodId)) {
@@ -748,6 +757,8 @@ function makeAssemblySourceMap(product) {
     bar.style.flexGrow = String(length);
     bar.textContent = segment.sourceName || `Source ${index + 1}`;
     bar.title = `${bar.textContent} · output ${Number(segment.outputStart).toLocaleString()}–${Number(segment.outputEnd).toLocaleString()} · ${segment.orientation === "-" ? "reverse" : "forward"} orientation`;
+    bar.tabIndex = 0;
+    bar.setAttribute("aria-label", bar.title);
     map.append(bar);
   }
   return map;

@@ -2,6 +2,30 @@ import { makeDnaViewerData } from "./dna-viewer-data.js";
 import { readOptionalReferenceGenomeRegion } from "./optional-reference-genome.js";
 
 const MAX_VIEWER_REGION_SPAN = 1000000;
+
+function makeRegionNavigation(samResult, options, region = {}) {
+  return {
+    type: "alignment-region",
+    reference: String(region.reference ?? "").trim(),
+    start: Number(region.start),
+    end: Number(region.end),
+    maxSpan: MAX_VIEWER_REGION_SPAN,
+    sourceMode: options.dataSourceMode === "indexed-bam" || (options.indexedBamFile && options.bamIndexFile)
+      ? "indexed-bam"
+      : "sam-text",
+    references: (samResult?.referenceRows ?? []).map((row) => ({
+      name: row.reference,
+      length: Number(row.length) || 0
+    }))
+  };
+}
+
+function makeRegionViewer(records, options, navigation) {
+  return {
+    ...makeDnaViewerData(records, options),
+    regionNavigation: navigation
+  };
+}
 const READ_SEQUENCE_DETAIL_LIMIT = 180;
 
 function previewReadSequence(sequence) {
@@ -221,15 +245,16 @@ export async function makeAlignmentViewerData({
   const start = Number(region.start);
   const end = Number(region.end);
   const span = end - start + 1;
+  const regionNavigation = makeRegionNavigation(samResult, options, region);
   if (!reference || !Number.isFinite(span) || span <= 0) {
     warnings.push("Alignment viewer could not be built because no valid mapped reference region was available.");
-    return makeDnaViewerData([], { title, layout: "linear" });
+    return makeRegionViewer([], { title, layout: "linear" }, regionNavigation);
   }
   if (span > MAX_VIEWER_REGION_SPAN) {
     warnings.push(
       `Skipped the alignment viewer because the selected span is ${span.toLocaleString()} bp. Select a region of ${MAX_VIEWER_REGION_SPAN.toLocaleString()} bp or less.`
     );
-    return makeDnaViewerData([], { title, layout: "linear" });
+    return makeRegionViewer([], { title, layout: "linear" }, regionNavigation);
   }
 
   const referenceRegion = await readOptionalReferenceGenomeRegion(options, {
@@ -286,7 +311,7 @@ export async function makeAlignmentViewerData({
     }
   ];
 
-  return makeDnaViewerData([
+  return makeRegionViewer([
     {
       id: `alignment-${reference}-${start}-${end}`,
       title: `${reference}:${start}-${end} ${recordTitleSuffix}`,
@@ -302,7 +327,7 @@ export async function makeAlignmentViewerData({
   ], {
     title,
     layout: "linear"
-  });
+  }, regionNavigation);
 }
 
 export async function makeSamViewerData(result, options, warnings, context = {}) {

@@ -11,7 +11,7 @@ export const samBamSummaryRegionViewerMetadata = {
   name: "SAM/BAM Summary And Region Viewer",
   category: "High-Throughput Sequencing",
   tags: ["DNA", "RNA", "table", "SAM", "BAM", "alignment", "coordinates", "map", "statistics"],
-  summary: "Summarize SAM/SAM.GZ alignments or query local indexed BAM/BAI files for coverage statistics, bounded region tables, region maps, or an alignment viewer.",
+  summary: "Summarize SAM/SAM.GZ alignments or query local indexed BAM/BAI files for coverage statistics, bounded region tables, region maps, or a navigable alignment viewer.",
   inputType: "SAM text, SAM.GZ, or local indexed BAM plus BAI/CSI",
   outputType: "SAM report, coverage table, alignment tables, region map, or alignment viewer",
   workflow: {

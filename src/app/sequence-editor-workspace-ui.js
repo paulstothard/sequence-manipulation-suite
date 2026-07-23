@@ -8,9 +8,23 @@ import {
   prepareSequenceEditorData,
   summarizeSequenceEditorChanges
 } from "../core/sequence-editor.js";
-import { renderCircularDnaViewer } from "./dna-circular-viewer-canvas.js";
-import { renderDnaViewer } from "./dna-viewer-canvas.js";
+import {
+  cleanupRenderedCircularDnaViewer,
+  renderCircularDnaViewer,
+  snapshotRenderedCircularDnaViewer
+} from "./dna-circular-viewer-canvas.js";
+import {
+  cleanupRenderedDnaViewer,
+  renderDnaViewer,
+  snapshotRenderedDnaViewer
+} from "./dna-viewer-canvas.js";
 import { downloadText } from "./file-download.js";
+import {
+  makeViewerSequenceInitialState,
+  normalizeViewerSequenceChoices,
+  renderViewerSequenceNavigation,
+  validateViewerSequenceRegionRequest
+} from "./viewer-sequence-navigation-ui.js";
 import {
   cloneSequenceEditorFeatureOverrides,
   describeSequenceEditorEditTarget,
@@ -141,6 +155,8 @@ function renderSequenceEditorWorkspace(previousState = null) {
 
   const viewerContainer = document.createElement("div");
   viewerContainer.className = "sequence-editor-live-viewer";
+  const viewerNavigation = document.createElement("div");
+  viewerNavigation.className = "sequence-editor-viewer-navigation";
 
   const editorPanel = document.createElement("aside");
   editorPanel.className = "sequence-editor-settings";
@@ -393,7 +409,7 @@ function renderSequenceEditorWorkspace(previousState = null) {
   effectsPanel.append(effectsTitle, effectsBody);
 
   changeStatusShell.append(changePanel, baselineButton);
-  viewerPanel.append(changeStatusShell, viewerContainer, sourceDetails);
+  viewerPanel.append(changeStatusShell, viewerNavigation, viewerContainer, sourceDetails);
   editorPanel.append(
     editorHeading,
     editorIntro,
@@ -414,6 +430,9 @@ function renderSequenceEditorWorkspace(previousState = null) {
   let redoStack = [];
   let featureTrackOverrides = cloneSequenceEditorFeatureOverrides(previousState?.featureTrackOverrides);
   let viewerSelection = null;
+  let activeViewerSequence = null;
+  let renderedViewerLayout = viewerLayoutSelect.value;
+  const viewerStates = new Map();
   let lastInspectorSelectionKey = "";
   function setEditorStatus(message) {
     status.textContent = message;
@@ -1049,7 +1068,74 @@ function renderSequenceEditorWorkspace(previousState = null) {
     contextMenu.style.top = `${y}px`;
     contextMenu.hidden = false;
   }
+  function viewerStateKey(selection, layout = renderedViewerLayout) {
+    return selection ? `${layout}:${selection.sequenceKey}` : "";
+  }
+  function captureActiveViewerState() {
+    if (!activeViewerSequence) return;
+    const snapshot = renderedViewerLayout === "circular"
+      ? snapshotRenderedCircularDnaViewer(viewerContainer)[0]
+      : snapshotRenderedDnaViewer(viewerContainer)[0];
+    if (snapshot) viewerStates.set(viewerStateKey(activeViewerSequence), snapshot);
+  }
+  function cleanupEditorViewer() {
+    cleanupRenderedDnaViewer(viewerContainer);
+    cleanupRenderedCircularDnaViewer(viewerContainer);
+  }
+  function remapViewerSelectionRecord(payload, recordIndex) {
+    return payload ? { ...payload, recordIndex } : payload;
+  }
+  function initialEditorViewerSelection(viewer) {
+    const sequences = normalizeViewerSequenceChoices(viewer);
+    if (sequences.length === 0) return null;
+    const requestedKey = sequences.some((sequence) => sequence.key === activeViewerSequence?.sequenceKey)
+      ? activeViewerSequence.sequenceKey
+      : sequences[0].key;
+    const requested = {
+      sequenceKey: requestedKey,
+      start: activeViewerSequence?.startBlank === false ? activeViewerSequence.start : "",
+      end: activeViewerSequence?.endBlank === false ? activeViewerSequence.end : ""
+    };
+    return validateViewerSequenceRegionRequest(requested, sequences).selection
+      ?? validateViewerSequenceRegionRequest({ sequenceKey: requestedKey, start: "", end: "" }, sequences).selection;
+  }
+  function showEditorViewerSequence(selection, { preserveExistingView = false, captureCurrent = true } = {}) {
+    if (!prepared?.viewer || !selection) return;
+    if (captureCurrent) captureActiveViewerState();
+    activeViewerSequence = selection;
+    coordinateRecord.value = String(selection.index + 1);
+    cleanupEditorViewer();
+    viewerContainer.textContent = "";
+    updateViewerSelectionState(null);
+    hideSequenceEditorContextMenu();
+    const selectedViewer = {
+      ...prepared.viewer,
+      records: [prepared.viewer.records[selection.index]]
+    };
+    const layout = viewerLayoutSelect.value === "circular" ? "circular" : "linear";
+    const savedState = viewerStates.get(viewerStateKey(selection, layout));
+    const initialState = preserveExistingView && savedState
+      ? savedState
+      : makeViewerSequenceInitialState(prepared.viewer, selection, savedState);
+    const remapSelection = (payload) => remapViewerSelectionRecord(payload, selection.index);
+    const selectionOptions = {
+      initialState,
+      preserveState: false,
+      onSelectionChange: (payload) => updateViewerSelectionState(remapSelection(payload)),
+      onTargetContextMenu: (payload) => showSequenceEditorContextMenu(remapSelection(payload)),
+      showInspectorPanels: false,
+      embedded: true,
+      showRecordTitle: false
+    };
+    if (layout === "circular") {
+      renderCircularDnaViewer(viewerContainer, selectedViewer, selectionOptions);
+    } else {
+      renderDnaViewer(viewerContainer, selectedViewer, selectionOptions);
+    }
+    renderedViewerLayout = layout;
+  }
   function redrawViewer() {
+    captureActiveViewerState();
     prepared = prepareSequenceEditorData(editor.value, {
       geneticCode: geneticCodeSelect.value,
       viewerLayout: viewerLayoutSelect.value,
@@ -1059,25 +1145,25 @@ function renderSequenceEditorWorkspace(previousState = null) {
     const changeSummary = summarizeSequenceEditorChanges(baselineText, editor.value, { geneticCode: geneticCodeSelect.value });
     renderSequenceEditorChangeSummary(changePanel, changeSummary);
     updateHiddenInput();
-    viewerContainer.textContent = "";
-    updateViewerSelectionState(null);
-    hideSequenceEditorContextMenu();
+    viewerNavigation.textContent = "";
     if (prepared.viewer) {
-      const selectionOptions = {
-        onSelectionChange: updateViewerSelectionState,
-        onTargetContextMenu: showSequenceEditorContextMenu,
-        showInspectorPanels: false,
-        embedded: true,
-        showRecordTitle: false
-      };
-      if (viewerLayoutSelect.value === "circular") {
-        renderCircularDnaViewer(viewerContainer, prepared.viewer, selectionOptions);
-      } else {
-        renderDnaViewer(viewerContainer, prepared.viewer, selectionOptions);
-      }
+      const initialSelection = initialEditorViewerSelection(prepared.viewer);
+      const navigation = renderViewerSequenceNavigation(viewerNavigation, prepared.viewer, {
+        initialSelection,
+        onShowSequence: (selection) => showEditorViewerSequence(selection)
+      });
+      showEditorViewerSequence(navigation?.initialSelection ?? initialSelection, {
+        preserveExistingView: true,
+        captureCurrent: false
+      });
       summary.textContent = `${prepared.records.length} record(s), ${prepared.basesProcessed.toLocaleString()} bp retained`;
       setEditorStatus(prepared.warnings.length > 0 ? prepared.warnings[0] : "Live viewer updated.");
     } else {
+      cleanupEditorViewer();
+      activeViewerSequence = null;
+      viewerContainer.textContent = "";
+      updateViewerSelectionState(null);
+      hideSequenceEditorContextMenu();
       const empty = document.createElement("p");
       empty.className = "sequence-editor-empty";
       empty.textContent = "Enter DNA/RNA sequence text or FASTA records to show the live viewer.";
@@ -1166,10 +1252,14 @@ function renderSequenceEditorWorkspace(previousState = null) {
     setEditorStatus("Downloaded cleaned FASTA.");
   });
 
-	  redrawViewer();
-	  refreshCoordinateEditControls();
-	  updateHistoryButtons();
-	}
+    redrawViewer();
+    refreshCoordinateEditControls();
+    updateHistoryButtons();
+    elements.markdownWorkspace._sms3VisualCleanup = () => {
+      clearTimeout(debounceTimer);
+      cleanupEditorViewer();
+    };
+  }
 
   return {
     readState: readSequenceEditorWorkspaceState,

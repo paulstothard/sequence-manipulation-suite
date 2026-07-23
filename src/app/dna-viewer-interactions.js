@@ -31,10 +31,21 @@ const FEATURE_TYPE_PALETTE = [
   "#c2410c"
 ];
 const TRACK_DISPLAY_MODES = [
-  { value: "auto", label: "Auto" },
-  { value: "collapsed", label: "Collapsed" },
-  { value: "squished", label: "Squished" },
-  { value: "full", label: "Full" }
+  {
+    value: "auto",
+    label: "Automatic",
+    help: "Shows individual features when readable and a density summary when crowded."
+  },
+  {
+    value: "full",
+    label: "Full",
+    help: "Shows individual features in full-height rows."
+  },
+  {
+    value: "squished",
+    label: "Squished",
+    help: "Shows individual features in compact rows."
+  }
 ];
 
 export function makeTargetKey(target) {
@@ -288,7 +299,11 @@ export function createViewerTrackControls(record, state, onChange, options = {})
     const key = getViewerTrackKey(track, index);
     const row = document.createElement("div");
     row.className = "dna-viewer-track-row";
+    const text = track.label || track.type || `Track ${index + 1}`;
+    row.setAttribute("role", "group");
+    row.setAttribute("aria-label", `${text} track`);
     const label = document.createElement("label");
+    label.className = "dna-viewer-track-toggle";
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
     checkbox.checked = !state.hiddenTrackIds.has(key);
@@ -300,7 +315,6 @@ export function createViewerTrackControls(record, state, onChange, options = {})
       }
       onChange?.();
     });
-    const text = track.label || track.type || `Track ${index + 1}`;
     const count = Array.isArray(track.items) ? ` (${track.items.length.toLocaleString()})` : "";
     label.append(checkbox, document.createTextNode(`${text}${count}`));
     row.append(label);
@@ -309,9 +323,11 @@ export function createViewerTrackControls(record, state, onChange, options = {})
       const modeLabel = document.createElement("label");
       modeLabel.className = "dna-viewer-track-mode";
       const modeText = document.createElement("span");
-      modeText.textContent = "Display";
+      modeText.textContent = "Layout";
       const modeSelect = document.createElement("select");
-      modeSelect.setAttribute("aria-label", `${text} display mode`);
+      modeSelect.setAttribute("aria-label", `${text} track layout`);
+      const modeHelp = document.createElement("small");
+      modeHelp.className = "dna-viewer-track-mode-help";
       for (const mode of TRACK_DISPLAY_MODES) {
         const option = document.createElement("option");
         option.value = mode.value;
@@ -319,12 +335,22 @@ export function createViewerTrackControls(record, state, onChange, options = {})
         modeSelect.append(option);
       }
       modeSelect.value = getViewerTrackDisplayMode(track, state);
+      const updateModeHelp = () => {
+        modeHelp.textContent = TRACK_DISPLAY_MODES.find((mode) => mode.value === modeSelect.value)?.help || "";
+      };
+      updateModeHelp();
       modeSelect.addEventListener("change", () => {
         setViewerTrackDisplayMode(track, state, modeSelect.value);
+        updateModeHelp();
         onChange?.();
       });
-      modeLabel.append(modeText, modeSelect);
+      modeLabel.append(modeText, modeSelect, modeHelp);
       row.append(modeLabel);
+    } else if (showDisplayModes && track.type === "quantitative") {
+      const fixedLayoutNote = document.createElement("div");
+      fixedLayoutNote.className = "dna-viewer-track-fixed-layout";
+      fixedLayoutNote.textContent = "Fixed plot layout";
+      row.append(fixedLayoutNote);
     }
 
     const typeEntries = getViewerTrackTypeEntries(track);
@@ -333,7 +359,7 @@ export function createViewerTrackControls(record, state, onChange, options = {})
       typeList.className = "dna-viewer-track-type-list";
       const typeHeading = document.createElement("div");
       typeHeading.className = "dna-viewer-track-type-heading";
-      typeHeading.textContent = "Feature types";
+      typeHeading.textContent = "Visible feature types";
       typeList.append(typeHeading);
       const hiddenTypes = state.hiddenTrackItemTypes.get(key) || new Set();
       for (const entry of typeEntries.slice(0, 32)) {

@@ -710,6 +710,23 @@ function makeEmblFlatfile(records) {
   }).join("\n");
 }
 
+export function serializeBiologicalRecords(records, outputFormat) {
+  if (outputFormat === "genbank") return makeGenbankLikeFlatfile(records, { flavor: "GenBank" });
+  if (outputFormat === "embl") return makeEmblFlatfile(records);
+  if (outputFormat === "ddbj") return makeGenbankLikeFlatfile(records, { flavor: "DDBJ" });
+  if (outputFormat === "gff3-bundle" || outputFormat === "gff3-fasta") {
+    return makeGff3Fasta(records, makeGff3Rows(records));
+  }
+  if (outputFormat === "bed-bundle" || outputFormat === "bed-fasta") {
+    return makeBedFasta(records, makeBedRows(records));
+  }
+  if (outputFormat === "parsed-json") return JSON.stringify({ records }, null, 2);
+  if (outputFormat === "whole-fasta") {
+    return recordsToFasta(flatfileRecordsToSequenceRecords(records, "whole"));
+  }
+  return "";
+}
+
 export function makeBiologicalRecordViewerRecords(records, options = {}) {
   const topologyOverride = options.topology === "circular" || options.topology === "linear" ? options.topology : "";
   return records
@@ -798,17 +815,17 @@ export function convertBiologicalRecord(input, options = {}) {
   const proteinRecords = flatfileRecordsToSequenceRecords(records, "protein");
   const gff3Rows = makeGff3Rows(records);
   const bedRows = makeBedRows(records);
-  const gff3Fasta = makeGff3Fasta(records, gff3Rows);
-  const bedFasta = makeBedFasta(records, bedRows);
-  const genbankFlatfile = makeGenbankLikeFlatfile(records, { flavor: "GenBank" });
-  const ddbjFlatfile = makeGenbankLikeFlatfile(records, { flavor: "DDBJ" });
-  const emblFlatfile = makeEmblFlatfile(records);
+  const gff3Fasta = serializeBiologicalRecords(records, "gff3-bundle");
+  const bedFasta = serializeBiologicalRecords(records, "bed-bundle");
+  const genbankFlatfile = serializeBiologicalRecords(records, "genbank");
+  const ddbjFlatfile = serializeBiologicalRecords(records, "ddbj");
+  const emblFlatfile = serializeBiologicalRecords(records, "embl");
   const hasProteinOnly = records.length > 0 && records.every((record) => record.molecule === "protein");
   const viewer = makeDnaViewerData(makeBiologicalRecordViewerRecords(records), {
     title: "Converted biological record",
     alphabet: hasProteinOnly ? "protein" : "dna-rna"
   });
-  const parsedJson = JSON.stringify({ records }, null, 2);
+  const parsedJson = serializeBiologicalRecords(records, "parsed-json");
   const viewerJson = JSON.stringify(viewer, null, 2);
   const report = [
     "Biological record format converter",

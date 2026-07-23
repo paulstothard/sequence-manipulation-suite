@@ -51,8 +51,8 @@ export const alignmentViewerMetadata = {
   name: "Alignment Viewer",
   category: "Viewers & Figures",
   tags: ["DNA", "RNA", "FASTA", "SAM", "BAM", "VCF", "alignment", "coordinates", "map"],
-  summary: "Inspect a bounded SAM/BAM alignment region in the interactive DNA viewer, with optional VCF variant markers and optional reference genome bases.",
-  whenToUse: "Use this when you want to visually review mapped reads across a specific reference region, with supplied variants and reference bases overlaid.",
+  summary: "Inspect and move between bounded SAM/BAM reference regions in the interactive DNA viewer, with optional VCF variant markers and reference genome bases.",
+  whenToUse: "Use this when you want to visually review mapped reads and navigate between reference regions with supplied variants and reference bases overlaid.",
   inputType: "SAM/SAM.GZ text or local indexed BAM plus optional VCF and reference FASTA",
   outputType: "Alignment viewer, region alignment table, or summary report",
   splitInput: {

@@ -3,8 +3,7 @@ import { complementDnaRnaSequence } from "../core/sequence.js";
 import {
   clipStackedIntervalLayout,
   createStackedIntervalLayout,
-  isStackedIntervalTrack,
-  makeLinearIntervalCopies
+  isStackedIntervalTrack
 } from "../core/viewer-track-layout.js";
 import { downloadCanvasPng, downloadCanvasSvg, makeSafeFileStem } from "./canvas-export.js";
 import {
@@ -464,7 +463,6 @@ export function shouldUseLinearTrackSummary(track, state, pxPerBp, visibleItemCo
   if (hasHiddenViewerItemTypes(track, state)) return false;
   if (!track.summary?.bins?.length) return false;
   const mode = getViewerTrackDisplayMode(track, state);
-  if (mode === "collapsed") return true;
   if (mode === "full" || mode === "squished") return false;
   const itemCount = track.summary?.itemCount ?? track.items?.length ?? 0;
   const visibleCount = Number.isFinite(Number(visibleItemCount)) ? Number(visibleItemCount) : itemCount;
@@ -611,20 +609,6 @@ function visibleTrackItemCount(track, state, viewStart, viewEnd) {
   return visibleIntervalItems(track, state, viewStart, viewEnd).length;
 }
 
-function makeCollapsedLinearIntervalLayout(track, state, recordLength) {
-  return {
-    placements: makeLinearIntervalCopies(getViewerTrackItems(track, state), {
-      length: recordLength,
-      viewStart: state.viewStart,
-      viewEnd: state.viewEnd
-    }).map((placement) => ({ ...placement, slot: 0 })),
-    hidden: [],
-    totalHidden: 0,
-    slotCount: 1,
-    maxSlots: 1
-  };
-}
-
 function buildLinearTrackLayouts(record, state, pxPerBp) {
   return getVisibleViewerTracks(record, state).map((track) => {
     const displayMode = getViewerTrackDisplayMode(track, state);
@@ -660,22 +644,11 @@ function buildLinearTrackLayouts(record, state, pxPerBp) {
         track,
         displayMode,
         stacked: false,
-        height: displayMode === "squished" || displayMode === "collapsed"
+        height: displayMode === "squished"
           ? (track.type === "restriction-sites" ? 24 : 30)
           : track.type === "restriction-sites" && !canShowRestrictionSiteLabels(pxPerBp, displayMode)
             ? 28
             : 42
-      };
-    }
-    if (displayMode === "collapsed") {
-      const layout = makeCollapsedLinearIntervalLayout(track, state, record.length);
-      return {
-        track,
-        displayMode,
-        stacked: true,
-        layout,
-        slotHeight: SQUISHED_FEATURE_SLOT_HEIGHT,
-        height: 18 + layout.slotCount * SQUISHED_FEATURE_SLOT_HEIGHT
       };
     }
     const fullLayout = getCachedLinearSlotLayout(record, state, track);
@@ -926,7 +899,7 @@ function drawViewer(ctx, canvas, status, record, state) {
 
   for (const { track, y: trackY, topY, height, quantitative, stacked, summary, displayMode, slotHeight, layout: trackSlotLayout } of rows.trackYs) {
     const color = getViewerTrackColor(theme, track);
-    const compactTrack = displayMode === "squished" || displayMode === "collapsed";
+    const compactTrack = displayMode === "squished";
     ctx.font = "12px system-ui, sans-serif";
     ctx.fillStyle = theme.muted;
     ctx.textAlign = "right";
@@ -2222,4 +2195,15 @@ export function renderDnaViewer(container, viewer, viewerOptions = {}) {
       for (const handle of handles) handle?.cleanup?.();
     }
   });
+}
+
+export function snapshotRenderedDnaViewer(container) {
+  return renderedViewerSessions.get(container)?.handles
+    ?.map((handle) => handle.snapshot?.() || null)
+    .filter(Boolean) ?? [];
+}
+
+export function cleanupRenderedDnaViewer(container) {
+  renderedViewerSessions.get(container)?.cleanup?.();
+  renderedViewerSessions.delete(container);
 }

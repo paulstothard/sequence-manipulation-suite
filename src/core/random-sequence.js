@@ -607,6 +607,12 @@ function normalizeCodon(value) {
   return String(value ?? "").trim().toUpperCase().replace(/U/g, "T");
 }
 
+export function resolveProteinInitiation(options = {}) {
+  return {
+    startResidue: options.proteinStartMode === "initiator-methionine" ? "M" : ""
+  };
+}
+
 export function buildRandomCodingDnaRecord(options = {}, random) {
   const codonCount = Math.max(2, Number.parseInt(options.codonCount, 10) || 30);
   const codons = getCodonsForCode(options.geneticCode ?? "1");

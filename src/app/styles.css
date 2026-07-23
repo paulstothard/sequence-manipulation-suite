@@ -2036,6 +2036,13 @@ textarea {
   background: var(--se-surface);
 }
 
+.sequence-editor-viewer-navigation .alignment-viewer-region-navigation {
+  border-left: 0;
+  border-radius: 0;
+  border-right: 0;
+  margin: 0;
+}
+
 .sequence-editor-live-viewer .sequence-editor-empty {
   margin: 0;
   padding: 1rem;
@@ -3339,17 +3346,20 @@ textarea {
 }
 
 .bio-record-input {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 0.9rem;
-  align-content: start;
   min-height: 0;
 }
 
 .bio-record-source-card {
   display: grid;
+  flex: 1 1 auto;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 0.7rem;
-  align-self: start;
-  align-content: start;
+  align-self: stretch;
+  align-content: stretch;
+  min-height: 0;
   padding: 0.8rem;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -3366,9 +3376,10 @@ textarea {
 .bio-record-paired-input-grid {
   display: grid;
   grid-template-columns: 1fr;
-  grid-template-rows: auto auto minmax(14rem, auto);
+  grid-template-rows: auto auto minmax(21rem, 1fr);
   gap: 0.7rem;
   align-items: stretch;
+  min-height: 0;
 }
 
 #biologicalRecordInputPanel[data-source-mode="gff3Fasta"] .bio-record-paired-input-grid,
@@ -6618,6 +6629,309 @@ legend {
   margin: 0 0 0.55rem;
 }
 
+.alignment-viewer-region-navigation {
+  align-items: end;
+  background: var(--viewer-surface-soft, var(--app-output-surface-soft));
+  border: 1px solid var(--viewer-border, var(--app-output-border));
+  border-bottom: 0;
+  border-radius: 8px 8px 0 0;
+  color: var(--viewer-text, var(--app-output-text));
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.45rem;
+  margin: 0 0.75rem;
+  padding: 0.42rem 0.6rem;
+  position: relative;
+  z-index: 5;
+}
+
+.alignment-viewer-region-navigation + .dna-viewer-panel {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.alignment-viewer-region-navigation + .dna-viewer-panel > .dna-viewer-toolbar {
+  border-radius: 0;
+}
+
+.viewer-sequence-navigation + .viewer-sequence-host > .dna-viewer-panel {
+  padding-top: 0;
+}
+
+.viewer-sequence-navigation + .viewer-sequence-host > .dna-viewer-panel > .dna-viewer-toolbar {
+  border-radius: 0;
+}
+
+.alignment-viewer-region-field {
+  color: var(--viewer-muted, var(--app-output-muted));
+  display: grid;
+  flex: 0 1 auto;
+  font-size: 0.68rem;
+  font-weight: 700;
+  gap: 0.14rem;
+  min-width: 0;
+}
+
+.alignment-viewer-region-reference-field {
+  flex: 1 1 15rem;
+  max-width: 30rem;
+  min-width: 13rem;
+}
+
+.alignment-viewer-region-coordinate-field {
+  flex: 0 1 7.25rem;
+  width: 7.25rem;
+}
+
+.alignment-viewer-region-coordinates {
+  align-items: end;
+  display: flex;
+  flex: 0 1 auto;
+  gap: 0.45rem;
+}
+
+.alignment-viewer-region-field input,
+.alignment-viewer-region-field select {
+  background: var(--viewer-surface, var(--app-output-surface));
+  border: 1px solid var(--viewer-border, var(--app-output-border-strong));
+  border-radius: 6px;
+  color: var(--viewer-text, var(--app-output-text));
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 500;
+  min-width: 0;
+  min-height: 1.95rem;
+  padding: 0.28rem 0.45rem;
+  width: 100%;
+}
+
+.alignment-viewer-region-field input:focus-visible,
+.alignment-viewer-region-field select:focus-visible,
+.alignment-viewer-region-navigation > button:focus-visible,
+.alignment-viewer-region-history > button:focus-visible,
+.alignment-viewer-region-history-option:focus-visible {
+  outline: 2px solid var(--app-output-focus);
+  outline-offset: 2px;
+}
+
+.alignment-viewer-region-navigation > button,
+.alignment-viewer-region-history > button {
+  background: var(--app-output-button-gradient);
+  border: 1px solid var(--viewer-border, var(--app-output-border-strong));
+  border-radius: 6px;
+  color: var(--viewer-text, var(--app-output-text));
+  font-size: 0.75rem;
+  min-height: 1.95rem;
+  padding: 0.28rem 0.55rem;
+  white-space: nowrap;
+}
+
+.alignment-viewer-region-navigation > button.primary {
+  background: var(--app-output-accent-soft);
+  border-color: var(--app-output-hover-border);
+  color: var(--app-output-accent-strong);
+  font-weight: 700;
+}
+
+.alignment-viewer-region-navigation > button:not(:disabled):hover,
+.alignment-viewer-region-history > button:not(:disabled):hover {
+  background: var(--app-output-hover-bg);
+  border-color: var(--app-output-hover-border);
+}
+
+.alignment-viewer-region-navigation > button:disabled,
+.alignment-viewer-region-history > button:disabled,
+.alignment-viewer-region-field input:disabled,
+.alignment-viewer-region-field select:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.alignment-viewer-region-history {
+  align-items: end;
+  display: flex;
+  flex: 0 1 auto;
+  gap: 0.25rem;
+  position: relative;
+}
+
+.alignment-viewer-region-history-list {
+  background: var(--viewer-surface, var(--app-output-surface));
+  border: 1px solid var(--viewer-border, var(--app-output-border-strong));
+  border-radius: 7px;
+  box-shadow: 0 10px 24px rgb(15 23 42 / 18%);
+  display: grid;
+  left: 0;
+  max-height: 18rem;
+  min-width: min(24rem, calc(100vw - 3rem));
+  overflow-y: auto;
+  padding: 0.25rem;
+  position: absolute;
+  top: calc(100% + 0.2rem);
+  z-index: 20;
+}
+
+.alignment-viewer-region-history-list[hidden] {
+  display: none;
+}
+
+.alignment-viewer-region-history-option {
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  color: var(--viewer-text, var(--app-output-text));
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.74rem;
+  font-variant-numeric: tabular-nums;
+  padding: 0.38rem 0.45rem;
+  text-align: left;
+}
+
+.alignment-viewer-region-history-option:hover,
+.alignment-viewer-region-history-option[aria-selected="true"] {
+  background: var(--app-output-hover-bg);
+}
+
+.viewer-choice-combobox {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  position: relative;
+}
+
+.alignment-viewer-region-field .viewer-choice-combobox input {
+  border-radius: 6px 0 0 6px;
+}
+
+.viewer-choice-toggle {
+  background: var(--app-output-button-gradient);
+  border: 1px solid var(--viewer-border, var(--app-output-border-strong));
+  border-left: 0;
+  border-radius: 0 6px 6px 0;
+  color: var(--viewer-muted, var(--app-output-muted));
+  height: 1.95rem;
+  min-height: 1.95rem;
+  min-width: 1.9rem;
+  padding: 0 0.4rem;
+}
+
+.alignment-viewer-region-field .viewer-choice-combobox input:focus-visible,
+.alignment-viewer-region-field .viewer-choice-toggle:focus-visible {
+  border-color: var(--viewer-border, var(--app-output-border-strong));
+  outline: 0;
+}
+
+.viewer-choice-combobox:has(input:focus-visible),
+.viewer-choice-combobox:has(.viewer-choice-toggle:focus-visible) {
+  border-radius: 6px;
+  outline: 2px solid var(--app-output-focus);
+  outline-offset: 2px;
+}
+
+.viewer-choice-toggle:not(:disabled):hover {
+  background: var(--app-output-hover-bg);
+  color: var(--viewer-text, var(--app-output-text));
+}
+
+.viewer-choice-list {
+  background: var(--viewer-surface, var(--app-output-surface));
+  border: 1px solid var(--viewer-border, var(--app-output-border-strong));
+  border-radius: 7px;
+  box-shadow: 0 10px 24px rgb(15 23 42 / 18%);
+  display: grid;
+  left: 0;
+  max-height: 18rem;
+  overflow-y: auto;
+  padding: 0.25rem;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.2rem);
+  z-index: 20;
+}
+
+.viewer-choice-list[hidden] {
+  display: none;
+}
+
+.viewer-choice-option {
+  align-items: baseline;
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  color: var(--viewer-text, var(--app-output-text));
+  display: flex;
+  font-size: 0.76rem;
+  gap: 0.75rem;
+  justify-content: space-between;
+  padding: 0.38rem 0.45rem;
+  text-align: left;
+  width: 100%;
+}
+
+.viewer-choice-option span:last-child {
+  color: var(--viewer-muted, var(--app-output-muted));
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.viewer-choice-option:hover,
+.viewer-choice-option.active,
+.viewer-choice-option[aria-selected="true"] {
+  background: var(--app-output-hover-bg);
+}
+
+.viewer-choice-more {
+  color: var(--viewer-muted, var(--app-output-muted));
+  font-size: 0.72rem;
+  padding: 0.4rem 0.45rem;
+}
+
+.alignment-viewer-region-status {
+  color: var(--app-output-accent-strong);
+  flex: 1 1 100%;
+  font-size: 0.72rem;
+  font-weight: 650;
+  min-height: 0;
+}
+
+.alignment-viewer-region-status:empty {
+  display: none;
+}
+
+.alignment-viewer-region-navigation.is-loading .alignment-viewer-region-status {
+  border: 0;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+@media (max-width: 900px) {
+  .alignment-viewer-region-reference-field {
+    max-width: none;
+  }
+}
+
+@media (max-width: 600px) {
+  .alignment-viewer-region-navigation {
+    align-items: end;
+  }
+
+  .alignment-viewer-region-history,
+  .alignment-viewer-region-reference-field {
+    flex: 1 1 100%;
+  }
+
+  .alignment-viewer-region-history {
+    display: grid;
+    grid-template-columns: max-content max-content minmax(0, 1fr);
+  }
+}
+
 .dna-viewer-toolbar {
   align-items: start;
   background: var(--viewer-surface-soft, #f8fafc);
@@ -7767,7 +8081,8 @@ legend {
 .genome-figure-palette-control,
 .genome-figure-checkbox-group,
 .genome-figure-feature-types,
-.genome-figure-region-control {
+.genome-figure-region-control,
+.genome-figure-contig-control {
   color: var(--gf-muted);
   font-size: 0.68rem;
   font-weight: 700;
@@ -7862,6 +8177,21 @@ legend {
   min-width: 0;
 }
 
+.genome-figure-region-sequence {
+  display: grid;
+  gap: 0.14rem;
+  min-width: 0;
+}
+
+.genome-figure-region-control .viewer-choice-combobox {
+  width: 100%;
+}
+
+.genome-figure-region-control .viewer-choice-combobox input {
+  font-size: 0.72rem;
+  min-height: 1.82rem;
+}
+
 .genome-figure-region-fields {
   align-items: end;
   display: grid;
@@ -7902,6 +8232,83 @@ legend {
   font-size: 0.68rem;
   font-variant-numeric: tabular-nums;
   font-weight: 800;
+}
+
+.genome-figure-contig-control {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.genome-figure-contig-control > input[type="search"] {
+  background: var(--gf-surface);
+  border: 1px solid var(--gf-border-strong);
+  border-radius: 7px;
+  color: var(--gf-text);
+  font: inherit;
+  font-size: 0.72rem;
+  min-width: 0;
+  padding: 0.34rem 0.46rem;
+  width: 100%;
+}
+
+.genome-figure-contig-actions {
+  display: grid;
+  gap: 0.3rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.genome-figure-contig-actions button {
+  background: var(--gf-button-gradient);
+  border: 1px solid var(--gf-border-strong);
+  border-radius: 7px;
+  color: var(--gf-text);
+  font: inherit;
+  font-size: 0.69rem;
+  padding: 0.3rem 0.4rem;
+}
+
+.genome-figure-contig-control > span {
+  color: var(--gf-muted);
+  font-size: 0.66rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.genome-figure-contig-list {
+  border: 1px solid var(--gf-border-strong);
+  border-radius: 8px;
+  display: grid;
+  max-height: 9rem;
+  overflow: auto;
+  padding: 0.24rem;
+}
+
+.genome-figure-contig-list label {
+  align-items: center;
+  display: grid;
+  gap: 0.28rem;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  min-height: 1.7rem;
+  padding: 0.18rem 0.22rem;
+}
+
+.genome-figure-contig-list label:hover {
+  background: var(--gf-hover-bg);
+  border-radius: 5px;
+}
+
+.genome-figure-contig-list span {
+  color: var(--gf-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.genome-figure-contig-list small {
+  color: var(--gf-muted);
+  font-size: 0.62rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .genome-figure-checkbox-group {
@@ -8156,11 +8563,6 @@ legend {
   font: 13px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
-.genome-figure-contig-label {
-  fill: #475569;
-  font: 700 11px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-}
-
 .genome-figure-inside-label {
   fill: #0f172a;
   font: 700 10px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -8324,7 +8726,7 @@ legend {
   color: var(--viewer-text, #334155);
   flex: 0 0 auto;
   font-size: 0.78rem;
-  max-width: 22rem;
+  max-width: 24rem;
   min-width: 8rem;
   position: relative;
 }
@@ -8463,11 +8865,11 @@ legend {
   box-sizing: border-box;
   box-shadow: var(--viewer-shadow, 0 12px 26px rgb(15 23 42 / 0.16));
   display: grid;
-  gap: 0.3rem;
+  gap: 0.5rem;
   left: auto;
-  max-height: 14rem;
-  max-width: min(22rem, calc(100vw - 2rem));
-  min-width: 16rem;
+  max-height: min(28rem, calc(100vh - 8rem));
+  max-width: min(24rem, calc(100vw - 2rem));
+  min-width: 19rem;
   overflow: auto;
   padding: 0.55rem;
   position: absolute;
@@ -8477,14 +8879,30 @@ legend {
 }
 
 .dna-viewer-track-row {
+  background: var(--viewer-panel, var(--viewer-surface, #ffffff));
+  border: 1px solid var(--viewer-border, #e2e8f0);
+  border-radius: 7px;
   display: grid;
-  gap: 0.25rem;
+  gap: 0.38rem;
+  padding: 0.45rem;
 }
 
 .dna-viewer-track-list label {
   border-radius: 6px;
   justify-content: flex-start;
   max-width: 100%;
+}
+
+.dna-viewer-toolbar .dna-viewer-track-list .dna-viewer-track-toggle,
+.dna-viewer-toolbar .dna-viewer-track-list .dna-viewer-track-toggle:has(input:checked) {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: var(--viewer-text, #334155);
+  font-size: 0.78rem;
+  font-weight: 750;
+  min-height: 1.55rem;
+  padding: 0.08rem 0.1rem;
 }
 
 .dna-viewer-track-list .dna-viewer-track-mode {
@@ -8495,7 +8913,7 @@ legend {
   color: inherit;
   display: grid;
   gap: 0.25rem;
-  grid-template-columns: minmax(3.5rem, auto) minmax(7rem, 1fr);
+  grid-template-columns: minmax(3.5rem, auto) minmax(8rem, 1fr);
   min-height: 1.75rem;
   padding: 0.12rem 0.2rem;
 }
@@ -8518,12 +8936,28 @@ legend {
   padding: 0.18rem 0.35rem;
 }
 
+.dna-viewer-track-mode-help {
+  color: var(--viewer-muted, #64748b);
+  font-size: 0.66rem;
+  font-weight: 500;
+  grid-column: 1 / -1;
+  line-height: 1.35;
+  white-space: normal;
+}
+
+.dna-viewer-track-fixed-layout {
+  color: var(--viewer-muted, #64748b);
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.08rem 0.2rem;
+}
+
 .dna-viewer-track-type-list {
   border-left: 2px solid var(--viewer-border, #e2e8f0);
   display: grid;
   gap: 0.22rem;
-  margin-left: 0.6rem;
-  padding-left: 0.5rem;
+  margin-left: 0.2rem;
+  padding-left: 0.6rem;
 }
 
 .dna-viewer-track-type-heading,
@@ -8539,6 +8973,13 @@ legend {
   font-size: 0.72rem;
   min-height: 1.55rem;
   padding-block: 0.12rem;
+}
+
+.dna-viewer-toolbar .dna-viewer-track-list .dna-viewer-track-type-option,
+.dna-viewer-toolbar .dna-viewer-track-list .dna-viewer-track-type-option:has(input:checked) {
+  background: transparent;
+  border: 0;
+  color: var(--viewer-text, #334155);
 }
 
 .dna-viewer-code-select {
@@ -9438,6 +9879,58 @@ legend {
   border-bottom-color: var(--app-output-border);
   background: var(--app-output-surface);
   color: var(--app-output-text);
+}
+
+.visual-output-header {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.45rem 0.8rem;
+  padding: 0.5rem 0.7rem;
+  border-bottom: 1px solid var(--app-output-border);
+  background: var(--app-output-surface);
+  color: var(--app-output-text);
+}
+
+.visual-output-header .visual-output-heading {
+  position: static;
+  flex: 1 1 18rem;
+  padding: 0;
+  border: 0;
+}
+
+.visual-output-header-actions {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
+
+.portable-viewer-download-button {
+  min-width: 12.5rem;
+  min-height: 2rem;
+  padding: 0.3rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.portable-viewer-download-button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+
+.portable-viewer-download-button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .table-output-summary {
@@ -11880,6 +12373,9 @@ legend {
 
 .sequence-extractor-stack-item {
   position: relative;
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
   margin-top: 0;
   padding: 0.55rem;
   border: 1px solid var(--viewer-border, var(--app-output-border));
@@ -11917,6 +12413,8 @@ legend {
 .sequence-extractor-stack-item-heading {
   display: grid;
   grid-template-columns: 1.5rem minmax(0, 1fr) max-content;
+  min-width: 0;
+  max-width: 100%;
   gap: 0.3rem;
   align-items: start;
   margin-bottom: 0.18rem;
@@ -11991,15 +12489,21 @@ legend {
 }
 
 .sequence-extractor-stack-compatibility-result {
-  display: flex;
-  gap: 0.35rem;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(7.8rem, max-content) minmax(0, 1fr);
+  align-items: baseline;
+  column-gap: 0.55rem;
   min-width: 0;
 }
 
 .sequence-extractor-stack-compatibility-result strong {
   color: var(--viewer-muted, var(--app-output-muted));
   font-weight: 650;
+  white-space: nowrap;
+}
+
+.sequence-extractor-stack-compatibility-value {
+  min-width: 0;
 }
 
 .sequence-extractor-stack-compatibility-result.is-compatible,
@@ -12060,7 +12564,10 @@ legend {
 
 .sequence-extractor-assembly-source-map {
   display: flex;
+  box-sizing: border-box;
+  width: 100%;
   min-width: 0;
+  max-width: 100%;
   height: 1.25rem;
   margin: 0.35rem 0 0.15rem;
   overflow: hidden;
@@ -12069,6 +12576,9 @@ legend {
 }
 
 .sequence-extractor-assembly-source-segment {
+  box-sizing: border-box;
+  flex-basis: 0;
+  flex-shrink: 1;
   min-width: 0;
   padding: 0.12rem 0.3rem;
   overflow: hidden;
@@ -12079,6 +12589,11 @@ legend {
   text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.sequence-extractor-assembly-source-segment:focus-visible {
+  outline: 2px solid #f8fafc;
+  outline-offset: -3px;
 }
 
 .sequence-extractor-assembly-source-segment.source-color-0 { background: #0f766e; }

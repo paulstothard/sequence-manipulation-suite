@@ -1,21 +1,3 @@
-export const alignmentViewerExample = `@HD	VN:1.6	SO:coordinate
-@SQ	SN:NC_001422.1	LN:5386
-@RG	ID:PHIX_SIM	SM:phiX174_demo	PL:ILLUMINA
-phix_pair_002/1	99	NC_001422.1	3925	52	76M	=	4050	201	GATTGACACCCTCCCAATTGTATGTTTTCATGCCTCCAAATCTTGGAGGCTTTTTTATGGTTCGTTCTTATTACCC	HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH	RG:Z:PHIX_SIM
-phix_pair_002/2	147	NC_001422.1	4050	49	76M	=	3925	-201	AAACCTGCTATTGAGGCTTGTGGCATTTCTACTCTTTCTCAATCCCCAATGCTTGGCTTCCATAAGCAGATGGATA	HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH	RG:Z:PHIX_SIM
-phix_insertion	0	NC_001422.1	3985	45	35M2I38M	*	0	0	TTCGTTCTTATTACCCTTCTGAATGTCACGCTGATAATATTTTGACTTTGAGCGTATCGAGGCTCTTAAACCTGC	GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG	RG:Z:PHIX_SIM
-phix_deletion_rev	16	NC_001422.1	4040	42	30M5D40M	*	0	0	CGAGGCTCTTAAACCTGCTATTGAGGCTTGTTTCTACTCTTTCTCAATCCCCAATGCTTGGCTTCCATAA	FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF	RG:Z:PHIX_SIM
-##VCF
-##fileformat=VCFv4.2
-##source=SMS3 alignment viewer example
-##contig=<ID=NC_001422.1,length=5386>
-##FILTER=<ID=PASS,Description="All filters passed">
-##INFO=<ID=DP,Number=1,Type=Integer,Description="Total read depth">
-##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
-#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	phiX_demo
-NC_001422.1	3986	phix_demo_snv	T	C	84	PASS	DP=42	GT	0/1
-NC_001422.1	4054	phix_demo_deletion	CTG	C	76	PASS	DP=37	GT	0/1`;
-
 const phix174ReferenceSequence = [
   "GAGTTTTATCGCTTCCATGACGCAGAAGTTAACACTTTCGGATATTTCTGATGAGTCGAA",
   "AAATTATCTTGATAAAGCAGGAATTACTACTGCTTGTTTACGAATTAAATCGAAGTGGAC",
@@ -113,5 +95,50 @@ function wrapSequence(sequence, width = 60) {
   return String(sequence ?? "").match(new RegExp(`.{1,${width}}`, "gu"))?.join("\n") ?? "";
 }
 
+const alternateReferenceName = "SMS3_demo_reference";
+const alternateReferenceSequence = `${phix174ReferenceSequence.slice(1379)}${phix174ReferenceSequence.slice(0, 1379)}`;
+
+function sequenceSlice(reference, start, length) {
+  return reference.slice(start - 1, start - 1 + length);
+}
+
+function alternateBase(base) {
+  return ({ A: "C", C: "G", G: "T", T: "A" })[base] ?? "A";
+}
+
+const alternateRead = sequenceSlice(alternateReferenceSequence, 3925, 76);
+const alternateInsertionRead = `${sequenceSlice(alternateReferenceSequence, 3985, 35)}GG${sequenceSlice(alternateReferenceSequence, 4020, 38)}`;
+const alternateDeletionRead = `${sequenceSlice(alternateReferenceSequence, 4040, 30)}${sequenceSlice(alternateReferenceSequence, 4075, 40)}`;
+const alternateSnvRef = sequenceSlice(alternateReferenceSequence, 3986, 1);
+const alternateDeletionRef = sequenceSlice(alternateReferenceSequence, 4054, 3);
+
+export const alignmentViewerExample = `@HD	VN:1.6	SO:coordinate
+@SQ	SN:NC_001422.1	LN:5386
+@SQ	SN:${alternateReferenceName}	LN:${alternateReferenceSequence.length}
+@RG	ID:PHIX_SIM	SM:phiX174_demo	PL:ILLUMINA
+@RG	ID:ALT_SIM	SM:alternate_reference_demo	PL:ILLUMINA
+phix_pair_002/1	99	NC_001422.1	3925	52	76M	=	4050	201	GATTGACACCCTCCCAATTGTATGTTTTCATGCCTCCAAATCTTGGAGGCTTTTTTATGGTTCGTTCTTATTACCC	HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH	RG:Z:PHIX_SIM
+phix_pair_002/2	147	NC_001422.1	4050	49	76M	=	3925	-201	AAACCTGCTATTGAGGCTTGTGGCATTTCTACTCTTTCTCAATCCCCAATGCTTGGCTTCCATAAGCAGATGGATA	HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH	RG:Z:PHIX_SIM
+phix_insertion	0	NC_001422.1	3985	45	35M2I38M	*	0	0	TTCGTTCTTATTACCCTTCTGAATGTCACGCTGATAATATTTTGACTTTGAGCGTATCGAGGCTCTTAAACCTGC	GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG	RG:Z:PHIX_SIM
+phix_deletion_rev	16	NC_001422.1	4040	42	30M5D40M	*	0	0	CGAGGCTCTTAAACCTGCTATTGAGGCTTGTTTCTACTCTTTCTCAATCCCCAATGCTTGGCTTCCATAA	FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF	RG:Z:PHIX_SIM
+alternate_read	0	${alternateReferenceName}	3925	55	76M	*	0	0	${alternateRead}	${"I".repeat(alternateRead.length)}	RG:Z:ALT_SIM
+alternate_insertion	0	${alternateReferenceName}	3985	47	35M2I38M	*	0	0	${alternateInsertionRead}	${"I".repeat(alternateInsertionRead.length)}	RG:Z:ALT_SIM
+alternate_deletion	0	${alternateReferenceName}	4040	44	30M5D40M	*	0	0	${alternateDeletionRead}	${"I".repeat(alternateDeletionRead.length)}	RG:Z:ALT_SIM
+##VCF
+##fileformat=VCFv4.2
+##source=SMS3 alignment viewer example
+##contig=<ID=NC_001422.1,length=5386>
+##contig=<ID=${alternateReferenceName},length=${alternateReferenceSequence.length}>
+##FILTER=<ID=PASS,Description="All filters passed">
+##INFO=<ID=DP,Number=1,Type=Integer,Description="Total read depth">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	example_sample
+NC_001422.1	3986	phix_demo_snv	T	C	84	PASS	DP=42	GT	0/1
+NC_001422.1	4054	phix_demo_deletion	CTG	C	76	PASS	DP=37	GT	0/1
+${alternateReferenceName}	3986	alternate_demo_snv	${alternateSnvRef}	${alternateBase(alternateSnvRef)}	81	PASS	DP=39	GT	0/1
+${alternateReferenceName}	4054	alternate_demo_deletion	${alternateDeletionRef}	${alternateDeletionRef[0]}	73	PASS	DP=34	GT	0/1`;
+
 export const alignmentViewerReferenceExample = `>NC_001422.1 phiX174 complete genome reference
-${wrapSequence(phix174ReferenceSequence)}`;
+${wrapSequence(phix174ReferenceSequence)}
+>${alternateReferenceName} synthetic alternate reference for region switching
+${wrapSequence(alternateReferenceSequence)}`;

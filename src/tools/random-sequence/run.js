@@ -9,6 +9,7 @@ import {
   randomDnaFragments,
   randomSequence,
   replaceRandomRegions,
+  resolveProteinInitiation,
   resolveRandom,
   sampleSequence,
   shuffleSequence
@@ -439,12 +440,15 @@ export async function runRandomSequenceGenerator(input, options = {}, context = 
   const alphabet = generatedAlphabet === "protein"
     ? makeProteinAlphabet(options)
     : makeDnaRnaAlphabet(options, generatedAlphabet);
-  const compositionDetails = [];
+  const reportDetails = [];
   if (generatedAlphabet === "protein" && options.residueModel === "codon-usage-reference") {
     const { reference } = getProteinReferenceWeights(options.codonUsageReference);
-    compositionDetails.push(`Residue model: amino-acid frequencies implied by ${reference?.name ?? "selected codon usage reference"}`);
+    const geneticCodeDetail = reference?.geneticCode?.id
+      ? ` (genetic code ${reference.geneticCode.id})`
+      : "";
+    reportDetails.push(`Residue model: amino-acid frequencies implied by ${reference?.name ?? "selected codon usage reference"}${geneticCodeDetail}`);
   } else if (generatedAlphabet !== "protein") {
-    compositionDetails.push(`Base composition model: ${options.compositionMode === "gc" ? `GC ${Math.max(0, Math.min(100, Number(options.gcPercent) || 50))}%` : options.compositionMode === "custom" ? "custom base weights" : "equal base probability"}`);
+    reportDetails.push(`Base composition model: ${options.compositionMode === "gc" ? `GC ${Math.max(0, Math.min(100, Number(options.gcPercent) || 50))}%` : options.compositionMode === "custom" ? "custom base weights" : "equal base probability"}`);
   }
   const outputRecords = [];
 
@@ -452,9 +456,17 @@ export async function runRandomSequenceGenerator(input, options = {}, context = 
   await context.yieldIfNeeded?.();
   for (let index = 0; index < sequenceCount; index += 1) {
     context.throwIfCancelled?.();
+    const initiation = generatedAlphabet === "protein"
+      ? resolveProteinInitiation(options)
+      : { startResidue: "" };
+    const generatedSequence = `${initiation.startResidue}${randomSequence(
+      sequenceLength - initiation.startResidue.length,
+      alphabet,
+      random
+    )}`;
     outputRecords.push({
       title: `${alphabetLabel(generatedAlphabet)} random sequence ${index + 1} seed=${seed}`,
-      sequence: randomSequence(sequenceLength, alphabet, random),
+      sequence: generatedSequence,
       seed
     });
     if (index % 100 === 0) {
@@ -469,6 +481,12 @@ export async function runRandomSequenceGenerator(input, options = {}, context = 
   }
   context.reportProgress?.({ phase: "building-output", progress: 0.9 });
 
+  if (generatedAlphabet === "protein") {
+    if (options.proteinStartMode === "initiator-methionine") {
+      reportDetails.unshift("First residue: initiator methionine (M)");
+    }
+  }
+
   return finishSequenceResult({
     toolName: `Random ${alphabetLabel(generatedAlphabet)} Sequence`,
     filenameBase: generatedAlphabet === "protein" ? "random-protein" : "random-dna-rna",
@@ -476,8 +494,8 @@ export async function runRandomSequenceGenerator(input, options = {}, context = 
     seed,
     outputRecords,
     inputRecordsProcessed: 0,
-    warnings,
-    reportDetails: compositionDetails,
+    warnings: [...new Set(warnings)],
+    reportDetails,
     lineWidth: options.lineWidth,
     options
   });

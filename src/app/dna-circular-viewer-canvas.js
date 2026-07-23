@@ -725,7 +725,6 @@ export function shouldUseCircularTrackSummary(track, state, pxPerBp) {
   if (hasHiddenViewerItemTypes(track, state)) return false;
   if (!track.summary?.bins?.length) return false;
   const mode = getViewerTrackDisplayMode(track, state);
-  if (mode === "collapsed") return true;
   if (mode === "full" || mode === "squished") return false;
   const itemCount = track.summary?.itemCount ?? track.items?.length ?? 0;
   return itemCount > DENSITY_ITEM_THRESHOLD || pxPerBp < DENSITY_PX_PER_UNIT_THRESHOLD;
@@ -3129,4 +3128,15 @@ export function renderCircularDnaViewer(container, viewer, viewerOptions = {}) {
       for (const handle of handles) handle?.cleanup?.();
     }
   });
+}
+
+export function snapshotRenderedCircularDnaViewer(container) {
+  return renderedCircularViewerSessions.get(container)?.handles
+    ?.map((handle) => handle.snapshot?.() || null)
+    .filter(Boolean) ?? [];
+}
+
+export function cleanupRenderedCircularDnaViewer(container) {
+  renderedCircularViewerSessions.get(container)?.cleanup?.();
+  renderedCircularViewerSessions.delete(container);
 }

@@ -188,7 +188,9 @@ export function makeGcPlot(sequence, options = {}) {
       ? (informative.match(/[GC]/g)?.length ?? 0) / informative.length
       : 0;
     points.push({
-      position: start + 1 + Math.floor(chunk.length / 2),
+      start: start + 1,
+      end,
+      position: start + 1 + Math.floor((end - start) / 2),
       value: Number(gc.toFixed(4))
     });
   }
@@ -210,7 +212,9 @@ export function makeGcSkewPlot(sequence, options = {}) {
     const c = chunk.match(/C/g)?.length ?? 0;
     const skew = g + c > 0 ? (g - c) / (g + c) : 0;
     points.push({
-      position: start + 1 + Math.floor(chunk.length / 2),
+      start: start + 1,
+      end,
+      position: start + 1 + Math.floor((end - start) / 2),
       value: Number(skew.toFixed(4))
     });
   }
@@ -220,11 +224,17 @@ export function makeGcSkewPlot(sequence, options = {}) {
 function makePlotTracks(sequence, options = {}) {
   const windowSize = normalizedPlotWindowSize(sequence.length, options);
   const circular = options.circular === true;
+  const informative = sequence.replace(/[^ACGT]/g, "");
+  const sequenceAverageGc = informative.length
+    ? (informative.match(/[GC]/g)?.length ?? 0) / informative.length
+    : 0;
   return [
     {
       id: "gc",
       label: "GC fraction",
       baseline: 0.5,
+      sequenceAverage: sequenceAverageGc,
+      sequenceAverageWeight: informative.length,
       windowSize,
       values: makeGcPlot(sequence, { windowSize, circular })
     },
@@ -244,6 +254,178 @@ function makePlotSummaries(sequence, options = {}) {
     summaries[String(windowSize)] = makePlotTracks(sequence, { windowSize, circular: options.circular === true });
   }
   return summaries;
+}
+
+function genomeFigureRecordKey(record, index) {
+  return `${record.id || record.accession || record.title || "contig"}::${index}`;
+}
+
+function orderedGenomeFigureRecords(records, order) {
+  const indexed = records.map((record, index) => ({
+    record,
+    index,
+    key: genomeFigureRecordKey(record, index)
+  }));
+  if (order === "length-desc") {
+    return indexed.sort((left, right) =>
+      right.record.length - left.record.length
+      || String(left.record.title || "").localeCompare(String(right.record.title || ""), undefined, { sensitivity: "base" })
+      || left.index - right.index);
+  }
+  if (order === "name") {
+    return indexed.sort((left, right) =>
+      String(left.record.title || "").localeCompare(String(right.record.title || ""), undefined, { sensitivity: "base" })
+      || left.index - right.index);
+  }
+  return indexed;
+}
+
+function plotsForProjectedRecord(record, windowSize, multiRecord) {
+  if (!windowSize) return record.plots ?? [];
+  const prepared = record.plotSummaries?.[String(windowSize)];
+  if (prepared?.length) return prepared;
+  return makePlotTracks(record.sequence || "", {
+    windowSize,
+    // A multi-contig figure has explicit segment ends. Plot windows may wrap a
+    // true single circular record, but must never borrow bases from a neighbor.
+    circular: !multiRecord && record.topology === "circular"
+  });
+}
+
+/**
+ * Build the disposable display coordinate system used by genome figures.
+ * Source records and all local feature/plot coordinates remain authoritative;
+ * projected positions only describe where an item is drawn in this figure.
+ */
+export function projectGenomeFigureRecords(records, options = {}) {
+  const sourceRecords = Array.isArray(records) ? records.filter((record) => record?.length > 0) : [];
+  const visibleKeys = options.visibleRecordKeys instanceof Set
+    ? options.visibleRecordKeys
+    : Array.isArray(options.visibleRecordKeys)
+      ? new Set(options.visibleRecordKeys)
+      : null;
+  const ordered = orderedGenomeFigureRecords(sourceRecords, options.order)
+    .filter(({ key }) => !visibleKeys || visibleKeys.has(key));
+  const multiRecord = ordered.length > 1;
+  let offset = 0;
+  const contigs = [];
+  const features = [];
+  const plotsById = new Map();
+
+  for (const [visibleIndex, { record, index, key }] of ordered.entries()) {
+    const start = offset + 1;
+    const end = offset + record.length;
+    const contigId = key;
+    contigs.push({
+      id: contigId,
+      recordId: record.id || record.accession || record.title || `contig-${index + 1}`,
+      title: record.title || `Contig ${index + 1}`,
+      accession: record.accession || record.id || record.title || `contig-${index + 1}`,
+      sourceIndex: index,
+      visibleIndex,
+      start,
+      end,
+      displayStart: start,
+      displayEnd: end,
+      localStart: 1,
+      localEnd: record.length,
+      length: record.length,
+      topology: record.topology === "circular" ? "circular" : "linear"
+    });
+
+    for (const feature of record.features ?? []) {
+      const localParts = (feature.parts?.length
+        ? feature.parts
+        : [{ start: feature.start, end: feature.end, strand: feature.strand }])
+        .map((part) => ({ ...part }));
+      features.push({
+        ...feature,
+        id: `${contigId}:${feature.id}`,
+        sourceFeatureId: feature.id,
+        contigId,
+        contigTitle: record.title || `Contig ${index + 1}`,
+        localStart: feature.start,
+        localEnd: feature.end,
+        localParts,
+        start: feature.start + offset,
+        end: feature.end + offset,
+        parts: localParts.map((part) => ({
+          ...part,
+          start: part.start + offset,
+          end: part.end + offset
+        }))
+      });
+    }
+
+    for (const plot of plotsForProjectedRecord(record, options.windowSize, multiRecord)) {
+      const aggregatePlot = plotsById.get(plot.id) || {
+        ...plot,
+        values: [],
+        ...(plot.id === "gc" ? { sequenceAverage: 0, sequenceAverageWeight: 0 } : {})
+      };
+      aggregatePlot.windowSize = plot.windowSize;
+      if (plot.id === "gc") {
+        const previousWeight = Number(aggregatePlot.sequenceAverageWeight || 0);
+        const nextWeight = Number(plot.sequenceAverageWeight || record.length || 0);
+        const weightedTotal = Number(aggregatePlot.sequenceAverage || 0) * previousWeight
+          + Number(plot.sequenceAverage || 0) * nextWeight;
+        aggregatePlot.sequenceAverageWeight = previousWeight + nextWeight;
+        aggregatePlot.sequenceAverage = aggregatePlot.sequenceAverageWeight > 0
+          ? weightedTotal / aggregatePlot.sequenceAverageWeight
+          : 0;
+      }
+      aggregatePlot.values.push(...(plot.values ?? []).map((value) => ({
+        ...value,
+        contigId,
+        localPosition: value.position,
+        localStart: value.start,
+        localEnd: value.end,
+        position: value.position + offset,
+        start: value.start + offset,
+        end: value.end + offset
+      })));
+      plotsById.set(plot.id, aggregatePlot);
+    }
+    offset = end;
+  }
+
+  if (!ordered.length) return null;
+  if (ordered.length === 1) {
+    const { record, index, key } = ordered[0];
+    return {
+      ...record,
+      recordKey: key,
+      contigs,
+      features,
+      plots: Array.from(plotsById.values()),
+      plotSummaries: options.windowSize ? {} : record.plotSummaries,
+      sourceRecordCount: sourceRecords.length,
+      visibleRecordCount: 1,
+      sourceIndex: index
+    };
+  }
+  return {
+    id: "combined-genome",
+    title: `${ordered.length} contig genome figure`,
+    accession: "combined",
+    length: offset,
+    topology: "linear",
+    contigs,
+    features,
+    plots: Array.from(plotsById.values()),
+    plotSummaries: {},
+    sourceRecordCount: sourceRecords.length,
+    visibleRecordCount: ordered.length
+  };
+}
+
+export function genomeFigureRecordChoices(records) {
+  return (records ?? []).map((record, index) => ({
+    key: genomeFigureRecordKey(record, index),
+    title: record.title || `Contig ${index + 1}`,
+    length: record.length,
+    sourceIndex: index
+  }));
 }
 
 function makeFeatureRows(records) {

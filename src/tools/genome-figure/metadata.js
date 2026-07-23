@@ -115,8 +115,8 @@ function makeGenomeFigureMetadata({
 export const circularGenomeFigureMetadata = makeGenomeFigureMetadata({
   id: "circular-genome-figure",
   name: "Circular Genome Figure",
-  summary: "Create editable publication-style circular genome figures from annotated DNA records, paired annotation inputs, or FASTA sequences.",
-  whenToUse: "Use this when you want a publication-style circular map for a plasmid, viral genome, organellar genome, or other circular DNA record.",
+  summary: "Create editable publication-style circular genome figures, with explicit segmented arcs for multi-contig inputs.",
+  whenToUse: "Use this for a circular DNA map or for a draft assembly whose contigs should share one clearly segmented circular figure.",
   outputType: "Editable circular genome figure or summary report",
   defaultOutputFormat: "circular",
   outputLabel: "Circular genome figure"
@@ -125,8 +125,8 @@ export const circularGenomeFigureMetadata = makeGenomeFigureMetadata({
 export const linearGenomeFigureMetadata = makeGenomeFigureMetadata({
   id: "linear-genome-figure",
   name: "Linear Genome Figure",
-  summary: "Create editable publication-style wrapped linear genome figures from annotated DNA records, paired annotation inputs, or FASTA sequences.",
-  whenToUse: "Use this when you want a publication-style wrapped linear map for a chromosome, contig set, or selected sequence region.",
+  summary: "Create editable publication-style linear genome figures, with one independently scaled line per contig in multi-record inputs.",
+  whenToUse: "Use this for a chromosome, selected sequence region, or contig set that should be compared as separate labeled lines.",
   outputType: "Editable wrapped linear genome figure or summary report",
   defaultOutputFormat: "linear",
   outputLabel: "Wrapped linear genome figure"

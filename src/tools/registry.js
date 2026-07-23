@@ -22,6 +22,8 @@ import {
 } from "./alignment-dot-plot/run.js";
 import { biologicalRecordFormatConverterMetadata } from "./biological-record-format-converter/metadata.js";
 import { runBiologicalRecordFormatConverter } from "./biological-record-format-converter/run.js";
+import { pseudomoleculeBuilderMetadata } from "./pseudomolecule-builder/metadata.js";
+import { runPseudomoleculeBuilder } from "./pseudomolecule-builder/run.js";
 import { gffGtfFeatureExtractorMetadata } from "./gff-gtf-feature-extractor/metadata.js";
 import { runGffGtfFeatureExtractor } from "./gff-gtf-feature-extractor/run.js";
 import { genomicIntervalOperationsMetadata } from "./genomic-interval-operations/metadata.js";
@@ -341,6 +343,10 @@ import {
 import { alignmentViewerExample } from "../examples/alignment-viewer-example.js";
 import { vcfExtractorExample } from "../examples/vcf-extractor-example.js";
 import { genomeFigureExample } from "../examples/genome-figure-example.js";
+import {
+  multiContigGenomeFigureExample,
+  pseudomoleculeBuilderExample
+} from "../examples/multi-contig-genome-figure-example.js";
 import { genomeComparisonPosterExample } from "../examples/genome-comparison-poster-example.js";
 import { crambinPdbExample } from "../examples/protein-structure-examples.js";
 import { proteinConservationStructureExample } from "../examples/protein-conservation-structure-examples.js";
@@ -620,12 +626,12 @@ ${defaultSequenceExtractorExample.primers}`
   {
     metadata: circularGenomeFigureMetadata,
     run: runGenomeFigure,
-    example: genomeFigureExample
+    example: multiContigGenomeFigureExample
   },
   {
     metadata: linearGenomeFigureMetadata,
     run: runGenomeFigure,
-    example: genomeFigureExample
+    example: multiContigGenomeFigureExample
   },
   {
     metadata: genomeFigureMetadata,
@@ -1781,6 +1787,11 @@ ATGCGTACGTTAGCTAGTACCGTACGATCGTACGATCGGATATCGTACGATCGTACGATCGTACATGCGTACGTTAGCTA
     example: recordParserExample
   },
   {
+    metadata: pseudomoleculeBuilderMetadata,
+    run: runPseudomoleculeBuilder,
+    example: pseudomoleculeBuilderExample
+  },
+  {
     metadata: gffGtfFeatureExtractorMetadata,
     run: runGffGtfFeatureExtractor,
     example: `##gff-version 3
@@ -1855,7 +1866,7 @@ ATGGAGGAGCCGCAGTCAGATCCTAGCGTCGAGCCCCCTCTGAGTCAGGAAACATTTTCAGACCT`
   {
     metadata: randomProteinMetadata,
     run: runRandomProtein,
-    example: `Random protein generator. Input text is ignored; set length, count, and optional seed in the options.`
+    example: `Random protein generator. Input text is ignored; set length, count, residue model, optional initiator methionine, and optional seed in the options.`
   },
   {
     metadata: randomProteinRegionsMetadata,

@@ -513,7 +513,7 @@ export function createToolInputShellController({
   function collectInputPlacementOptions(options = []) {
     return options.flatMap((option) => {
       if (option.type !== "group") {
-        return option.placement === "input" ? [option] : [];
+        return option.placement === "input" && option.tabOnly !== true ? [option] : [];
       }
       const children = collectInputPlacementOptions(option.options ?? []);
       return children.length > 0
@@ -666,6 +666,7 @@ export function createToolInputShellController({
         values[option.id] =
           optionRoot.querySelector(`select[name="${option.id}"]`)?.value ??
           optionRoot.querySelector(`input[name="${option.id}"]:checked`)?.value ??
+          optionRoot.querySelector(`#${option.id}, [name="${option.id}"]`)?.value ??
           option.defaultValue;
       } else if (option.type === "checkbox") {
         values[option.id] = optionRoot.querySelector(`#${option.id}`)?.checked ?? option.defaultValue;

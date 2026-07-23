@@ -36,8 +36,16 @@ import {
 } from "./table-output-view-model.js";
 import { downloadBlob, downloadText } from "./file-download.js";
 import { serializeSvgElement } from "./svg-export.js";
-import { renderCircularDnaViewer } from "./dna-circular-viewer-canvas.js";
-import { renderDnaViewer } from "./dna-viewer-canvas.js";
+import {
+  cleanupRenderedCircularDnaViewer,
+  renderCircularDnaViewer,
+  snapshotRenderedCircularDnaViewer
+} from "./dna-circular-viewer-canvas.js";
+import {
+  cleanupRenderedDnaViewer,
+  renderDnaViewer,
+  snapshotRenderedDnaViewer
+} from "./dna-viewer-canvas.js";
 import { renderProteinViewer } from "./protein-viewer-canvas.js";
 import { renderGenomeFigure } from "./genome-figure-svg.js";
 import { renderProteinStructureViewer } from "./protein-structure-viewer.js";
@@ -46,10 +54,25 @@ import { createSequenceEditorWorkspaceController } from "./sequence-editor-works
 import { renderSequenceExtractorWorkspace } from "./sequence-extractor-workspace-ui.js";
 import { loadMarkdownNotebookDraft, saveMarkdownNotebookDraft } from "./markdown-notebook-model.js";
 import { renderObservablePlotPreview } from "./plot-preview-ui.js";
+import {
+  createAlignmentViewerRegionHistory,
+  renderAlignmentViewerRegionNavigation
+} from "./alignment-viewer-region-ui.js";
+import {
+  formatViewerSequenceHeading,
+  makeViewerSequenceInitialState,
+  normalizeViewerSequenceChoices,
+  renderViewerSequenceNavigation,
+  supportsViewerSequenceNavigation,
+  validateViewerSequenceRegionRequest
+} from "./viewer-sequence-navigation-ui.js";
+import {
+  downloadStandalonePortableViewer,
+  supportsPortableViewerExport
+} from "./portable-viewer-export.js";
 
 const XLSX_EXPORT_ROW_LIMIT = 50000;
 const XLSX_EXPORT_CELL_LIMIT = 250000;
-
 export function createOutputShellController({
   elements,
   state,
@@ -60,8 +83,11 @@ export function createOutputShellController({
   getSelectedWorkflowPreset,
   flattenOptions,
   getOptions,
-  pluralize
+  pluralize,
+  loadAlignmentViewerRegion
 }) {
+  const alignmentViewerRegionHistory = createAlignmentViewerRegionHistory();
+
 function renderMessages(result) {
   elements.messages.textContent = "";
 
@@ -1477,6 +1503,140 @@ function renderMarkdownNotebook(container, notebook = {}) {
   container.append(panel);
 }
 
+function describeViewerHeading(viewer, includeNavigation = false) {
+  const heading = describeViewerStream(viewer, "heading");
+  const navigation = viewer?.regionNavigation;
+  if (!includeNavigation || !navigation?.reference) return heading;
+  return `${heading} · ${navigation.reference}:${Number(navigation.start).toLocaleString()}–${Number(navigation.end).toLocaleString()}`;
+}
+
+function renderSequenceViewerNavigation(container, heading, viewer) {
+  const sequences = normalizeViewerSequenceChoices(viewer);
+  const initial = validateViewerSequenceRegionRequest({
+    sequenceKey: sequences[0]?.key,
+    start: "",
+    end: ""
+  }, sequences);
+  if (!initial.selection) return null;
+
+  const viewerHost = document.createElement("div");
+  viewerHost.className = "viewer-sequence-host";
+  const savedStates = new Map();
+  const baseHeading = describeViewerStream(viewer, "heading");
+  let activeSelection = null;
+
+  const captureCurrentState = () => {
+    if (!activeSelection) return;
+    const snapshot = viewer.layout === "circular"
+      ? snapshotRenderedCircularDnaViewer(viewerHost)[0]
+      : snapshotRenderedDnaViewer(viewerHost)[0];
+    if (snapshot) savedStates.set(activeSelection.sequenceKey, snapshot);
+  };
+  const showSelection = (selection) => {
+    captureCurrentState();
+    activeSelection = selection;
+    heading.textContent = formatViewerSequenceHeading(baseHeading, selection);
+    viewerHost.textContent = "";
+    const selectedViewer = {
+      ...viewer,
+      records: [viewer.records[selection.index]]
+    };
+    const viewerOptions = {
+      initialState: makeViewerSequenceInitialState(
+        viewer,
+        selection,
+        savedStates.get(selection.sequenceKey)
+      ),
+      preserveState: false,
+      showRecordTitle: false
+    };
+    if (selectedViewer.viewerType === "protein-sequence-viewer") {
+      renderProteinViewer(viewerHost, selectedViewer, viewerOptions);
+    } else if (selectedViewer.layout === "circular") {
+      renderCircularDnaViewer(viewerHost, selectedViewer, viewerOptions);
+    } else {
+      renderDnaViewer(viewerHost, selectedViewer, viewerOptions);
+    }
+  };
+
+  const navigation = renderViewerSequenceNavigation(container, viewer, {
+    initialSelection: initial.selection,
+    onShowSequence: showSelection
+  });
+  if (!navigation) return null;
+  container.append(viewerHost);
+  showSelection(navigation.initialSelection);
+  container._sms3VisualCleanup = () => {
+    cleanupRenderedDnaViewer(viewerHost);
+    cleanupRenderedCircularDnaViewer(viewerHost);
+  };
+  return {
+    snapshot() {
+      captureCurrentState();
+      return {
+        selection: activeSelection ? { ...activeSelection } : null,
+        viewerState: activeSelection ? savedStates.get(activeSelection.sequenceKey) ?? null : null
+      };
+    }
+  };
+}
+
+function appendPortableViewerHeading(visualOutput, heading, options) {
+  if (!supportsPortableViewerExport(options)) {
+    visualOutput.append(heading);
+    return;
+  }
+  const header = document.createElement("div");
+  header.className = "visual-output-header";
+  const actions = document.createElement("div");
+  actions.className = "visual-output-header-actions";
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "portable-viewer-download-button";
+  const buttonLabel = "Download standalone HTML";
+  button.textContent = buttonLabel;
+  button.title = "Download this materialized viewer and its data as one offline HTML file";
+  const status = document.createElement("span");
+  status.className = "portable-viewer-download-status visually-hidden";
+  status.setAttribute("aria-live", "polite");
+  let resetLabelTimer = null;
+  button.addEventListener("click", async () => {
+    window.clearTimeout(resetLabelTimer);
+    button.disabled = true;
+    button.textContent = "Preparing…";
+    status.textContent = "Preparing standalone HTML";
+    try {
+      const snapshot = typeof visualOutput._sms3PortableViewerSnapshot === "function"
+        ? visualOutput._sms3PortableViewerSnapshot()
+        : {};
+      await downloadStandalonePortableViewer({
+        viewer: options.viewer,
+        proteinStructure: options.proteinStructure,
+        state: snapshot || {}
+      });
+      button.textContent = "Downloaded";
+      status.textContent = "Standalone HTML downloaded";
+      resetLabelTimer = window.setTimeout(() => {
+        button.textContent = buttonLabel;
+      }, 1600);
+    } catch (error) {
+      const message = error?.message || "Download failed";
+      button.textContent = "Download failed";
+      button.title = message;
+      status.textContent = message;
+      resetLabelTimer = window.setTimeout(() => {
+        button.textContent = buttonLabel;
+        button.title = "Download this materialized viewer and its data as one offline HTML file";
+      }, 3000);
+    } finally {
+      button.disabled = false;
+    }
+  });
+  actions.append(button, status);
+  header.append(heading, actions);
+  visualOutput.append(header);
+}
+
 function renderVisualOutput(scope, svg, options = {}) {
   const visualOutput = getVisualOutputElement(scope);
   if (typeof visualOutput._sms3VisualCleanup === "function") {
@@ -1486,6 +1646,7 @@ function renderVisualOutput(scope, svg, options = {}) {
       visualOutput._sms3VisualCleanup = null;
     }
   }
+  visualOutput._sms3PortableViewerSnapshot = null;
   if (!svg && !options.viewer && !options.figure && !options.proteinStructure && !options.notebook && !options.sangerTrace && !options.sequenceEditor && !options.sequenceExtractor) {
     visualOutput.hidden = true;
     visualOutput.textContent = "";
@@ -1508,11 +1669,11 @@ function renderVisualOutput(scope, svg, options = {}) {
           ? "Protein Conservation Structure Viewer"
           : "Protein Structure Viewer"
         : options.viewer
-          ? describeViewerStream(options.viewer, "heading")
+          ? describeViewerHeading(options.viewer, scope === "tool")
           : options.notebook
             ? "Markdown Notebook"
             : "Plot";
-  visualOutput.append(heading);
+  appendPortableViewerHeading(visualOutput, heading, options);
   if (options.notebook) {
     renderMarkdownNotebook(visualOutput, options.notebook);
     return "";
@@ -1558,7 +1719,34 @@ function renderVisualOutput(scope, svg, options = {}) {
     return "";
   }
   if (options.viewer) {
-    const viewerOptions = { preserveState: options.preserveViewerState === true };
+    const navigationSession = (
+      supportsViewerSequenceNavigation(options.viewer) &&
+      renderSequenceViewerNavigation(visualOutput, heading, options.viewer)
+    );
+    if (navigationSession) {
+      visualOutput._sms3PortableViewerSnapshot = () => navigationSession.snapshot();
+      return "";
+    }
+    let alignmentHistoryState = null;
+    if (scope === "tool" && options.viewer.regionNavigation) {
+      const navigation = options.viewer.regionNavigation;
+      const referenceSignature = (navigation.references ?? [])
+        .map((reference) => `${reference.name}:${reference.length ?? 0}`)
+        .join("|");
+      renderAlignmentViewerRegionNavigation(visualOutput, options.viewer.regionNavigation, {
+        history: alignmentViewerRegionHistory,
+        historyScope: `${state.selectedTool?.metadata?.id ?? "tool"}|${state.alignmentViewerHistorySession ?? 0}|${navigation.sourceMode ?? ""}|${referenceSignature}`,
+        getViewerState: () => snapshotRenderedDnaViewer(visualOutput)[0] ?? null,
+        onLoadRegion: loadAlignmentViewerRegion
+      });
+      alignmentHistoryState = alignmentViewerRegionHistory.getState();
+    }
+    const alignmentHistoryEntry = alignmentHistoryState?.entries[alignmentHistoryState.index];
+    const viewerOptions = {
+      preserveState: options.preserveViewerState === true,
+      ...(alignmentHistoryState ? { showRecordTitle: false } : {}),
+      ...(alignmentHistoryEntry?.viewerState ? { initialState: alignmentHistoryEntry.viewerState } : {})
+    };
     if (options.viewer.viewerType === "protein-sequence-viewer") {
       renderProteinViewer(visualOutput, options.viewer, viewerOptions);
     } else if (options.viewer.layout === "circular") {
@@ -1566,6 +1754,11 @@ function renderVisualOutput(scope, svg, options = {}) {
     } else {
       renderDnaViewer(visualOutput, options.viewer, viewerOptions);
     }
+    visualOutput._sms3PortableViewerSnapshot = () => ({
+      viewerState: options.viewer.layout === "circular"
+        ? snapshotRenderedCircularDnaViewer(visualOutput)[0] ?? null
+        : snapshotRenderedDnaViewer(visualOutput)[0] ?? null
+    });
     return "";
   }
   let displayedSvg = svg;

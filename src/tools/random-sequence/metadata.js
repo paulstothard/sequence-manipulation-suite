@@ -335,12 +335,16 @@ function generatorWorkflow(alphabet, schema) {
   };
 }
 
-function makeStartCodonChoices() {
+function makeStartCodonChoices({ includeNone = true, includeCustom = true } = {}) {
   const choices = [
-    { value: "random", label: "Random valid start codon", always: true },
-    { value: "none", label: "No fixed start codon", always: true },
-    { value: "custom", label: "Custom codon", always: true }
+    { value: "random", label: "Random valid start codon", always: true }
   ];
+  if (includeNone) {
+    choices.push({ value: "none", label: "No fixed start codon", always: true });
+  }
+  if (includeCustom) {
+    choices.push({ value: "custom", label: "Custom codon", always: true });
+  }
   for (const code of geneticCodes) {
     for (const codon of getStartCodons(code.id)) {
       choices.push({
@@ -441,6 +445,17 @@ const randomProteinSequenceOptions = [
   { id: "sequenceLength", type: "number", label: "Sequence length", defaultValue: 120, min: 1, max: 5000000 },
   { id: "sequenceCount", type: "number", label: "Number of sequences", defaultValue: 3, min: 1, max: 10000 },
   {
+    id: "proteinStartMode",
+    type: "radio",
+    label: "First residue",
+    defaultValue: "random-residue",
+    choices: [
+      { value: "random-residue", label: "Sample from residue model" },
+      { value: "initiator-methionine", label: "Initiator methionine (M)" }
+    ],
+    help: "Initiator methionine fixes the first protein residue as M; the remaining residues are sampled from the selected residue model."
+  },
+  {
     id: "residueModel",
     type: "radio",
     label: "Residue model",
@@ -449,7 +464,7 @@ const randomProteinSequenceOptions = [
       { value: "equal", label: "Equal standard amino acids" },
       { value: "codon-usage-reference", label: "From codon usage reference" }
     ],
-    help: "Reference mode samples amino acids from the amino-acid frequencies implied by a bundled codon usage table; it does not introduce stop symbols."
+    help: "Reference mode samples amino acids from the frequencies implied by a bundled codon usage table using that reference's genetic code; it does not introduce stop symbols."
   },
   codonUsageReferenceGroup("residueModelReferenceSettings", { option: "residueModel", value: "codon-usage-reference" }),
   randomSeedOption,
@@ -590,8 +605,9 @@ export const randomProteinMetadata = {
   id: "random-protein",
   name: "Random Protein Sequence",
   category: "Random & Mutagenesis",
-  tags: ["protein", "FASTA"],
-  summary: "Generate random protein sequences of a requested length with an optional reproducible seed.",
+  tags: ["protein", "FASTA", "genetic code", "codon"],
+  summary: "Generate random protein sequences with configurable residue frequencies, optional initiator methionine, and reproducible seeds.",
+  whenToUse: "Use this to create synthetic protein records with a sampled or methionine first residue for testing, teaching, or workflow development.",
   inputType: "No input required",
   inputRequired: false,
   outputType: "Random protein FASTA",

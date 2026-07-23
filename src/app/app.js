@@ -120,6 +120,7 @@ const state = {
   workflowRun: null,
   workflowRunSummary: null,
   toolRun: null,
+  alignmentViewerHistorySession: 0,
   workspaceSequences: [],
   workspaceFeatureLayers: [],
   workspaceStorageStatus: "Loading workspace...",
@@ -164,6 +165,7 @@ const READ_MAPPING_COVERAGE_TOOL_ID = "read-mapping-coverage";
 const GFF_GTF_FEATURE_EXTRACTOR_TOOL_ID = "gff-gtf-feature-extractor";
 const BIOLOGICAL_RECORD_FORMAT_CONVERTER_TOOL_ID = "biological-record-format-converter";
 const ANNOTATED_DNA_RECORD_EXTRACTOR_TOOL_ID = "annotated-dna-record-extractor";
+const PSEUDOMOLECULE_BUILDER_TOOL_ID = "pseudomolecule-builder";
 const LINEAR_DNA_SEQUENCE_VIEWER_TOOL_ID = "dna-sequence-viewer";
 const CIRCULAR_DNA_SEQUENCE_VIEWER_TOOL_ID = "circular-dna-sequence-viewer";
 const GENOME_FIGURE_TOOL_ID = "genome-figure";
@@ -2554,6 +2556,14 @@ const DNA_SEQUENCE_VIEWER_SOURCE_MODES = {
   bedFasta: BIOLOGICAL_RECORD_SOURCE_MODES.bedFasta
 };
 
+const PSEUDOMOLECULE_SOURCE_MODES = {
+  ...DNA_SEQUENCE_VIEWER_SOURCE_MODES,
+  sequence: {
+    ...DNA_SEQUENCE_VIEWER_SOURCE_MODES.sequence,
+    tabText: "Sequence / FASTA"
+  }
+};
+
 const IN_SILICO_PCR_TEMPLATE_SOURCE_MODES = {
   sequence: {
     tabText: "Plain sequence or FASTA",
@@ -2857,13 +2867,14 @@ ${formatGenBankOrigin(sequence)}
 
 function makeAlignmentViewerReferenceModeExamples() {
   const name = referenceNameFromFastaText(alignmentViewerReferenceExample, "NC_001422.1");
+  const firstFastaRecord = alignmentViewerReferenceExample.split(/\n(?=>)/u)[0];
   return {
     loaded: {
       annotation: alignmentViewerReferenceExample,
       fasta: ""
     },
     flatfile: {
-      annotation: makeFlatfileReferenceExample(alignmentViewerReferenceExample, {
+      annotation: makeFlatfileReferenceExample(firstFastaRecord, {
         locus: name,
         definition: "PhiX174 reference for the SMS3 alignment viewer example."
       }),
@@ -2946,6 +2957,10 @@ function isAnnotatedDnaRecordExtractorTool(tool = state.selectedTool) {
   return tool?.metadata?.id === ANNOTATED_DNA_RECORD_EXTRACTOR_TOOL_ID;
 }
 
+function isPseudomoleculeBuilderTool(tool = state.selectedTool) {
+  return tool?.metadata?.id === PSEUDOMOLECULE_BUILDER_TOOL_ID;
+}
+
 function isStandaloneDnaSequenceViewerTool(tool = state.selectedTool) {
   return tool?.metadata?.id === LINEAR_DNA_SEQUENCE_VIEWER_TOOL_ID ||
     tool?.metadata?.id === CIRCULAR_DNA_SEQUENCE_VIEWER_TOOL_ID;
@@ -2964,6 +2979,7 @@ function isSequenceEditorTool(tool = state.selectedTool) {
 function isBiologicalRecordTabbedInputTool(tool = state.selectedTool) {
   return isBiologicalRecordFormatConverterTool(tool) ||
     isAnnotatedDnaRecordExtractorTool(tool) ||
+    isPseudomoleculeBuilderTool(tool) ||
     isStandaloneDnaSequenceViewerTool(tool) ||
     isGenomeFigureTool(tool) ||
     isSequenceEditorTool(tool) ||
@@ -2971,6 +2987,9 @@ function isBiologicalRecordTabbedInputTool(tool = state.selectedTool) {
 }
 
 function getBiologicalRecordSourceModes(tool = state.selectedTool) {
+  if (isPseudomoleculeBuilderTool(tool)) {
+    return PSEUDOMOLECULE_SOURCE_MODES;
+  }
   if (isStandaloneDnaSequenceViewerTool(tool) || isGenomeFigureTool(tool) || isSequenceEditorTool(tool) || isSequenceExtractorTool(tool)) {
     return DNA_SEQUENCE_VIEWER_SOURCE_MODES;
   }
@@ -3007,6 +3026,16 @@ function renderBiologicalRecordTabbedInput(tool) {
   wrapper.className = "bio-record-input";
   wrapper.id = "biologicalRecordInputPanel";
   wrapper.dataset.flatfileExample = exampleParts[0] ?? "";
+  const inputFormatOption = flattenOptions(tool.metadata.options ?? [])
+    .find((option) => option.id === "inputFormat");
+  if (inputFormatOption?.tabOnly === true) {
+    const inputFormatControl = document.createElement("input");
+    inputFormatControl.type = "hidden";
+    inputFormatControl.id = "inputFormat";
+    inputFormatControl.name = "inputFormat";
+    inputFormatControl.value = inputFormatOption.defaultValue ?? "auto";
+    wrapper.append(inputFormatControl);
+  }
 
   const sourceCard = document.createElement("section");
   sourceCard.className = "bio-record-source-card";
@@ -3599,6 +3628,7 @@ function isTabbedInputWorkflowTool(tool = state.selectedTool) {
   return [
     BIOLOGICAL_RECORD_FORMAT_CONVERTER_TOOL_ID,
     ANNOTATED_DNA_RECORD_EXTRACTOR_TOOL_ID,
+    PSEUDOMOLECULE_BUILDER_TOOL_ID,
     LINEAR_DNA_SEQUENCE_VIEWER_TOOL_ID,
     CIRCULAR_DNA_SEQUENCE_VIEWER_TOOL_ID,
     GENOME_FIGURE_TOOL_ID,
@@ -3655,18 +3685,22 @@ function setFastaRegionSourceMode(mode) {
 }
 
 function setToolOptionValue(optionId, value) {
-  const root = elements.toolOptions;
-  const select = root.querySelector(`select[name="${optionId}"]`);
+  const roots = [elements.toolOptions, elements.inputPanel];
+  const select = roots.map((root) => root.querySelector(`select[name="${optionId}"]`)).find(Boolean);
   if (select) {
     select.value = String(value);
     return;
   }
-  const checkedRadio = root.querySelector(`input[name="${optionId}"][value="${value}"]`);
+  const checkedRadio = roots
+    .map((root) => root.querySelector(`input[name="${optionId}"][value="${value}"]`))
+    .find(Boolean);
   if (checkedRadio) {
     checkedRadio.checked = true;
     return;
   }
-  const control = root.querySelector(`#${optionId}, [name="${optionId}"]`);
+  const control = roots
+    .map((root) => root.querySelector(`#${optionId}, [name="${optionId}"]`))
+    .find(Boolean);
   if (!control) {
     return;
   }
@@ -3678,10 +3712,12 @@ function setToolOptionValue(optionId, value) {
 }
 
 function dispatchToolOptionChange(optionId) {
-  const root = elements.toolOptions;
-  const control = root.querySelector(`select[name="${optionId}"]`) ??
-    root.querySelector(`input[name="${optionId}"]:checked`) ??
-    root.querySelector(`#${optionId}, [name="${optionId}"]`);
+  const roots = [elements.toolOptions, elements.inputPanel];
+  const control = roots
+    .map((root) => root.querySelector(`select[name="${optionId}"]`) ??
+      root.querySelector(`input[name="${optionId}"]:checked`) ??
+      root.querySelector(`#${optionId}, [name="${optionId}"]`))
+    .find(Boolean);
   if (!control) {
     return false;
   }
@@ -3690,11 +3726,15 @@ function dispatchToolOptionChange(optionId) {
 }
 
 function getToolOptionValue(optionId, fallback = "") {
-  const root = elements.toolOptions;
-  return root.querySelector(`select[name="${optionId}"]`)?.value ??
-    root.querySelector(`input[name="${optionId}"]:checked`)?.value ??
-    root.querySelector(`#${optionId}, [name="${optionId}"]`)?.value ??
-    fallback;
+  for (const root of [elements.toolOptions, elements.inputPanel]) {
+    const value = root.querySelector(`select[name="${optionId}"]`)?.value ??
+      root.querySelector(`input[name="${optionId}"]:checked`)?.value ??
+      root.querySelector(`#${optionId}, [name="${optionId}"]`)?.value;
+    if (value != null) {
+      return value;
+    }
+  }
+  return fallback;
 }
 
 function setPcrPrimerDesignConstraintDetailsOpen(open) {
@@ -4630,6 +4670,95 @@ function getOptions(...args) {
   return isAlignmentViewerTool() ? getAlignmentViewerOptions(options) : options;
 }
 
+function setAlignmentViewerRegionOptions({ reference, start, end }) {
+  const values = {
+    chromosome: reference,
+    regionStart: start,
+    regionEnd: end
+  };
+  for (const [id, value] of Object.entries(values)) {
+    const control = elements.toolOptions.querySelector(`#${id}`);
+    if (control) control.value = String(value);
+  }
+}
+
+function captureAlignmentViewerViewport() {
+  const output = elements.visualOutput;
+  const snapshot = {
+    top: output.getBoundingClientRect().top,
+    minHeight: output.style.minHeight,
+    ariaBusy: output.getAttribute("aria-busy")
+  };
+  output.style.minHeight = `${output.offsetHeight}px`;
+  output.setAttribute("aria-busy", "true");
+  return snapshot;
+}
+
+function restoreAlignmentViewerViewport(snapshot) {
+  if (!snapshot) return;
+  const output = elements.visualOutput;
+  const restoreScroll = () => {
+    const delta = output.getBoundingClientRect().top - snapshot.top;
+    if (Math.abs(delta) > 0.5) window.scrollTo(window.scrollX, window.scrollY + delta);
+  };
+  restoreScroll();
+  requestAnimationFrame(() => {
+    output.style.minHeight = snapshot.minHeight;
+    if (snapshot.ariaBusy === null) output.removeAttribute("aria-busy");
+    else output.setAttribute("aria-busy", snapshot.ariaBusy);
+    restoreScroll();
+    requestAnimationFrame(restoreScroll);
+  });
+}
+
+async function loadAlignmentViewerRegion(region, { onProgress } = {}) {
+  if (state.toolRun) {
+    throw new Error("Another tool run is already in progress.");
+  }
+  const tool = state.selectedTool;
+  const supportedToolIds = new Set(["alignment-viewer", "sam-bam-summary-region-viewer"]);
+  if (!supportedToolIds.has(tool?.metadata?.id)) {
+    throw new Error("Region loading is available only for alignment viewer outputs.");
+  }
+
+  setAlignmentViewerRegionOptions(region);
+  const viewportSnapshot = captureAlignmentViewerViewport();
+  const abortController = new AbortController();
+  state.toolRun = {
+    abortController,
+    cancelActiveTool: null
+  };
+  setToolRunning(true);
+  try {
+    const inputText = getSelectedToolInputText();
+    const options = getOptions();
+    const result = await runAppTool(tool, inputText, options, {
+      signal: abortController.signal,
+      onProgress: (message) => {
+        const detail = describeWorkerProgress(tool, message);
+        if (detail) onProgress?.(detail);
+      }
+    });
+    if (state.selectedTool !== tool) {
+      throw new Error("The selected tool changed before the region finished loading.");
+    }
+    await displayToolResult(result, inputText, options);
+    return result;
+  } catch (error) {
+    elements.messages.textContent = "";
+    if (error.name === "AbortError" || abortController.signal.aborted) {
+      addMessage(`${tool.metadata.name} region load cancelled.`);
+      throw new Error("Region load cancelled.");
+    }
+    addMessage(`Could not load region: ${error.message}`, "warning");
+    throw error;
+  } finally {
+    state.toolRun = null;
+    setToolRunning(false);
+    restoreAlignmentViewerViewport(viewportSnapshot);
+  }
+}
+
 const outputShell = createOutputShellController({
   elements,
   state,
@@ -4640,7 +4769,8 @@ const outputShell = createOutputShellController({
   getSelectedWorkflowPreset,
   flattenOptions,
   getOptions,
-  pluralize
+  pluralize,
+  loadAlignmentViewerRegion
 });
 
 function renderMessages(result) {
@@ -5379,6 +5509,9 @@ async function displayToolResult(result, inputText, options) {
 async function runSelectedTool() {
   if (state.toolRun) {
     return;
+  }
+  if (["alignment-viewer", "sam-bam-summary-region-viewer"].includes(state.selectedTool?.metadata?.id)) {
+    state.alignmentViewerHistorySession += 1;
   }
   const abortController = new AbortController();
   state.toolRun = {
