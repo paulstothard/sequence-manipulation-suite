@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light dark" />
+    <meta name="sms3-tool-worker" content="./src/workers/tool-worker.bundle-SED47V2E.js" />
     <title>SMS3</title>
     <style>
       html,
@@ -99,7 +100,13 @@
               <button id="workspaceLink" class="reference-link" type="button">Workspace</button>
             </section>
 
-            <div id="toolList" class="tool-list"></div>
+            <div id="toolList" class="tool-list">
+              <div id="appStartupStatus" class="app-startup-status" role="status" aria-live="polite">
+                <strong>Loading tools…</strong>
+                <span>Preparing SMS3 in your browser.</span>
+                <button id="appStartupRetry" type="button" hidden>Reload SMS3</button>
+              </div>
+            </div>
 
             <section class="reference-panel" aria-labelledby="referenceTitle">
               <h2 id="referenceTitle">Reference</h2>
@@ -543,13 +550,64 @@
 
     <script src="./src/vendor/d3/d3.min.js"></script>
     <script src="./src/vendor/observablehq-plot/plot.umd.min.js"></script>
-    <script src="./src/vendor/exceljs/exceljs.min.js"></script>
-    <script src="./src/vendor/3dmol/3Dmol-min.js"></script>
-    <script type="module">
-      const appUrl = new URL("./src/app/app.js", import.meta.url);
+    <script async src="./src/vendor/exceljs/exceljs.min.js"></script>
+    <script async src="./src/vendor/3dmol/3Dmol-min.js"></script>
+    <script id="sms3AppLoader" type="module" data-app-module="./src/app/app.bundle-HTAYMCWB.js">
+      const loader = document.querySelector("#sms3AppLoader");
+      const status = document.querySelector("#appStartupStatus");
+      const retryButton = document.querySelector("#appStartupRetry");
+      const appUrl = new URL(loader.dataset.appModule, document.baseURI);
       const build = new URLSearchParams(globalThis.location.search).get("build");
       if (build) appUrl.searchParams.set("build", build);
-      await import(appUrl);
+      const retryKey = `sms3-startup-retry:${appUrl.pathname}`;
+
+      function getRetryCount() {
+        try {
+          return Number.parseInt(sessionStorage.getItem(retryKey) ?? "0", 10) || 0;
+        } catch {
+          return 0;
+        }
+      }
+
+      function setRetryCount(value) {
+        try {
+          if (value > 0) sessionStorage.setItem(retryKey, String(value));
+          else sessionStorage.removeItem(retryKey);
+        } catch {
+          // The visible recovery control still works when session storage is unavailable.
+        }
+      }
+
+      function reloadForRetry() {
+        setRetryCount(0);
+        const retryUrl = new URL(globalThis.location.href);
+        retryUrl.searchParams.set("startup-retry", Date.now().toString(36));
+        globalThis.location.replace(retryUrl);
+      }
+
+      retryButton?.addEventListener("click", reloadForRetry);
+
+      try {
+        await import(appUrl);
+        setRetryCount(0);
+        document.documentElement.dataset.sms3Ready = "true";
+      } catch (error) {
+        console.error("SMS3 startup failed.", error);
+        if (getRetryCount() < 1) {
+          setRetryCount(1);
+          if (status) {
+            status.dataset.state = "retrying";
+            status.querySelector("strong").textContent = "Retrying tool load…";
+            status.querySelector("span").textContent = "The first request did not complete. Trying again now.";
+          }
+          globalThis.setTimeout(() => globalThis.location.reload(), 250);
+        } else if (status) {
+          status.dataset.state = "error";
+          status.querySelector("strong").textContent = "SMS3 could not load its tools";
+          status.querySelector("span").textContent = "This is usually a temporary network or deployment problem.";
+          retryButton.hidden = false;
+        }
+      }
     </script>
   </body>
 </html>

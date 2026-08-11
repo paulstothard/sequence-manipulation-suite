@@ -6,8 +6,21 @@ import {
 
 let nextRequestId = 1;
 
-export function makeToolWorkerUrl(pageUrl = globalThis.location?.href, moduleUrl = import.meta.url) {
-  const workerUrl = new URL("../workers/tool-worker.js", moduleUrl);
+function configuredToolWorkerPath() {
+  return globalThis.document
+    ?.querySelector('meta[name="sms3-tool-worker"]')
+    ?.getAttribute("content")
+    ?.trim() ?? "";
+}
+
+export function makeToolWorkerUrl(
+  pageUrl = globalThis.location?.href,
+  moduleUrl = import.meta.url,
+  configuredPath = configuredToolWorkerPath()
+) {
+  const workerUrl = configuredPath
+    ? new URL(configuredPath, pageUrl || moduleUrl)
+    : new URL("../workers/tool-worker.js", moduleUrl);
   if (pageUrl) {
     const build = new URL(pageUrl).searchParams.get("build");
     if (build) workerUrl.searchParams.set("build", build);

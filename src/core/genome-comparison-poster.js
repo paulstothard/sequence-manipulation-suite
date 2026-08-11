@@ -1333,6 +1333,7 @@ const LOOM_REFERENCE_PAINT_COLORS = [
 ];
 const LOOM_CONTIG_GAP_FRACTION = 0.004;
 const LOOM_PAINT_BLOCK_GAP_PX = 0;
+const LOOM_RIBBON_BUNDLE_TRAJECTORY_GAP_FRACTION = 0.015;
 
 function makeGenomeDisplayLayout(genome) {
   const records = Array.isArray(genome.records) && genome.records.length > 0
@@ -1466,22 +1467,129 @@ function splitLoomRibbonCoordinates({ upperLayout, lowerLayout, upperStart, uppe
 }
 
 function makeLoomRibbonPath({ topStart, topEnd, topY, bottomStart, bottomEnd, bottomY, barHeight, strand }) {
-  let bottomLeft = bottomStart;
-  let bottomRight = bottomEnd;
-  if (strand === "-") {
-    bottomLeft = bottomEnd;
-    bottomRight = bottomStart;
-  }
+  const topLeft = Math.min(topStart, topEnd);
+  const topRight = Math.max(topStart, topEnd);
+  const bottomLeft = Math.min(bottomStart, bottomEnd);
+  const bottomRight = Math.max(bottomStart, bottomEnd);
   const yTop = topY + barHeight / 2;
   const yBottom = bottomY - barHeight / 2;
+
+  if (strand === "-") {
+    return [
+      `M ${topLeft.toFixed(2)} ${yTop.toFixed(2)}`,
+      `L ${bottomRight.toFixed(2)} ${yBottom.toFixed(2)}`,
+      `L ${bottomLeft.toFixed(2)} ${yBottom.toFixed(2)}`,
+      `L ${topRight.toFixed(2)} ${yTop.toFixed(2)}`,
+      "Z"
+    ].join(" ");
+  }
+
   const yMid = (yTop + yBottom) / 2;
   return [
-    `M ${topStart.toFixed(2)} ${yTop.toFixed(2)}`,
-    `C ${topStart.toFixed(2)} ${yMid.toFixed(2)} ${bottomLeft.toFixed(2)} ${yMid.toFixed(2)} ${bottomLeft.toFixed(2)} ${yBottom.toFixed(2)}`,
+    `M ${topLeft.toFixed(2)} ${yTop.toFixed(2)}`,
+    `C ${topLeft.toFixed(2)} ${yMid.toFixed(2)} ${bottomLeft.toFixed(2)} ${yMid.toFixed(2)} ${bottomLeft.toFixed(2)} ${yBottom.toFixed(2)}`,
     `L ${bottomRight.toFixed(2)} ${yBottom.toFixed(2)}`,
-    `C ${bottomRight.toFixed(2)} ${yMid.toFixed(2)} ${topEnd.toFixed(2)} ${yMid.toFixed(2)} ${topEnd.toFixed(2)} ${yTop.toFixed(2)}`,
+    `C ${bottomRight.toFixed(2)} ${yMid.toFixed(2)} ${topRight.toFixed(2)} ${yMid.toFixed(2)} ${topRight.toFixed(2)} ${yTop.toFixed(2)}`,
     "Z"
   ].join(" ");
+}
+
+function compareNumericTuples(left, right) {
+  for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
+    const difference = (left[index] ?? 0) - (right[index] ?? 0);
+    if (difference !== 0) return difference;
+  }
+  return 0;
+}
+
+function loomRibbonSortKey(item) {
+  const topSpan = Math.abs(item.topEnd - item.topStart);
+  const bottomSpan = Math.abs(item.bottomEnd - item.bottomStart);
+  const averageSpan = (topSpan + bottomSpan) / 2;
+  const topCenter = (item.topStart + item.topEnd) / 2;
+  const bottomCenter = (item.bottomStart + item.bottomEnd) / 2;
+  return [
+    -averageSpan,
+    -Math.abs(topCenter - bottomCenter),
+    Math.min(item.topStart, item.topEnd, item.bottomStart, item.bottomEnd)
+  ];
+}
+
+function loomRibbonTrajectory(item) {
+  const topCenter = (item.topStart + item.topEnd) / 2;
+  const bottomCenter = (item.bottomStart + item.bottomEnd) / 2;
+  return item.strand === "-" ? bottomCenter + topCenter : bottomCenter - topCenter;
+}
+
+function bundleLoomRibbonItems(items, plotWidth) {
+  const routedItems = new Map();
+  for (const item of items) {
+    const route = JSON.stringify([
+      item.upperGenome,
+      item.upperContig,
+      item.lowerGenome,
+      item.lowerContig,
+      item.strand
+    ]);
+    if (!routedItems.has(route)) routedItems.set(route, []);
+    routedItems.get(route).push({
+      item: { ...item, sortKey: loomRibbonSortKey(item) },
+      trajectory: loomRibbonTrajectory(item)
+    });
+  }
+
+  const maximumGap = Math.max(0, plotWidth) * LOOM_RIBBON_BUNDLE_TRAJECTORY_GAP_FRACTION;
+  const bundles = [];
+  const addBundle = (route, candidates) => {
+    if (candidates.length === 0) return;
+    const priority = candidates.reduce((best, candidate) => (
+      compareNumericTuples(candidate.item.sortKey, best) < 0 ? candidate.item.sortKey : best
+    ), candidates[0].item.sortKey);
+    bundles.push({
+      route,
+      priority,
+      trajectory: candidates[0].trajectory,
+      candidates
+    });
+  };
+
+  for (const route of [...routedItems.keys()].sort()) {
+    const candidates = routedItems.get(route).sort((left, right) => (
+      left.trajectory - right.trajectory
+      || compareNumericTuples(left.item.sortKey, right.item.sortKey)
+    ));
+    let currentBundle = [];
+    let previousTrajectory = null;
+    for (const candidate of candidates) {
+      if (
+        currentBundle.length > 0
+        && previousTrajectory !== null
+        && candidate.trajectory - previousTrajectory > maximumGap
+      ) {
+        addBundle(route, currentBundle);
+        currentBundle = [];
+      }
+      currentBundle.push(candidate);
+      previousTrajectory = candidate.trajectory;
+    }
+    addBundle(route, currentBundle);
+  }
+
+  bundles.sort((left, right) => (
+    compareNumericTuples(left.priority, right.priority)
+    || (left.route < right.route ? -1 : left.route > right.route ? 1 : 0)
+    || left.trajectory - right.trajectory
+  ));
+
+  return bundles.flatMap((bundle, bundleIndex) => {
+    const bundleId = `loom_ribbon_bundle_${String(bundleIndex + 1).padStart(6, "0")}`;
+    return bundle.candidates
+      .sort((left, right) => (
+        compareNumericTuples(left.item.sortKey, right.item.sortKey)
+        || left.trajectory - right.trajectory
+      ))
+      .map(({ item }) => ({ ...item, bundleId }));
+  });
 }
 
 function renderLoomGenomeRow(parts, { genome, layout, x, y, width, barHeight, rowRole, scaleLength = layout.displayLength }) {
@@ -1754,10 +1862,11 @@ function makeLoomAdjacentRibbonItems({
         bottomEnd,
         bottomY: lowerY,
         upperGenome: upperGenome.title,
+        upperContig: piece.upperSegment.title,
         lowerGenome: lowerGenome.title,
+        lowerContig: piece.lowerSegment.title,
         upperRowIndex,
-        lowerRowIndex,
-        sortLength: Math.max(Math.abs(topEnd - topStart), Math.abs(bottomEnd - bottomStart))
+        lowerRowIndex
       });
     }
   };
@@ -1857,7 +1966,7 @@ function makeLoomAdjacentRibbonItems({
     }
   }
 
-  return items.sort((a, b) => b.sortLength - a.sortLength || a.topStart - b.topStart);
+  return bundleLoomRibbonItems(items, plotWidth);
 }
 
 function renderLoomReferencePaintLegend(parts, { x, y, intervals, width }) {
@@ -2022,11 +2131,9 @@ function renderLoomGenomeComparisonPosterSvg({
     `${styleScope} .axis{stroke:${LOOM_POSTER_AXIS};stroke-width:2;stroke-linecap:round}`,
     `${styleScope} .tick{stroke:${LOOM_POSTER_AXIS_SECONDARY};stroke-width:1.4;stroke-linecap:round}`,
     `${styleScope} .minor-tick{stroke:${LOOM_POSTER_AXIS_SECONDARY};stroke-width:.9;opacity:.56;stroke-linecap:round}`,
-    `${styleScope} .loom-contig{stroke:#e5e7eb;stroke-width:.8;shape-rendering:crispEdges;opacity:.24}`,
+    `${styleScope} .loom-contig{stroke:none;opacity:.24}`,
     `${styleScope} .loom-contig-reference{opacity:.30}`,
-    `${styleScope} .loom-paint-block{stroke:#ffffff;stroke-width:1.2;shape-rendering:crispEdges}`,
-    `${styleScope} .loom-paint-reference{stroke-opacity:.82}`,
-    `${styleScope} .loom-paint-comparison{stroke-opacity:.76}`,
+    `${styleScope} .loom-paint-block{stroke:none}`,
     `${styleScope} .loom-ribbon{stroke:none;mix-blend-mode:normal}`,
     `${styleScope} .loom-ribbon-reverse{stroke:#f8fafc;stroke-width:.45;stroke-opacity:.16}`,
     `${styleScope} .legend{font:12px system-ui,sans-serif;fill:${LOOM_POSTER_MUTED_TEXT}}`,
@@ -2069,7 +2176,7 @@ function renderLoomGenomeComparisonPosterSvg({
       barHeight,
       strand: item.strand
     });
-    parts.push(`<path class="loom-ribbon ${item.strand === "-" ? "loom-ribbon-reverse" : "loom-ribbon-direct"}" d="${path}" fill="${escapeXml(item.color)}" fill-opacity="${item.opacity}" data-upper-genome="${escapeXml(item.upperGenome)}" data-lower-genome="${escapeXml(item.lowerGenome)}" data-upper-row-index="${item.upperRowIndex}" data-lower-row-index="${item.lowerRowIndex}" data-row-distance="${item.lowerRowIndex - item.upperRowIndex}" data-comparison="${escapeXml(item.lowerGenome)}" data-reference-origin="${escapeXml(item.paint.origin)}" data-reference-start="${Math.floor(item.referenceStart)}" data-reference-end="${Math.ceil(item.referenceEnd)}" data-comparison-start="${Math.floor(item.comparisonStart)}" data-comparison-end="${Math.ceil(item.comparisonEnd)}" data-strand="${escapeXml(item.strand)}"><title>${escapeXml(`${item.upperGenome} to ${item.lowerGenome} ${item.strand} reference ${formatPosition(Math.floor(item.referenceStart) + 1)}-${formatPosition(Math.ceil(item.referenceEnd))}; lower row ${formatPosition(Math.floor(item.comparisonStart) + 1)}-${formatPosition(Math.ceil(item.comparisonEnd))}; ${round(item.identity, 2)}% identity${loomColorMode === "reference" ? `; reference paint ${item.paint.origin}` : ""}`)}</title></path>`);
+    parts.push(`<path class="loom-ribbon ${item.strand === "-" ? "loom-ribbon-reverse" : "loom-ribbon-direct"}" d="${path}" fill="${escapeXml(item.color)}" fill-opacity="${item.opacity}" data-ribbon-bundle="${escapeXml(item.bundleId)}" data-upper-genome="${escapeXml(item.upperGenome)}" data-lower-genome="${escapeXml(item.lowerGenome)}" data-upper-row-index="${item.upperRowIndex}" data-lower-row-index="${item.lowerRowIndex}" data-row-distance="${item.lowerRowIndex - item.upperRowIndex}" data-comparison="${escapeXml(item.lowerGenome)}" data-reference-origin="${escapeXml(item.paint.origin)}" data-reference-start="${Math.floor(item.referenceStart)}" data-reference-end="${Math.ceil(item.referenceEnd)}" data-comparison-start="${Math.floor(item.comparisonStart)}" data-comparison-end="${Math.ceil(item.comparisonEnd)}" data-strand="${escapeXml(item.strand)}"><title>${escapeXml(`${item.upperGenome} to ${item.lowerGenome} ${item.strand} reference ${formatPosition(Math.floor(item.referenceStart) + 1)}-${formatPosition(Math.ceil(item.referenceEnd))}; lower row ${formatPosition(Math.floor(item.comparisonStart) + 1)}-${formatPosition(Math.ceil(item.comparisonEnd))}; ${round(item.identity, 2)}% identity${loomColorMode === "reference" ? `; reference paint ${item.paint.origin}` : ""}`)}</title></path>`);
   }
 
   renderLoomGenomeRow(parts, {
