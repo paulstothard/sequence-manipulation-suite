@@ -179,6 +179,7 @@ const toolWorkerClient = new ToolWorkerClient();
 
 const elements = {
   appShell: document.querySelector(".app-shell"),
+  appHomeLink: document.querySelector("#appHomeLink"),
   toolNav: document.querySelector(".tool-nav"),
   sidebarToggle: document.querySelector("#sidebarToggle"),
   sidebarResize: document.querySelector("#sidebarResize"),
@@ -5646,6 +5647,20 @@ function positionPageHelpPopover(help, popover) {
 
 elements.toolSearch.addEventListener("input", renderToolList);
 wirePageHelpPopovers();
+elements.appHomeLink.addEventListener("click", (event) => {
+  if (
+    event.defaultPrevented
+    || event.button !== 0
+    || event.metaKey
+    || event.ctrlKey
+    || event.shiftKey
+    || event.altKey
+  ) {
+    return;
+  }
+  event.preventDefault();
+  selectHome();
+});
 elements.homeLink.addEventListener("click", () => {
   selectHome();
 });
