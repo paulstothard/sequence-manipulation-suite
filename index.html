@@ -40,10 +40,14 @@
   <body>
     <div class="app-shell">
       <header class="topbar">
-        <a id="appHomeLink" class="app-home-link" href="./" aria-label="SMS3 home">
-          <p class="eyebrow">Sequence Manipulation Suite</p>
-          <h1>SMS3 <span id="appVersion" class="app-version"></span></h1>
-        </a>
+        <div class="app-brand">
+          <p class="eyebrow">
+            <a id="appSuiteHomeLink" class="app-home-link" href="./">Sequence Manipulation Suite</a>
+          </p>
+          <a id="appHomeLink" class="app-home-link" href="./" aria-label="SMS3 home">
+            <h1>SMS3 <span id="appVersion" class="app-version"></span></h1>
+          </a>
+        </div>
         <div class="topbar-actions">
           <button id="sidebarToggle" class="icon-button" type="button" aria-label="Hide navigation" aria-pressed="false">
             <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
@@ -552,7 +556,7 @@
     <script src="./src/vendor/observablehq-plot/plot.umd.min.js"></script>
     <script async src="./src/vendor/exceljs/exceljs.min.js"></script>
     <script async src="./src/vendor/3dmol/3Dmol-min.js"></script>
-    <script id="sms3AppLoader" type="module" data-app-module="./src/app/app.bundle-7DL5M475.js">
+    <script id="sms3AppLoader" type="module" data-app-module="./src/app/app.bundle-7QTWDNAS.js">
       const loader = document.querySelector("#sms3AppLoader");
       const status = document.querySelector("#appStartupStatus");
       const retryButton = document.querySelector("#appStartupRetry");
