@@ -17,6 +17,7 @@ const COLOR_MODES = new Set(["adaptive", "fixed"]);
 const LOOM_COLOR_MODES = new Set(["reference", "identity"]);
 const DEFAULT_COLOR_SCHEME = "magma-ocean";
 const PAF_CIGAR_RE = /(\d+)([MIDNSHP=X])/gu;
+const PAF_CS_RE = /:(\d+)|=([A-Za-z]+)|\*([A-Za-z])([A-Za-z])|\+([A-Za-z]+)|-([A-Za-z]+)|~([A-Za-z]{2})(\d+)([A-Za-z]{2})/gu;
 
 let minimap2CliPromise = null;
 let runCounter = 0;
@@ -509,13 +510,147 @@ function splitPafCigarBlocks({
   return blocks;
 }
 
+function parseLongPafCsOperations(cs) {
+  const text = String(cs ?? "");
+  const operations = [];
+  let position = 0;
+  for (const match of text.matchAll(PAF_CS_RE)) {
+    if (match.index !== position) return null;
+    position = match.index + match[0].length;
+    if (match[1] !== undefined) return null;
+    if (match[2] !== undefined) {
+      const sequence = match[2];
+      const unambiguous = [...sequence].filter((base) => base.toLowerCase() !== "n").length;
+      operations.push({ length: sequence.length, op: "=", matches: unambiguous, blockLength: unambiguous });
+    } else if (match[3] !== undefined) {
+      const unambiguous = match[3].toLowerCase() !== "n" && match[4].toLowerCase() !== "n" ? 1 : 0;
+      operations.push({ length: 1, op: "X", matches: 0, blockLength: unambiguous });
+    } else if (match[5] !== undefined) {
+      const sequence = match[5];
+      const unambiguous = [...sequence].filter((base) => base.toLowerCase() !== "n").length;
+      operations.push({ length: sequence.length, op: "I", matches: 0, blockLength: unambiguous });
+    } else if (match[6] !== undefined) {
+      const sequence = match[6];
+      const unambiguous = [...sequence].filter((base) => base.toLowerCase() !== "n").length;
+      operations.push({ length: sequence.length, op: "D", matches: 0, blockLength: unambiguous });
+    } else {
+      operations.push({ length: Number.parseInt(match[8], 10), op: "N", matches: 0, blockLength: 0 });
+    }
+  }
+  return position === text.length ? operations : null;
+}
+
+function splitPafLongCsBlocks({
+  cs,
+  comparison,
+  comparisonSequence,
+  comparisonLength,
+  reference,
+  referenceLength,
+  referenceStart,
+  comparisonStart,
+  comparisonEnd,
+  referenceContig,
+  comparisonContig,
+  referenceContigStart,
+  comparisonContigStart,
+  strand,
+  mapq,
+  engine,
+  minBlockLength
+}) {
+  const operations = parseLongPafCsOperations(cs);
+  if (operations === null) return null;
+  if (operations.length === 0) return [];
+
+  const splitGapLength = Math.max(1, Number(minBlockLength) || DEFAULT_MIN_BLOCK_LENGTH);
+  const referenceOffset = referenceStart - referenceContigStart;
+  const comparisonOffset = comparisonStart - comparisonContigStart;
+  const comparisonDirection = strand === "-" ? -1 : 1;
+  const blocks = [];
+  let referencePos = referenceStart;
+  let comparisonPos = strand === "-" ? comparisonEnd : comparisonStart;
+  let chunkReferenceStart = null;
+  let chunkComparisonStart = null;
+  let chunkBlockLength = 0;
+  let chunkMatches = 0;
+
+  const openChunk = () => {
+    if (chunkReferenceStart === null) {
+      chunkReferenceStart = referencePos;
+      chunkComparisonStart = comparisonPos;
+    }
+  };
+  const closeChunk = () => {
+    if (chunkReferenceStart === null || chunkComparisonStart === null) return;
+    const normalizedComparisonStart = Math.min(chunkComparisonStart, comparisonPos);
+    const normalizedComparisonEnd = Math.max(chunkComparisonStart, comparisonPos);
+    if (
+      chunkBlockLength >= splitGapLength &&
+      (referencePos > chunkReferenceStart || normalizedComparisonEnd > normalizedComparisonStart)
+    ) {
+      blocks.push(makePafBlock({
+        comparison,
+        comparisonSequence,
+        comparisonLength,
+        reference,
+        referenceLength,
+        referenceStart: chunkReferenceStart,
+        referenceEnd: referencePos,
+        comparisonStart: normalizedComparisonStart,
+        comparisonEnd: normalizedComparisonEnd,
+        referenceContig,
+        comparisonContig,
+        referenceContigStart: chunkReferenceStart - referenceOffset,
+        referenceContigEnd: referencePos - referenceOffset,
+        comparisonContigStart: normalizedComparisonStart - comparisonOffset,
+        comparisonContigEnd: normalizedComparisonEnd - comparisonOffset,
+        strand,
+        matches: chunkMatches,
+        blockLength: chunkBlockLength,
+        mapq,
+        engine
+      }));
+    }
+    chunkReferenceStart = null;
+    chunkComparisonStart = null;
+    chunkBlockLength = 0;
+    chunkMatches = 0;
+  };
+
+  for (const operation of operations) {
+    const isLargeGap = (operation.op === "I" || operation.op === "D" || operation.op === "N") &&
+      operation.length >= splitGapLength;
+    if (isLargeGap) {
+      closeChunk();
+      if (operation.op === "D" || operation.op === "N") referencePos += operation.length;
+      if (operation.op === "I") comparisonPos += comparisonDirection * operation.length;
+      continue;
+    }
+
+    openChunk();
+    if (operation.op === "=" || operation.op === "X") {
+      referencePos += operation.length;
+      comparisonPos += comparisonDirection * operation.length;
+    } else if (operation.op === "D" || operation.op === "N") {
+      referencePos += operation.length;
+    } else if (operation.op === "I") {
+      comparisonPos += comparisonDirection * operation.length;
+    }
+    chunkBlockLength += operation.blockLength;
+    chunkMatches += operation.matches;
+  }
+  closeChunk();
+  return blocks;
+}
+
 export function buildGenomeComparisonMinimap2Args(options, referencePath, comparisonPath) {
   const normalized = normalizeOptions(options);
   const args = [];
   if (normalized.minimap2Preset !== "none") {
     args.push("-x", normalized.minimap2Preset);
   }
-  args.push("-c", "--cs");
+  args.push("-c", "--cs=long");
   if (normalized.alignmentBlockStyle === "fragmented") {
     args.push("--no-long-join", "-r", "200,1000");
   }
@@ -630,17 +765,25 @@ export function parsePafBlocks(pafText, engine = "minimap2", nameMaps = {}, opti
       mapq,
       engine
     };
+    const cs = optionalPafTag(fields, "cs:Z:");
+    let splitBlocks = cs
+      ? splitPafLongCsBlocks({
+        ...commonBlock,
+        cs,
+        minBlockLength: normalized.minBlockLength
+      })
+      : null;
     const cigar = optionalPafTag(fields, "cg:Z:");
-    if (cigar) {
-      const splitBlocks = splitPafCigarBlocks({
+    if (splitBlocks === null && cigar) {
+      splitBlocks = splitPafCigarBlocks({
         ...commonBlock,
         cigar,
         minBlockLength: normalized.minBlockLength
       });
-      if (splitBlocks !== null) {
-        blocks.push(...splitBlocks);
-        continue;
-      }
+    }
+    if (splitBlocks !== null) {
+      blocks.push(...splitBlocks);
+      continue;
     }
     blocks.push(makePafBlock(commonBlock));
   }

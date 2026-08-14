@@ -139,7 +139,7 @@ export const biowasmToolManifest = [
     licensePath: "src/vendor/biowasm/licenses/MINIMAP2-2.22-MIT-LICENSE",
     sourceUrl: "https://biowasm.com/cdn/v3/minimap2/2.22",
     accessDate: "2026-05-19",
-    commandSyntax: "minimap2 -c --cs <reference.fasta> <comparisons.fasta>; minimap2 -a --secondary=no [-x preset] <reference.fasta> <reads.fastq|reads.fasta>",
+    commandSyntax: "minimap2 -c --cs=long <reference.fasta> <comparisons.fasta>; minimap2 -a --secondary=no [-x preset] <reference.fasta> <reads.fastq|reads.fasta>",
     sms3Tools: ["Genome Comparison Poster", "Read Mapping Coverage"]
   },
   {
