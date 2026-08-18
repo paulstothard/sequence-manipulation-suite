@@ -1,4 +1,6 @@
 import { addTimestampToFilename, downloadCanvasPng, downloadCanvasSvg, makeSafeFileStem } from "./canvas-export.js";
+import { geneticCodes } from "../core/genetic-code.js";
+import { makeSixFrameTranslations } from "../core/translation.js";
 import {
   allowsViewerInertia,
   createInertiaVelocityTracker,
@@ -56,6 +58,14 @@ function getTraceCanvasTheme(canvas) {
     lowQuality: "#f59e0b",
     qualityBar: dark ? "#94a3b8" : "#64748b",
     clipShade: dark ? "rgba(5, 10, 15, 0.62)" : "rgba(15, 23, 42, 0.28)",
+    translationForwardFill: dark ? "#17345f" : "#dbeafe",
+    translationForwardText: dark ? "#93c5fd" : "#1d4ed8",
+    translationReverseFill: dark ? "#35235d" : "#ede9fe",
+    translationReverseText: dark ? "#c4b5fd" : "#6d28d9",
+    translationStopFill: dark ? "#5f2028" : "#fee2e2",
+    translationStopText: dark ? "#fca5a5" : "#b91c1c",
+    translationUnknownFill: dark ? "#34404b" : "#e2e8f0",
+    translationUnknownText: dark ? "#cbd5e1" : "#475569",
     clipStartHandle,
     clipEndHandle
   };
@@ -88,6 +98,23 @@ export function calculateSangerTraceQualityLayout({ plotTop, plotHeight, quality
     maxLabelY,
     thresholdLabelY: clamp(thresholdY, maxLabelY + 10, zeroLabelY - 10),
     zeroLabelY
+  };
+}
+
+export function calculateSangerTraceCanvasLayout({ showForwardTranslations = false, showReverseTranslations = false } = {}) {
+  const translationFrameCount = (showForwardTranslations ? 3 : 0) + (showReverseTranslations ? 3 : 0);
+  const translationRowHeight = 20;
+  const translationTop = 54;
+  const translationHeight = translationFrameCount * translationRowHeight;
+  return {
+    baseHeight: 370,
+    baseLabelY: 38,
+    canvasHeight: 370 + translationHeight,
+    plotTop: 86 + translationHeight,
+    translationFrameCount,
+    translationHeight,
+    translationRowHeight,
+    translationTop
   };
 }
 
@@ -149,6 +176,16 @@ function fullSequenceForState(state) {
   return state.calls.map((call) => call.base).join("");
 }
 
+function translationFramesForState(state) {
+  if (!state.showForwardTranslations && !state.showReverseTranslations) {
+    return [];
+  }
+  return makeSixFrameTranslations(fullSequenceForState(state), { geneticCode: state.geneticCode })
+    .filter((frame) => frame.strand === "+"
+      ? state.showForwardTranslations
+      : state.showReverseTranslations);
+}
+
 function basesPerVisibleWidth(state) {
   return Math.max(12, Math.round(100 / state.zoom));
 }
@@ -191,6 +228,15 @@ function findClipHandle(canvas, state, event) {
     Math.abs(handle.x - x) <= handle.width / 2 &&
     y >= handle.top &&
     y <= handle.bottom
+  ) ?? null;
+}
+
+function findTranslationHitBox(canvas, state, event) {
+  const { rect, scaleX, scaleY } = canvasCoordinates(canvas);
+  const x = (event.clientX - rect.left) * scaleX / (window.devicePixelRatio || 1);
+  const y = (event.clientY - rect.top) * scaleY / (window.devicePixelRatio || 1);
+  return (state.translationHitBoxes ?? []).find((item) =>
+    x >= item.left && x <= item.right && y >= item.top && y <= item.bottom
   ) ?? null;
 }
 
@@ -288,8 +334,95 @@ function syncControls(panel, state) {
   const visibleEnd = Math.min(state.calls.length, visibleStart + basesPerVisibleWidth(state) - 1);
   panel.querySelector("[data-sanger-control='viewInfo']").textContent =
     `View ${visibleStart.toLocaleString()}-${visibleEnd.toLocaleString()} of ${state.calls.length.toLocaleString()} bases; zoom ${state.zoom.toFixed(1)}x; export keeps ${state.clipStart.toLocaleString()}-${state.clipEnd.toLocaleString()}.`;
+  const forwardButton = panel.querySelector("[data-sanger-control='forwardTranslations']");
+  const reverseButton = panel.querySelector("[data-sanger-control='reverseTranslations']");
+  const geneticCode = panel.querySelector("[data-sanger-control='geneticCode']");
+  forwardButton?.setAttribute("aria-pressed", String(state.showForwardTranslations));
+  reverseButton?.setAttribute("aria-pressed", String(state.showReverseTranslations));
+  forwardButton?.classList.toggle("is-active", state.showForwardTranslations);
+  reverseButton?.classList.toggle("is-active", state.showReverseTranslations);
+  if (geneticCode && geneticCode.value !== state.geneticCode) {
+    geneticCode.value = state.geneticCode;
+  }
   syncSearchControls(panel, state);
   updateDetails(panel, state);
+}
+
+function translationColors(theme, frame, aminoAcid) {
+  if (aminoAcid === "*") {
+    return { fill: theme.translationStopFill, text: theme.translationStopText };
+  }
+  if (aminoAcid === "X") {
+    return { fill: theme.translationUnknownFill, text: theme.translationUnknownText };
+  }
+  return frame.strand === "+"
+    ? { fill: theme.translationForwardFill, text: theme.translationForwardText }
+    : { fill: theme.translationReverseFill, text: theme.translationReverseText };
+}
+
+function drawTranslationTracks(context, state, calls, plot, xForPosition, layout, theme) {
+  const frames = translationFramesForState(state);
+  state.translationHitBoxes = [];
+  if (frames.length === 0) {
+    return;
+  }
+  const firstVisible = calls[0].displayIndex;
+  const lastVisible = calls[calls.length - 1].displayIndex;
+  const boundaryForIndex = (position, side) => {
+    const call = state.calls[position - 1];
+    if (!call) return side === "left" ? plot.left : plot.left + plot.width;
+    const x = xForPosition(call.tracePosition);
+    const neighbor = state.calls[position - 1 + (side === "left" ? -1 : 1)];
+    if (!neighbor || (position === firstVisible && side === "left") || (position === lastVisible && side === "right")) {
+      return side === "left" ? plot.left : plot.left + plot.width;
+    }
+    return (x + xForPosition(neighbor.tracePosition)) / 2;
+  };
+
+  context.save();
+  context.font = "700 10px ui-monospace, SFMono-Regular, Menlo, monospace";
+  context.textBaseline = "middle";
+  frames.forEach((frame, frameIndex) => {
+    const top = layout.translationTop + frameIndex * layout.translationRowHeight;
+    const centerY = top + 8;
+    context.textAlign = "right";
+    context.fillStyle = frame.strand === "+" ? theme.translationForwardText : theme.translationReverseText;
+    context.fillText(frame.label, plot.left - 7, centerY);
+    for (const codon of frame.codons) {
+      const segmentStart = Math.max(firstVisible, codon.directStart);
+      const segmentEnd = Math.min(lastVisible, codon.directEnd);
+      if (segmentStart > segmentEnd) continue;
+      const left = clamp(boundaryForIndex(segmentStart, "left"), plot.left, plot.left + plot.width);
+      const right = clamp(boundaryForIndex(segmentEnd, "right"), plot.left, plot.left + plot.width);
+      const colors = translationColors(theme, frame, codon.aminoAcid);
+      const clipped = codon.directStart < state.clipStart || codon.directEnd > state.clipEnd;
+      context.globalAlpha = clipped ? 0.42 : 1;
+      context.fillStyle = colors.fill;
+      context.strokeStyle = theme.border;
+      context.lineWidth = 0.7;
+      context.beginPath();
+      context.roundRect(left, top, Math.max(1, right - left), 16, 2);
+      context.fill();
+      context.stroke();
+      if (codon.centerPosition >= firstVisible && codon.centerPosition <= lastVisible) {
+        const centerCall = state.calls[codon.centerPosition - 1];
+        context.textAlign = "center";
+        context.fillStyle = colors.text;
+        context.fillText(codon.aminoAcid, xForPosition(centerCall.tracePosition), centerY);
+      }
+      context.globalAlpha = 1;
+      state.translationHitBoxes.push({
+        ...codon,
+        frame: frame.frame,
+        frameLabel: frame.label,
+        left,
+        right,
+        top,
+        bottom: top + 16
+      });
+    }
+  });
+  context.restore();
 }
 
 function getClipGeometry(state, calls, plot, xForPosition) {
@@ -380,13 +513,14 @@ function drawTrace(canvas, state) {
   context.fillStyle = theme.surface;
   context.fillRect(0, 0, cssWidth, cssHeight);
 
-  const margin = { left: 54, right: 22, top: 86, bottom: 62 };
+  const layout = calculateSangerTraceCanvasLayout(state);
+  const margin = { left: 54, right: 22, top: layout.plotTop, bottom: 62 };
   const plot = {
     left: margin.left,
     top: margin.top,
     width: cssWidth - margin.left - margin.right,
     height: cssHeight - margin.top - margin.bottom,
-    baseLabelY: 38
+    baseLabelY: layout.baseLabelY
   };
   context.fillStyle = theme.surfaceSoft;
   context.strokeStyle = theme.borderStrong;
@@ -402,6 +536,7 @@ function drawTrace(canvas, state) {
   const lastPosition = Math.min(state.data.sampleCount, Math.max(...calls.map((call) => call.tracePosition)) + 14);
   const sampleSpan = Math.max(1, lastPosition - firstPosition);
   const xForPosition = (position) => plot.left + ((position - firstPosition) / sampleSpan) * plot.width;
+  drawTranslationTracks(context, state, calls, plot, xForPosition, layout, theme);
 
   let maxSignal = 1;
   for (const channel of CHANNELS) {
@@ -579,9 +714,35 @@ function renderSingleSangerTraceViewer(container, data) {
   const nextBase = makeButton(">", "Next selected base");
   const jumpStart = makeButton("5' end", "Jump to the 5' end of the read");
   const jumpEnd = makeButton("3' end", "Jump to the 3' end of the read");
+  const forwardTranslations = makeButton("+ translation", "Show or hide forward translation frames +1, +2, and +3");
+  forwardTranslations.dataset.sangerControl = "forwardTranslations";
+  const reverseTranslations = makeButton("− translation", "Show or hide reverse-complement translation frames -1, -2, and -3");
+  reverseTranslations.dataset.sangerControl = "reverseTranslations";
+  const geneticCode = document.createElement("select");
+  geneticCode.className = "sanger-trace-genetic-code";
+  geneticCode.dataset.sangerControl = "geneticCode";
+  geneticCode.setAttribute("aria-label", "Trace translation genetic code");
+  geneticCode.title = "Genetic code for the trace translation tracks";
+  for (const code of geneticCodes) {
+    const option = document.createElement("option");
+    option.value = code.id;
+    option.textContent = `${code.id}. ${code.name}`;
+    geneticCode.append(option);
+  }
   const navGroup = document.createElement("div");
   navGroup.className = "sanger-trace-toolbar-buttons";
-  navGroup.append(zoomOut, zoomIn, reset, jumpStart, jumpEnd, previousBase, nextBase);
+  navGroup.append(
+    zoomOut,
+    zoomIn,
+    reset,
+    jumpStart,
+    jumpEnd,
+    previousBase,
+    nextBase,
+    forwardTranslations,
+    reverseTranslations,
+    geneticCode
+  );
   toolbar.append(title, navGroup, viewInfo);
 
   const canvas = document.createElement("canvas");
@@ -695,12 +856,23 @@ function renderSingleSangerTraceViewer(container, data) {
     visibleStart: data.clipStart ?? 1,
     zoom: data.baseCalls.length > 180 ? 1.4 : 2.2,
     hitBoxes: [],
+    translationHitBoxes: [],
+    showForwardTranslations: data.showForwardTranslations === true,
+    showReverseTranslations: data.showReverseTranslations === true,
+    geneticCode: String(data.geneticCode || "1"),
     searchQuery: "",
     searchMatches: [],
     searchMatchIndex: -1
   };
 
   const render = (message = "") => {
+    const layout = calculateSangerTraceCanvasLayout(state);
+    const canvasHeight = `${layout.canvasHeight}px`;
+    if (canvas.style.height !== canvasHeight) {
+      canvas.style.height = canvasHeight;
+    }
+    canvas.dataset.translationFrames = String(layout.translationFrameCount);
+    canvas.dataset.geneticCode = state.geneticCode;
     syncControls(panel, state);
     drawTrace(canvas, state);
     if (message) setStatus(panel, message);
@@ -772,6 +944,18 @@ function renderSingleSangerTraceViewer(container, data) {
     if (state.selectedIndex > end) state.visibleStart = Math.max(1, state.selectedIndex - basesPerVisibleWidth(state) + 1);
     render();
   }, listenerOptions);
+  forwardTranslations.addEventListener("click", () => {
+    state.showForwardTranslations = !state.showForwardTranslations;
+    render(`${state.showForwardTranslations ? "Showing" : "Hiding"} forward translation frames.`);
+  }, listenerOptions);
+  reverseTranslations.addEventListener("click", () => {
+    state.showReverseTranslations = !state.showReverseTranslations;
+    render(`${state.showReverseTranslations ? "Showing" : "Hiding"} reverse translation frames.`);
+  }, listenerOptions);
+  geneticCode.addEventListener("change", () => {
+    state.geneticCode = geneticCode.value;
+    render(`Translation tracks use NCBI genetic code ${state.geneticCode}.`);
+  }, listenerOptions);
   previousMatch.addEventListener("click", () => goToSearchMatch(-1), listenerOptions);
   nextMatch.addEventListener("click", () => goToSearchMatch(1), listenerOptions);
   clearSearch.addEventListener("click", () => {
@@ -837,6 +1021,11 @@ function renderSingleSangerTraceViewer(container, data) {
     canvas.classList.toggle("clip-hover", Boolean(clipHandle));
     if (clipHandle) {
       setStatus(panel, `Drag the ${clipHandle.type === "clip-start" ? "5'" : "3'"} clip handle or click a base and set that clip boundary.`);
+      return;
+    }
+    const translationHit = findTranslationHitBox(canvas, state, event);
+    if (translationHit) {
+      setStatus(panel, `${translationHit.frameLabel}: ${translationHit.aminoAcid}; codon ${translationHit.codon}; displayed bases ${translationHit.directStart}-${translationHit.directEnd}; genetic code ${state.geneticCode}.`);
       return;
     }
     const nearest = findNearestHitBox(canvas, state, event);

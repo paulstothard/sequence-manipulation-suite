@@ -43,6 +43,21 @@ const SHOWCASE_TOOL_OPTION_OVERRIDES = new Map([
       size: alignmentViewerReferenceExample.length
     }
   }],
+  ["sanger-trace-viewer", {
+    showForwardTranslations: true,
+    showReverseTranslations: true,
+    geneticCode: "1"
+  }],
+  ["sanger-trace-assembly", {
+    showForwardTranslations: true,
+    showReverseTranslations: true,
+    geneticCode: "1"
+  }],
+  ["sanger-trace-reference-comparison", {
+    showForwardTranslations: true,
+    showReverseTranslations: true,
+    geneticCode: "1"
+  }],
   ["vcf-genotype-table", {
     dataType: "region-variants",
     chromosome: "1",

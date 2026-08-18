@@ -15,6 +15,7 @@ import {
 } from "../core/fragment-assembly.js";
 import { fragmentDuplexMetrics, fragmentEndGeometry } from "../core/fragment-ends.js";
 import { complementDnaRnaSequence } from "../core/sequence.js";
+import { makeSixFrameTranslations } from "../core/translation.js";
 import { formatFastaRecord } from "../core/fasta.js";
 import { downloadText } from "./file-download.js";
 import {
@@ -1118,23 +1119,10 @@ function translateCodon(codon, codonMap) {
 }
 
 export function translateFragmentFrames(sequence, geneticCode = "1") {
-  const source = String(sequence || "").toUpperCase().replaceAll("U", "T");
-  const reverseSource = reverseComplement(source);
-  const frameCodonMap = makeCodonMap(getGeneticCode(geneticCode));
-  return [
-    { label: "+1", offset: 0, source },
-    { label: "+2", offset: 1, source },
-    { label: "+3", offset: 2, source },
-    { label: "−1", offset: 0, source: reverseSource },
-    { label: "−2", offset: 1, source: reverseSource },
-    { label: "−3", offset: 2, source: reverseSource }
-  ].map((frame) => {
-    let protein = "";
-    for (let index = frame.offset; index + 2 < frame.source.length; index += 3) {
-      protein += translateCodon(frame.source.slice(index, index + 3), frameCodonMap);
-    }
-    return { frame: frame.label, protein };
-  });
+  return makeSixFrameTranslations(sequence, { geneticCode }).map((frame) => ({
+    frame: frame.label,
+    protein: frame.protein
+  }));
 }
 
 function appendDetails(panel, rows) {

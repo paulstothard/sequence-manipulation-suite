@@ -81,8 +81,8 @@ export async function runSangerTraceViewer(input, options = {}, context = {}) {
   const tsv = outputFormat === "tsv" ? makeSangerCollectionBaseCallTsv(collection) : "";
   const consensusFasta = outputFormat === "consensus-fasta" && session ? makeSangerConsensusFasta(session, result.options.lineWidth) : "";
   const assemblyTextMap = outputFormat === "assembly-text-map" && session ? makeSangerAssemblyTextMap(session, result.options.lineWidth) : "";
-  const assemblyTraceMapSvg = outputFormat === "assembly-trace-map-svg" && session ? makeSangerAssemblyTraceMapSvg(session) : "";
-  const referenceTraceMapSvg = outputFormat === "reference-trace-map-svg" && session ? makeSangerReferenceTraceMapSvg(session) : "";
+  const assemblyTraceMapSvg = outputFormat === "assembly-trace-map-svg" && session ? makeSangerAssemblyTraceMapSvg(session, result.options) : "";
+  const referenceTraceMapSvg = outputFormat === "reference-trace-map-svg" && session ? makeSangerReferenceTraceMapSvg(session, result.options) : "";
   const referenceDifferencesTsv = outputFormat === "reference-differences-tsv" && session ? makeSangerReferenceDifferenceTsv(session) : "";
   const referenceAlignmentSvg = outputFormat === "reference-alignment-svg" && session ? makeSangerReferenceAlignmentSvg(session, { lineWidth: result.options.lineWidth }) : "";
   const differenceReviewSvg = outputFormat === "difference-review-svg" && session ? makeSangerDifferenceReviewSvg(session) : "";

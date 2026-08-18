@@ -6,6 +6,8 @@ import {
 } from "./lightweight-sequence-assembly.js";
 import { alignPairwiseAffine } from "./pairwise-alignment.js";
 import { cleanDnaRnaSequence, complementDnaRnaSequence } from "./sequence.js";
+import { getGeneticCode } from "./genetic-code.js";
+import { makeSixFrameTranslations } from "./translation.js";
 
 export const SANGER_TRACE_CHANNELS = ["A", "C", "G", "T"];
 export const SANGER_SESSION_SEPARATOR = "---SMS3-SANGER-SESSION-PART---";
@@ -827,6 +829,9 @@ function normalizeOptions(options = {}, baseCallCount = 0) {
     editPosition: clampInteger(options.editPosition, 0, 0, Math.max(0, baseCallCount)),
     editBase: String(options.editBase ?? "").trim() ? editBase : "",
     reverseComplement: options.reverseComplement === true,
+    showForwardTranslations: options.showForwardTranslations === true,
+    showReverseTranslations: options.showReverseTranslations === true,
+    geneticCode: getGeneticCode(options.geneticCode ?? "1").id,
     lineWidth: clampInteger(options.lineWidth, 60, 10, 200)
   };
 }
@@ -2263,6 +2268,8 @@ function makeReferenceMiniTraceRowSvg({ traceResult, placement, segment, chunk, 
 
 export function makeSangerReferenceTraceMapSvg(session, options = {}) {
   const reference = session.reference;
+  const translationFrames = selectedSangerTranslationFrames(reference?.sequence ?? "", options);
+  const translationHeight = translationFrames.length * SANGER_TRANSLATION_ROW_HEIGHT;
   const placements = (session.referenceAlignments ?? [])
     .filter((alignment) => alignment.query_type === "trace")
     .map((alignment) => makeReferenceTracePlacement(session, alignment))
@@ -2288,12 +2295,12 @@ export function makeSangerReferenceTraceMapSvg(session, options = {}) {
     }
   }
   const bodyHeight = chunks.reduce((sum, chunk) =>
-    sum + 30 + referenceRowHeight + chunk.visiblePlacements.length * readRowHeight +
+    sum + 30 + referenceRowHeight + translationHeight + chunk.visiblePlacements.length * readRowHeight +
       Math.max(0, chunk.visiblePlacements.length - 1) * readRowGap + chunkGap,
   0);
   const height = chunks.length === 0 ? 210 : 86 + bodyHeight + 24;
   const parts = [
-    `<svg class="sanger-svg" xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Sanger reference trace map" data-bases-per-row="${basesPerRow}" data-base-step="${cellWidth.toFixed(2)}" data-read-row-gap="${readRowGap}" data-peak-style="condensed-trace">`,
+    `<svg class="sanger-svg" xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Sanger reference trace map" data-bases-per-row="${basesPerRow}" data-base-step="${cellWidth.toFixed(2)}" data-read-row-gap="${readRowGap}" data-peak-style="condensed-trace" data-translation-frames="${translationFrames.length}" data-genetic-code="${escapeXml(options.geneticCode ?? 1)}">`,
     SANGER_SVG_TEXT_STYLE,
     `<rect width="${width}" height="${height}" fill="#ffffff"/>`,
     `<text x="${left}" y="30" font-family="system-ui, sans-serif" font-size="17" font-weight="700" fill="#172026">Sanger reference trace map</text>`,
@@ -2318,6 +2325,18 @@ export function makeSangerReferenceTraceMapSvg(session, options = {}) {
       parts.push(`<text x="${(x + cellWidth / 2).toFixed(1)}" y="${y + 16}" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" font-weight="700" fill="${CHANNEL_COLORS[base] ?? "#475569"}">${escapeXml(base)}</text>`);
     }
     y += referenceRowHeight;
+    if (translationFrames.length > 0) {
+      parts.push(`<g class="sanger-reference-translation-tracks" data-translation-source="reference">${makeSangerTranslationTracksSvg({
+        frames: translationFrames,
+        visibleStart: chunk.start,
+        visibleEnd: chunk.end,
+        xForIndex: (position) => sequenceLeft + (position - chunk.start + 0.5) * cellWidth,
+        left: sequenceLeft,
+        right: sequenceLeft + (chunk.end - chunk.start + 1) * cellWidth,
+        top: y
+      })}</g>`);
+      y += translationHeight;
+    }
 
     for (const [placementIndex, { placement, segment }] of chunk.visiblePlacements.entries()) {
       const rowTop = y;
@@ -2367,6 +2386,14 @@ export function makeSangerAssemblyTraceMapSvg(session, options = {}) {
   const chunkGap = 28;
   const contigGap = 30;
   const traceResults = traceResultMapForAssembly(session);
+  const translationFramesByContig = new Map((session.assembly.contigs ?? []).map((contig) => [
+    contig.id,
+    selectedSangerTranslationFrames(contig.sequence, options)
+  ]));
+  const translationFrameCount = options.showForwardTranslations || options.showReverseTranslations
+    ? (options.showForwardTranslations ? 3 : 0) + (options.showReverseTranslations ? 3 : 0)
+    : 0;
+  const translationHeight = translationFrameCount * SANGER_TRANSLATION_ROW_HEIGHT;
   const chunks = [];
   for (const contig of session.assembly.contigs ?? []) {
     for (let start = 1; start <= contig.sequence.length; start += basesPerRow) {
@@ -2378,12 +2405,12 @@ export function makeSangerAssemblyTraceMapSvg(session, options = {}) {
     }
   }
   const bodyHeight = chunks.reduce((sum, chunk) =>
-    sum + 30 + consensusRowHeight + chunk.visibleReads.length * readRowHeight + chunkGap,
+    sum + 30 + consensusRowHeight + translationHeight + chunk.visibleReads.length * readRowHeight + chunkGap,
   0);
   const height = chunks.length === 0 ? 210 : 86 + bodyHeight + contigGap + 24;
   const sequenceLeft = left + labelWidth;
   const parts = [
-    `<svg class="sanger-svg" xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Sanger assembly trace map" data-bases-per-row="${basesPerRow}" data-base-step="${cellWidth.toFixed(2)}" data-peak-height="${peakHeight}" data-peak-style="condensed-trace">`,
+    `<svg class="sanger-svg" xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Sanger assembly trace map" data-bases-per-row="${basesPerRow}" data-base-step="${cellWidth.toFixed(2)}" data-peak-height="${peakHeight}" data-peak-style="condensed-trace" data-translation-frames="${translationFrameCount}" data-genetic-code="${escapeXml(options.geneticCode ?? 1)}">`,
     SANGER_SVG_TEXT_STYLE,
     `<rect width="${width}" height="${height}" fill="#ffffff"/>`,
     `<text x="${left}" y="30" font-family="system-ui, sans-serif" font-size="17" font-weight="700" fill="#172026">Sanger assembly trace map</text>`,
@@ -2414,6 +2441,19 @@ export function makeSangerAssemblyTraceMapSvg(session, options = {}) {
       parts.push(`<text x="${(x + cellWidth / 2).toFixed(1)}" y="${y + 16}" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" font-weight="700" fill="${CHANNEL_COLORS[base] ?? "#475569"}">${escapeXml(base)}</text>`);
     }
     y += consensusRowHeight;
+    const translationFrames = translationFramesByContig.get(chunk.contig.id) ?? [];
+    if (translationFrames.length > 0) {
+      parts.push(`<g class="sanger-assembly-translation-tracks" data-translation-source="consensus">${makeSangerTranslationTracksSvg({
+        frames: translationFrames,
+        visibleStart: chunk.start,
+        visibleEnd: chunk.end,
+        xForIndex: (position) => sequenceLeft + (position - chunk.start + 0.5) * cellWidth,
+        left: sequenceLeft,
+        right: sequenceLeft + (chunk.end - chunk.start + 1) * cellWidth,
+        top: y
+      })}</g>`);
+      y += translationHeight;
+    }
     for (const { read, segment } of chunk.visibleReads) {
       const traceResult = traceResults.get(read.title);
       const rowTitle = `${read.title} (${read.orientation === "reverse-complement" ? "reverse complement" : "forward"})`;
@@ -2532,6 +2572,79 @@ function makePath(values, maxIntensity, geometry) {
   }).join(" ");
 }
 
+const SANGER_TRANSLATION_ROW_HEIGHT = 18;
+
+function selectedSangerTranslationFrames(sequence, options = {}) {
+  if (!options.showForwardTranslations && !options.showReverseTranslations) {
+    return [];
+  }
+  return makeSixFrameTranslations(sequence, { geneticCode: options.geneticCode })
+    .filter((frame) => frame.strand === "+"
+      ? options.showForwardTranslations
+      : options.showReverseTranslations);
+}
+
+function sangerTranslationFill(frame, aminoAcid) {
+  if (aminoAcid === "*") return "#fee2e2";
+  if (aminoAcid === "X") return "#e2e8f0";
+  return frame.strand === "+" ? "#dbeafe" : "#ede9fe";
+}
+
+function sangerTranslationText(frame, aminoAcid) {
+  if (aminoAcid === "*") return "#b91c1c";
+  if (aminoAcid === "X") return "#475569";
+  return frame.strand === "+" ? "#1d4ed8" : "#6d28d9";
+}
+
+function makeSangerTranslationTracksSvg({
+  frames,
+  visibleStart,
+  visibleEnd,
+  xForIndex,
+  left,
+  right,
+  top,
+  clipStart = null,
+  clipEnd = null
+}) {
+  if (frames.length === 0) {
+    return "";
+  }
+  const boundaryForIndex = (position, side) => {
+    const x = xForIndex(position);
+    if (side === "left") {
+      return position > visibleStart ? (xForIndex(position - 1) + x) / 2 : left;
+    }
+    return position < visibleEnd ? (x + xForIndex(position + 1)) / 2 : right;
+  };
+  const parts = [];
+  frames.forEach((frame, frameIndex) => {
+    const y = top + frameIndex * SANGER_TRANSLATION_ROW_HEIGHT;
+    parts.push(`<text class="sanger-translation-label" x="${(left - 8).toFixed(1)}" y="${(y + 12).toFixed(1)}" text-anchor="end" font-size="9" font-weight="700" fill="${frame.strand === "+" ? "#1d4ed8" : "#6d28d9"}">${escapeXml(frame.label)}</text>`);
+    for (const codon of frame.codons) {
+      const segmentStart = Math.max(visibleStart, codon.directStart);
+      const segmentEnd = Math.min(visibleEnd, codon.directEnd);
+      if (segmentStart > segmentEnd) {
+        continue;
+      }
+      const x1 = boundaryForIndex(segmentStart, "left");
+      const x2 = boundaryForIndex(segmentEnd, "right");
+      const clipped = clipStart !== null && clipEnd !== null &&
+        (codon.directStart < clipStart || codon.directEnd > clipEnd);
+      const label = codon.centerPosition >= visibleStart && codon.centerPosition <= visibleEnd
+        ? codon.aminoAcid
+        : "";
+      parts.push(`<g class="sanger-translation-codon" data-frame="${escapeXml(frame.frame)}" data-codon="${escapeXml(codon.codon)}" data-amino-acid="${escapeXml(codon.aminoAcid)}" data-start="${codon.directStart}" data-end="${codon.directEnd}" opacity="${clipped ? "0.42" : "1"}">`);
+      parts.push(`<rect x="${x1.toFixed(2)}" y="${y.toFixed(1)}" width="${Math.max(0.5, x2 - x1).toFixed(2)}" height="16" rx="2" fill="${sangerTranslationFill(frame, codon.aminoAcid)}" stroke="#cbd5e1" stroke-width="0.6"/>`);
+      if (label) {
+        parts.push(`<text x="${xForIndex(codon.centerPosition).toFixed(2)}" y="${(y + 11.5).toFixed(1)}" text-anchor="middle" font-size="9" font-weight="700" fill="${sangerTranslationText(frame, codon.aminoAcid)}">${escapeXml(label)}</text>`);
+      }
+      parts.push("</g>");
+    }
+  });
+  return parts.join("\n");
+}
+
 function qualityAxisMax(baseCalls, threshold) {
   const qualityValues = baseCalls
     .map((call) => call.quality)
@@ -2545,7 +2658,9 @@ function makeWrappedSangerTraceSvg(result, options = {}) {
   const view = result.view;
   const width = Math.max(860, Number.parseInt(options.width, 10) || 1180);
   const basesPerRow = Math.max(40, Math.min(110, Number.parseInt(options.basesPerRow, 10) || 80));
-  const rowHeight = 220;
+  const translationFrames = selectedSangerTranslationFrames(result.sequence, result.options);
+  const translationHeight = translationFrames.length * SANGER_TRANSLATION_ROW_HEIGHT;
+  const rowHeight = 220 + translationHeight;
   const rowCount = Math.ceil(view.baseCalls.length / basesPerRow);
   const height = Math.max(440, 74 + rowCount * rowHeight + 20);
   const margin = { left: 70, right: 34 };
@@ -2554,7 +2669,7 @@ function makeWrappedSangerTraceSvg(result, options = {}) {
   const qualityHeight = 26;
   const rowLabelYWithinRow = 14;
   const baseLabelYWithinRow = 26;
-  const plotTopWithinRow = 32;
+  const plotTopWithinRow = 32 + translationHeight;
   const qualityGap = 8;
   const qualityMax = qualityAxisMax(view.baseCalls, result.options.lowQualityThreshold);
   const rows = [];
@@ -2578,6 +2693,10 @@ function makeWrappedSangerTraceSvg(result, options = {}) {
     };
     const xForPosition = (position) =>
       plot.left + ((position - startSample) / Math.max(1, rowSampleCount - 1)) * plot.width;
+    const xForIndex = (displayIndex) => {
+      const call = view.baseCalls[displayIndex - 1];
+      return call ? xForPosition(call.tracePosition) : plot.left;
+    };
     const rowTraces = {};
     let rowMax = 1;
     for (const channel of SANGER_TRACE_CHANNELS) {
@@ -2610,9 +2729,21 @@ function makeWrappedSangerTraceSvg(result, options = {}) {
       const fill = quality < result.options.lowQualityThreshold ? "#f59e0b" : "#64748b";
       return `<rect x="${(x - 1.8).toFixed(2)}" y="${(qualityTop + qualityHeight - barHeight).toFixed(2)}" width="3.6" height="${barHeight.toFixed(2)}" fill="${fill}" opacity="0.9"/>`;
     }).join("\n");
+    const translationTracks = makeSangerTranslationTracksSvg({
+      frames: translationFrames,
+      visibleStart: rowCalls[0].displayIndex,
+      visibleEnd: rowCalls[rowCalls.length - 1].displayIndex,
+      xForIndex,
+      left: plot.left,
+      right: plot.left + plot.width,
+      top: rowTop + 32,
+      clipStart: view.clipStart,
+      clipEnd: view.clipEnd
+    });
     rows.push(`<g class="sanger-trace-row" data-row="${rowIndex + 1}">
 <text x="${plot.left}" y="${rowTop + rowLabelYWithinRow}" font-size="9" font-weight="700" fill="#334155">Bases ${rowCalls[0].displayIndex}-${rowCalls[rowCalls.length - 1].displayIndex}</text>
 ${baseLabels}
+${translationTracks}
 <rect x="${plot.left}" y="${plot.top}" width="${plot.width}" height="${plot.height}" fill="#f8fafc" stroke="#cbd5e1"/>
 <line x1="${plot.left}" x2="${plot.left + plot.width}" y1="${plot.top + plot.height}" y2="${plot.top + plot.height}" stroke="#64748b" stroke-width="1"/>
 ${baseTicks}
@@ -2642,8 +2773,10 @@ export function makeSangerTraceSvg(result, options = {}) {
     return makeWrappedSangerTraceSvg(result, options);
   }
   const width = Math.max(760, Number.parseInt(options.width, 10) || 980);
-  const height = Math.max(360, Number.parseInt(options.height, 10) || 410);
-  const margin = { left: 62, right: 34, top: 94, bottom: 72 };
+  const translationFrames = selectedSangerTranslationFrames(result.sequence, result.options);
+  const translationHeight = translationFrames.length * SANGER_TRANSLATION_ROW_HEIGHT;
+  const height = Math.max(360, Number.parseInt(options.height, 10) || 410) + translationHeight;
+  const margin = { left: 62, right: 34, top: 94 + translationHeight, bottom: 72 };
   const plot = {
     left: margin.left,
     top: margin.top,
@@ -2656,6 +2789,10 @@ export function makeSangerTraceSvg(result, options = {}) {
   );
   const sampleDenominator = Math.max(1, view.sampleCount - 1);
   const xForPosition = (position) => plot.left + ((position - 1) / sampleDenominator) * plot.width;
+  const xForIndex = (displayIndex) => {
+    const call = view.baseCalls[displayIndex - 1];
+    return call ? xForPosition(call.tracePosition) : plot.left;
+  };
   const qualityTop = plot.top + plot.height + 26;
   const qualityHeight = 32;
   const qualityMax = qualityAxisMax(view.baseCalls, result.options.lowQualityThreshold);
@@ -2672,10 +2809,22 @@ export function makeSangerTraceSvg(result, options = {}) {
     const below = call.quality !== null && call.quality < result.options.lowQualityThreshold;
     const fill = CHANNEL_COLORS[call.base] ?? "#4b5563";
     const editedMark = call.edited
-      ? `<rect x="${(x - 6).toFixed(2)}" y="${plot.top - 31}" width="12" height="16" rx="2" fill="#fff7ed" stroke="#fb923c"/>`
+      ? `<rect x="${(x - 6).toFixed(2)}" y="61" width="12" height="16" rx="2" fill="#fff7ed" stroke="#fb923c"/>`
       : "";
-    return `${editedMark}<text x="${x.toFixed(2)}" y="${plot.top - 18}" text-anchor="middle" font-size="13" font-weight="700" fill="${below ? "#b45309" : fill}">${escapeXml(call.base)}</text>`;
+    return `${editedMark}<text x="${x.toFixed(2)}" y="74" text-anchor="middle" font-size="13" font-weight="700" fill="${below ? "#b45309" : fill}">${escapeXml(call.base)}</text>`;
   }).join("\n");
+
+  const translationTracks = makeSangerTranslationTracksSvg({
+    frames: translationFrames,
+    visibleStart: 1,
+    visibleEnd: view.baseCalls.length,
+    xForIndex,
+    left: plot.left,
+    right: plot.left + plot.width,
+    top: 82,
+    clipStart: view.clipStart,
+    clipEnd: view.clipEnd
+  });
 
   const qualityBars = view.baseCalls.map((call) => {
     const x = xForPosition(call.tracePosition);
@@ -2700,6 +2849,7 @@ ${SANGER_SVG_TEXT_STYLE}
 ${baseTicks}
 ${channelPaths}
 ${baseLabels}
+${translationTracks}
 <text x="${plot.left - 12}" y="${plot.top + 4}" text-anchor="end" font-size="11" fill="#64748b">signal</text>
 <text x="${plot.left}" y="${qualityTop - 8}" font-size="12" font-weight="700" fill="#334155">Base quality</text>
 <text x="${plot.left + plot.width}" y="${qualityTop - 8}" text-anchor="end" font-size="10" fill="#b45309">Q${result.options.lowQualityThreshold} cutoff</text>
@@ -2767,6 +2917,9 @@ export function makeSangerTraceViewData(result) {
     clipStart: result.view.clipStart,
     clipEnd: result.view.clipEnd,
     lowQualityThreshold: result.options.lowQualityThreshold,
+    showForwardTranslations: result.options.showForwardTranslations,
+    showReverseTranslations: result.options.showReverseTranslations,
+    geneticCode: result.options.geneticCode,
     sequence: result.sequence,
     sampleCount: result.view.sampleCount,
     baseCalls: result.view.baseCalls.map((call) => ({ ...call })),

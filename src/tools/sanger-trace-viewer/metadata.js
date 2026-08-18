@@ -3,6 +3,7 @@ import {
   sangerBaseCallColumns,
   sangerReferenceDifferenceColumns
 } from "../../core/sanger-trace.js";
+import { geneticCodes } from "../../core/genetic-code.js";
 
 const SANGER_TRACE_CATEGORY = "Sanger Traces";
 
@@ -224,6 +225,40 @@ function perTraceSettingsGroup() {
   };
 }
 
+function translationGroup(sourceDescription) {
+  return {
+    type: "group",
+    id: "translation",
+    label: "Translation",
+    collapsible: true,
+    collapsed: true,
+    options: [
+      {
+        id: "showForwardTranslations",
+        type: "checkbox",
+        label: "Show forward translations",
+        defaultValue: false,
+        help: `Shows reading frames +1, +2, and +3 computed from ${sourceDescription}.`
+      },
+      {
+        id: "showReverseTranslations",
+        type: "checkbox",
+        label: "Show reverse translations",
+        defaultValue: false,
+        help: `Shows reverse-complement reading frames -1, -2, and -3 in direct coordinates for ${sourceDescription}.`
+      },
+      {
+        id: "geneticCode",
+        type: "select",
+        label: "Genetic code",
+        defaultValue: "1",
+        choices: geneticCodes.map((code) => ({ value: code.id, label: `${code.id}. ${code.name}` })),
+        help: "Selects the NCBI genetic code used for displayed translation tracks. Ambiguous codons are shown as X."
+      }
+    ]
+  };
+}
+
 function assemblyGroup() {
   return {
     type: "group",
@@ -348,6 +383,7 @@ export const sangerTraceReviewEditorMetadata = {
   options: [
     reviewSettingsGroup(false),
     trimmingGroup("manual"),
+    translationGroup("the displayed trace orientation"),
     numericEditGroup(),
     outputFormatGroup("interactive-trace", [
       { value: "interactive-trace", label: "Trace editor" },
@@ -377,6 +413,7 @@ export const sangerTraceAssemblyMetadata = {
   options: [
     reviewSettingsGroup(true),
     trimmingGroup("mott", { includeReverseComplement: false }),
+    translationGroup("each assembled consensus contig"),
     perTraceSettingsGroup(),
     assemblyGroup(),
     outputFormatGroup("assembly-trace-map-svg", [
@@ -415,6 +452,7 @@ export const sangerTraceReferenceComparisonMetadata = {
   options: [
     reviewSettingsGroup(false),
     trimmingGroup("mott", { includeReverseComplement: false }),
+    translationGroup("the fixed reference sequence"),
     perTraceSettingsGroup(),
     outputFormatGroup("reference-trace-map-svg", [
       { value: "reference-trace-map-svg", label: "Reference trace map" },

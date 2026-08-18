@@ -9603,6 +9603,28 @@ legend {
   transition: background-color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease, color 0.12s ease;
 }
 
+.sanger-trace-toolbar select {
+  background: var(--trace-surface);
+  border: 1px solid var(--trace-border-strong);
+  border-radius: 6px;
+  color: var(--trace-text);
+  font-size: 0.76rem;
+  min-height: 1.9rem;
+  max-width: 12rem;
+  padding: 0.2rem 0.42rem;
+}
+
+.sanger-trace-toolbar option {
+  background: var(--trace-surface);
+  color: var(--trace-text);
+}
+
+.sanger-trace-toolbar button.is-active {
+  background: color-mix(in srgb, var(--trace-accent) 22%, var(--trace-surface));
+  border-color: var(--trace-accent);
+  color: var(--trace-accent-strong);
+}
+
 .sanger-trace-toolbar button {
   min-width: 2rem;
 }

@@ -1,7 +1,10 @@
 import { formatFastaRecord, parseSequenceInput } from "../../core/fasta.js";
-import { getGeneticCode, makeCodonMap } from "../../core/genetic-code.js";
+import { getGeneticCode } from "../../core/genetic-code.js";
 import { cleanDnaRnaSequence, complementDnaRnaSequence } from "../../core/sequence.js";
+import { translateSequence } from "../../core/translation.js";
 import { makeTableStream, makeTextStream, makeToolResult } from "../../core/workflow.js";
+
+export { translateSequence } from "../../core/translation.js";
 
 const FRAME_SETS = {
   "1": [{ label: "+1", offset: 0, reverse: false }],
@@ -32,33 +35,6 @@ const UPPERCASE_DNA_RNA_TEXT = /[A-Z]/;
 
 function reverseComplement(sequence) {
   return Array.from(complementDnaRnaSequence(sequence, { preserveCase: false })).reverse().join("");
-}
-
-export function translateSequence(sequence, options = {}) {
-  const code = getGeneticCode(options.geneticCode ?? "1");
-  const codonMap = makeCodonMap(code);
-  const offset = Math.max(0, Math.min(2, Number.parseInt(options.offset, 10) || 0));
-  const source = String(sequence ?? "").toUpperCase().replaceAll("U", "T");
-  let protein = "";
-  let ambiguousCodons = 0;
-
-  for (let index = offset; index + 3 <= source.length; index += 3) {
-    const codon = source.slice(index, index + 3);
-    const aa = codonMap.get(codon);
-
-    if (aa) {
-      protein += aa;
-    } else {
-      protein += "X";
-      ambiguousCodons += 1;
-    }
-  }
-
-  return {
-    protein,
-    ambiguousCodons,
-    trailingBases: Math.max(0, (source.length - offset) % 3)
-  };
 }
 
 export function cleanUppercaseDnaRnaText(sequence) {
