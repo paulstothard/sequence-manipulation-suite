@@ -24,8 +24,10 @@ import {
   makeViewerFeatureSuggestions,
   renderRangePanel,
   renderSelectionPanel,
+  searchResultUsesFeatureGlyph,
   showViewerTooltip,
-  updateViewerSearchControls
+  updateViewerSearchControls,
+  viewerTargetsMatch
 } from "./dna-viewer-interactions.js";
 import {
   createViewerCompositionControls,
@@ -380,12 +382,14 @@ function searchFeatures(record, query, state) {
   const results = [];
   if (!needle) return results;
   for (const track of getVisibleViewerTracks(record, state)) {
-    for (const item of getViewerTrackItems(track, state)) {
+    const items = getViewerTrackItems(track, state);
+    for (const [itemIndex, item] of items.entries()) {
       const text = [
         track.label,
         track.type,
         item.label,
         item.name,
+        item.featureId,
         item.motifId,
         item.enzyme,
         item.recognition,
@@ -431,6 +435,7 @@ function searchFeatures(record, query, state) {
         end: Number.isFinite(end) ? end : position,
         position: Number.isFinite(position) ? position : start,
         trackId: track.id || track.type,
+        itemIndex,
         label: item.label || item.name || item.enzyme || track.label || "Feature",
         name: item.name,
         type: track.label || track.type || "Feature",
@@ -709,7 +714,7 @@ function restrictionSiteCutPosition(site) {
 }
 
 function viewerTargetMatches(state, target) {
-  return state.selectedTarget?.key && state.selectedTarget.key === makeTargetKey(target);
+  return viewerTargetsMatch(state.selectedTarget, target);
 }
 
 function isQuantitativeTrack(track) {
@@ -853,6 +858,7 @@ function drawCircularSearchMarkers(ctx, cx, cy, innerRadius, outerRadius, state,
   const results = state.searchResults || [];
   if (results.length === 0) return;
   for (const result of results) {
+    if (searchResultUsesFeatureGlyph(result)) continue;
     const active = state.activeSearchTarget?.key === result.key;
     for (const interval of getVisibleIntervalCopies(result, state, record.length)) {
       const startAngle = absToAngle(interval.start, state, arc);

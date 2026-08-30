@@ -61,6 +61,20 @@ export function makeTargetKey(target) {
   ].join("|");
 }
 
+export function viewerTargetsMatch(selected, target) {
+  if (!selected || !target) return false;
+  if (selected.key && selected.key === makeTargetKey(target)) return true;
+  return selected.kind === "search-result" &&
+    selected.trackId &&
+    selected.trackId === target.trackId &&
+    selected.itemIndex !== undefined &&
+    selected.itemIndex === target.itemIndex;
+}
+
+export function searchResultUsesFeatureGlyph(result) {
+  return Boolean(result?.trackId && result.itemIndex !== undefined);
+}
+
 export function addRectHit(state, rect, target) {
   if (!state.hitRegions) state.hitRegions = [];
   state.hitRegions.push({
@@ -248,8 +262,21 @@ export function makeViewerItemTargetDetails(item = {}) {
     readGroup: item.readGroup,
     sample: item.sample,
     status: item.status,
-    note: item.note
+    note: item.note,
+    details: normalizeViewerDetailRows(item.details)
   };
+}
+
+export function normalizeViewerDetailRows(details) {
+  if (!details) return [];
+  const entries = Array.isArray(details) ? details : Object.entries(details);
+  return entries.slice(0, 64).map((entry) => {
+    if (Array.isArray(entry)) return [entry[0], entry[1]];
+    if (entry && typeof entry === "object") return [entry.label, entry.value];
+    return [undefined, undefined];
+  }).filter(([label, value]) =>
+    String(label ?? "").trim() && value !== undefined && value !== null && value !== ""
+  ).map(([label, value]) => [String(label).trim(), value]);
 }
 
 export function getVisibleViewerTracks(record, state) {
@@ -755,8 +782,8 @@ export function canUseAsRangeAnchor(target) {
 }
 
 export function formatCoordinates(target) {
-  if (target.position) return formatNumber(target.position);
   if (target.start && target.end) return `${formatNumber(target.start)}-${formatNumber(target.end)}`;
+  if (target.position) return formatNumber(target.position);
   return "";
 }
 
@@ -788,7 +815,7 @@ function addAction(container, label, handler, enabled) {
   container.append(button);
 }
 
-function makeTooltipText(target) {
+export function makeTooltipText(target) {
   switch (target.kind) {
     case "search-result":
       return target.label || `Search result ${formatCoordinates(target)}`;
@@ -803,8 +830,9 @@ function makeTooltipText(target) {
     case "interval":
       return [
         target.label || target.type || "Feature",
-        `coords ${formatCoordinates(target)}`,
-        formatLength(target) ? `length ${formatLength(target)}` : ""
+        target.genomicCoordinates || `coordinates ${formatCoordinates(target)}`,
+        target.strand ? `${target.strand} strand` : "",
+        formatLength(target)
       ].filter(Boolean).join(" | ");
     case "base":
       return `${target.alphabet === "protein" ? "Residue" : target.strand === "-" ? "Complement base" : "Base"} ${target.base} at ${formatCoordinates(target)}`;
@@ -827,11 +855,22 @@ function makeTitle(target) {
   }
 }
 
-function makeDetailRows(target) {
+export function makeDetailRows(target) {
+  const rawType = target.type || target.kind;
+  const genericFeatureType = target.featureType &&
+    ["feature", "features", "integron components"].includes(
+      String(rawType).trim().toLowerCase()
+    );
+  const type = genericFeatureType ? undefined : rawType;
+  const featureType = target.featureType === rawType ? undefined : target.featureType;
+  const name = target.name && target.name !== target.label && target.name !== featureType
+    ? target.name
+    : undefined;
   return [
-    ["Type", target.type || target.kind],
-    ["Feature type", target.featureType],
-    ["Name", target.name || target.label],
+    ["Type", type],
+    ["Feature type", featureType],
+    ["Name", name],
+    ["Feature ID", target.featureId],
     ["Genomic position", target.genomicPosition],
     ["Genomic coordinates", target.genomicCoordinates],
     ["Reference", target.referenceName],
@@ -881,6 +920,7 @@ function makeDetailRows(target) {
     ["Score", target.score],
     ["Matched sequence", target.matchedText],
     ["Source", target.source],
+    ...normalizeViewerDetailRows(target.details),
     ["Primer sequence", target.primerSequence],
     ["Tm C", target.tmC],
     ["GC percent", target.gcPercent],
@@ -896,7 +936,7 @@ function makeDetailRows(target) {
     ["Enzyme", target.enzyme],
     ["Recognition site", target.recognition],
     ["Length", formatLength(target)]
-  ];
+  ].filter(([, value]) => value !== undefined && value !== null && value !== "");
 }
 
 function isAngleWithin(angle, startAngle, endAngle) {

@@ -24,10 +24,13 @@ import {
   makeViewerItemTargetDetails,
   makeTargetKey,
   makeViewerFeatureSuggestions,
+  normalizeViewerDetailRows,
   renderRangePanel,
   renderSelectionPanel,
+  searchResultUsesFeatureGlyph,
   showViewerTooltip,
-  updateViewerSearchControls
+  updateViewerSearchControls,
+  viewerTargetsMatch
 } from "./dna-viewer-interactions.js";
 import {
   createViewerCompositionControls,
@@ -372,7 +375,7 @@ function visibleIntervalItems(track, state, viewStart, viewEnd) {
 }
 
 function viewerTargetMatches(state, target) {
-  return state.selectedTarget?.key && state.selectedTarget.key === makeTargetKey(target);
+  return viewerTargetsMatch(state.selectedTarget, target);
 }
 
 function searchTargetMatches(state, target) {
@@ -585,6 +588,7 @@ function drawLinearSearchMarkers(ctx, state, layout, theme) {
   if (results.length === 0) return;
   const { plotLeft, plotRight, markerTop, markerBottom } = layout;
   for (const result of results) {
+    if (searchResultUsesFeatureGlyph(result)) continue;
     const start = Number(result.start ?? result.position);
     const end = Number(result.end ?? result.position);
     if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
@@ -1462,17 +1466,19 @@ function searchProteinSequence(record, query) {
   return sortSearchResults(results);
 }
 
-function searchFeatures(record, query, state) {
+export function searchFeatures(record, query, state) {
   const needle = String(query || "").trim().toLowerCase();
   const results = [];
   if (!needle) return results;
   for (const track of getVisibleViewerTracks(record, state)) {
-    for (const item of getViewerTrackItems(track, state)) {
+    const items = getViewerTrackItems(track, state);
+    for (const [itemIndex, item] of items.entries()) {
       const text = [
         track.label,
         track.type,
         item.label,
         item.name,
+        item.featureId,
         item.motifId,
         item.enzyme,
         item.recognition,
@@ -1503,7 +1509,8 @@ function searchFeatures(record, query, state) {
         item.sample,
         item.status,
         item.type,
-        item.strand
+        item.strand,
+        ...normalizeViewerDetailRows(item.details).flat()
       ]
         .filter(Boolean)
         .join(" ")
@@ -1511,13 +1518,16 @@ function searchFeatures(record, query, state) {
       if (!text.includes(needle)) continue;
       const start = Number(item.start ?? item.position);
       const end = Number(item.end ?? item.position ?? item.start);
-      const position = Number(item.position ?? item.start);
+      const itemPosition = Number(item.position);
+      const hasInterval = Number.isFinite(start) && Number.isFinite(end);
+      const position = Number.isFinite(itemPosition) ? itemPosition : start;
       if (!Number.isFinite(start) && !Number.isFinite(end) && !Number.isFinite(position)) continue;
       const added = addSearchResult(results, {
         start: Number.isFinite(start) ? start : position,
         end: Number.isFinite(end) ? end : position,
-        position: Number.isFinite(position) ? position : start,
+        position: !hasInterval && Number.isFinite(position) ? position : undefined,
         trackId: track.id || track.type,
+        itemIndex,
         label: item.label || item.name || item.enzyme || track.label || "Feature",
         name: item.name,
         type: track.label || track.type || "Feature",

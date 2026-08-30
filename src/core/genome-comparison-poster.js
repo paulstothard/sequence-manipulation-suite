@@ -1238,6 +1238,8 @@ const CIRCULAR_AXIS_MAJOR_TICK_TARGET = 10;
 const CIRCULAR_AXIS_MINOR_TICK_TARGET = 50;
 const WRAPPED_AXIS_MAJOR_TICK_TARGET = 4;
 const WRAPPED_AXIS_MINOR_DIVISIONS = 5;
+const ART_POSTER_TRACK_PAINT_OVERLAP_FRACTION = 0.08;
+const ART_POSTER_TRACK_PAINT_OVERLAP_MAXIMUM = 0.2;
 const LOOM_POSTER_BACKGROUND = "#ffffff";
 const LOOM_POSTER_TEXT = "#111827";
 const LOOM_POSTER_MUTED_TEXT = "#475569";
@@ -1247,6 +1249,19 @@ const GENOME_COMPARISON_POSTER_CLASS = "sms3-genome-comparison-poster";
 
 function genomeComparisonPosterStyleScope(layout) {
   return `.${GENOME_COMPARISON_POSTER_CLASS}[data-layout="${layout}"]`;
+}
+
+function genomeComparisonTrackPaintBounds(offset, width, lower, upper, index, count) {
+  const overlap = Math.min(
+    width * ART_POSTER_TRACK_PAINT_OVERLAP_FRACTION,
+    ART_POSTER_TRACK_PAINT_OVERLAP_MAXIMUM
+  );
+  const paintLower = index === 0 ? offset : Math.max(lower, offset - overlap);
+  const logicalUpper = offset + width;
+  const paintUpper = index === count - 1
+    ? logicalUpper
+    : Math.min(upper, logicalUpper + overlap);
+  return { offset: paintLower, width: paintUpper - paintLower };
 }
 const IDENTITY_COLOR_SCHEMES = Object.freeze({
   "magma-ocean": {
@@ -2791,7 +2806,8 @@ function renderSpiralGenomeComparisonPosterSvg({
   const gapFraction = 0.25;
   const pitch = (rMax - rMin) / (turnCount + 1 - gapFraction);
   const ribbonWidth = pitch * (1 - gapFraction);
-  const stripWidth = ribbonWidth / Math.max(1, comparisons.length);
+  const trackCount = Math.max(1, comparisons.length);
+  const stripWidth = ribbonWidth / trackCount;
   const radialPerRadian = pitch / (Math.PI * 2);
   const rStartCenter = rMax - ribbonWidth / 2;
   const maxU = Math.PI * 2 * turnCount;
@@ -2816,19 +2832,27 @@ function renderSpiralGenomeComparisonPosterSvg({
 
   comparisons.forEach((comparison, comparisonIndex) => {
     const stripOffset = comparisonIndex * stripWidth;
+    const paint = genomeComparisonTrackPaintBounds(
+      stripOffset,
+      stripWidth,
+      0,
+      ribbonWidth,
+      comparisonIndex,
+      trackCount
+    );
     const backgroundPoints = makeSpiralPolygonPoints({
       cx,
       cy,
       startU: 0,
       endU: maxU,
-      stripOffset,
-      stripWidth,
+      stripOffset: paint.offset,
+      stripWidth: paint.width,
       ribbonWidth,
       rStartCenter,
       radialPerRadian,
       pointCount: 1200
     });
-    parts.push(`<polygon class="track ga-spiral-strip" points="${backgroundPoints}"><title>${escapeXml(`${comparisonIndex + 1}. ${comparison.title}`)}</title></polygon>`);
+    parts.push(`<polygon class="track ga-spiral-strip" points="${backgroundPoints}" data-paint-offset="${paint.offset.toFixed(2)}" data-paint-width="${paint.width.toFixed(2)}"><title>${escapeXml(`${comparisonIndex + 1}. ${comparison.title}`)}</title></polygon>`);
 
     for (const block of blocks.filter((item) => item.comparison === comparison.title)) {
       const startU = clamp(block.referenceStart / referenceLength, 0, 1) * maxU;
@@ -2840,14 +2864,14 @@ function renderSpiralGenomeComparisonPosterSvg({
         cy,
         startU,
         endU,
-        stripOffset,
-        stripWidth,
+        stripOffset: paint.offset,
+        stripWidth: paint.width,
         ribbonWidth,
         rStartCenter,
         radialPerRadian,
         pointCount
       });
-      parts.push(`<polygon class="block ga-spiral-block" points="${points}" fill="${identityColor(block.identity, block.strand, identityScale, options.colorScheme)}" data-comparison="${escapeXml(block.comparison)}" data-strand="${escapeXml(block.strand)}"><title>${escapeXml(`${block.comparison} ${block.strand} ${block.referenceStart + 1}-${block.referenceEnd}; ${round(block.identity, 2)}% identity`)}</title></polygon>`);
+      parts.push(`<polygon class="block ga-spiral-block" points="${points}" fill="${identityColor(block.identity, block.strand, identityScale, options.colorScheme)}" data-comparison="${escapeXml(block.comparison)}" data-strand="${escapeXml(block.strand)}" data-paint-offset="${paint.offset.toFixed(2)}" data-paint-width="${paint.width.toFixed(2)}"><title>${escapeXml(`${block.comparison} ${block.strand} ${block.referenceStart + 1}-${block.referenceEnd}; ${round(block.identity, 2)}% identity`)}</title></polygon>`);
     }
 
     if (options.showGenomeLabels) {
