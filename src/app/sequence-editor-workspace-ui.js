@@ -1,3 +1,4 @@
+import { createEditorSession } from './editor-session.js';
 import { formatFastaRecord } from "../core/fasta.js";
 import { geneticCodes, getCodonsForCode } from "../core/genetic-code.js";
 import { cleanDnaRnaSequence } from "../core/sequence.js";
@@ -133,9 +134,10 @@ function renderSequenceEditorWorkspace(previousState = null) {
   if (!elements.markdownWorkspace) {
     return;
   }
+  elements.markdownWorkspace._sms3VisualCleanup?.();
   elements.markdownWorkspace.textContent = "";
 
-  const initialText = previousState?.text || state.selectedTool.example || "";
+  const initialText = previousState?.text ?? state.selectedTool.example ?? "";
   const shell = document.createElement("div");
   shell.className = "sequence-editor-workspace-shell";
 
@@ -424,8 +426,11 @@ function renderSequenceEditorWorkspace(previousState = null) {
   elements.markdownWorkspace.append(shell);
 
   let prepared = null;
+  let preparedIsDirty = false;
+  let lastDocumentSnapshot = null;
+  let manualEditGroup = false;
   let debounceTimer = null;
-  let baselineText = initialText;
+  let baselineText = previousState?.baselineText ?? initialText;
   let undoStack = [];
   let redoStack = [];
   let featureTrackOverrides = cloneSequenceEditorFeatureOverrides(previousState?.featureTrackOverrides);
@@ -466,8 +471,9 @@ function renderSequenceEditorWorkspace(previousState = null) {
     redrawViewer();
     setEditorStatus(statusMessage);
   }
-  function pushUndoState(label) {
-    undoStack.push(snapshotEditorState(label));
+  function pushUndoState(label, snapshot = snapshotEditorState(label)) {
+    manualEditGroup = false;
+    undoStack.push({...snapshot, label});
     if (undoStack.length > 50) {
       undoStack = undoStack.slice(-50);
     }
@@ -494,7 +500,7 @@ function renderSequenceEditorWorkspace(previousState = null) {
   }
   function getSelectionRecord(recordIndex) {
     const index = Math.max(0, Number(recordIndex) || 0);
-    return prepared?.records?.[index] || null;
+    return getPrepared()?.records?.[index] || null;
   }
   function getDirectEditorSelection(selection = viewerSelection) {
     return getSequenceEditorDirectSelection(selection);
@@ -1135,6 +1141,7 @@ function renderSequenceEditorWorkspace(previousState = null) {
     renderedViewerLayout = layout;
   }
   function redrawViewer() {
+    clearTimeout(debounceTimer);
     captureActiveViewerState();
     prepared = prepareSequenceEditorData(editor.value, {
       geneticCode: geneticCodeSelect.value,
@@ -1142,6 +1149,9 @@ function renderSequenceEditorWorkspace(previousState = null) {
       lineWidth: getLineWidth(),
       featureTrackOverrides
     });
+    preparedIsDirty = false;
+    manualEditGroup = false;
+    lastDocumentSnapshot = snapshotEditorState("manual edit");
     const changeSummary = summarizeSequenceEditorChanges(baselineText, editor.value, { geneticCode: geneticCodeSelect.value });
     renderSequenceEditorChangeSummary(changePanel, changeSummary);
     updateHiddenInput();
@@ -1173,21 +1183,40 @@ function renderSequenceEditorWorkspace(previousState = null) {
     }
   }
   function scheduleRedraw() {
+    preparedIsDirty = true;
     clearTimeout(debounceTimer);
     debounceTimer = window.setTimeout(redrawViewer, 250);
   }
   function getPrepared() {
-    if (!prepared) redrawViewer();
+    if (!prepared || preparedIsDirty) redrawViewer();
     return prepared;
   }
   editor.addEventListener("input", () => {
+    if (!manualEditGroup && lastDocumentSnapshot) {
+      pushUndoState("manual edit", lastDocumentSnapshot);
+      manualEditGroup = true;
+    }
+    redoStack = [];
+    updateHistoryButtons();
     featureTrackOverrides = [];
+    lastDocumentSnapshot = snapshotEditorState("manual edit");
     scheduleRedraw();
   });
-  geneticCodeSelect.addEventListener("change", redrawViewer);
-  viewerLayoutSelect.addEventListener("change", redrawViewer);
-  lineWidthInput.addEventListener("input", scheduleRedraw);
-  lineWidthInput.addEventListener("change", redrawViewer);
+  shell.addEventListener("keydown", event => {
+    const key = event.key.toLowerCase();
+    if ((event.ctrlKey || event.metaKey) && !event.altKey && (key === "z" || key === "y")) {
+      event.preventDefault();
+      (event.shiftKey || key === "y" ? redoButton : undoButton).click();
+    }
+  });
+  const recordSettingChange = label => {
+    if (lastDocumentSnapshot) pushUndoState(label, lastDocumentSnapshot);
+    redrawViewer();
+  };
+  geneticCodeSelect.addEventListener("change", () => recordSettingChange("genetic code"));
+  viewerLayoutSelect.addEventListener("change", () => recordSettingChange("viewer layout"));
+  lineWidthInput.addEventListener("change", () => recordSettingChange("line width"));
+  filenameInput.addEventListener("change", () => recordSettingChange("filename"));
   quickSequenceInput.addEventListener("input", () => renderSelectionEffects(getActiveEditorSelection()));
   coordinateOperation.addEventListener("change", refreshCoordinateEditControls);
   useViewerSelectionButton.addEventListener("click", () => applyViewerSelectionToCoordinateControls());
@@ -1237,6 +1266,7 @@ function renderSequenceEditorWorkspace(previousState = null) {
 	    restoreEditorState(next, `Redid ${next.label || "edit"}.`);
 	  });
   baselineButton.addEventListener("click", () => {
+    pushUndoState("comparison baseline");
     baselineText = editor.value;
     redrawViewer();
     setEditorStatus("Current sequence is the comparison baseline.");
@@ -1255,7 +1285,12 @@ function renderSequenceEditorWorkspace(previousState = null) {
     redrawViewer();
     refreshCoordinateEditControls();
     updateHistoryButtons();
+    const documentSession = createEditorSession({
+      host:shell, toolbar:exportActions, tool:'sequence-editor', source:previousState?.__documentSource ?? {input:initialText}, nativeHistory:true, initial:previousState?.__documentLoaded ? snapshotEditorState('Document') : undefined,
+      read:() => snapshotEditorState('Document'), apply:snapshot => restoreEditorState(snapshot, 'Document restored.')
+    });
     elements.markdownWorkspace._sms3VisualCleanup = () => {
+      documentSession.dispose();
       clearTimeout(debounceTimer);
       cleanupEditorViewer();
     };

@@ -1,3 +1,4 @@
+import { parseMmcifData } from "./mmcif-syntax.js";
 export const proteinStructureResidueColumns = [
   { id: "chain", label: "Chain", type: "string" },
   { id: "residue_number", label: "Residue number", type: "number" },
@@ -95,7 +96,7 @@ export function detectProteinStructureFormat(input, requested = "auto") {
   if (/^(ATOM  |HETATM|HEADER|TITLE |COMPND|MODEL |CRYST1)/m.test(text)) {
     return "pdb";
   }
-  if (/^data_/m.test(text) || /_atom_site\./.test(text)) {
+  if (/^data_/im.test(text) || /_atom_site\./.test(text)) {
     return "mmcif";
   }
   return "unknown";
@@ -327,18 +328,6 @@ function parsePdb(input) {
   };
 }
 
-function tokenizeCifLine(line) {
-  const tokens = [];
-  const pattern = /'(?:[^']|'')*'|"(?:[^"]|"")*"|\S+/g;
-  for (const match of line.matchAll(pattern)) {
-    let token = match[0];
-    if ((token.startsWith("'") && token.endsWith("'")) || (token.startsWith("\"") && token.endsWith("\""))) {
-      token = token.slice(1, -1).replace(/''/g, "'").replace(/""/g, "\"");
-    }
-    tokens.push(token === "?" || token === "." ? "" : token);
-  }
-  return tokens;
-}
 
 function expandMmcifOperatorList(text) {
   return String(text ?? "")
@@ -430,7 +419,7 @@ function buildMmcifBiologicalAssemblies(assemblyGens, operatorMap) {
 }
 
 function parseMmcifOperator(fields, columnIndex) {
-  const get = (name) => fields[columnIndex.get(name)] ?? "";
+  const get = (name) => fields[columnIndex.get(name.toLowerCase())] ?? "";
   const id = String(get("id") || "").trim();
   if (!id) {
     return null;
@@ -456,71 +445,37 @@ function splitMmcifAsymList(value) {
 }
 
 function parseMmcif(input) {
-  const lines = cleanInput(input).split("\n");
+  const {items, loops} = parseMmcifData(cleanInput(input));
   const atoms = [];
   const missingResidues = [];
   const assemblyGens = [];
   const operatorMap = new Map();
-  let title = "";
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index].trim();
-    if (line.startsWith("_struct.title")) {
-      title = tokenizeCifLine(line.replace(/^_struct\.title\s+/, ""))[0] || "";
-    }
-    if (line !== "loop_") {
-      continue;
-    }
-    const columns = [];
-    let cursor = index + 1;
-    const firstColumn = lines[cursor]?.trim() ?? "";
-    let category = "";
-    if (firstColumn.startsWith("_atom_site.")) {
-      category = "atom_site";
-    } else if (firstColumn.startsWith("_pdbx_unobs_or_zero_occ_residues.")) {
-      category = "pdbx_unobs_or_zero_occ_residues";
-    } else if (firstColumn.startsWith("_pdbx_struct_assembly_gen.")) {
-      category = "pdbx_struct_assembly_gen";
-    } else if (firstColumn.startsWith("_pdbx_struct_oper_list.")) {
-      category = "pdbx_struct_oper_list";
-    }
-    if (!category) {
-      continue;
-    }
+  const title = items.get("_struct.title") ?? "";
+  for (const {columns, rows} of loops) {
+    const category = columns[0].split(".")[0].slice(1);
     const prefix = `_${category}.`;
-    while (cursor < lines.length && lines[cursor].trim().startsWith(prefix)) {
-      columns.push(lines[cursor].trim());
-      cursor += 1;
-    }
-    if (columns.length === 0) {
-      continue;
-    }
-    const columnIndex = new Map(columns.map((column, columnOffset) => [column.replace(prefix, ""), columnOffset]));
-    while (cursor < lines.length) {
-      const dataLine = lines[cursor].trim();
-      if (!dataLine || dataLine === "#" || dataLine === "loop_" || dataLine.startsWith("_")) {
-        break;
-      }
-      const fields = tokenizeCifLine(dataLine);
+    const columnIndex = new Map(columns.map((column, offset) => [column.slice(prefix.length), offset]));
+    for (const fields of rows) {
       if (fields.length >= columns.length && category === "atom_site") {
         const atomName = fields[columnIndex.get("label_atom_id")] || fields[columnIndex.get("auth_atom_id")] || "";
         const residueName = fields[columnIndex.get("label_comp_id")] || fields[columnIndex.get("auth_comp_id")] || "";
         const labelChain = fields[columnIndex.get("label_asym_id")] || "_";
         const chain = fields[columnIndex.get("auth_asym_id")] || labelChain || "_";
         const residueNumber = parseInteger(fields[columnIndex.get("auth_seq_id")] || fields[columnIndex.get("label_seq_id")]);
-        const group = fields[columnIndex.get("group_PDB")] || "ATOM";
+        const group = fields[columnIndex.get("group_pdb")] || "ATOM";
         atoms.push({
           serial: parseInteger(fields[columnIndex.get("id")]) ?? atoms.length + 1,
-          model: parseInteger(fields[columnIndex.get("pdbx_PDB_model_num")]) ?? 1,
+          model: parseInteger(fields[columnIndex.get("pdbx_pdb_model_num")]) ?? 1,
           atom_name: atomName,
           alt_loc: fields[columnIndex.get("label_alt_id")] || "",
           residue_name: residueName,
           chain,
           label_chain: labelChain,
           residue_number: residueNumber ?? 0,
-          insertion_code: fields[columnIndex.get("pdbx_PDB_ins_code")] || "",
-          x: parseNumber(fields[columnIndex.get("Cartn_x")]),
-          y: parseNumber(fields[columnIndex.get("Cartn_y")]),
-          z: parseNumber(fields[columnIndex.get("Cartn_z")]),
+          insertion_code: fields[columnIndex.get("pdbx_pdb_ins_code")] || "",
+          x: parseNumber(fields[columnIndex.get("cartn_x")]),
+          y: parseNumber(fields[columnIndex.get("cartn_y")]),
+          z: parseNumber(fields[columnIndex.get("cartn_z")]),
           occupancy: parseNumber(fields[columnIndex.get("occupancy")]),
           element: String(fields[columnIndex.get("type_symbol")] || fallbackElement(atomName)).toUpperCase(),
           hetero: group === "HETATM",
@@ -530,10 +485,10 @@ function parseMmcif(input) {
         const residueNumber = parseInteger(fields[columnIndex.get("auth_seq_id")] || fields[columnIndex.get("label_seq_id")]);
         if (Number.isFinite(residueNumber)) {
           missingResidues.push({
-            model: parseInteger(fields[columnIndex.get("auth_model_id")] || fields[columnIndex.get("PDB_model_num")]) ?? null,
+            model: parseInteger(fields[columnIndex.get("auth_model_id")] || fields[columnIndex.get("pdb_model_num")]) ?? null,
             chain: fields[columnIndex.get("auth_asym_id")] || fields[columnIndex.get("label_asym_id")] || "_",
             residue_number: residueNumber,
-            insertion_code: fields[columnIndex.get("PDB_ins_code")] || "",
+            insertion_code: fields[columnIndex.get("pdb_ins_code")] || "",
             residue_name: String(fields[columnIndex.get("auth_comp_id")] || fields[columnIndex.get("label_comp_id")] || "UNK").toUpperCase(),
             source: "mmCIF unobserved residue",
             details: fields[columnIndex.get("details")] || fields[columnIndex.get("occupancy_flag")] || "Missing residue reported by the structure file."
@@ -556,7 +511,6 @@ function parseMmcif(input) {
           operatorMap.set(transform.operator, transform);
         }
       }
-      cursor += 1;
     }
   }
   return {
@@ -810,17 +764,29 @@ function serializeAtomsAsPdb(atoms, title, selectedModel) {
   if (cleanTitle) {
     lines.push(`TITLE     ${cleanTitle}`.slice(0, 80));
   }
-  if (selectedModel !== "all") {
-    lines.push(`MODEL     ${String(selectedModel).padStart(4)}`);
-  }
-  for (const atom of atoms) {
-    lines.push(formatPdbAtomLine(atom));
-  }
-  if (selectedModel !== "all") {
+  for (const model of availableModelsForAtoms(atoms)) {
+    lines.push(`MODEL     ${String(model).padStart(4)}`);
+    for (const atom of atoms.filter(atom => (atom.model ?? 1) === model)) lines.push(formatPdbAtomLine(atom));
     lines.push("ENDMDL");
   }
   lines.push("END");
   return `${lines.join("\n")}\n`;
+}
+
+function cifValue(value) {
+  const text = String(value ?? "");
+  if (!text) return ".";
+  if (/^[^\s'"#;$][^\s]*$/.test(text) && !/^(?:_|data_|loop_|save_|stop_|global_)/i.test(text) && ![".","?"].includes(text)) return text;
+  if (!text.includes("'") && !text.includes("\n")) return `'${text}'`;
+  if (!text.includes('"') && !text.includes("\n")) return `"${text}"`;
+  if (/^;/m.test(text)) throw new Error("Structure identifier cannot be represented as mmCIF text.");
+  return `\n;${text}\n;\n`;
+}
+
+function serializeAtomsAsMmcif(atoms) {
+  const columns = ["group_PDB","id","type_symbol","label_atom_id","label_alt_id","label_comp_id","label_asym_id","auth_asym_id","auth_seq_id","pdbx_PDB_ins_code","Cartn_x","Cartn_y","Cartn_z","occupancy","pdbx_PDB_model_num"];
+  const rows = atoms.map(atom => [atom.hetero ? "HETATM" : "ATOM", atom.serial, atom.element, atom.atom_name, atom.alt_loc, atom.residue_name, atom.label_chain || atom.chain, atom.chain, atom.residue_number, atom.insertion_code, atom.x, atom.y, atom.z, atom.occupancy, atom.model ?? 1].map(cifValue).join(" "));
+  return ["data_sms3_selected", "loop_", ...columns.map(c => `_atom_site.${c}`), ...rows, "#", ""].join("\n");
 }
 
 function summarizeAtoms(atoms) {
@@ -937,7 +903,7 @@ export function summarizeProteinStructure(input, options = {}) {
   const missingResidueRows = filterMissingResidues(parsed.missingResidues ?? [], selectedModel, selectedChains);
   const modelCount = parsed.modelCount > 0 ? parsed.modelCount : availableModels.length > 1 ? availableModels.length : 0;
   const modelSelectionChangesAtoms = selectedModel !== "all" && !(availableModels.length <= 1 && selectedModel === (availableModels[0] ?? 1));
-  const viewerNeedsSerializedPdb = modelSelectionChangesAtoms || selectedChains !== "all" || omittedAlternateLocationAtomCount > 0 || assemblyResult.biologicalAssemblyApplied;
+  const viewerNeedsSerialization = modelSelectionChangesAtoms || selectedChains !== "all" || omittedAlternateLocationAtomCount > 0 || assemblyResult.biologicalAssemblyApplied;
   return {
     format,
     title: parsed.title || (format === "mmcif" ? "mmCIF structure" : "PDB structure"),
@@ -959,8 +925,8 @@ export function summarizeProteinStructure(input, options = {}) {
     omittedAlternateLocationAtomCount,
     missingResidueCount: missingResidueRows.length,
     missingResidueRows,
-    viewerFormat: viewerNeedsSerializedPdb ? "pdb" : format,
-    viewerStructureText: viewerNeedsSerializedPdb ? serializeAtomsAsPdb(atoms, parsed.title, selectedModel) : "",
+    viewerFormat: format,
+    viewerStructureText: format === "mmcif" ? serializeAtomsAsMmcif(atoms) : viewerNeedsSerialization ? serializeAtomsAsPdb(atoms, parsed.title, selectedModel) : "",
     ...summary,
     atomRows: atoms.map((atom) => ({
       serial: atom.serial,

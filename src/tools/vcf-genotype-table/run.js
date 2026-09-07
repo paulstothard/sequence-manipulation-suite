@@ -1,3 +1,4 @@
+import { vcfRecordEnd } from "../../core/vcf-genotype-table.js";
 import {
   extractVcfData,
   extractVcfDataFromChunks,
@@ -86,6 +87,7 @@ function makeVariantViewerRows(result) {
         id: row.id,
         ref: row.ref,
         alt: row.alt,
+        info: row.info,
         sampleGenotypes: []
       });
     }
@@ -128,7 +130,7 @@ async function makeVcfViewerData(result, options, warnings, context = {}) {
       : Math.min(...positions);
     const end = selectedChromosome === chrom && regionEnd !== null
       ? regionEnd
-      : Math.max(...positions.map((pos, index) => pos + Math.max(1, String(chromRows[index].ref ?? "").length) - 1));
+      : Math.max(...chromRows.map(vcfRecordEnd));
     const span = end - start + 1;
     if (!Number.isFinite(span) || span <= 0) {
       continue;
@@ -157,7 +159,7 @@ async function makeVcfViewerData(result, options, warnings, context = {}) {
     const items = chromRows
       .map((row) => {
         const pos = Number(row.pos);
-        const refLength = Math.max(1, String(row.ref ?? "").length);
+        const refLength = vcfRecordEnd(row) - pos + 1;
         const localStart = pos - start + 1;
         const localEnd = localStart + refLength - 1;
         if (localEnd < 1 || localStart > span) {

@@ -34,7 +34,7 @@ export function hasIndexedVcfInputs(options = {}) {
 
 function makeVcfRegionString(chromosome, start1, end1) {
   if (end1 === undefined) {
-    return chromosome;
+    return start1 > 1 ? `${chromosome}:${start1}-` : chromosome;
   }
   return `${chromosome}:${start1}-${end1}`;
 }

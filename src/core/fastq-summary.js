@@ -459,6 +459,9 @@ function addFastqRecordToAccumulator(accumulator, record, context = {}) {
 }
 
 function finalizeFastqSummary(accumulator, warnings, records = []) {
+  if (accumulator.minAscii < 33 || accumulator.maxAscii > 126) {
+    warnings.push("Invalid FASTQ quality alphabet: Phred+33 requires ASCII 33–126. Quality summaries from this input are not reliable.");
+  }
   if (accumulator.perBaseLimitExceeded) {
     warnings.push(
       `Per-base quality and composition rows were limited to the first ${accumulator.options.maxPerBasePositions.toLocaleString()} base position(s).`

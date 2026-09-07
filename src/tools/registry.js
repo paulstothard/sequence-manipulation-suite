@@ -1,3 +1,6 @@
+import { treeViewerMetadata } from "./tree-viewer/metadata.js";
+import { runTreeViewer } from "./tree-viewer/run.js";
+import { treeViewerExample } from "../examples/tree-viewer-example.js";
 import {
   cleanFilterDnaRnaMetadata,
   cleanFilterProteinMetadata
@@ -443,6 +446,7 @@ function makeFastqQcExample() {
 }
 
 export const tools = [
+  { metadata: treeViewerMetadata, run: runTreeViewer, example: treeViewerExample },
   {
     metadata: reverseComplementMetadata,
     run: runReverseComplement,

@@ -255,10 +255,25 @@ function makeOpacityControl(labelText, value, helpText = labelText) {
 
 function fitStructure(viewer) {
   viewer.zoomTo();
-  if (typeof viewer.zoom === "function") {
-    viewer.zoom(1.12);
-  }
+  if (typeof viewer.zoom === "function") viewer.zoom(0.9);
   viewer.render();
+  const canvas = viewer.getCanvas?.();
+  const bounds = canvas?.getBoundingClientRect?.();
+  if (!bounds?.width || !bounds?.height || !viewer.modelToScreen || !viewer.selectedAtoms) return;
+  const atoms = viewer.selectedAtoms({});
+  const centerX = bounds.left + globalThis.scrollX + bounds.width / 2;
+  const centerY = bounds.top + globalThis.scrollY + bounds.height / 2;
+  const halfWidth = bounds.width * 0.42;
+  const halfHeight = bounds.height * 0.42;
+  // Verify projected bounds after fitting: zoomTo alone does not guarantee a
+  // margin in narrow containers or after a user rotation.
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const ratio = viewer.modelToScreen(atoms).reduce((max, point) => Math.max(max,
+      Math.abs(point.x - centerX) / halfWidth, Math.abs(point.y - centerY) / halfHeight), 0);
+    if (ratio <= 1 || !Number.isFinite(ratio)) break;
+    viewer.zoom(Math.min(0.9, 0.9 / ratio));
+    viewer.render();
+  }
 }
 
 function quaternionFromAxisAngle(axis, degrees) {

@@ -1,3 +1,4 @@
+import { createEditorSession, readEditorDocumentFile } from './editor-session.js';
 import {
   buildMarkdownNotebook,
   formatMarkdownTableBlock,
@@ -370,6 +371,7 @@ export function createMarkdownWorkspaceController({
       status.textContent = message;
     }
     setStatus(message);
+    container.querySelector('.markdown-workspace-shell')?._sms3EditorSession?.changed(message);
   }
 
   function syncFromSource(message = "Loaded Markdown source.") {
@@ -402,12 +404,13 @@ export function createMarkdownWorkspaceController({
     if (!container) {
       return;
     }
+    container._sms3VisualCleanup?.();
     container._notebookAbortController?.abort();
     const eventController = new AbortController();
     container._notebookAbortController = eventController;
 
-    const defaultTitle = previousState?.title || toolOptions.querySelector("#title")?.value || "Untitled notes";
-    const defaultDate = previousState?.date || toolOptions.querySelector("#date")?.value || "";
+    const defaultTitle = previousState?.title ?? toolOptions.querySelector("#title")?.value ?? "Untitled notes";
+    const defaultDate = previousState?.date ?? toolOptions.querySelector("#date")?.value ?? "";
     const defaultFilename = normalizeMarkdownFilename(previousState?.fileName || toolOptions.querySelector("#fileName")?.value || "untitled-notes");
     const defaultFrontMatter = previousState?.includeFrontMatter ?? toolOptions.querySelector("#includeFrontMatter")?.checked ?? false;
     const initialMarkdown = previousState?.markdown ?? sourceInput.value ?? "";
@@ -430,14 +433,14 @@ export function createMarkdownWorkspaceController({
 
     const fileInput = document.createElement("input");
     fileInput.type = "file";
-    fileInput.accept = ".md,.markdown,.txt";
-    fileInput.setAttribute("aria-label", "Open Markdown file");
+    fileInput.accept = ".md,.markdown,.txt,.sms3.json,.json";
+    fileInput.setAttribute("aria-label", "Markdown or SMS3 document");
     const fileLabel = document.createElement("label");
     fileLabel.className = "file-button markdown-file-button";
-    fileLabel.setAttribute("aria-label", "Open .md");
-    fileLabel.title = "Open Markdown file";
+    fileLabel.setAttribute("aria-label", "Choose file");
+    fileLabel.title = "Open Markdown or an SMS3 document";
     const fileLabelText = document.createElement("span");
-    fileLabelText.textContent = "Open .md";
+    fileLabelText.textContent = "Choose file";
     fileLabel.append(fileInput, fileLabelText);
 
     const blankDocumentButton = createButton("New note");
@@ -741,7 +744,7 @@ export function createMarkdownWorkspaceController({
         draftSaveHint.textContent = "Browser draft selected. Saved drafts stay in this browser profile.";
         saveDocumentButton.title = "Save changes to the selected browser draft. Use Duplicate to keep a separate copy.";
       } else {
-        draftSaveHint.textContent = "Unsaved changes. Save keeps a browser draft on this computer.";
+        draftSaveHint.textContent = "Save keeps a named browser draft; recovery is automatic.";
         saveDocumentButton.title = "Save this document as a browser draft.";
       }
     };
@@ -884,6 +887,11 @@ export function createMarkdownWorkspaceController({
         return;
       }
       try {
+        const doc = await readEditorDocumentFile(file);
+        if (doc) {
+          window.dispatchEvent(new CustomEvent('sms3-open-editor-document', { detail: doc }));
+          return;
+        }
         const text = await readToolInputFileText(file, { onMessage: updateStatus });
         filenameInput.value = markdownFilenameFromLoadedFile(file.name);
         filenameInput.dataset.userEdited = "false";
@@ -1032,6 +1040,15 @@ export function createMarkdownWorkspaceController({
     }, { signal: eventController.signal });
     updateMetrics();
     refreshDocumentList(activeDocumentId);
+    const documentActions = document.createElement('div');
+    documentActions.className = 'markdown-document-toolbar';
+    toolbar.after(documentActions);
+    const session = createEditorSession({host:shell, toolbar:documentActions, tool:'markdown-notebook', source:{}, saveInitial:false, initial:previousState?.__documentLoaded ? previousState : undefined, read:() => {const {activeDocumentId,...documentState}=readState();return documentState;}, apply:snapshot => {
+      editor.value = String(snapshot.markdown ?? ''); titleInput.value = String(snapshot.title ?? ''); dateInput.value = String(snapshot.date ?? '');
+      filenameInput.value = normalizeMarkdownFilename(snapshot.fileName || 'untitled-notes.md'); frontMatterInput.checked = snapshot.includeFrontMatter === true;
+      sourceInput.value = editor.value; syncHiddenOptions(); updateMetrics();
+    }});
+    container._sms3VisualCleanup = () => {session.dispose(); clearTimeout(autosaveTimer); eventController.abort();};
   }
 
   return {

@@ -235,6 +235,9 @@ function normalizeBaseCalls(raw, warnings) {
       : generatedPosition;
     const monotonicPosition = position <= lastPosition ? lastPosition + 1 : position;
     lastPosition = monotonicPosition;
+    if (Number.isFinite(requestedPosition) && requestedPosition !== monotonicPosition) {
+      warnings.push(`Base ${index + 1}: display peak position adjusted from ${requestedPosition} to ${monotonicPosition}; original position retained.`);
+    }
     const quality = call?.quality === null || call?.quality === undefined || call?.quality === ""
       ? null
       : clampNumber(call.quality, null, 0, 93);
@@ -242,7 +245,7 @@ function normalizeBaseCalls(raw, warnings) {
       base: normalizedBase,
       originalBase: normalizedBase,
       originalIndex: index + 1,
-      originalTracePosition: monotonicPosition,
+      originalTracePosition: Number.isFinite(requestedPosition) ? requestedPosition : monotonicPosition,
       tracePosition: monotonicPosition,
       quality,
       edited: false
@@ -263,14 +266,14 @@ function normalizeTraceArrays(raw, baseCalls, warnings) {
   let maxLength = 0;
 
   for (const channel of SANGER_TRACE_CHANNELS) {
-    if (Array.isArray(rawTraces[channel])) {
+    if (Array.isArray(rawTraces[channel]) && rawTraces[channel].length > 0) {
       provided[channel] = rawTraces[channel].map((value) => Math.max(0, Number(value) || 0));
       providedChannels += 1;
       maxLength = Math.max(maxLength, provided[channel].length);
     }
   }
 
-  if (providedChannels === SANGER_TRACE_CHANNELS.length) {
+  if (providedChannels === SANGER_TRACE_CHANNELS.length && Object.values(provided).every(values => values.length === maxLength)) {
     const traces = {};
     for (const channel of SANGER_TRACE_CHANNELS) {
       traces[channel] = provided[channel].slice();
@@ -286,7 +289,7 @@ function normalizeTraceArrays(raw, baseCalls, warnings) {
   }
 
   if (providedChannels > 0) {
-    warnings.push("Some trace channels were missing; generated a preview trace from base calls instead of mixing measured and generated channels.");
+    warnings.push("Some trace channels were missing or had inconsistent lengths; generated a preview trace from base calls instead of mixing measured and generated channels.");
   } else if (raw.traceMode !== "base-call-preview" && raw.previewTrace !== true) {
     warnings.push("No raw A/C/G/T trace channels were supplied; generated a preview trace from base calls.");
   }
@@ -467,6 +470,10 @@ function readDirectoryEntry(bytes, view, offset) {
 function getAbifDataRegion(entry, bytes) {
   const offset = entry.dataSize <= 4 ? entry.inlineOffset : entry.dataOffset;
   const size = entry.dataSize;
+  const numericWidth = ({1:1, 3:2, 4:2, 5:4})[entry.elementType];
+  if (numericWidth && (entry.elementSize !== numericWidth || entry.numElements * numericWidth !== size)) {
+    throw new Error(`ABIF tag ${entry.name}.${entry.number} has inconsistent numeric element count, width or payload size.`);
+  }
   if (offset < 0 || offset + size > bytes.length) {
     throw new Error(`ABIF tag ${entry.name}.${entry.number} points outside the file.`);
   }
@@ -490,7 +497,7 @@ function readAbifEntryValue(entry, bytes, view) {
     const values = [];
     for (let index = 0; index < count; index += 1) {
       const valueOffset = offset + index * 2;
-      if (valueOffset + 2 > bytes.length) {
+      if (valueOffset + 2 > offset + size) {
         break;
       }
       values.push(entry.elementType === 3
@@ -503,7 +510,7 @@ function readAbifEntryValue(entry, bytes, view) {
     const values = [];
     for (let index = 0; index < count; index += 1) {
       const valueOffset = offset + index * 4;
-      if (valueOffset + 4 > bytes.length) {
+      if (valueOffset + 4 > offset + size) {
         break;
       }
       values.push(view.getInt32(valueOffset, false));
@@ -580,6 +587,16 @@ function calledBaseQuality(base, probabilities) {
     return probabilities[index] ?? null;
   }
   return Math.max(...probabilities.filter((value) => Number.isFinite(value)), 0);
+}
+
+function validateMeasuredPositions(positions, sampleCount, format) {
+  let previous = -1;
+  for (const [index, position] of positions.entries()) {
+    if (!Number.isSafeInteger(position) || position < 0 || position <= previous || (sampleCount > 0 && position >= sampleCount)) {
+      throw new Error(`${format} base ${index + 1} has invalid peak position ${position}; positions must be ordered within the measured samples.`);
+    }
+    previous = position;
+  }
 }
 
 export function parseScfTrace(input, filename = "SCF trace") {
@@ -665,6 +682,7 @@ export function parseScfTrace(input, filename = "SCF trace") {
     }
   }
 
+  validateMeasuredPositions(basePositions, samples, "SCF");
   return {
     format: "scf",
     name: String(filename || "SCF trace").replace(/\.scf$/i, ""),
@@ -735,11 +753,10 @@ export function parseAbifTrace(input, filename = "AB1 trace") {
   }
 
   const maxTraceLength = Math.max(0, ...SANGER_TRACE_CHANNELS.map((channel) => traces[channel].length));
-  for (const channel of SANGER_TRACE_CHANNELS) {
-    while (traces[channel].length < maxTraceLength) {
-      traces[channel].push(0);
-    }
+  if (positions.length !== baseString.length || (qualities.length && qualities.length !== baseString.length)) {
+    throw new Error("ABIF base calls, positions and quality arrays have inconsistent lengths.");
   }
+  validateMeasuredPositions(positions, maxTraceLength, "ABIF");
 
   return {
     format: "ab1",

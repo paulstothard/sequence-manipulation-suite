@@ -176,13 +176,17 @@ function translateCodons(codons, codonMap) {
 }
 
 function normalizeOptions(options = {}) {
+  const score = (value, fallback) => {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  };
   return {
     mode: options.mode === "local" ? "local" : "global",
-    matchScore: Number.parseFloat(options.matchScore) || 5,
-    mismatchScore: Number.parseFloat(options.mismatchScore) || -4,
-    similarScore: Number.parseFloat(options.similarScore) || 1,
-    gapOpen: -Math.abs(Number.parseFloat(options.gapOpen) || 10),
-    gapExtend: -Math.abs(Number.parseFloat(options.gapExtend) || 1),
+    matchScore: score(options.matchScore, 5),
+    mismatchScore: score(options.mismatchScore, -4),
+    similarScore: score(options.similarScore, 1),
+    gapOpen: -Math.abs(score(options.gapOpen, 10)),
+    gapExtend: -Math.abs(score(options.gapExtend, 1)),
     lineWidth: Math.max(20, Math.min(120, Number.parseInt(options.lineWidth, 10) || 60)),
     scoringMatrix: options.scoringMatrix === "blosum62" ? "blosum62" : "identity",
     maxAlignmentCells: Math.max(
@@ -668,7 +672,7 @@ function summarizeAlignment({ alignmentA, alignmentB, alphabet, score, options, 
   let mismatches = 0;
   let gaps = 0;
   let gapOpenings = 0;
-  let previousGap = false;
+  let previousGap = "";
   const markers = [];
 
   for (let index = 0; index < alignmentA.length; index += 1) {
@@ -690,11 +694,11 @@ function summarizeAlignment({ alignmentA, alignmentB, alphabet, score, options, 
       mismatches += 1;
     } else {
       gaps += 1;
-      if (!previousGap) {
+      if (previousGap !== (charA === "-" ? "A" : "B")) {
         gapOpenings += 1;
       }
     }
-    previousGap = column.relation === "gap";
+    previousGap = column.relation === "gap" ? (charA === "-" ? "A" : "B") : "";
     columns.push({
       alignment_position: index + 1,
       sequence_a_position: charA === "-" ? "" : posA,

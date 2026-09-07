@@ -249,8 +249,9 @@ export function calculateSimpleLinearRegression(input, options = {}) {
   const mse = sse / df;
   const residualStandardError = Math.sqrt(mse);
   const slopeSe = Math.sqrt(mse / sxx);
-  const slopeT = slopeSe > 0 ? slope / slopeSe : Number.POSITIVE_INFINITY;
-  const slopePValue = Number.isFinite(slopeT) ? twoTailedPValue(slopeT, df) : 0;
+  const slopeT = slopeSe > 0 ? slope / slopeSe : slope !== 0 ? Math.sign(slope) * Number.POSITIVE_INFINITY : Number.NaN;
+  const slopePValue = Number.isNaN(slopeT) ? Number.NaN : Number.isFinite(slopeT) ? twoTailedPValue(slopeT, df) : 0;
+  if (Number.isNaN(slopeT)) warnings.push("Slope inference is undefined: both the slope and its standard error are zero (constant response).");
   const r = syy > 0 ? sxy / Math.sqrt(sxx * syy) : Number.NaN;
   const rSquared = syy > 0 ? 1 - sse / syy : Number.NaN;
   const suitabilityNotes = [
@@ -258,7 +259,9 @@ export function calculateSimpleLinearRegression(input, options = {}) {
     "The fitted line assumes independent observations, an approximately linear relationship, and roughly constant residual variance."
   ].filter(Boolean).join(" ");
   if (fitRows.length < 8) warnings.push("Small regression sample size; inspect residuals and outliers.");
-  const interpretation = slopePValue < 0.05
+  const interpretation = Number.isNaN(slopePValue)
+    ? "Slope significance is unavailable for a constant response with zero residual variance."
+    : slopePValue < 0.05
     ? "The slope p value is below 0.05 for the selected x and y columns."
     : "The slope p value is not below 0.05 for the selected x and y columns.";
   const row = {

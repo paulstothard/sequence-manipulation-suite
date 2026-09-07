@@ -1,3 +1,4 @@
+import { treeDocumentContract } from "../../core/tree-document-stream.js";
 import {
   MULTIPLE_ALIGNMENT_ENGINES,
   multipleAlignmentDefaultLimits
@@ -17,7 +18,7 @@ export const phylogenyBuilderMetadata = {
   tags: ["DNA", "RNA", "protein", "FASTA", "alignment", "phylogeny", "plot"],
   summary: "Build a quick neighbor-joining phylogeny from multiple FASTA records, aligning unaligned input with MUSCLE by default.",
   inputType: "DNA/RNA, protein, or coding DNA/RNA FASTA records",
-  outputType: "Phylogeny tree plot, tree report, distance table, aligned FASTA, or alignment report",
+  outputType: "Tree Viewer, phylogeny tree plot, tree report, distance table, aligned FASTA, or alignment report",
   fileInput: {
     accept: ".txt,.fa,.fasta,.fna,.faa",
     dropLabel: "Drop DNA/RNA or protein FASTA records here"
@@ -28,6 +29,8 @@ export const phylogenyBuilderMetadata = {
       { id: "sequenceRecords", kind: "sequence-records" }
     ],
     outputs: [
+      treeDocumentContract,
+      { id: "newick", kind: "text", mediaType: "text/x-newick", label: "Newick tree" },
       { id: "primary", kind: "text", mediaType: "image/svg+xml" },
       { id: "plot", kind: "text", mediaType: "image/svg+xml", label: "Phylogeny tree plot" },
       { id: "tree", kind: "text", mediaType: "text/plain", label: "Tree report" },
@@ -103,6 +106,7 @@ export const phylogenyBuilderMetadata = {
           label: "Output format",
           defaultValue: PHYLOGENY_OUTPUT_FORMATS.treePlot,
           choices: [
+            { value: PHYLOGENY_OUTPUT_FORMATS.treeViewer, label: "Tree Viewer" },
             { value: PHYLOGENY_OUTPUT_FORMATS.treePlot, label: "Phylogeny tree plot" },
             { value: PHYLOGENY_OUTPUT_FORMATS.treeReport, label: "Tree report" },
             { value: PHYLOGENY_OUTPUT_FORMATS.distanceTable, label: "Distance table" },

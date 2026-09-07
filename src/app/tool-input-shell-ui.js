@@ -1,4 +1,5 @@
 import { wrapFastaText } from "../core/fasta.js";
+import { EDITOR_TOOLS } from "./editor-session.js";
 
 export function getToolInputFileUiForMetadata(tool) {
   const metadata = tool?.metadata ?? {};
@@ -505,7 +506,9 @@ export function createToolInputShellController({
     }
     const inputUi = getToolInputFileUi(tool);
     elements.dropZoneLabel.textContent = inputUi.dropLabel;
-    elements.fileInput.setAttribute("accept", inputUi.accept);
+    elements.fileInput.setAttribute("accept", EDITOR_TOOLS.includes(tool?.metadata?.id)
+      ? [...new Set([...inputUi.accept.split(","), ".sms3.json", ".json"])].join(",")
+      : inputUi.accept);
     updateDirectInputFileStatus(tool);
     updateReadLayoutMainInputVisibility(tool);
   }

@@ -18,6 +18,7 @@ export const PHYLOGENY_SEQUENCE_TYPES = {
 };
 
 export const PHYLOGENY_OUTPUT_FORMATS = {
+  treeViewer: "tree-viewer",
   treePlot: "tree-plot",
   treeReport: "tree-report",
   distanceTable: "distance-table",

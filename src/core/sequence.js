@@ -261,7 +261,7 @@ export function getDnaRnaStats(sequence) {
     length: String(sequence ?? "").length,
     counts,
     gcCount,
-    gcPercent: unambiguousBases > 0 ? (gcCount / unambiguousBases) * 100 : 0,
+    gcPercent: unambiguousBases > 0 ? (gcCount / unambiguousBases) * 100 : null,
     unambiguousBases,
     ambiguityCount,
     nCount: counts.N,
@@ -304,6 +304,14 @@ export function getProteinIsoelectricPoint(counts, options = {}) {
 
   let low = 0;
   let high = 14;
+  const lowCharge = getProteinChargeAtPh(counts, low, options);
+  const highCharge = getProteinChargeAtPh(counts, high, options);
+  // Bisection requires a finite bracket with a sign change. Zero charge at
+  // every pH (no ionizable groups) does not define a unique isoelectric point.
+  if (!Number.isFinite(lowCharge) || !Number.isFinite(highCharge)
+      || !(lowCharge > highCharge) || lowCharge < 0 || highCharge > 0) return null;
+  if (lowCharge === 0) return low;
+  if (highCharge === 0) return high;
 
   for (let iteration = 0; iteration < 80; iteration += 1) {
     const mid = (low + high) / 2;

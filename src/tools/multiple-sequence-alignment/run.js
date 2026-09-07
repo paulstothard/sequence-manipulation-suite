@@ -1,3 +1,4 @@
+import { makeAlignmentTreeViewerResult } from "../../core/alignment-tree-viewer.js";
 import {
   alignMultipleCodingDna,
   alignMultipleSequences,
@@ -28,6 +29,7 @@ const OUTPUT_FORMATS = new Set([
   "clustal",
   "tsv",
   "svg-color",
+  "tree-viewer",
   "nj-tree",
   "nj-tree-svg",
   "identity-matrix",
@@ -99,6 +101,10 @@ async function runMultipleAlignment(input, options = {}, alphabet, context = {})
       basesProcessed: prepared.totalSymbols,
       charactersRemoved: prepared.charactersRemoved
     });
+  }
+
+  if (outputFormat === "tree-viewer") {
+    return makeAlignmentTreeViewerResult(prepared, `Multiple Align ${alphabet}`, context);
   }
 
   const report = makeMultipleAlignmentReport(prepared);

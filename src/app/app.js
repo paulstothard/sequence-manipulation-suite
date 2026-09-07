@@ -1,3 +1,5 @@
+import { EDITOR_TOOLS, parseEditorDocument, readEditorDocumentFile, readEditorRecovery, createEditorSession } from './editor-session.js';
+import { readTreeDocumentStream } from "../core/tree-document-stream.js";
 import { tools } from "../tools/registry.js";
 import { sequenceExtractorExamples } from "../examples/sequence-extractor-examples.js";
 import { compareToolCategories } from "../tools/categories.js";
@@ -335,6 +337,7 @@ const sangerTraceWorkspace = createSangerTraceWorkspaceController({
   splitInputExampleParts,
   formatExampleInputForDisplay,
   readToolInputFileText,
+  tryOpenEditorDocumentFile,
   addMessage,
   updateInputActionButtons,
   clearToolOutput
@@ -725,50 +728,23 @@ function renderReferenceList() {
   }
 }
 
-function appendHomeSection(parent, title, child) {
-  const section = document.createElement("section");
-  section.className = "home-section";
-  const heading = document.createElement("h3");
-  heading.textContent = title;
-  section.append(heading, child);
-  parent.append(section);
-}
-
-function makeHomeLink(href, label, description) {
-  const link = document.createElement("a");
-  link.href = href;
-  link.className = "home-link";
-  const title = document.createElement("strong");
-  title.textContent = label;
-  const span = document.createElement("span");
-  span.textContent = description;
-  link.append(title, span);
-  return link;
-}
-
 function renderHomeView() {
   elements.homeBody.textContent = "";
-
   const summary = document.createElement("p");
   summary.className = "summary home-summary";
-  summary.textContent = `SMS3 is a browser toolkit for sequence manipulation, analysis, visualization, and reference-data tasks. It includes ${visibleSortedTools.length.toLocaleString()} registered tools for DNA/RNA, protein, table, plot, and figure work.`;
+  summary.textContent = `SMS3 provides ${visibleSortedTools.length.toLocaleString()} tools for DNA/RNA and protein sequence analysis, tables, plots, and scientific figures.`;
+
+  const start = document.createElement("p");
+  start.className = "home-start";
+  const showcase = document.createElement("a");
+  showcase.href = "#reference=sms3-showcase";
+  showcase.textContent = "SMS3 showcase";
+  start.append("Browse example outputs in the ", showcase, ", or choose a tool from the sidebar to work with your own data.");
 
   const note = document.createElement("p");
   note.className = "home-note";
-  note.textContent = "Start with the showcase to see representative outputs, then open a specific tool from the sidebar when you are ready to run your own data. Inputs and results stay in this browser unless you copy, download, or intentionally send feedback.";
-
-  const main = document.createElement("div");
-  main.className = "home-main";
-
-  const showcaseAction = document.createElement("div");
-  showcaseAction.className = "home-links home-links-single";
-  showcaseAction.append(
-    makeHomeLink("#reference=sms3-showcase", "View the SMS3 showcase", "Scan example outputs from tools, plots, viewers, and figures.")
-  );
-
-  appendHomeSection(main, "Explore example outputs", showcaseAction);
-
-  elements.homeBody.append(summary, note, main);
+  note.textContent = "Inputs and results stay in this browser unless you copy, download, or intentionally send feedback.";
+  elements.homeBody.append(summary, start, note);
 }
 
 function renderActiveView() {
@@ -818,7 +794,15 @@ function selectHome({ updateHash = true } = {}) {
   }
 }
 
-function selectTool(tool, { updateHash = true, revealInToolList = false } = {}) {
+let editorRecoveryEpoch = 0;
+function selectTool(tool, { updateHash = true, revealInToolList = false, recover = true } = {}) {
+  const recoveryEpoch = ++editorRecoveryEpoch;
+  elements.markdownWorkspace._sms3VisualCleanup?.();
+  if (state.toolRun) {
+    state.toolRun.abortController.abort();
+    state.toolRun = null;
+    setToolRunning(false);
+  }
   state.selectedTool = tool;
   state.activeView = "tool";
   scrollWorkspaceToTop();
@@ -835,6 +819,9 @@ function selectTool(tool, { updateHash = true, revealInToolList = false } = {}) 
   if (updateHash) {
     setRouteHash("tool", tool.metadata.id);
   }
+  if (recover && EDITOR_TOOLS.includes(tool.metadata.id)) readEditorRecovery(tool.metadata.id).then(doc => {
+    if (doc && recoveryEpoch === editorRecoveryEpoch && state.selectedTool === tool && state.activeView === 'tool' && !state.toolRun) return openEditorDocument(doc, {recovered:true});
+  }).catch(() => {});
 }
 
 function selectReference(referenceId, { updateHash = true } = {}) {
@@ -864,7 +851,10 @@ function selectFeedback({ updateHash = true } = {}) {
   }
 }
 
-function selectWorkflow(workflowId = state.selectedWorkflow, { updateHash = true } = {}) {
+let workflowDocumentSession;
+function selectWorkflow(workflowId = state.selectedWorkflow, { updateHash = true, recover = true } = {}) {
+  const recoveryEpoch = ++editorRecoveryEpoch;
+  const alreadyOpen = Boolean(workflowDocumentSession) && workflowId === state.selectedWorkflow;
   const preset = workflowPresets.find((item) => item.id === workflowId) ?? workflowPresets[0];
   state.selectedWorkflow = preset.id;
   state.pendingWorkflowRecipe = "";
@@ -876,10 +866,39 @@ function selectWorkflow(workflowId = state.selectedWorkflow, { updateHash = true
   renderToolList();
   renderReferenceList();
   renderWorkflowView();
-  loadWorkflowExample();
+  if (!alreadyOpen) loadWorkflowExample();
 
   if (updateHash) {
     setRouteHash("workflow", preset.id);
+  }
+  if (!workflowDocumentSession) {
+    const actions = document.createElement("div");
+    actions.className = "workflow-document-actions";
+    elements.workflowView.querySelector(".workflow-management-toolbar").after(actions);
+    workflowDocumentSession = createEditorSession({
+      host: elements.workflowView, toolbar: actions, tool: "workflow", source: {}, saveInitial: false,
+      read: () => {
+        const workflow = structuredClone(workflowBuilder.getActiveWorkflowDefinition());
+        const input = workspaceInputSources.getWorkflowInputText(workflow) ?? elements.workflowInput.value;
+        const inputStep = workflow.steps.find(step => step.type === "input");
+        if (inputStep) {
+          inputStep.text = input;
+          delete inputStep.workspaceSource;
+        }
+        return {workflow, input};
+      },
+      apply: snapshot => {
+        workflowExampleLoadRequest++;
+        workspaceInputSources.setWorkflowInputSourceMode("paste");
+        workflowBuilder.setWorkflowDefinition(snapshot.workflow);
+        elements.workflowInput.value = String(snapshot.input || "");
+        renderWorkflowView();
+        clearWorkflowOutput();
+      }
+    });
+    if (recover) readEditorRecovery("workflow").then(doc => {
+      if (doc && recoveryEpoch === editorRecoveryEpoch && state.activeView === "workflow") return openEditorDocument(doc, {recovered: true});
+    }).catch(() => {});
   }
 }
 
@@ -3103,6 +3122,9 @@ function createBiologicalRecordInputSection({ key, panel, index, value }) {
   const fileInput = document.createElement("input");
   fileInput.type = "file";
   fileInput.accept = panel?.accept ?? ".txt";
+  if (key === "annotation" && EDITOR_TOOLS.includes(state.selectedTool?.metadata.id)) {
+    fileInput.accept += ",.sms3.json,.json";
+  }
   fileInput.setAttribute("aria-label", panel?.label ?? `Input ${index + 1}`);
   const fileText = document.createElement("span");
   fileText.textContent = "Choose file";
@@ -3124,6 +3146,7 @@ function createBiologicalRecordInputSection({ key, panel, index, value }) {
     if (!file) {
       return;
     }
+    if (key === "annotation" && await tryOpenEditorDocumentFile(file)) return;
     if (file.size > 25 * 1024 * 1024) {
       addMessage(`${file.name}: file is larger than 25 MB.`, "warning");
       return;
@@ -3182,7 +3205,9 @@ function setBiologicalRecordSourceMode(mode, { syncOption = true, maybeLoadExamp
     annotationFileInput.setAttribute("aria-label", config.annotationLabel);
   }
   if (annotationDrop) {
-    annotationDrop.textContent = config.annotationDropLabel;
+    annotationDrop.textContent = EDITOR_TOOLS.includes(state.selectedTool?.metadata.id)
+      ? config.annotationDropLabel.replace(/ here$/, " or an SMS3 document here")
+      : config.annotationDropLabel;
   }
   const fastaSection = panel.querySelector('[data-bio-record-section="fasta"]');
   if (fastaSection) {
@@ -4730,6 +4755,8 @@ async function loadAlignmentViewerRegion(region, { onProgress } = {}) {
     abortController,
     cancelActiveTool: null
   };
+  const runState = state.toolRun;
+  const isCurrent = () => state.toolRun === runState && state.selectedTool === tool && state.activeView === "tool";
   setToolRunning(true);
   try {
     const inputText = getSelectedToolInputText();
@@ -4741,12 +4768,13 @@ async function loadAlignmentViewerRegion(region, { onProgress } = {}) {
         if (detail) onProgress?.(detail);
       }
     });
-    if (state.selectedTool !== tool) {
+    if (!isCurrent()) {
       throw new Error("The selected tool changed before the region finished loading.");
     }
-    await displayToolResult(result, inputText, options);
+    await displayToolResult(result, inputText, options, isCurrent);
     return result;
   } catch (error) {
+    if (!isCurrent()) throw error;
     elements.messages.textContent = "";
     if (error.name === "AbortError" || abortController.signal.aborted) {
       addMessage(`${tool.metadata.name} region load cancelled.`);
@@ -4755,9 +4783,11 @@ async function loadAlignmentViewerRegion(region, { onProgress } = {}) {
     addMessage(`Could not load region: ${error.message}`, "warning");
     throw error;
   } finally {
-    state.toolRun = null;
-    setToolRunning(false);
-    restoreAlignmentViewerViewport(viewportSnapshot);
+    if (state.toolRun === runState) {
+      state.toolRun = null;
+      setToolRunning(false);
+      if (state.selectedTool === tool) restoreAlignmentViewerViewport(viewportSnapshot);
+    }
   }
 }
 
@@ -4772,7 +4802,13 @@ const outputShell = createOutputShellController({
   flattenOptions,
   getOptions,
   pluralize,
-  loadAlignmentViewerRegion
+  loadAlignmentViewerRegion,
+  openTreeDocument: async stream => {
+    readTreeDocumentStream(stream);
+    selectTool(getToolById("tree-viewer"));
+    elements.sequenceInput.value = stream.items[0].text;
+    await runSelectedTool();
+  }
 });
 
 function renderMessages(result) {
@@ -4944,7 +4980,9 @@ function describeWorkflowStep(...args) {
 }
 
 function renderWorkflowView(...args) {
-  return workflowBuilder.renderWorkflowView(...args);
+  const result = workflowBuilder.renderWorkflowView(...args);
+  queueMicrotask(() => workflowDocumentSession?.changed("Edit workflow"));
+  return result;
 }
 
 function renderWorkflowBuilderControls(...args) {
@@ -4960,7 +4998,9 @@ async function saveCurrentWorkflowToLibrary(...args) {
 }
 
 async function loadSavedWorkflowFromLibrary(...args) {
-  return workflowBuilder.loadSavedWorkflowFromLibrary(...args);
+  const result = await workflowBuilder.loadSavedWorkflowFromLibrary(...args);
+  workflowDocumentSession?.changed("Open saved workflow");
+  return result;
 }
 
 async function deleteSavedWorkflowFromLibrary(...args) {
@@ -5156,6 +5196,7 @@ async function loadWorkflowExample() {
   updateInputActionButtons();
   const activeWorkflow = getActiveWorkflowDefinition();
   workspaceInputSources.renderWorkflowSource(activeWorkflow, workflowUsesInput(activeWorkflow));
+  workflowDocumentSession?.changed("Load recipe input");
 }
 
 function clearWorkflowInput() {
@@ -5186,6 +5227,27 @@ function parseWorkflowJson() {
     return { workflow: JSON.parse(elements.workflowJson.value), errors: [] };
   } catch (error) {
     return { workflow: null, errors: [`Workflow JSON could not be parsed: ${error.message}`] };
+  }
+}
+
+async function loadWorkflowFile(file) {
+  if (!file) return;
+  editorRecoveryEpoch++;
+  try {
+    if (file.size > 25 * 1024 * 1024) throw new Error("Workflow file exceeds 25 MB.");
+    const doc = await readEditorDocumentFile(file);
+    if (doc) {
+      await openEditorDocument(doc);
+      return;
+    }
+    const text = await file.text();
+    const errors = validateWorkflowDefinition(JSON.parse(text), { tools });
+    if (errors.length) throw new Error(errors.join(" "));
+    elements.workflowJson.value = text;
+    importWorkflowJson();
+    workflowDocumentSession.changed("Import workflow");
+  } catch (error) {
+    addWorkflowMessage(error.message, "warning");
   }
 }
 
@@ -5445,7 +5507,7 @@ async function runSelectedWorkflow() {
       stepCount: result.steps.length
     };
     renderWorkflowView();
-    const hasWorkflowVisual = Boolean(formatted.svg || formatted.viewer || formatted.figure || formatted.sequenceExtractor);
+    const hasWorkflowVisual = Boolean(formatted.svg || formatted.viewer || formatted.figure || formatted.sequenceExtractor || formatted.treeViewer);
     elements.workflowOutput.value = formatted.text;
     elements.workflowOutput.dataset.rawOutput = formatted.rawText;
     elements.workflowOutput.dataset.filename = formatted.filename ?? "sms3-workflow-output.txt";
@@ -5457,7 +5519,8 @@ async function runSelectedWorkflow() {
     renderVisualOutput("workflow", formatted.svg, {
       viewer: formatted.viewer,
       figure: formatted.figure,
-      sequenceExtractor: formatted.sequenceExtractor
+      sequenceExtractor: formatted.sequenceExtractor,
+      treeViewer: formatted.treeViewer
     });
     elements.workflowOutput.hidden = Boolean(formatted.tableStream || hasWorkflowVisual);
     setOutputSearchRowVisible("workflow", Boolean(formatted.tableStream || (!hasWorkflowVisual && formatted.text)));
@@ -5502,36 +5565,44 @@ async function runSelectedWorkflow() {
   }
 }
 
-async function displayToolResult(result, inputText, options) {
-  state.currentToolDescription = await buildToolOutputDescription(result, inputText, options);
+async function displayToolResult(result, inputText, options, isCurrent = () => true) {
+  if (!isCurrent()) return;
+  const description = await buildToolOutputDescription(result, inputText, options);
+  if (!isCurrent()) return;
+  state.currentToolDescription = description;
   renderGeneratedToolOutputChoice(result);
   renderMessages(result);
 }
 
 async function runSelectedTool() {
+  editorRecoveryEpoch++;
   if (state.toolRun) {
     return;
   }
   if (["alignment-viewer", "sam-bam-summary-region-viewer"].includes(state.selectedTool?.metadata?.id)) {
     state.alignmentViewerHistorySession += 1;
   }
+  const tool = state.selectedTool;
   const abortController = new AbortController();
   state.toolRun = {
     abortController,
     cancelActiveTool: null
   };
+  const runState = state.toolRun;
+  const isCurrent = () => state.toolRun === runState && state.selectedTool === tool && state.activeView === "tool";
   setToolRunning(true);
   resetToolOutputViewer("Run is in progress...");
   try {
     elements.messages.textContent = "";
-    addMessage(getToolRunStatus(state.selectedTool));
+    addMessage(getToolRunStatus(tool));
     const inputText = getSelectedToolInputText();
     const options = getOptions();
     await displayToolResult(
-      await runAppTool(state.selectedTool, inputText, options, {
+      await runAppTool(tool, inputText, options, {
         signal: abortController.signal,
         onProgress: (message) => {
-          const detail = describeWorkerProgress(state.selectedTool, message);
+          if (!isCurrent()) return;
+          const detail = describeWorkerProgress(tool, message);
           if (!detail) {
             return;
           }
@@ -5540,22 +5611,27 @@ async function runSelectedTool() {
         }
       }),
       inputText,
-      options
+      options,
+      isCurrent
     );
   } catch (error) {
+    if (!isCurrent()) return;
     resetToolOutputViewer("Run did not produce output.");
     if (error.name === "AbortError" || abortController.signal.aborted) {
-      addMessage(`${state.selectedTool.metadata.name} run cancelled.`);
+      addMessage(`${tool.metadata.name} run cancelled.`);
     } else {
-      addMessage(`Could not run ${state.selectedTool.metadata.name}: ${error.message}`, "warning");
+      addMessage(`Could not run ${tool.metadata.name}: ${error.message}`, "warning");
     }
   } finally {
-    state.toolRun = null;
-    setToolRunning(false);
+    if (state.toolRun === runState) {
+      state.toolRun = null;
+      setToolRunning(false);
+    }
   }
 }
 
 async function loadInputFile(file) {
+  if (await tryOpenEditorDocumentFile(file)) return;
   if (!file) {
     return;
   }
@@ -5716,6 +5792,22 @@ elements.workflowLoadSaved.addEventListener("click", loadSavedWorkflowFromLibrar
 elements.workflowDeleteSaved.addEventListener("click", deleteSavedWorkflowFromLibrary);
 elements.workflowExportJson.addEventListener("click", copyWorkflowDefinitionToEditor);
 elements.workflowImportJson.addEventListener("click", importWorkflowJson);
+const workflowFileInput = document.querySelector("#workflowFileInput");
+workflowFileInput.addEventListener("change", async () => {
+  await loadWorkflowFile(workflowFileInput.files?.[0]);
+  workflowFileInput.value = "";
+});
+const workflowFileDropZone = document.querySelector("#workflowFileDropZone");
+workflowFileDropZone.addEventListener("dragover", event => {
+  event.preventDefault();
+  workflowFileDropZone.classList.add("drag-over");
+});
+workflowFileDropZone.addEventListener("dragleave", () => workflowFileDropZone.classList.remove("drag-over"));
+workflowFileDropZone.addEventListener("drop", async event => {
+  event.preventDefault();
+  workflowFileDropZone.classList.remove("drag-over");
+  await loadWorkflowFile(event.dataTransfer.files?.[0]);
+});
 elements.workflowValidateJson.addEventListener("click", validateWorkflowJsonFromEditor);
 elements.workflowAddStepType.addEventListener("change", renderWorkflowBuilderControls);
 elements.workflowAddTool.addEventListener("change", renderWorkflowBuilderControls);
@@ -5918,3 +6010,71 @@ if (!applyRouteFromHash()) {
 }
 refreshSavedWorkflowList();
 refreshWorkspaceSequences();
+
+
+async function openEditorDocument(doc, {recovered = false} = {}) {
+  if (doc?.format === "sms3-tree-document") {
+    doc = {format: "sms3-editor-document", version: 1, tool: "tree-viewer", source: {document: doc}, state: {document: doc}};
+  }
+  doc = parseEditorDocument(JSON.stringify(doc));
+  if (doc.tool === "tree-viewer") {
+    const {validateTreeDocument} = await import("../../packages/tree-viewer/src/core/schema.js");
+    validateTreeDocument(doc.state.document);
+  }
+  if (doc.tool === 'workflow') {
+    const errors = validateWorkflowDefinition(doc.state.workflow, {tools});
+    if (errors.length) throw new Error(errors.join(' '));
+    selectWorkflow(state.selectedWorkflow, {recover:false});
+    workflowExampleLoadRequest++;
+    workspaceInputSources.setWorkflowInputSourceMode("paste");
+    workflowBuilder.setWorkflowDefinition(doc.state.workflow);
+    elements.workflowInput.value = String(doc.state.input || '');
+    renderWorkflowView();
+    workflowDocumentSession.changed('Open document'); await workflowDocumentSession.flush();
+    return;
+  }
+  const tool = tools.find(item => item.metadata.id === doc.tool);
+  if (!tool) throw new Error('This document needs a tool that is not installed.');
+  if (state.selectedTool !== tool || state.activeView !== 'tool') selectTool(tool, {recover:false});
+  editorRecoveryEpoch++;
+  if (state.toolRun) {
+    state.toolRun.abortController.abort();
+    state.toolRun.cancelActiveTool?.();
+    state.toolRun = null;
+    setToolRunning(false);
+  }
+  clearToolOutput();
+  if (doc.tool === 'markdown-notebook') {
+    elements.sequenceInput.value = doc.state.markdown || '';
+    markdownWorkspace.render({...doc.state,__documentLoaded:true,__documentSource:doc.source});
+  } else {
+    const key = doc.tool === 'tree-viewer' ? 'treeViewer' : doc.tool === 'sequence-editor' ? 'sequenceEditor' : doc.tool === 'sequence-extractor' ? 'sequenceExtractor' : doc.tool.includes('genome-figure') ? 'figure' : 'sangerTrace';
+    if (doc.tool === 'tree-viewer') elements.sequenceInput.value=JSON.stringify(doc.state.document,null,2);
+    if (doc.tool === 'sequence-editor') elements.sequenceInput.value=String(doc.source.input||'');
+    renderVisualOutput('tool', null, {[key]:doc.source, editorDocument:doc});
+    elements.toolOutputEmpty.hidden = true;
+  }
+  addMessage(recovered ? 'Recovered your browser changes.' : 'Opened SMS3 document.');
+}
+window.addEventListener('sms3-open-editor-document', event => {
+  openEditorDocument(event.detail).catch(error => addMessage(error.message, 'warning'));
+});
+async function tryOpenEditorDocumentFile(file, { multiple = false } = {}) {
+  if (!file) return false;
+  // Stop pending recovery before reading a newly selected file.
+  editorRecoveryEpoch++;
+  try {
+    const doc = await readEditorDocumentFile(file);
+    if (!doc) return false;
+    if (multiple) throw new Error("Load an SMS3 document by itself.");
+    await openEditorDocument(doc);
+  } catch (error) {
+    addMessage(error.message, 'warning');
+  }
+  return true;
+}
+elements.loadExample.addEventListener('click', () => editorRecoveryEpoch++);
+elements.toolView.addEventListener('input', () => editorRecoveryEpoch++);
+
+elements.workflowView.addEventListener("input", () => editorRecoveryEpoch++);
+elements.workflowView.addEventListener("change", () => editorRecoveryEpoch++);

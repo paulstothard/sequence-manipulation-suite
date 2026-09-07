@@ -1,3 +1,4 @@
+import { readTreeDocumentStream, TREE_DOCUMENT_MEDIA_TYPE } from "../core/tree-document-stream.js";
 import {
   deleteSavedWorkflow,
   getSavedWorkflow,
@@ -177,6 +178,10 @@ export function createWorkflowBuilderController({
       };
     }
 
+    if (value.kind === "collection" && value.itemKind === "tree-document") {
+      const document = readTreeDocumentStream(value);
+      return { text: "", rawText: value.items[0].text, summary: "Workflow output: Tree document", outputLabel: "Tree document", isTsv: false, treeViewer: { document }, filename: "tree-document.json", mimeType: TREE_DOCUMENT_MEDIA_TYPE };
+    }
     if (value.kind === "collection") {
       const rawText = JSON.stringify(value, null, 2);
       return {

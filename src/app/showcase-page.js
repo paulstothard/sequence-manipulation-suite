@@ -1,3 +1,4 @@
+import { renderTreeSvg } from "../../packages/tree-viewer/src/export/svg.js";
 import { renderObservablePlotPreview } from "./plot-preview-ui.js";
 import { renderSequenceExtractorWorkspace } from "./sequence-extractor-workspace-ui.js";
 import { alignmentViewerReferenceExample } from "../examples/alignment-viewer-example.js";
@@ -7,6 +8,7 @@ const SHOWCASE_VISUAL_INCLUDE = /\b(plot|map|gel|figure|heatmap|cloud|sankey|ven
 const SHOWCASE_VIEWER_INCLUDE = /\bviewer\b|\binteractive-viewer\b/i;
 const SHOWCASE_VISUAL_EXCLUDE = /\b(json|table|report|text|fasta|fastq|tsv|csv|xlsx|records?|summary)\b/i;
 const SHOWCASE_VIEWER_ALLOWLIST = new Map([
+  ...["phylogeny-builder", "multiple-align-dna-rna", "multiple-align-protein", "multiple-align-coding-dna"].map((id) => [id, new Set(["tree-viewer"])]),
   ["alignment-viewer", new Set(["interactive-viewer"])],
   ["circular-dna-sequence-viewer", new Set(["interactive-viewer"])],
   ["dna-sequence-viewer", new Set(["interactive-viewer"])],
@@ -340,7 +342,7 @@ function makeShowcaseViewerInitialState(viewer) {
   return snapshots.some(Boolean) ? snapshots : undefined;
 }
 
-function makeShowcaseItems({ tools, flattenOptions, getDefaultOptionValues, compareToolCategories }) {
+export function makeShowcaseItems({ tools, flattenOptions, getDefaultOptionValues, compareToolCategories }) {
   return tools.flatMap((tool) => {
     const outputOption = getShowcaseOutputOption(tool.metadata, flattenOptions);
     const toolOptionOverrides = SHOWCASE_TOOL_OPTION_OVERRIDES.get(tool.metadata.id) ?? {};
@@ -508,7 +510,13 @@ async function renderShowcaseCard(card, item, token, context) {
       ? renderObservablePlotPreview(result.visual.plotSpec)
       : null;
     const svg = result.visual?.svg ?? (String(result.output ?? "").trimStart().startsWith("<svg") ? result.output : "");
-    if (plotPreview) {
+    if (result.visual?.treeViewer) {
+      const treeDocument = result.visual.treeViewer.document;
+      const figure = await renderTreeSvg(treeDocument, treeDocument.trees[0].id);
+      if (context.state.showcaseRenderToken !== token) return;
+      preview.insertAdjacentHTML("beforeend", figure.svg);
+      preview.querySelectorAll("svg").forEach(normalizeShowcaseSvg);
+    } else if (plotPreview) {
       preview.append(plotPreview);
       preview.querySelectorAll("svg").forEach(normalizeShowcaseSvg);
     } else if (svg) {

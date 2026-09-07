@@ -111,71 +111,59 @@ function splitLocationParts(text) {
   return parts.map((part) => part.trim()).filter(Boolean);
 }
 
-export function parseInsdcLocation(locationText) {
-  const compact = String(locationText ?? "").replace(/\s+/g, "");
-  const partial = compact.includes("<") || compact.includes(">");
-
-  function parsePart(part, complement = false) {
-    if (part.startsWith("complement(") && part.endsWith(")")) {
-      return parsePart(part.slice("complement(".length, -1), !complement);
-    }
-    if ((part.startsWith("join(") || part.startsWith("order(")) && part.endsWith(")")) {
-      const inner = part.slice(part.indexOf("(") + 1, -1);
-      return splitLocationParts(inner).flatMap((child) => parsePart(child, complement));
-    }
-    const rangeMatch = part.match(/^<?(\d+)\.\.>?(\d+)$/);
-    if (rangeMatch) {
-      return [{
-        start: Number(rangeMatch[1]),
-        end: Number(rangeMatch[2]),
-        strand: complement ? "-" : "+"
-      }];
-    }
-    const betweenMatch = part.match(/^<?(\d+)\^>?(\d+)$/);
-    if (betweenMatch) {
-      return [{
-        start: Number(betweenMatch[1]),
-        end: Number(betweenMatch[2]),
-        strand: complement ? "-" : "+"
-      }];
-    }
-    const singleMatch = part.match(/^<?(\d+)$/);
-    if (singleMatch) {
-      return [{
-        start: Number(singleMatch[1]),
-        end: Number(singleMatch[1]),
-        strand: complement ? "-" : "+"
-      }];
-    }
-    return [];
+// Local INSDC subset: exact/partial spans and nested join/complement.
+// https://www.insdc.org/submitting-standards/feature-table/ sections 3.4.2–3.4.3.
+function locationExpression(part, depth = 0) {
+  if (depth > 128 || part.length > 1_000_000) return {kind:'unsupported', reason:'Location exceeds supported syntax limits.'};
+  const operator = /^(complement|join|order)\((.*)\)$/.exec(part);
+  if (operator) {
+    const pieces = splitLocationParts(operator[2]);
+    if (!pieces.length || /^,|,$|,,/.test(operator[2]) || (operator[1] === 'complement' && pieces.length !== 1)) return {kind:'unsupported',reason:'Malformed location operator.'};
+    return {kind:operator[1],children:pieces.map(child=>locationExpression(child,depth+1))};
   }
+  const match = /^[<>]?(\d+)(?:(\.\.|\^)[<>]?(\d+))?$/.exec(part);
+  if (!match) return {kind:'unsupported',reason:part.includes(':')?'Remote location requires an external sequence; extraction is unavailable.':'Unsupported or malformed location syntax.'};
+  const start=Number(match[1]),end=Number(match[3]??match[1]);
+  if (!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start<1||end<1||(match[2]!=='^'&&end<start)) return {kind:'unsupported',reason:'Invalid location coordinates.'};
+  return {kind:match[2]==='^'?'site':'span',start,end};
+}
 
-  const ranges = parsePart(compact);
-  const starts = ranges.map((range) => range.start);
-  const ends = ranges.map((range) => range.end);
+export function parseInsdcLocation(locationText) {
+  const compact = String(locationText ?? '').replace(/\s+/g,'');
+  const ranges=[],sites=[],diagnostics=[];
+  const visit=(node,reverse=false)=>{
+    if(node.kind==='unsupported') {diagnostics.push(node.reason);return;}
+    if(node.kind==='site') {sites.push({after:node.start,before:node.end});diagnostics.push('Between-base site has no extractable nucleotide span.');return;}
+    if(node.kind==='span') {ranges.push({start:node.start,end:node.end,strand:reverse?'-':'+'});return;}
+    if(node.kind==='order') diagnostics.push('Order does not define a contiguous joined sequence; extraction is unavailable.');
+    for(const child of node.children) visit(child,node.kind==='complement'?!reverse:reverse);
+  };
+  visit(locationExpression(compact));
   return {
-    location: compact,
-    ranges,
-    start: starts.length ? Math.min(...starts) : "",
-    end: ends.length ? Math.max(...ends) : "",
-    strand: ranges.some((range) => range.strand === "-") ? "-" : "+",
-    partial,
-    supported: ranges.length > 0
+    location:compact,ranges,
+    start:ranges.length?Math.min(...ranges.map(r=>r.start)):'',
+    end:ranges.length?Math.max(...ranges.map(r=>r.end)):'',
+    strand:ranges.length&&ranges.every(r=>r.strand==='-')?'-':ranges.some(r=>r.strand==='-')?'.':'+',
+    partial:compact.includes('<')||compact.includes('>'),
+    supported:ranges.length>0&&diagnostics.length===0,
+    ...(sites.length?{sites}:{}),...(diagnostics.length?{diagnostics:[...new Set(diagnostics)]}:{})
   };
 }
 
 export function extractLocationSequence(sequence, parsedLocation) {
-  if (!parsedLocation?.ranges?.length) {
-    return "";
-  }
-  const pieces = parsedLocation.ranges.map((range) =>
-    sequence.slice(range.start - 1, range.end)
-  );
-  let extracted = pieces.join("");
-  if (parsedLocation.strand === "-") {
-    extracted = complementDnaRnaSequence(extracted, { preserveCase: false }).split("").reverse().join("");
-  }
-  return extracted.toUpperCase();
+  if (!parsedLocation?.supported || !parsedLocation.ranges?.length) return '';
+  if (parsedLocation.ranges.some(r=>r.start<1||r.end>sequence.length||r.end<r.start)) return '';
+  const reverseComplement=s=>complementDnaRnaSequence(s,{preserveCase:false}).split('').reverse().join('');
+  const extract=node=>{
+    if(node.kind==='span') return sequence.slice(node.start-1,node.end);
+    if(node.kind==='join') return node.children.map(extract).join('');
+    if(node.kind==='complement') return reverseComplement(extract(node.children[0]));
+    throw new Error('Unsupported location cannot produce a complete sequence.');
+  };
+  if(parsedLocation.location) return extract(locationExpression(parsedLocation.location)).toUpperCase();
+  // Legacy normalized records without source syntax only describe a uniform-strand join.
+  const joined=parsedLocation.ranges.map(r=>sequence.slice(r.start-1,r.end)).join('');
+  return (parsedLocation.strand==='-'?reverseComplement(joined):joined).toUpperCase();
 }
 
 function parseGenbankFeatures(recordText) {
@@ -338,8 +326,14 @@ function parseUniprotRecord(recordText) {
 }
 
 function makeParsedRecord({ format, accession, title, organism, molecule, topology, sequence, features }) {
+  const warnings = sequence ? [] : [`${accession}: no sequence section was found.`];
   const normalizedFeatures = features.map((feature, index) => {
     const parsedLocation = parseInsdcLocation(feature.locationLines.join(""));
+    if (parsedLocation.ranges.some(range => range.end > sequence.length)) {
+      parsedLocation.supported = false;
+      parsedLocation.diagnostics = [...(parsedLocation.diagnostics ?? []), "Location extends beyond the owning sequence; extraction is unavailable."];
+    }
+    for (const diagnostic of parsedLocation.diagnostics ?? []) warnings.push(`${accession} ${feature.key}: ${diagnostic}`);
     const translation = getFirstQualifier(feature, "translation");
     return {
       id: `${accession}:${index + 1}`,
@@ -366,7 +360,7 @@ function makeParsedRecord({ format, accession, title, organism, molecule, topolo
     topology,
     sequence,
     features: normalizedFeatures,
-    warnings: sequence ? [] : [`${accession}: no sequence section was found.`]
+    warnings
   };
 }
 
@@ -441,26 +435,13 @@ export function flatfileRecordsToSequenceRecords(records, mode = "whole") {
     );
   }
   if (mode === "protein") {
-    const translated = records.flatMap((record) =>
-      record.features
-        .filter((feature) => feature.translation)
-        .map((feature) => ({
-          title: feature.protein_id || feature.locus_tag || feature.gene || `${record.accession} protein`,
-          sequence: feature.translation,
-          sourceTitle: record.accession,
-          featureId: feature.id
-        }))
-    );
-    if (translated.length > 0) {
-      return translated;
-    }
-    return records
-      .filter((record) => record.molecule === "protein" && record.sequence)
-      .map((record) => ({
-        title: record.accession,
-        sequence: record.sequence,
-        sourceTitle: record.accession
+    return records.flatMap(record => {
+      if (record.molecule === "protein" && record.sequence) return [{title:record.accession,sequence:record.sequence,sourceTitle:record.accession}];
+      return record.features.filter(feature=>feature.translation).map(feature=>({
+        title:feature.protein_id||feature.locus_tag||feature.gene||`${record.accession} protein`,
+        sequence:feature.translation,sourceTitle:record.accession,featureId:feature.id
       }));
+    });
   }
   return records
     .filter((record) => record.sequence && record.molecule !== "protein")

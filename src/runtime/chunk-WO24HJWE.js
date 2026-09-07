@@ -1,4 +1,4 @@
-var t=`LOCUS       NC_000932             154478 bp    DNA     circular PLN 03-APR-2023
+import"./chunk-B6JNHY6R.js";var t=`LOCUS       NC_000932             154478 bp    DNA     circular PLN 03-APR-2023
 DEFINITION  Arabidopsis thaliana chloroplast, complete genome.
 ACCESSION   NC_000932
 VERSION     NC_000932.1

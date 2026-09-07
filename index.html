@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light dark" />
-    <meta name="sms3-tool-worker" content="./src/workers/tool-worker.bundle-ND4M57A7.js" />
+    <meta name="sms3-tool-worker" content="./src/workers/tool-worker.bundle-ZBMZL3J4.js" />
     <title>SMS3</title>
     <style>
       html,
@@ -35,7 +35,7 @@
         }
       })();
     </script>
-    <link rel="stylesheet" href="./src/app/styles.css" />
+    <link rel="stylesheet" href="./src/app/styles.bundle-WSSD6ZZ2.css" />
   </head>
   <body>
     <div class="app-shell">
@@ -373,12 +373,14 @@
                 <div id="workflowSummary" class="workflow-summary"></div>
                 <details id="workflowJsonPanel" class="workflow-json-panel">
                   <summary id="workflowJsonTitle">Import / Export</summary>
-                  <p class="summary">Optional workflow definition editor for moving recipes between SMS3 copies or automation code. The normal workflow controls above do not require this.</p>
+                  <p class="summary">Import a workflow recipe or an SMS3 document, or edit the recipe JSON below.</p>
                   <div class="button-row">
+                    <label class="file-button"><input id="workflowFileInput" type="file" accept=".json,.sms3.json" aria-label="Workflow JSON file" /><span>Choose file</span></label>
                     <span class="summary">Use Export in the workflow toolbar to copy the current definition here.</span>
                     <button id="workflowImportJson" type="button">Use edited workflow</button>
                     <button id="workflowValidateJson" type="button">Check workflow</button>
                   </div>
+                  <div id="workflowFileDropZone" class="drop-zone">Drop a workflow recipe or SMS3 document here</div>
                   <textarea id="workflowJson" aria-label="Workflow definition JSON" spellcheck="false" wrap="off"></textarea>
                 </details>
                 <div class="workflow-add-region">
@@ -556,7 +558,7 @@
     <script src="./src/vendor/observablehq-plot/plot.umd.min.js"></script>
     <script async src="./src/vendor/exceljs/exceljs.min.js"></script>
     <script async src="./src/vendor/3dmol/3Dmol-min.js"></script>
-    <script id="sms3AppLoader" type="module" data-app-module="./src/app/app.bundle-LFGPVPZJ.js">
+    <script id="sms3AppLoader" type="module" data-app-module="./src/app/app.bundle-USVLMTA3.js">
       const loader = document.querySelector("#sms3AppLoader");
       const status = document.querySelector("#appStartupStatus");
       const retryButton = document.querySelector("#appStartupRetry");

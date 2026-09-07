@@ -1,3 +1,5 @@
+import { readTreeDocumentStream } from "./tree-document-stream.js";
+import { exportDelimitedTable } from "./table.js";
 import { formatFastaRecord, parseSequenceInput } from "./fasta.js";
 import { isWorkflowStreamCompatible } from "./workflow-contracts.js";
 import { makeCollectionStream, makeTableStream, makeTextStream } from "./workflow.js";
@@ -71,6 +73,8 @@ function inferOutputFormatForStream(tool, streamName = "primary") {
 
   const outputFormat = flattenOptions(tool?.metadata.options ?? []).find((option) => option.id === "outputFormat");
   const choices = new Set((outputFormat?.choices ?? []).map((choice) => choice.value));
+  const declaredFormat = getToolOutputContract(tool, streamName)?.outputFormat;
+  if (declaredFormat && choices.has(declaredFormat)) return declaredFormat;
   const candidates = {
     report: ["report"],
     table: ["table", "tsv", "csv"],
@@ -397,6 +401,10 @@ function streamToToolInput(value) {
     return value.text;
   }
 
+  if (value.kind === "table") {
+    return exportDelimitedTable(value.columns, value.rows, "\t");
+  }
+
   if (value.kind === "sequence-records") {
     return sequenceRecordsToFasta(value);
   }
@@ -408,6 +416,10 @@ function streamToToolInput(value) {
   }
 
   if (value.kind === "collection") {
+    if (value.itemKind === "tree-document") {
+      readTreeDocumentStream(value);
+      return value.items[0].text;
+    }
     return value.items.map((item) => streamToToolInput(item)).join("\n");
   }
 
@@ -661,6 +673,10 @@ function gatherSequenceRecordStreams(items) {
 
 function gatherTableStreams(items) {
   const first = items.find((item) => item.kind === "table");
+  const signature = (item) => JSON.stringify([item.schema ?? "", (item.columns ?? []).map(column => [column.id, column.label ?? column.id, column.type ?? ""])]);
+  if (items.some(item => item.kind !== "table" || signature(item) !== signature(first))) {
+    throw new Error("Cannot gather tables with incompatible schemas or columns; align their columns before gathering.");
+  }
   return makeTableStream(
     first?.columns ?? [],
     items.flatMap((item) => (item.kind === "table" ? item.rows : [])),

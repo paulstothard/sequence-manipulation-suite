@@ -22,7 +22,7 @@ export const pcaVarianceColumns = [
 ];
 
 function round(value, digits = 6) {
-  return Number.isFinite(value) ? Number(value.toFixed(digits)) : "";
+  return Number.isFinite(value) ? Number(value !== 0 && Math.abs(value) < 10 ** -digits ? value.toPrecision(digits) : value.toFixed(digits)) : "";
 }
 
 function mean(values) {
@@ -43,10 +43,14 @@ function identity(size) {
 
 function jacobiEigenDecomposition(matrix) {
   const size = matrix.length;
-  const working = matrix.map((row) => row.slice());
+  if (matrix.some(row => row.some(value => !Number.isFinite(value)))) throw new Error("PCA covariance exceeds the finite numerical range; rescale the input.");
+  const scale = matrix.reduce((max, row) => row.reduce((m, value) => Math.max(m, Math.abs(value)), max), 0);
+  const normalized = matrix.map(row => row.map(value => scale > 0 ? value / scale : 0));
+  const working = normalized.map(row => row.slice());
   const vectors = identity(size);
-  const tolerance = 1e-12;
-  const maxSweeps = 100;
+  const tolerance = 32 * Number.EPSILON * Math.max(1, size);
+  const maxSweeps = 100 * size * size; // Individual maximum-pivot rotations, not sweeps.
+  let converged = false;
 
   for (let sweep = 0; sweep < maxSweeps; sweep += 1) {
     let p = 0;
@@ -62,7 +66,7 @@ function jacobiEigenDecomposition(matrix) {
         }
       }
     }
-    if (maxOffDiagonal < tolerance) break;
+    if (maxOffDiagonal <= tolerance) { converged = true; break; }
 
     const app = working[p][p];
     const aqq = working[q][q];
@@ -94,10 +98,15 @@ function jacobiEigenDecomposition(matrix) {
     }
   }
 
-  return Array.from({ length: size }, (_, index) => ({
-    value: Math.max(0, working[index][index]),
-    vector: vectors.map((row) => row[index])
-  })).sort((left, right) => right.value - left.value);
+  if (!converged) throw new Error("PCA eigensolver did not converge; no component results were returned.");
+  const norm = Math.max(1, ...normalized.map(row => row.reduce((sum, value) => sum + Math.abs(value), 0)));
+  return Array.from({ length: size }, (_, index) => {
+    const value = Math.max(0, working[index][index]);
+    const vector = vectors.map(row => row[index]);
+    const residual = Math.hypot(...normalized.map((row, i) => row.reduce((sum, entry, j) => sum + entry * vector[j], 0) - value * vector[i]));
+    if (residual > norm * 1e-10 || !Number.isFinite(residual)) throw new Error("PCA eigenvector residual check failed; no component results were returned.");
+    return {value: value * scale, vector};
+  }).sort((left, right) => right.value - left.value);
 }
 
 function orientEigenvector(vector) {
@@ -186,6 +195,7 @@ export function makePcaPlot(input, options = {}) {
   const columnValues = columns.map((column, columnIndex) => completeRows.map((row) => row.values[columnIndex]));
   const means = columnValues.map((values) => mean(values));
   const sds = columnValues.map((values, index) => sampleSd(values, means[index]));
+  if (means.some(value => !Number.isFinite(value)) || sds.some(value => !Number.isFinite(value))) throw new Error("PCA variance exceeds the finite numerical range; rescale the input.");
   const usableIndexes = columns.map((column, index) => ({ column, index, sd: sds[index] }))
     .filter((item) => item.sd > 0 || !scaleColumns);
   const dropped = columns.length - usableIndexes.length;

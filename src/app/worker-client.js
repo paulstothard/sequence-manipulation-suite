@@ -1,6 +1,5 @@
 import {
   TOOL_WORKER_MESSAGE_TYPES,
-  makeWorkerCancelMessage,
   makeWorkerRunMessage
 } from "../core/tool-worker-protocol.js";
 
@@ -39,64 +38,73 @@ export class ToolWorkerClient {
 
   getWorker() {
     if (!this.worker) {
-      this.worker = this.workerFactory();
-      this.worker.addEventListener("message", (event) => {
-        this.handleMessage(event.data);
+      const worker = this.workerFactory();
+      this.worker = worker;
+      worker.addEventListener("message", event => {
+        if (this.worker === worker) this.handleMessage(event.data, worker);
       });
+      const failed = event => {
+        event.preventDefault?.();
+        this.retireWorker(worker, new Error(event.message || "Tool worker transport failed; retry the run."));
+      };
+      worker.addEventListener("error", failed);
+      worker.addEventListener("messageerror", failed);
     }
     return this.worker;
   }
 
-  runTool({ toolId, input, options = {}, onProgress = () => {} }) {
-    const requestId = `tool-${nextRequestId}`;
-    nextRequestId += 1;
+  retireWorker(worker, error) {
+    if (this.worker !== worker) return;
+    this.worker = null;
+    worker.terminate();
+    for (const [id, pending] of this.pending) {
+      if (pending.worker !== worker) continue;
+      this.pending.delete(id);
+      pending.reject(error);
+    }
+  }
 
+  runTool({ toolId, input, options = {}, onProgress = () => {} }) {
+    const requestId = `tool-${nextRequestId++}`;
     const worker = this.getWorker();
     const promise = new Promise((resolve, reject) => {
-      this.pending.set(requestId, { resolve, reject, onProgress });
+      this.pending.set(requestId, { resolve, reject, onProgress, worker });
+      try {
+        worker.postMessage(makeWorkerRunMessage({ requestId, toolId, input, options }));
+      } catch (error) {
+        this.retireWorker(worker, error);
+      }
     });
-
-    worker.postMessage(makeWorkerRunMessage({ requestId, toolId, input, options }));
-
     return {
       requestId,
       promise,
       cancel: () => {
-        worker.postMessage(makeWorkerCancelMessage(requestId));
+        if (!this.pending.has(requestId)) return;
+        // Cancellation retires this shared worker and settles every run it owns;
+        // it cannot depend on an acknowledgement from a stalled/failed runtime.
+        const error = new Error("Tool run was cancelled.");
+        error.name = "AbortError";
+        this.retireWorker(worker, error);
       }
     };
   }
 
-  handleMessage(message) {
+  handleMessage(message, worker = this.worker) {
     const pending = this.pending.get(message?.requestId);
-    if (!pending) {
-      return;
-    }
-
+    if (!pending || pending.worker !== worker) return;
     if (message.type === TOOL_WORKER_MESSAGE_TYPES.progress) {
       pending.onProgress(message);
       return;
     }
-
+    if (![TOOL_WORKER_MESSAGE_TYPES.result, TOOL_WORKER_MESSAGE_TYPES.cancelled, TOOL_WORKER_MESSAGE_TYPES.error].includes(message.type)) return;
     this.pending.delete(message.requestId);
-
-    if (message.type === TOOL_WORKER_MESSAGE_TYPES.result) {
-      pending.resolve(message.result);
-    } else if (message.type === TOOL_WORKER_MESSAGE_TYPES.cancelled) {
-      pending.reject(new Error("Tool run was cancelled."));
-    } else if (message.type === TOOL_WORKER_MESSAGE_TYPES.error) {
-      pending.reject(new Error(message.error));
-    }
+    if (message.type === TOOL_WORKER_MESSAGE_TYPES.result) pending.resolve(message.result);
+    else if (message.type === TOOL_WORKER_MESSAGE_TYPES.cancelled) {
+      const error = new Error("Tool run was cancelled."); error.name = "AbortError"; pending.reject(error);
+    } else pending.reject(new Error(message.error));
   }
 
   terminate() {
-    if (this.worker) {
-      this.worker.terminate();
-      this.worker = null;
-    }
-    for (const { reject } of this.pending.values()) {
-      reject(new Error("Tool worker was terminated."));
-    }
-    this.pending.clear();
+    if (this.worker) this.retireWorker(this.worker, new Error("Tool worker was terminated."));
   }
 }

@@ -1,3 +1,4 @@
+import { parseUnsignedIntegerToken } from "./integer-token.js";
 import { formatFastaRecord, parseSequenceInput } from "./fasta.js";
 import {
   extractLocationSequence,
@@ -192,6 +193,15 @@ function looksLikeGtf(text) {
   return /\b(?:gene_id|transcript_id)\s+"[^"]*"\s*;?/u.test(String(text ?? ""));
 }
 
+function requireUniquePairedIds(records) {
+  const seen = new Set();
+  for (const record of records) {
+    const id = record.title.split(/\s+/)[0];
+    if (seen.has(id)) throw new Error(`Ambiguous paired FASTA ID "${id}": multiple records have the same first title token. Give each record a unique ID before conversion.`);
+    seen.add(id);
+  }
+}
+
 function recordsFromGff3Fasta(input, warnings) {
   const text = String(input ?? "");
   if (looksLikeGtf(text)) {
@@ -206,6 +216,7 @@ function recordsFromGff3Fasta(input, warnings) {
     warnings.push("GFF3-like feature rows were found, but no FASTA section was available for paired conversion.");
     return [];
   }
+  requireUniquePairedIds(sequenceRecords);
   const recordsById = new Map(sequenceRecords.map((record) => [record.title.split(/\s+/)[0], {
     format: "GFF3+FASTA",
     accession: record.title.split(/\s+/)[0],
@@ -230,9 +241,12 @@ function recordsFromGff3Fasta(input, warnings) {
       warnings.push(`${seqid}: skipped GFF3 feature because no matching FASTA record was found.`);
       continue;
     }
-    const start = Number(rawStart);
-    const end = Number(rawEnd);
-    if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
+    const start = parseUnsignedIntegerToken(rawStart);
+    const end = parseUnsignedIntegerToken(rawEnd);
+    if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < 1 || start > record.sequence.length || end > record.sequence.length) {
+      warnings.push(`${seqid}: skipped GFF3 feature with coordinates outside the paired sequence (${rawStart}, ${rawEnd}); positive integer positions within 1–${record.sequence.length} are required.`);
+      continue;
+    }
     const attributes = parseAttributes(rawAttributes, "gff3");
     const id = pairedFeatureId(attributes, `${seqid}:gff3:${featureIndex + 1}`);
     const partNumber = Number(attributes.part);
@@ -325,6 +339,7 @@ function recordsFromGtfFasta(input, warnings) {
     warnings.push("GTF-like feature rows were found, but no FASTA section was available for paired conversion.");
     return [];
   }
+  requireUniquePairedIds(sequenceRecords);
   const recordsById = new Map(sequenceRecords.map((record) => [record.title.split(/\s+/)[0], {
     format: "GTF+FASTA",
     accession: record.title.split(/\s+/)[0],
@@ -349,9 +364,9 @@ function recordsFromGtfFasta(input, warnings) {
       warnings.push(`${seqid}: skipped GTF feature because no matching FASTA record was found.`);
       continue;
     }
-    const start = Number(rawStart);
-    const end = Number(rawEnd);
-    if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start) {
+    const start = parseUnsignedIntegerToken(rawStart);
+    const end = parseUnsignedIntegerToken(rawEnd);
+    if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start || end > record.sequence.length) {
       warnings.push(`${seqid}: skipped GTF feature with invalid 1-based inclusive coordinates (${rawStart}, ${rawEnd}).`);
       continue;
     }
@@ -447,6 +462,7 @@ function recordsFromBedFasta(input, warnings) {
     warnings.push("BED-like interval rows were found, but no FASTA sequence records were available for paired conversion.");
     return [];
   }
+  requireUniquePairedIds(sequenceRecords);
   const recordsById = new Map(sequenceRecords.map((record) => [record.title.split(/\s+/)[0], {
     format: "BED+FASTA",
     accession: record.title.split(/\s+/)[0],
@@ -468,9 +484,9 @@ function recordsFromBedFasta(input, warnings) {
       warnings.push(`${chrom}: skipped BED interval because no matching FASTA record was found.`);
       continue;
     }
-    const chromStart = Number(rawStart);
-    const chromEnd = Number(rawEnd);
-    if (!Number.isInteger(chromStart) || !Number.isInteger(chromEnd) || chromStart < 0 || chromEnd < chromStart) {
+    const chromStart = parseUnsignedIntegerToken(rawStart);
+    const chromEnd = parseUnsignedIntegerToken(rawEnd);
+    if (!Number.isInteger(chromStart) || !Number.isInteger(chromEnd) || chromStart < 0 || chromEnd <= chromStart || chromEnd > record.sequence.length) {
       warnings.push(`${chrom}: skipped BED interval with invalid 0-based half-open coordinates (${rawStart}, ${rawEnd}).`);
       continue;
     }

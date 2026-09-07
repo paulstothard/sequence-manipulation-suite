@@ -1,4 +1,6 @@
 const WORKFLOW_EXAMPLE_LOADERS = {
+  "hbb-dna-phylogeny": async () => (await import("../examples/workflow-phylogeny-examples.js")).workflowDnaFamilyExample,
+  "hbb-protein-phylogeny": async () => (await import("../examples/workflow-phylogeny-examples.js")).workflowProteinFamilyExample,
   "human-mitochondrion-genbank": async () => {
     const module = await import("../examples/organellar-workflow-example.js");
     return module.humanMitochondrionGenBankExample;
@@ -20,6 +22,55 @@ export async function loadWorkflowPresetExample(presetOrId) {
 }
 
 export const workflowPresets = [
+  ...[
+    ["dna-rna", "DNA/RNA", "hbb-dna-phylogeny"],
+    ["protein", "Protein", "hbb-protein-phylogeny"],
+    ["coding-dna", "Coding DNA", "hbb-dna-phylogeny"],
+  ].map(([sequenceType, label, exampleId]) => ({
+    id: `${sequenceType}-phylogeny-viewer`,
+    name: `${label} family tree`,
+    summary: `Review sequence statistics, ${sequenceType === "coding-dna" ? "align coding sequences through proteins with MUSCLE using the standard genetic code" : `align ${label} records with MUSCLE`}, and inspect a neighbor-joining tree. The example compares beta-globin family sequences, not a species phylogeny; branch support is not calculated.`,
+    exampleId,
+    workflow: {
+      steps: [
+        { id: "input", type: "input", text: "" },
+        {
+          id: "sequence-stats", type: "tool",
+          toolId: sequenceType === "protein" ? "sequence-stats-protein" : "sequence-stats-dna-rna",
+          input: { from: "input", stream: "primary" },
+          selectStream: "table", options: { outputFormat: "tsv" },
+        },
+        {
+          id: "build-tree", type: "tool", toolId: "phylogeny-builder",
+          input: { from: "input", stream: "primary" },
+          selectStream: "treeDocument",
+          options: { sequenceType, geneticCode: "1", alignmentEngine: "muscle", outputFormat: "tree-viewer" },
+        },
+        {
+          id: "view-tree", type: "tool", toolId: "tree-viewer",
+          input: { from: "build-tree", stream: "treeDocument" },
+          selectStream: "treeDocument", options: {},
+        },
+      ],
+    },
+  })),
+  {
+    id: "protein-family-distance-ranking",
+    name: "Protein family distance ranking",
+    summary: "Align a protein family with MUSCLE and rank all sequence pairs from smallest to largest p-distance, retaining identity and compared-column counts. Equal-distance pairs are tied; this is a similarity review, not an orthology test.",
+    exampleId: "hbb-protein-phylogeny",
+    workflow: {
+      steps: [
+        { id: "input", type: "input", text: "" },
+        {
+          id: "protein-distances", type: "tool", toolId: "phylogeny-builder",
+          selectStream: "distanceTable",
+          options: { sequenceType: "protein", alignmentEngine: "muscle", outputFormat: "distance-table" },
+        },
+        { id: "rank-pairs", type: "sort", criteria: { field: "p_distance", direction: "asc" } },
+      ],
+    },
+  },
   {
     id: "organellar-mitochondrial-record-review",
     name: "Mitochondrial record review",

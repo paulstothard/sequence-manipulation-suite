@@ -23,6 +23,7 @@ export function createSangerTraceWorkspaceController({
   splitInputExampleParts,
   formatExampleInputForDisplay,
   readToolInputFileText,
+  tryOpenEditorDocumentFile = async () => false,
   addMessage = noop,
   updateInputActionButtons = noop,
   clearToolOutput = noop
@@ -106,6 +107,7 @@ export function createSangerTraceWorkspaceController({
     const fileInput = document.createElement("input");
     fileInput.type = "file";
     fileInput.accept = getSelectedTool()?.metadata?.splitInput?.panels?.[0]?.accept ?? ".ab1,.abi,.abif,.scf,.json,.txt,.fa,.fasta";
+    fileInput.accept += ",.sms3.json";
     fileInput.className = "sanger-trace-file-input";
     const fileText = document.createElement("span");
     fileText.textContent = "Choose file";
@@ -121,6 +123,7 @@ export function createSangerTraceWorkspaceController({
     dropZone.className = "drop-zone sanger-trace-drop-zone";
     dropZone.tabIndex = 0;
     dropZone.textContent = getSelectedTool()?.metadata?.splitInput?.panels?.[0]?.dropLabel ?? "Drop Sanger trace file here";
+    dropZone.textContent = dropZone.textContent.replace(/, or /, ", ").replace(/ here$/, ", or an SMS3 document here");
 
     const textarea = document.createElement("textarea");
     textarea.className = "split-input-textarea sanger-raw-textarea";
@@ -196,6 +199,9 @@ export function createSangerTraceWorkspaceController({
 
   async function addTraceFiles(files, { targetCard = null } = {}) {
     const selectedFiles = Array.from(files ?? []);
+    for (const file of selectedFiles) {
+      if (await tryOpenEditorDocumentFile(file, { multiple: selectedFiles.length > 1 })) return;
+    }
     for (const [index, file] of selectedFiles.entries()) {
       if (file.size > MAX_SANGER_TRACE_FILE_BYTES) {
         addMessage(`${file.name}: file is larger than 25 MB.`, "warning");

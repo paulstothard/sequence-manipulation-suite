@@ -69,37 +69,56 @@ function countFeatureTrackItems(tracks = []) {
 }
 
 export function makeSequenceEditorFeatureTrackOverrides(records = []) {
-  return (records ?? [])
-    .map((record, index) => {
-      const featureTracks = cloneFeatureTracks(record.featureTracks ?? record.tracks ?? []);
-      return {
-        record: index + 1,
-        title: record.title,
-        length: Number(record.length) || String(record.sequence ?? "").length,
-        featureTracks,
-        annotatedFeatureCount: countFeatureTrackItems(featureTracks)
-      };
-    })
-    .filter((record) => record.featureTracks.length > 0);
-}
-
-function applyFeatureTrackOverrides(records, overrides = []) {
-  if (!Array.isArray(overrides) || overrides.length === 0) {
-    return records;
-  }
-  const byTitle = new Map(overrides.filter((override) => override?.title).map((override) => [String(override.title), override]));
+  // Keep the complete ordered manifest, including records without features. This
+  // allows identical duplicate records to retain distinct ordinal identities.
   return records.map((record, index) => {
-    const override = byTitle.get(String(record.title)) || overrides[index];
-    const featureTracks = cloneFeatureTracks(override?.featureTracks);
-    if (featureTracks.length === 0) {
-      return record;
-    }
+    const featureTracks = cloneFeatureTracks(record.featureTracks ?? record.tracks ?? []);
     return {
-      ...record,
+      record: index + 1,
+      recordKey: record.recordKey ?? record.id ?? `edited-record-${index + 1}`,
+      title: record.title,
+      sequence: String(record.sequence ?? ""),
+      length: String(record.sequence ?? "").length,
       featureTracks,
-      annotatedFeatureCount: override.annotatedFeatureCount ?? countFeatureTrackItems(featureTracks)
+      annotatedFeatureCount: countFeatureTrackItems(featureTracks)
     };
   });
+}
+
+function applyFeatureTrackOverrides(records, overrides = [], warnings = []) {
+  if (!Array.isArray(overrides) || overrides.length === 0) return records;
+  const usable = overrides.filter(o => typeof o?.sequence === "string");
+  const unchangedOrder = records.length === overrides.length && records.every((r,i) =>
+    overrides[i]?.record === i + 1 && r.title === overrides[i].title && r.sequence === overrides[i].sequence);
+  const group = (values, key) => {
+    const map = new Map();
+    for (const value of values) { const id = key(value); const list = map.get(id) ?? []; list.push(value); map.set(id, list); }
+    return map;
+  };
+  const exactKey = r => JSON.stringify([r.title, r.sequence]);
+  const sourceExact = group(usable, exactKey), targetExact = group(records, exactKey);
+  const sourceSequences = group(usable, r => r.sequence), targetSequences = group(records, r => r.sequence);
+  const used = new Set();
+  const result = records.map((record, index) => {
+    let override = unchangedOrder ? overrides[index] : null;
+    if (!override) {
+      const exact = sourceExact.get(exactKey(record)) ?? [];
+      const targets = targetExact.get(exactKey(record)) ?? [];
+      if (exact.length === 1 && targets.length === 1) override = exact[0];
+      else {
+        // A rename is safe only when exact sequence identity is unique on both sides.
+        const sameSequence = sourceSequences.get(record.sequence) ?? [];
+        if (sameSequence.length === 1 && targetSequences.get(record.sequence)?.length === 1) override = sameSequence[0];
+      }
+    }
+    if (!override || used.has(override)) return record;
+    used.add(override);
+    const featureTracks = cloneFeatureTracks(override.featureTracks);
+    return {...record, recordKey: override.recordKey, featureTracks, annotatedFeatureCount: countFeatureTrackItems(featureTracks)};
+  });
+  const unmatched = overrides.filter(o => !used.has(o) && countFeatureTrackItems(o?.featureTracks) > 0).length;
+  if (unmatched) warnings.push(`${unmatched} annotation overlay(s) were not applied because record identity or sequence could not be verified. Reimport or resolve the source records before reusing these annotations.`);
+  return result;
 }
 
 function makeAnnotatedFeatureTrack(record) {
@@ -240,7 +259,7 @@ function scanEditorRestrictionSites(sequence, options = {}) {
     };
   }
   return {
-    hits: findRestrictionSites(normalized, getEditorRestrictionEnzymes(options), options.context),
+    hits: findRestrictionSites(normalized, getEditorRestrictionEnzymes(options), options.context, options),
     skipped: false,
     reason: ""
   };
@@ -310,7 +329,7 @@ export function prepareSequenceEditorData(input, options = {}) {
   const fallbackTitle = options.fallbackTitle || "edited_sequence";
   const viewerLayout = options.viewerLayout === "circular" ? "circular" : "linear";
   const warnings = [];
-  const records = applyFeatureTrackOverrides(parseEditorInputRecords(input, fallbackTitle, warnings, options), options.featureTrackOverrides);
+  const records = applyFeatureTrackOverrides(parseEditorInputRecords(input, fallbackTitle, warnings, options), options.featureTrackOverrides, warnings);
   const cleanedRecords = [];
   const rows = [];
   let charactersRemoved = 0;
@@ -333,7 +352,7 @@ export function prepareSequenceEditorData(input, options = {}) {
       ...makeRestrictionViewerTracks({ hits: restrictionScan.hits })
     ];
     cleanedRecords.push({
-      id: `edited-record-${index + 1}`,
+      id: record.recordKey ?? `edited-record-${index + 1}`,
       title,
       sequence: record.sequence,
       length: record.sequence.length,
@@ -344,7 +363,7 @@ export function prepareSequenceEditorData(input, options = {}) {
       record: index + 1,
       title,
       length: record.sequence.length,
-      gc_percent: stats.length > 0 ? stats.gcPercent.toFixed(2) : "",
+      gc_percent: Number.isFinite(stats.gcPercent) ? stats.gcPercent.toFixed(2) : "",
       ambiguous_bases: stats.ambiguityCount,
       annotated_features: record.annotatedFeatureCount ?? 0,
       restriction_sites: restrictionScan.skipped ? "" : restrictionScan.hits.length,
@@ -426,7 +445,8 @@ function cleanComparableRecords(input, fallbackTitle = "edited_sequence") {
 }
 
 function cleanEditableRecords(input, fallbackTitle = "edited_sequence", warnings = [], options = {}) {
-  return applyFeatureTrackOverrides(parseEditorInputRecords(input, fallbackTitle, warnings), options.featureTrackOverrides).map((record) => ({
+  return applyFeatureTrackOverrides(parseEditorInputRecords(input, fallbackTitle, warnings), options.featureTrackOverrides, warnings).map((record) => ({
+    recordKey: record.recordKey,
     title: record.title,
     sequence: record.sequence,
     featureTracks: cloneFeatureTracks(record.featureTracks),
@@ -597,12 +617,15 @@ function remapFeatureItemForEdit(item, edit) {
   }
   const mapped = originalParts.map((part) => remapFeaturePart(part, edit));
   const parts = mapped.flatMap((result) => result.parts);
-  const status = combineFeatureStatuses(mapped.map((result) => result.status));
+  // Losing one part invalidates the surviving feature; only no surviving parts
+  // means the entire annotation was removed. Later movement cannot revalidate it.
+  const latestStatus = combineFeatureStatuses(mapped.map(result => result.status === "removed" ? "affected" : result.status));
+  const status = combineFeatureStatuses([latestStatus, item.editStatus]);
   const label = item.label || item.name || item.type || "feature";
   const type = item.type || item.featureType || "feature";
   const originalStart = Math.min(...originalParts.map((part) => part.start));
   const originalEnd = Math.max(...originalParts.map((part) => part.end));
-  if (parts.length === 0 || status === "removed") {
+  if (parts.length === 0) {
     return {
       item: null,
       update: {
@@ -631,7 +654,8 @@ function remapFeatureItemForEdit(item, edit) {
     length: sumPartLength(sortedParts)
   };
   if (status !== "unchanged") {
-    updated.status = featureStatusText(status, edit.operation);
+    updated.status = status === item.editStatus && item.status ? item.status : featureStatusText(status, edit.operation);
+    updated.editHistory = [...(item.editHistory ?? []), {operation: edit.operation, status: latestStatus, originalStart, originalEnd, start: newStart, end: newEnd}].slice(-50);
     updated.editStatus = status;
     updated.editEffect = updated.status;
     updated.originalStart = originalStart;

@@ -20,10 +20,10 @@ export const fastqPreprocessMetadata = {
     inputs: [{ id: "input", kind: "text", mediaType: "text/plain" }],
     outputs: [
       { id: "primary", kind: "text", mediaType: "text/plain" },
-      { id: "fastq", kind: "text", mediaType: "text/x-fastq", label: "Trimmed reads" },
-      { id: "read1Fastq", kind: "text", mediaType: "text/x-fastq", label: "Trimmed R1 reads" },
-      { id: "read2Fastq", kind: "text", mediaType: "text/x-fastq", label: "Trimmed R2 reads" },
-      { id: "interleavedFastq", kind: "text", mediaType: "text/x-fastq", label: "Interleaved trimmed read pairs" },
+      { id: "fastq", outputFormat: "fastq", kind: "text", mediaType: "text/x-fastq", label: "Trimmed reads" },
+      { id: "read1Fastq", outputFormat: "read1-fastq", kind: "text", mediaType: "text/x-fastq", label: "Trimmed R1 reads" },
+      { id: "read2Fastq", outputFormat: "read2-fastq", kind: "text", mediaType: "text/x-fastq", label: "Trimmed R2 reads" },
+      { id: "interleavedFastq", outputFormat: "interleaved-fastq", kind: "text", mediaType: "text/x-fastq", label: "Interleaved trimmed read pairs" },
       { id: "table", kind: "table", schema: "fastq-preprocess-summary", columns: fastqPreprocessSummaryColumns, label: "Summary table" },
       { id: "report", kind: "text", mediaType: "text/plain", label: "Summary report" },
       { id: "warnings", kind: "warnings" }

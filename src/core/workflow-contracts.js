@@ -1,5 +1,6 @@
 export const workflowStreamKinds = [
   "text",
+  "collection",
   "sequence-records",
   "table",
   "orf-records",
@@ -60,6 +61,8 @@ export function isWorkflowStreamCompatible(output, input) {
   if (input.alphabet && output.alphabet && input.alphabet !== output.alphabet) {
     return false;
   }
+
+  if (input.itemKind && input.itemKind !== output.itemKind) return false;
 
   if (input.schema && output.schema && input.schema !== output.schema) {
     return false;

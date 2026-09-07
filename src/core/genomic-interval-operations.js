@@ -1,3 +1,4 @@
+import { parseUnsignedIntegerToken } from "./integer-token.js";
 import { createBioWasmCli, requireBioWasmRuntime } from "./biowasm-runner.js";
 import { exportDelimitedTable } from "./table.js";
 
@@ -167,10 +168,11 @@ function parseBed(text, sourceSet, warnings, maxIntervals) {
       skipped += 1;
       continue;
     }
-    const start0 = Number.parseInt(columns[1], 10);
-    const end0 = Number.parseInt(columns[2], 10);
+    const start0 = parseUnsignedIntegerToken(columns[1]);
+    const end0 = parseUnsignedIntegerToken(columns[2]);
     if (!columns[0] || !Number.isFinite(start0) || !Number.isFinite(end0) || start0 < 0 || end0 <= start0) {
       skipped += 1;
+      warnings.push(`${sourceSet}: invalid BED coordinates on data row ${lineIndex + 1}.`);
       continue;
     }
     intervals.push(makeInterval({
@@ -199,17 +201,18 @@ function parseBed(text, sourceSet, warnings, maxIntervals) {
 function parseGffLike(text, sourceSet, format, warnings, maxIntervals) {
   const intervals = [];
   let skipped = 0;
-  for (const line of nonCommentLines(text)) {
+  for (const [lineIndex, line] of nonCommentLines(text).entries()) {
     if (line.startsWith("#")) continue;
     const columns = line.split("\t");
     if (columns.length < 9) {
       skipped += 1;
       continue;
     }
-    const start = Number.parseInt(columns[3], 10);
-    const end = Number.parseInt(columns[4], 10);
+    const start = parseUnsignedIntegerToken(columns[3]);
+    const end = parseUnsignedIntegerToken(columns[4]);
     if (!columns[0] || !Number.isFinite(start) || !Number.isFinite(end) || start < 1 || end < start) {
       skipped += 1;
+      warnings.push(`${sourceSet}: invalid ${format.toUpperCase()} coordinates on data row ${lineIndex + 1}.`);
       continue;
     }
     const attributes = parseAttributes(columns[8], format);
@@ -248,7 +251,7 @@ function parseVcf(text, sourceSet, warnings, maxIntervals) {
       skipped += 1;
       continue;
     }
-    const pos = Number.parseInt(columns[1], 10);
+    const pos = parseUnsignedIntegerToken(columns[1]);
     if (!columns[0] || !Number.isFinite(pos) || pos < 1) {
       skipped += 1;
       continue;
@@ -524,7 +527,7 @@ function parseBedtoolsRows(stdout, queryMap, referenceMap, operation, options) {
       if (query && reference) {
         rows.push(makeOperationRow(query, "nearest", reference, {
           overlapBp: intervalOverlapBp(query, reference),
-          distanceBp: fields[12]
+          distanceBp: Number(fields[12])
         }));
       }
     } else if (operation === "subtract" && fields.length >= 6) {
@@ -565,6 +568,9 @@ function bedtoolsError(stderr) {
 async function runBedtoolsIntervals(queryIntervals, referenceIntervals, options, context = {}) {
   requireBioWasmRuntime("bedtools interval operations");
   const cli = await getBioWasmBedtoolsCli();
+  // bedtools 2.31.0 closest retains unsafe native state across callMain runs.
+  // Aioli reinit resets the WASM module while retaining the worker/mounted inputs.
+  await cli.reinit("bedtools");
   const runId = nextRunId();
   const queryName = `${runId}_query.bed`;
   const referenceName = `${runId}_reference.bed`;

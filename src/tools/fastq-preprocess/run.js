@@ -95,16 +95,16 @@ export async function runFastqPreprocess(input, options = {}, context = {}) {
     table: makeTableStream(fastqPreprocessSummaryColumns, result.summaryRows, "fastq-preprocess-summary"),
     report: makeTextStream(result.report, "text/plain")
   };
-  if (result.fastq) {
-    streams.fastq = makeTextStream(result.fastq, "text/x-fastq");
+  if (outputFormat === "fastq" || outputFormat === "interleaved-fastq") {
+    streams.fastq = makeTextStream(outputFormat === "fastq" ? result.fastq : result.interleavedFastq, "text/x-fastq");
   }
-  if (result.read1Fastq) {
+  if (outputFormat === "read1-fastq" || outputFormat === "interleaved-fastq") {
     streams.read1Fastq = makeTextStream(result.read1Fastq, "text/x-fastq");
   }
-  if (result.read2Fastq) {
+  if (outputFormat === "read2-fastq" || outputFormat === "interleaved-fastq") {
     streams.read2Fastq = makeTextStream(result.read2Fastq, "text/x-fastq");
   }
-  if (result.interleavedFastq) {
+  if (outputFormat === "interleaved-fastq") {
     streams.interleavedFastq = makeTextStream(result.interleavedFastq, "text/x-fastq");
   }
 

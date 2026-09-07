@@ -101,7 +101,7 @@ export const vcfGenotypeTableMetadata = {
       type: "group",
       id: "vcfRegionToInspect",
       label: "Region to inspect",
-      help: "Required for indexed VCF mode and for region-filtered tables or the variant region viewer. Paste/upload mode scans the supplied VCF to find records overlapping this region.",
+      help: "Required for indexed VCF mode and for region-filtered tables or the variant region viewer. Records overlap by their local REF span or INFO/END, including the reference anchor. Breakends use only their local locus; remote mates and confidence intervals are not included.",
       visibleWhen: { option: "dataType", value: ["genotypes", "region-variants", "region-split-info"] },
       options: [
         {

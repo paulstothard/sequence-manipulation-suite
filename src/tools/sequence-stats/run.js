@@ -12,7 +12,7 @@ const TSV_COLUMNS = sequenceStatsTsvColumns;
 const TABLE_COLUMNS = sequenceStatsTableColumns;
 
 function formatPercent(value) {
-  return value.toFixed(2);
+  return Number.isFinite(value) ? value.toFixed(2) : "n/a";
 }
 
 function addStats(total, stats) {
@@ -139,6 +139,7 @@ export function runSequenceStatsDnaRna(input, options = {}) {
     }
 
     const stats = getDnaRnaStats(cleaned.sequence);
+    if (stats.gcPercent === null) warnings.push(`${record.title}: GC percent is undefined because there are no unambiguous A/C/G/T/U bases.`);
     analyzedRecords.push({ title: record.title, stats });
     addStats(total, stats);
   }
@@ -148,7 +149,7 @@ export function runSequenceStatsDnaRna(input, options = {}) {
       title: "Total",
       stats: {
         ...total,
-        gcPercent: total.unambiguousBases > 0 ? (total.gcCount / total.unambiguousBases) * 100 : 0
+        gcPercent: total.unambiguousBases > 0 ? (total.gcCount / total.unambiguousBases) * 100 : null
       }
     });
   }

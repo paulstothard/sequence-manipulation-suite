@@ -1,6 +1,26 @@
 export const softwareLicenseAttributions = [
   {
     category: "Runtime library",
+    name: "saxes",
+    version: "6.0.0",
+    license: "ISC",
+    sourceUrl: "https://github.com/lddubeau/saxes",
+    bundledPath: "packages/tree-viewer/src/vendor/saxes.js",
+    notes: "Tree Viewer XML parsing. Full notices are in packages/tree-viewer/THIRD_PARTY_NOTICES.md.",
+    packageNames: ["saxes"]
+  },
+  {
+  "category": "Example data",
+  "name": "Biopython Bcl-2 phyloXML example",
+  "version": "dc262b5c437e07a8cc1cfb8a734c0d84a4434b23",
+  "license": "Biopython License Agreement",
+  "sourceUrl": "https://github.com/biopython/biopython/blob/dc262b5c437e07a8cc1cfb8a734c0d84a4434b23/Tests/PhyloXML/bcl_2.xml",
+  "bundledPath": "src/examples/tree-viewer-example.js; packages/tree-viewer/examples/data/bcl2-source/",
+  "notes": "An intact 18-tip clade, styled for Tree Viewer. Species labels and vertebrate groups added by SMS3; original source labels and bootstrap values retained. Permission to use, copy, modify, and distribute this software and its\ndocumentation with or without modifications and for any purpose and\nwithout fee is hereby granted, provided that any copyright notices\nappear in all copies and that both those copyright notices and this\npermission notice appear in supporting documentation, and that the\nnames of the contributors or copyright holders not be used in\nadvertising or publicity pertaining to distribution of the software\nwithout specific prior permission.\n\nTHE CONTRIBUTORS AND COPYRIGHT HOLDERS OF THIS SOFTWARE DISCLAIM ALL\nWARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING ALL IMPLIED\nWARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO EVENT SHALL THE\nCONTRIBUTORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY SPECIAL, INDIRECT\nOR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS\nOF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE\nOR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE\nOR PERFORMANCE OF THIS SOFTWARE.",
+  "packageNames": []
+},
+  {
+    category: "Runtime library",
     name: "@gmod/bam",
     version: "7.1.21",
     license: "MIT",

@@ -17,13 +17,13 @@ export async function runMultipleLinearRegressionTool(input, options = {}, conte
   await context.yieldIfNeeded?.();
 
   const outputFormat = OUTPUT_FORMATS.has(options.outputFormat) ? options.outputFormat : "coefficient-tsv";
-  const result = calculateMultipleLinearRegression(input, options);
+  const result = calculateMultipleLinearRegression(input, {...options, outputFormat});
   context.throwIfCancelled?.();
   await context.yieldIfNeeded?.();
 
-  const coefficientTsv = multipleLinearRegressionCoefficientRowsToTsv(result.coefficientRows);
-  const modelTsv = multipleLinearRegressionModelRowsToTsv(result.rows);
-  const fitTsv = multipleLinearRegressionFitRowsToTsv(result.fitRows);
+  const coefficientTsv = outputFormat === "coefficient-tsv" ? multipleLinearRegressionCoefficientRowsToTsv(result.coefficientRows) : "";
+  const modelTsv = outputFormat === "model-tsv" ? multipleLinearRegressionModelRowsToTsv(result.rows) : "";
+  const fitTsv = outputFormat === "fit-tsv" ? multipleLinearRegressionFitRowsToTsv(result.fitRows) : "";
   const output = outputFormat === "report"
     ? result.report
     : outputFormat === "model-tsv"

@@ -809,50 +809,16 @@ textarea,
   line-height: 1.45;
 }
 
-.home-main {
-  display: grid;
-  gap: 1.45rem;
-}
-
-.home-section {
-  display: grid;
-  gap: 0.75rem;
-}
-
-.home-section h3 {
+.home-start {
+  max-width: 52rem;
   margin: 0;
-  font-size: 1.02rem;
+  line-height: 1.5;
 }
 
-.home-links {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
-  gap: 0.75rem;
-  max-width: 58rem;
-}
-
-.home-links-single {
-  max-width: 32rem;
-}
-
-.home-link {
-  display: grid;
-  gap: 0.25rem;
-  padding: 0.75rem 0.85rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  color: var(--text);
-  text-decoration: none;
-}
-
-.home-link:hover {
-  border-color: var(--accent);
-}
-
-.home-link span {
-  color: var(--muted);
-  line-height: 1.35;
+.home-start a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
 }
 
 .tool-panel {
@@ -1332,7 +1298,7 @@ textarea {
   border-radius: 8px;
   background: var(--mn-surface);
   display: grid;
-  grid-template-rows: auto 0 minmax(0, 1fr) auto;
+  grid-template-rows: auto auto 0 minmax(0, 1fr) auto;
   height: max(44rem, calc(100vh - 12rem));
   min-height: 0;
   overflow: hidden;
@@ -13556,3 +13522,49 @@ details[open] > .sequence-extractor-section-header .sequence-extractor-section-h
   }
 
 }
+
+/* Bridge the portable viewer's shadow DOM to the shared SMS3 output theme. */
+.sms3-tree-viewer {
+  --tree-text: var(--app-output-text);
+  --tree-background: var(--app-output-surface);
+  --tree-control: var(--app-output-surface);
+  --tree-placeholder: var(--app-output-placeholder);
+  --tree-error: var(--app-output-danger);
+  --tree-tabs-surface: var(--app-output-surface-soft);
+  --tree-tabs-border: var(--app-output-border-strong);
+  --tree-tabs-muted: var(--app-output-muted);
+  --tree-tabs-accent: var(--app-output-accent);
+  --tree-tabs-active-bg: var(--app-output-accent-soft);
+  --tree-tabs-active-text: var(--app-output-accent-strong);
+  --tree-tabs-hover-bg: var(--app-output-hover-bg);
+  --tree-tabs-hover-border: var(--app-output-hover-border);
+  --tree-tabs-focus: var(--app-output-focus);
+  --tree-panel-border: var(--app-output-border);
+  --tree-panel-soft: var(--app-output-surface-soft);
+  --tree-panel-muted: var(--app-output-muted);
+  --tree-panel-button: var(--app-output-button-gradient);
+  --tree-action-text: var(--app-output-text);
+  color-scheme: var(--app-output-color-scheme);
+}
+
+/* Shared edit, recovery and document controls for interactive workspaces. */
+.editor-session-actions { display:flex; flex-wrap:wrap; align-items:center; gap:.35rem; font-size:.72rem; color:var(--app-output-text); }
+.editor-session-actions button, .editor-session-history > summary { background:var(--app-output-button-gradient); color:var(--app-output-text); border:1px solid var(--app-output-border); border-radius:8px; font:inherit; font-weight:700; padding:.35rem .55rem; cursor:pointer; white-space:nowrap; }
+.editor-session-actions button:hover, .editor-session-history > summary:hover { background:var(--app-output-hover-bg); border-color:var(--app-output-hover-border); }
+.editor-session-actions button:disabled { color:var(--app-output-muted); opacity:.62; cursor:not-allowed; }
+.editor-session-actions button:focus-visible, .editor-session-history > summary:focus-visible { outline:2px solid var(--app-output-focus); outline-offset:2px; }
+.editor-session-status { color:var(--app-output-muted); font-size:.68rem; }
+.editor-session-status:empty { display:none; }
+.editor-session-recovery { display:inline-flex; align-items:center; gap:.3rem; min-width:0; }
+.editor-session-actions .editor-recovery-help { display:inline-grid; place-items:center; flex:0 0 16px; width:16px; height:16px; min-height:16px; padding:0; border:1px solid var(--app-output-border-strong); border-radius:50%; background:transparent; color:var(--app-output-muted); font:700 10px/1 system-ui,sans-serif; box-shadow:none; cursor:help; }
+.editor-session-actions .editor-recovery-help:hover, .editor-session-actions .editor-recovery-help[aria-expanded=true] { background:var(--app-output-accent-soft); color:var(--app-output-accent-strong); border-color:var(--app-output-accent); }
+.editor-recovery-popover { position:fixed; inset:auto; margin:0; width:min(360px,calc(100vw - 16px)); max-height:calc(100vh - 16px); overflow:auto; padding:10px 12px; border:1px solid var(--app-output-border-strong); border-radius:6px; background:var(--app-output-surface); color:var(--app-output-text); box-shadow:var(--shadow); font:400 12px/1.45 system-ui,sans-serif; white-space:normal; text-align:left; }
+.tree-viewer-recovery { padding:5px 10px; }
+.tree-viewer-recovery .editor-session-status { font-size:11px; line-height:18px; }
+.editor-session-history { position:relative; margin:0; padding:0; border:0; }
+.editor-session-history > ol { position:fixed; width:17rem; max-width:75vw; max-height:16rem; overflow:auto; margin:.2rem 0 0; padding:.7rem .7rem .7rem 1.8rem; background:var(--app-output-surface); color:var(--app-output-text); border:1px solid var(--app-output-border-strong); border-radius:8px; z-index:50; }
+.genome-figure-editor-titlebar, .sanger-trace-toolbar, .sanger-trace-set-toolbar { flex-wrap:wrap; }
+.sequence-extractor-toolbar > .editor-session-actions { grid-column:1 / -1; padding-top:.4rem; border-top:1px solid var(--app-output-border); }
+
+.markdown-document-toolbar { padding:.4rem .6rem; background:var(--app-output-surface-soft); border-bottom:1px solid var(--app-output-border); }
+.workflow-document-actions { display:flex; flex-wrap:wrap; align-items:center; gap:.4rem; margin:.5rem 0; }

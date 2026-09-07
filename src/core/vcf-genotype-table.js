@@ -182,24 +182,16 @@ function selectedRegionText(options) {
     : "not applied";
 }
 
-function inSelectedRegion(chrom, pos, options, warnings) {
-  const selectedChrom = normalizeChromosome(options.chromosome);
-  const start = normalizePosition(options.regionStart);
-  const end = normalizePosition(options.regionEnd);
-  if (start !== null && end !== null && start > end) {
-    warnings.push("Region start is greater than region end; no genotype rows were selected.");
-    return false;
-  }
-  if (selectedChrom && chrom !== selectedChrom) {
-    return false;
-  }
-  if (start !== null && pos < start) {
-    return false;
-  }
-  if (end !== null && pos > end) {
-    return false;
-  }
-  return true;
+// Record overlap includes the REF anchor and a valid INFO/END span. Breakends
+// refer only to their local locus, never the interval to their remote mate.
+// VCF specification: https://samtools.github.io/hts-specs/VCFv4.5.pdf
+export function vcfRecordEnd(row) {
+  const pos = Number(row.pos);
+  const refEnd = pos + Math.max(1, String(row.ref ?? "").length) - 1;
+  if (/[\[\]]/.test(String(row.alt ?? ""))) return refEnd;
+  const endText = parseVcfInfoField(row.info).END;
+  const end = /^\d+$/.test(String(endText ?? "")) ? Number(endText) : NaN;
+  return Number.isSafeInteger(end) && end >= pos ? Math.max(refEnd, end) : refEnd;
 }
 
 function rowInSelectedRegion(row, options) {
@@ -213,7 +205,7 @@ function rowInSelectedRegion(row, options) {
   if (selectedChrom && row.chrom !== selectedChrom) {
     return false;
   }
-  if (start !== null && pos < start) {
+  if (start !== null && vcfRecordEnd(row) < start) {
     return false;
   }
   if (end !== null && pos > end) {
@@ -446,7 +438,7 @@ function processVcfLine(state, line, options = {}) {
     }
     return;
   }
-  if (!inSelectedRegion(fields[0], pos, options, state.warnings)) {
+  if (!rowInSelectedRegion(variantRow, options)) {
     return;
   }
   const formatKeys = fields[8].split(":");
@@ -471,6 +463,7 @@ function processVcfLine(state, line, options = {}) {
       id: fields[2],
       ref: fields[3],
       alt: fields[4],
+      info: fields[7],
       sample: sampleName,
       gt: valueByKey.GT ?? "",
       gq: valueByKey.GQ ?? "",
@@ -557,6 +550,7 @@ function finalizeVcfExtractionState(state, options = {}) {
     `Genotype rows: ${state.genotypeRows.length}`,
     `Selected data: ${state.dataType}`,
     `Selected region: ${regionText}`,
+    "Overlap scope: local record span including the REF anchor and valid INFO/END; breakend mate loci and uncertainty intervals are not included.",
     `Selected rows: ${selectedRows.length}`
   ].join("\n");
   return { rows: selectedRows, allGenotypeRows: state.genotypeRows, report, warnings: state.warnings, columns, dataType: state.dataType };

@@ -1,3 +1,4 @@
+import { createEditorSession } from './editor-session.js';
 import { getGeneticCode, makeCodonMap } from "../core/genetic-code.js";
 import {
   applicableFragmentEndTreatments,
@@ -3513,8 +3514,24 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
   updateFeatureTypeControl();
   renderDocument();
   renderInspector();
+  const session = createEditorSession({host:shell, toolbar, tool:'sequence-extractor', source:extractor, initial:options.editorDocument?.state,
+    read:() => ({selectionStack,selectionStackCounter,assemblyMethodId}),
+    apply:snapshot => {
+      if (!Array.isArray(snapshot.selectionStack) || snapshot.selectionStack.length > MAX_SELECTION_STACK_ITEMS) throw new Error('Invalid fragment collection.');
+      selectionStack = structuredClone(snapshot.selectionStack); selectionStackCounter = Number(snapshot.selectionStackCounter) || 0;
+      assemblyMethodId = String(snapshot.assemblyMethodId || 'direct-ligation');
+      lastStackJoin = null; selected = null; endpoints = []; product = null; shownSelectionId = null;
+      renderInspector(); renderDocumentHighlights();
+    }
+  });
+  let observer;
+  container._sms3VisualCleanup = () => {
+    session.dispose();
+    observer?.disconnect();
+    cancelAnimationFrame(resizeFrame);
+  };
   if (typeof ResizeObserver === "function") {
-    const observer = new ResizeObserver(() => {
+    observer = new ResizeObserver(() => {
       cancelAnimationFrame(resizeFrame);
       resizeFrame = requestAnimationFrame(() => {
         const mainWidth = main.getBoundingClientRect().width || shell.getBoundingClientRect().width;

@@ -1,0 +1,1 @@
+import{e as a,f as b,g as c,h as d,i as e,j as f}from"./chunk-4KHEEKJP.js";import"./chunk-B6JNHY6R.js";export{a as DEFAULT_PRESENTATION,e as descendants,b as makeTreeDocument,f as scientificSnapshot,c as treeIndex,d as validateTreeDocument};

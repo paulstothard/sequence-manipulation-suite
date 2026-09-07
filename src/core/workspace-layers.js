@@ -19,7 +19,9 @@ function normalizeFeatureItem(item = {}) {
     strand: item.strand ?? "",
     length: Number.isFinite(Number(item.length)) ? Number(item.length) : Math.abs(end - start) + 1,
     location: item.location ?? "",
-    source: item.source ?? ""
+    source: item.source ?? "",
+    ...Object.fromEntries(["editStatus", "status", "editEffect"]
+      .filter((key) => Object.hasOwn(item, key)).map((key) => [key, item[key]]))
   };
 }
 
@@ -137,18 +139,6 @@ export function workspaceFeatureLayerToViewerTrack(layer = {}) {
     items: (layer.features ?? [])
       .map(normalizeFeatureItem)
       .filter(Boolean)
-      .map((feature) => ({
-        start: feature.start,
-        end: feature.end,
-        ...(Array.isArray(feature.parts) ? { parts: feature.parts } : {}),
-        label: feature.label,
-        name: feature.name,
-        type: feature.type,
-        strand: feature.strand,
-        length: feature.length,
-        location: feature.location,
-        source: feature.source
-      }))
   };
 }
 
@@ -195,6 +185,9 @@ export function workspaceFeatureLayerMatchesRecord(layer = {}, record = {}, cont
 
   const contextSequenceId = String(context.sequenceId ?? "").trim();
   const contextSequenceHash = String(context.sequenceHash ?? "").trim();
+  if (layer.sequenceHash && contextSequenceHash && layer.sequenceHash !== contextSequenceHash) {
+    return false;
+  }
   if (layer.sequenceId && contextSequenceId) {
     return layer.sequenceId === contextSequenceId;
   }

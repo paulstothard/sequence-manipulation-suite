@@ -1,3 +1,4 @@
+import { treeDocumentContract } from "../../core/tree-document-stream.js";
 import {
   MULTIPLE_ALIGNMENT_ENGINES,
   multipleAlignmentDefaultLimits,
@@ -22,14 +23,16 @@ function buildMetadata(alphabet) {
       : `Align multiple ${isProtein ? "protein" : "DNA/RNA"} FASTA records with MUSCLE or the SMS3 progressive aligner.`,
     inputType: `${isCodingDna ? "Coding DNA/RNA" : isProtein ? "Protein" : "DNA/RNA"} FASTA records`,
     outputType: isCodingDna
-      ? "Multiple alignment report, aligned codon FASTA, aligned translated protein FASTA, CLUSTAL-format text, table, colored alignment, or neighbor-joining tree"
-      : "Multiple alignment report, aligned FASTA, CLUSTAL-format text, table, colored alignment, or neighbor-joining tree",
+      ? "Multiple alignment report, aligned codon FASTA, aligned translated protein FASTA, CLUSTAL-format text, table, colored alignment, or neighbor-joining tree in Tree Viewer"
+      : "Multiple alignment report, aligned FASTA, CLUSTAL-format text, table, colored alignment, or neighbor-joining tree in Tree Viewer",
     workflow: {
       inputs: [
         { id: "input", kind: "text", mediaType: "text/plain" },
         { id: "sequenceRecords", kind: "sequence-records", alphabet: isProtein ? "protein" : "dna-rna" }
       ],
       outputs: [
+        treeDocumentContract,
+        { id: "newick", kind: "text", mediaType: "text/x-newick" },
         { id: "primary", kind: "text", mediaType: "text/plain" },
         { id: "report", kind: "text", mediaType: "text/plain" },
         { id: "fasta", kind: "text", mediaType: "text/x-fasta" },
@@ -90,6 +93,7 @@ function buildMetadata(alphabet) {
           { value: "report", label: "Summary report" },
           { value: "tsv", label: "Alignment table" },
           { value: "svg-color", label: "Colored alignment" },
+          { value: "tree-viewer", label: "Tree Viewer" },
           { value: "nj-tree", label: "Neighbor-joining tree report" },
           { value: "nj-tree-svg", label: "Midpoint-rooted NJ tree" },
           { value: "identity-matrix", label: "Identity matrix table" },

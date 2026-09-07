@@ -47,7 +47,7 @@ export function workbookCellToText(cell) {
 
 export function delimitedCell(value, delimiter = "\t") {
   const text = String(value ?? "");
-  if (text.includes(delimiter) || text.includes("\n") || text.includes('"')) {
+  if (text.includes(delimiter) || /[\r\n]/.test(text) || text.includes('"')) {
     return `"${text.replaceAll('"', '""')}"`;
   }
   return text;
@@ -58,8 +58,8 @@ export function worksheetToDelimitedText(worksheet, {
   maxRows = WORKBOOK_IMPORT_ROW_LIMIT,
   maxCells = WORKBOOK_IMPORT_CELL_LIMIT
 } = {}) {
-  const rowCount = worksheet.actualRowCount ?? worksheet.rowCount ?? 0;
-  const columnCount = worksheet.actualColumnCount ?? worksheet.columnCount ?? 0;
+  const rowCount = worksheet.rowCount ?? worksheet.actualRowCount ?? 0;
+  const columnCount = worksheet.columnCount ?? worksheet.actualColumnCount ?? 0;
   const cellCount = rowCount * columnCount;
   if (rowCount > maxRows || cellCount > maxCells) {
     throw new Error(`Workbook sheet is too large for browser import (${rowCount.toLocaleString()} rows, ${cellCount.toLocaleString()} cells).`);
@@ -71,7 +71,7 @@ export function worksheetToDelimitedText(worksheet, {
     for (let columnNumber = 1; columnNumber <= columnCount; columnNumber += 1) {
       cells.push(delimitedCell(workbookCellToText(row.getCell(columnNumber)), delimiter));
     }
-    lines.push(cells.join(delimiter));
+    lines.push(columnCount === 1 && cells[0] === "" ? '""' : cells.join(delimiter));
   }
   return lines.join("\n");
 }

@@ -79,13 +79,6 @@ export async function withMarkdownNotebookStore(mode, callback) {
     const transaction = db.transaction(MARKDOWN_NOTEBOOK_STORE, mode);
     const store = transaction.objectStore(MARKDOWN_NOTEBOOK_STORE);
     let callbackResult;
-    try {
-      callbackResult = callback(store);
-    } catch (error) {
-      db.close();
-      reject(error);
-      return;
-    }
     transaction.oncomplete = () => {
       db.close();
       resolve(callbackResult);
@@ -94,6 +87,17 @@ export async function withMarkdownNotebookStore(mode, callback) {
       db.close();
       reject(transaction.error ?? new Error("Notebook storage failed."));
     };
+    transaction.onabort = () => {
+      db.close();
+      reject(transaction.error ?? new Error("Notebook storage transaction was aborted."));
+    };
+    try {
+      callbackResult = callback(store);
+    } catch (error) {
+      transaction.abort();
+      db.close();
+      reject(error);
+    }
   });
 }
 

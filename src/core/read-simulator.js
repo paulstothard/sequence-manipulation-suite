@@ -16,8 +16,10 @@ export const readSimulatorTruthColumns = [
   { id: "read_id", label: "Read ID" },
   { id: "mate", label: "Mate" },
   { id: "reference", label: "Reference" },
-  { id: "start", label: "Start" },
-  { id: "end", label: "End" },
+  { id: "fragment_start", label: "Fragment start (1-based)" },
+  { id: "fragment_end", label: "Fragment end (inclusive)" },
+  { id: "start", label: "Read start" },
+  { id: "end", label: "Read end" },
   { id: "strand", label: "Strand" },
   { id: "read_length", label: "Read length" },
   { id: "mean_quality", label: "Mean quality" },
@@ -317,13 +319,15 @@ function parseCoordinatesFromReadId(title) {
   }
   const wgsimMatch = text.match(/^(.+)_(\d+)_(\d+)_/u);
   if (wgsimMatch) {
-    const start = Number(wgsimMatch[2]) + 1;
+    const start = Number(wgsimMatch[2]);
     const end = Number(wgsimMatch[3]);
     return {
       reference: wgsimMatch[1],
-      start: Number.isFinite(start) ? start : "",
-      end: Number.isFinite(end) ? end : "",
-      strand: text.endsWith("/2") ? "-" : "+"
+      // WGSIM emits 1-based fragment bounds; mate assignment is randomly flipped.
+      // https://github.com/lh3/wgsim/blob/master/wgsim.c
+      fragment_start: Number.isSafeInteger(start) && start > 0 ? start : "",
+      fragment_end: Number.isSafeInteger(end) && end >= start ? end : "",
+      start: "", end: "", strand: ""
     };
   }
   return fallback;
@@ -338,6 +342,8 @@ export function fastqToTruthRows(fastq, source, referenceNameMap = new Map()) {
       read_id: record.title,
       mate,
       reference,
+      fragment_start: parsed.fragment_start ?? "",
+      fragment_end: parsed.fragment_end ?? "",
       start: parsed.start,
       end: parsed.end,
       strand: parsed.strand,
@@ -403,7 +409,7 @@ export async function simulateReads(input, rawOptions = {}, context = {}) {
   context.reportProgress?.({ phase: "parsing-reference", progress: 0.05 });
   const parsed = parseReadSimulatorInput(input, rawOptions);
   context.throwIfCancelled?.();
-  const warnings = [...parsed.warnings];
+  const warnings = [...parsed.warnings, "WGSIM metadata contains fragment outer bounds, not individual read alignments. Read start, end and strand are unavailable; R1/R2 do not specify strand."];
   const simulation = await runBioWasmWgsim(parsed, context);
 
   const truthRows = simulation.rows?.length

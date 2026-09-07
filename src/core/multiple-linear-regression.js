@@ -104,6 +104,27 @@ function invertMatrix(matrix, tolerance = 1e-12) {
 }
 
 function fitOls(design, response) {
+  // Center and scale predictors before solving: a change of units or origin
+  // must not change rank. Transform coefficients and covariance back afterward.
+  const width = design[0].length;
+  const centers = [0, ...Array.from({length: width - 1}, (_, j) => mean(design.map(row => row[j + 1])))];
+  const scales = centers.map((center, j) => j === 0 ? 1 : design.reduce((max, row) => Math.max(max, Math.abs(row[j] - center)), 0));
+  if (scales.some(scale => !(scale > 0) || !Number.isFinite(scale))) return null;
+  const normalized = design.map(row => row.map((value, j) => (value - centers[j]) / scales[j]));
+  const responseCenter = mean(response);
+  const fit = fitNormalizedOls(normalized, response.map(value => value - responseCenter));
+  if (!fit) return null;
+  const transform = Array.from({length: width}, (_, i) => Array.from({length: width}, (_, j) =>
+    i === 0 ? (j === 0 ? 1 : -centers[j] / scales[j]) : (i === j ? 1 / scales[j] : 0)));
+  const coefficients = transform.map(row => row.reduce((sum, value, j) => sum + value * fit.coefficients[j], 0));
+  coefficients[0] += responseCenter;
+  const intermediate = transform.map(row => fit.xtxInverse[0].map((_, j) => row.reduce((sum, value, k) => sum + value * fit.xtxInverse[k][j], 0)));
+  const xtxInverse = intermediate.map(row => transform.map(t => row.reduce((sum, value, j) => sum + value * t[j], 0)));
+  const fitted = normalized.map(row => responseCenter + row.reduce((sum, value, j) => sum + value * fit.coefficients[j], 0));
+  return {coefficients, xtxInverse, fitted};
+}
+
+function fitNormalizedOls(design, response) {
   const columnCount = design[0]?.length ?? 0;
   const xtx = Array.from({ length: columnCount }, () => Array(columnCount).fill(0));
   const xty = Array(columnCount).fill(0);
@@ -263,11 +284,11 @@ export function calculateMultipleLinearRegression(input, options = {}) {
   }
   if (!responseColumn || predictorColumns.length === 0) {
     warnings.push("A numeric response column and at least one numeric predictor column are required.");
-    return { table, rows: [], coefficientRows: [], fitRows: [], warnings, report: makeMultipleLinearRegressionReport({ rows: [], coefficientRows: [], fitRows: [], warnings }), svg: renderMultipleRegressionResidualSvg({ fitRows: [] }, options) };
+    return { table, rows: [], coefficientRows: [], fitRows: [], warnings, report: makeMultipleLinearRegressionReport({ rows: [], coefficientRows: [], fitRows: [], warnings }), svg: options.outputFormat === "residual-plot-svg" ? renderMultipleRegressionResidualSvg({ fitRows: [] }, options) : "" };
   }
   if (predictorColumns.length > 12) {
     warnings.push("At most 12 predictor columns are supported in the browser tool.");
-    return { table, rows: [], coefficientRows: [], fitRows: [], warnings, report: makeMultipleLinearRegressionReport({ rows: [], coefficientRows: [], fitRows: [], warnings }), svg: renderMultipleRegressionResidualSvg({ fitRows: [] }, options) };
+    return { table, rows: [], coefficientRows: [], fitRows: [], warnings, report: makeMultipleLinearRegressionReport({ rows: [], coefficientRows: [], fitRows: [], warnings }), svg: options.outputFormat === "residual-plot-svg" ? renderMultipleRegressionResidualSvg({ fitRows: [] }, options) : "" };
   }
 
   const design = [];
@@ -295,16 +316,16 @@ export function calculateMultipleLinearRegression(input, options = {}) {
   const dfResidual = response.length - parameterCount;
   if (dfResidual <= 0) {
     warnings.push(`At least ${parameterCount + 1} complete rows are required for ${predictorColumns.length} predictor(s).`);
-    return { table, rows: [], coefficientRows: [], fitRows: [], warnings, report: makeMultipleLinearRegressionReport({ rows: [], coefficientRows: [], fitRows: [], warnings }), svg: renderMultipleRegressionResidualSvg({ fitRows: [] }, options) };
+    return { table, rows: [], coefficientRows: [], fitRows: [], warnings, report: makeMultipleLinearRegressionReport({ rows: [], coefficientRows: [], fitRows: [], warnings }), svg: options.outputFormat === "residual-plot-svg" ? renderMultipleRegressionResidualSvg({ fitRows: [] }, options) : "" };
   }
 
   const fit = fitOls(design, response);
   if (!fit) {
     warnings.push("The selected predictor columns are collinear or otherwise singular; remove redundant predictors and try again.");
-    return { table, rows: [], coefficientRows: [], fitRows: [], warnings, report: makeMultipleLinearRegressionReport({ rows: [], coefficientRows: [], fitRows: [], warnings }), svg: renderMultipleRegressionResidualSvg({ fitRows: [] }, options) };
+    return { table, rows: [], coefficientRows: [], fitRows: [], warnings, report: makeMultipleLinearRegressionReport({ rows: [], coefficientRows: [], fitRows: [], warnings }), svg: options.outputFormat === "residual-plot-svg" ? renderMultipleRegressionResidualSvg({ fitRows: [] }, options) : "" };
   }
 
-  const fittedExact = design.map((row) => row.reduce((sum, value, index) => sum + value * fit.coefficients[index], 0));
+  const fittedExact = fit.fitted;
   const residualExact = response.map((value, index) => value - fittedExact[index]);
   const yMean = mean(response);
   const sse = residualExact.reduce((sum, value) => sum + value ** 2, 0);
@@ -326,7 +347,7 @@ export function calculateMultipleLinearRegression(input, options = {}) {
     const significant = typeof pValue === "number" && Number.isFinite(pValue) && pValue < 0.05;
     return {
       term: index === 0 ? "Intercept" : predictorColumns[index - 1].label,
-      estimate: round(estimate),
+      estimate: estimate !== 0 && Math.abs(estimate) < 1e-6 ? Number(estimate.toPrecision(6)) : round(estimate),
       standard_error: round(se),
       t_statistic: round(tStatistic),
       p_value: round(pValue, 8),
@@ -379,7 +400,7 @@ export function calculateMultipleLinearRegression(input, options = {}) {
   return {
     ...result,
     report: makeMultipleLinearRegressionReport(result),
-    svg: renderMultipleRegressionResidualSvg({ ...result, fitRows }, options)
+    svg: options.outputFormat === "residual-plot-svg" ? renderMultipleRegressionResidualSvg({ ...result, fitRows }, options) : ""
   };
 }
 

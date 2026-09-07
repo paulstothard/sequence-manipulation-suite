@@ -284,8 +284,17 @@ export function studentTCdf(t, df) {
 }
 
 export function twoTailedPValue(t, df) {
-  const tail = 1 - studentTCdf(Math.abs(t), df);
-  return Math.min(1, Math.max(0, 2 * tail));
+  if (!Number.isFinite(t) || !Number.isFinite(df) || df <= 0) return Number.NaN;
+  // Evaluate the small incomplete-beta tail directly, avoiding 1 - rounded CDF.
+  // Beta symmetry: https://dlmf.nist.gov/8.17.E4; SF accuracy rationale:
+  // https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.t.html
+  const logRatio = 2 * Math.log(Math.abs(t)) - Math.log(df);
+  const logX = logRatio > 0 ? -logRatio - Math.log1p(Math.exp(-logRatio)) : -Math.log1p(Math.exp(logRatio));
+  const x = Math.exp(logX);
+  const tail = x < 1e-300
+    ? Math.exp((df / 2) * logX - Math.log(df / 2) - logGamma(df / 2) - logGamma(0.5) + logGamma((df + 1) / 2))
+    : regularizedIncompleteBeta(x, df / 2, 0.5);
+  return Math.min(1, Math.max(0, tail));
 }
 
 export function fCdf(value, df1, df2) {
@@ -343,8 +352,9 @@ export function chiSquareRightTailPValue(statistic, df) {
   return regularizedGammaQ(df / 2, statistic / 2);
 }
 
-function fRightTailPValue(value, df1, df2) {
-  return Math.min(1, Math.max(0, 1 - fCdf(value, df1, df2)));
+export function fRightTailPValue(value, df1, df2) {
+  if (!Number.isFinite(value) || !Number.isFinite(df1) || !Number.isFinite(df2) || value < 0 || df1 <= 0 || df2 <= 0) return Number.NaN;
+  return regularizedIncompleteBeta(1 / (1 + (df1 / df2) * value), df2 / 2, df1 / 2);
 }
 
 function mean(values) {
@@ -357,7 +367,10 @@ function sampleVariance(values, valueMean = mean(values)) {
 }
 
 function round(value, digits = 6) {
-  return Number.isFinite(value) ? Number(value.toFixed(digits)) : "";
+  if (!Number.isFinite(value)) return "";
+  // Preserve representable small values in reusable tables instead of rounding to zero.
+  return value !== 0 && Math.abs(value) < 10 ** -digits
+    ? Number(value.toPrecision(digits)) : Number(value.toFixed(digits));
 }
 
 function complementaryErrorFunction(value) {
@@ -921,8 +934,11 @@ export function runOneWayAnova(input, options = {}) {
   const dfWithin = allValues.length - groupStats.length;
   const msBetween = ssBetween / dfBetween;
   const msWithin = ssWithin / dfWithin;
-  const statistic = msWithin > 0 ? msBetween / msWithin : Number.POSITIVE_INFINITY;
-  const pValue = Number.isFinite(statistic) ? fRightTailPValue(statistic, dfBetween, dfWithin) : 0;
+  // Constant identical groups give undefined 0/0, not an infinite F statistic.
+  // https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.f_oneway.html
+  const statistic = msWithin > 0 ? msBetween / msWithin : msBetween > 0 ? Number.POSITIVE_INFINITY : Number.NaN;
+  const pValue = Number.isNaN(statistic) ? Number.NaN : Number.isFinite(statistic) ? fRightTailPValue(statistic, dfBetween, dfWithin) : 0;
+  if (msWithin === 0) warnings.push(Number.isNaN(statistic) ? "ANOVA inference is undefined: all observations have the same value (F is 0/0)." : "Within-group variance is zero; the infinite F statistic and zero p value describe a degenerate constant-group limit.");
   const varianceRatio = getVarianceRatio(groupStats.map((group) => group.variance));
   const suitabilityNotes = makeSuitabilityNotes({
     test: "anova",
@@ -932,7 +948,9 @@ export function runOneWayAnova(input, options = {}) {
   if (suitabilityNotes) {
     warnings.push(suitabilityNotes);
   }
-  const interpretation = pValue < 0.05
+  const interpretation = Number.isNaN(pValue)
+    ? "ANOVA significance is unavailable because all observations have the same value."
+    : pValue < 0.05
     ? "The one-way ANOVA p value is below 0.05 for the selected groups."
     : "The one-way ANOVA p value is not below 0.05 for the selected groups.";
   const rows = [{

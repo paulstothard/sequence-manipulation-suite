@@ -70,10 +70,14 @@ export function convertFastaTable(input, options = {}) {
         : "No sequence column was detected. Expected a column such as sequence, seq, dna, rna, protein, bases, or residues.");
     }
     sequenceRecords = titleColumn && sequenceColumn
-      ? parsed.rows.map((row, index) => ({
-        title: String(row[titleColumn.id] ?? "").trim() || `record_${index + 1}`,
-        sequence: String(row[sequenceColumn.id] ?? "").replace(/\s+/g, "")
-      }))
+      ? parsed.rows.map((row, index) => {
+        const originalTitle = String(row[titleColumn.id] ?? "");
+        if (/[\r\n]/.test(originalTitle)) warnings.push(`Row ${index + 1}: replaced line breaks in the FASTA title with spaces.`);
+        return {
+          title: originalTitle.replace(/[\r\n]+/g, " ").trim() || `record_${index + 1}`,
+          sequence: String(row[sequenceColumn.id] ?? "").replace(/\s+/g, "")
+        };
+      })
       : [];
     fasta = sequenceRecords.map((record) => formatFastaRecord(record.title, record.sequence, options.lineWidth ?? 60)).join("");
     tableRows = sequenceRecords.map((record) => ({

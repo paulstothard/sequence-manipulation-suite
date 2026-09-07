@@ -154,9 +154,10 @@ function prepareRecords(input, alphabet, options = {}) {
   const parsed = parseSequenceInput(input, "sequence");
   let charactersRemoved = 0;
   const seenTitles = new Map();
+  const reservedTitles = new Set(parsed.map(record => record.title));
   const records = parsed.map((record, index) => {
     const rawTitle = record.title || `Sequence ${index + 1}`;
-    const title = uniquePreparedTitle(rawTitle, seenTitles);
+    const title = uniquePreparedTitle(rawTitle, seenTitles, reservedTitles);
     if (title !== rawTitle) {
       warnings.push(`Duplicate FASTA title "${rawTitle}" was renamed to "${title}" for alignment output.`);
     }
@@ -185,11 +186,15 @@ function prepareRecords(input, alphabet, options = {}) {
   return { records: limitedRecords, warnings, charactersRemoved, totalSymbols };
 }
 
-function uniquePreparedTitle(title, seenTitles) {
+function uniquePreparedTitle(title, seenTitles, reservedTitles) {
   const base = String(title || "Sequence").trim() || "Sequence";
-  const count = (seenTitles.get(base) ?? 0) + 1;
+  if (!seenTitles.has(base)) { seenTitles.set(base, 1); return base; }
+  let count = seenTitles.get(base) + 1;
+  while (seenTitles.has(`${base} (${count})`) || reservedTitles.has(`${base} (${count})`)) count += 1;
+  const unique = `${base} (${count})`;
   seenTitles.set(base, count);
-  return count === 1 ? base : `${base} (${count})`;
+  seenTitles.set(unique, 1);
+  return unique;
 }
 
 function pairwiseOptions(options) {
@@ -478,9 +483,10 @@ function prepareCodingDnaRecords(input, rawOptions = {}) {
   const parsed = parseSequenceInput(input, "sequence");
   let charactersRemoved = 0;
   const seenTitles = new Map();
+  const reservedTitles = new Set(parsed.map(record => record.title));
   const records = parsed.map((record, index) => {
     const rawTitle = record.title || `Sequence ${index + 1}`;
-    const title = uniquePreparedTitle(rawTitle, seenTitles);
+    const title = uniquePreparedTitle(rawTitle, seenTitles, reservedTitles);
     if (title !== rawTitle) {
       warnings.push(`Duplicate FASTA title "${rawTitle}" was renamed to "${title}" for alignment output.`);
     }
@@ -871,8 +877,8 @@ function formatBranchLength(value) {
 }
 
 function escapeNewickLabel(value) {
-  const label = String(value || "sequence").replace(/\s+/g, "_");
-  if (/^[A-Za-z0-9_.-]+$/u.test(label)) {
+  const label = String(value ?? "sequence");
+  if (/^[A-Za-z0-9.-]+$/u.test(label)) {
     return label;
   }
   return `'${label.replace(/'/g, "''")}'`;
@@ -895,12 +901,12 @@ function pairDistance(left, right) {
       mismatches += 1;
     }
   }
-  const pDistance = compared === 0 ? 1 : mismatches / compared;
+  const pDistance = compared === 0 ? null : mismatches / compared;
   return {
     compared_columns: compared,
     matches,
     mismatches,
-    identity_percent: compared === 0 ? 0 : Number(((matches / compared) * 100).toFixed(3)),
+    identity_percent: compared === 0 ? null : Number(((matches / compared) * 100).toFixed(3)),
     p_distance: pDistance
   };
 }
@@ -919,14 +925,13 @@ export function makeMultipleAlignmentDistanceRows(alignment) {
   return rows;
 }
 
-function makeDistanceLookup(titles, distanceRows) {
+function makeDistanceLookup(alignment) {
   const lookup = new Map();
-  for (const row of distanceRows) {
-    lookup.set(`${row.sequence_a}\t${row.sequence_b}`, row.p_distance);
-    lookup.set(`${row.sequence_b}\t${row.sequence_a}`, row.p_distance);
-  }
-  for (const title of titles) {
-    lookup.set(`${title}\t${title}`, 0);
+  for (let i = 0; i < alignment.titles.length; i += 1) {
+    setClusterDistance(lookup, i, i, 0);
+    for (let j = i + 1; j < alignment.titles.length; j += 1) {
+      setClusterDistance(lookup, i, j, pairDistance(alignment.aligned[i], alignment.aligned[j]).p_distance);
+    }
   }
   return lookup;
 }
@@ -947,14 +952,18 @@ export function buildNeighborJoiningTree(alignment) {
   }
 
   const distanceRows = makeMultipleAlignmentDistanceRows(alignment);
-  const distances = makeDistanceLookup(titles, distanceRows);
-  const clusters = new Map(titles.map((title) => [title, {
-    id: title,
+  const undefinedPair = distanceRows.find((row) => row.p_distance === null);
+  if (undefinedPair) {
+    throw new Error(`Cannot build a neighbor-joining tree: "${undefinedPair.sequence_a}" and "${undefinedPair.sequence_b}" have no compared ungapped columns; their distance is undefined.`);
+  }
+  const distances = makeDistanceLookup(alignment);
+  const clusters = new Map(titles.map((title, index) => [index, {
+    id: index,
     size: 1,
     newick: escapeNewickLabel(title)
   }]));
-  let active = [...titles];
-  let internalIndex = 1;
+  let active = titles.map((_, index) => index);
+  let internalIndex = titles.length;
 
   if (active.length === 2) {
     const distance = getClusterDistance(distances, active[0], active[1]) / 2;
@@ -987,7 +996,7 @@ export function buildNeighborJoiningTree(alignment) {
     const delta = (totals.get(left) - totals.get(right)) / (n - 2);
     const leftLength = Math.max(0, 0.5 * (pairDistanceValue + delta));
     const rightLength = Math.max(0, pairDistanceValue - leftLength);
-    const mergedId = `__node_${internalIndex}`;
+    const mergedId = internalIndex;
     internalIndex += 1;
     clusters.set(mergedId, {
       id: mergedId,

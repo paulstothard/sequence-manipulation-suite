@@ -77,8 +77,9 @@ export function parseDelimitedRows(text, delimiter = "\t") {
   let field = "";
   let inQuotes = false;
   let hadQuotedField = false;
+  let closedQuote = false;
   const warnings = [];
-  const source = String(text ?? "").replace(/\r\n?/g, "\n");
+  const source = String(text ?? "");
 
   for (let index = 0; index < source.length; index += 1) {
     const character = source[index];
@@ -87,9 +88,15 @@ export function parseDelimitedRows(text, delimiter = "\t") {
       if (inQuotes && source[index + 1] === '"') {
         field += '"';
         index += 1;
-      } else {
-        inQuotes = !inQuotes;
+      } else if (inQuotes) {
+        inQuotes = false;
+        closedQuote = true;
+      } else if (field.length === 0 && !closedQuote) {
+        inQuotes = true;
         hadQuotedField = true;
+      } else {
+        warnings.push(makeWarning(`Misplaced quote at character ${index + 1}; retained as literal text.`));
+        field += character;
       }
       continue;
     }
@@ -98,20 +105,27 @@ export function parseDelimitedRows(text, delimiter = "\t") {
       row.push(field);
       field = "";
       hadQuotedField = false;
+      closedQuote = false;
       continue;
     }
 
-    if (!inQuotes && character === "\n") {
+    if (!inQuotes && (character === "\n" || character === "\r")) {
+      if (character === "\r" && source[index + 1] === "\n") index += 1;
       row.push(field);
-      if (row.some((value) => value.length > 0) || hadQuotedField) {
+      if (row.length > 1 || row.some((value) => value.length > 0) || hadQuotedField) {
         rows.push(row);
       }
       row = [];
       field = "";
       hadQuotedField = false;
+      closedQuote = false;
       continue;
     }
 
+    if (closedQuote) {
+      warnings.push(makeWarning(`Unexpected text after closing quote at character ${index + 1}; retained as literal text.`));
+      closedQuote = false;
+    }
     field += character;
   }
 
@@ -120,7 +134,7 @@ export function parseDelimitedRows(text, delimiter = "\t") {
   }
 
   row.push(field);
-  if (row.some((value) => value.length > 0) || hadQuotedField) {
+  if (row.length > 1 || row.some((value) => value.length > 0) || hadQuotedField) {
     rows.push(row);
   }
 
@@ -683,7 +697,7 @@ export function exportDelimitedTable(columns, rows, delimiter = "\t") {
   ];
 
   for (const row of rows) {
-    lines.push(columns.map((column) => escapeDelimitedValue(row[column.id], delimiter)).join(delimiter));
+    lines.push(columns.map((column) => (columns.length === 1 && String(row[column.id] ?? "") === "" ? '""' : escapeDelimitedValue(row[column.id], delimiter))).join(delimiter));
   }
 
   return lines.join("\n");

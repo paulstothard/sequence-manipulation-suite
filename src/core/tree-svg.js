@@ -11,98 +11,96 @@ function textWidthPx(text, fontSize) {
 }
 
 function displayLabel(label) {
-  return String(label || "sequence").replace(/_/g, " ");
+  return String(label ?? "");
 }
 
+// Supported subset: one Newick tree, quoted labels (doubled apostrophes),
+// finite decimal/scientific lengths, and opaque bracket comments. Labels are
+// preserved literally; internal labels have no inferred support semantics.
+// See https://phylipweb.github.io/phylip/newicktree.html and docs/newick-parser.md.
 function tokenizeNewick(newick) {
   const tokens = [];
   let index = 0;
   while (index < newick.length) {
+    const start = index;
     const char = newick[index];
-    if (/\s/u.test(char)) {
+    if (/\s/u.test(char)) {index += 1; continue;}
+    if ('(),:;'.includes(char)) {tokens.push({kind:'punctuation', value:char, offset:index++}); continue;}
+    if (char === '[') {
+      let depth = 1;
       index += 1;
-      continue;
-    }
-    if ("(),:;".includes(char)) {
-      tokens.push(char);
-      index += 1;
+      const contentStart = index;
+      while (index < newick.length && depth) {
+        if (newick[index] === '[') depth += 1;
+        if (newick[index] === ']') depth -= 1;
+        index += 1;
+      }
+      if (depth) throw new Error(`Invalid Newick tree: unclosed comment at character ${start + 1}.`);
+      tokens.push({kind:'comment',value:newick.slice(contentStart,index-1),offset:start});
       continue;
     }
     if (char === "'") {
-      let value = "";
+      let value = '';
+      let closed = false;
       index += 1;
       while (index < newick.length) {
-        if (newick[index] === "'" && newick[index + 1] === "'") {
-          value += "'";
-          index += 2;
-        } else if (newick[index] === "'") {
-          index += 1;
-          break;
-        } else {
-          value += newick[index];
-          index += 1;
-        }
+        if (newick[index] === "'" && newick[index+1] === "'") {value += "'"; index += 2;}
+        else if (newick[index] === "'") {index += 1; closed = true; break;}
+        else value += newick[index++];
       }
-      tokens.push(value);
+      if (!closed) throw new Error(`Invalid Newick tree: unclosed quote at character ${start + 1}.`);
+      tokens.push({kind:'label',value,quoted:true,offset:start});
       continue;
     }
-    let value = "";
-    while (index < newick.length && !/\s/u.test(newick[index]) && !"(),:;".includes(newick[index])) {
-      value += newick[index];
-      index += 1;
-    }
-    tokens.push(value);
+    if (char === ']') throw new Error(`Invalid Newick tree: unexpected ] at character ${start + 1}.`);
+    while (index < newick.length && !/\s/u.test(newick[index]) && !"(),:;[]'".includes(newick[index])) index += 1;
+    tokens.push({kind:'label',value:newick.slice(start,index),quoted:false,offset:start});
   }
   return tokens;
 }
 
 export function parseNewick(newick) {
-  const tokens = tokenizeNewick(String(newick ?? "").trim());
+  const source = String(newick ?? '').trim();
+  if (!source || source.length > 10 * 1024 * 1024) throw new Error('Newick input must be nonempty and at most 10 MiB of text.');
+  const tokens = tokenizeNewick(source);
   let index = 0;
-
-  function readLength(node) {
-    if (tokens[index] === ":") {
+  let nodes = 0;
+  const is = value => tokens[index]?.kind === 'punctuation' && tokens[index].value === value;
+  const fail = message => {throw new Error(`Invalid Newick tree: ${message} at character ${(tokens[index]?.offset ?? source.length) + 1}.`);};
+  const comments = node => {
+    while (tokens[index]?.kind === 'comment') (node.comments ??= []).push(tokens[index++].value);
+  };
+  function subtree(depth) {
+    if (depth > 512 || ++nodes > 100000) fail('supported depth/node limit exceeded');
+    const node = {label:'',length:null,children:[]};
+    comments(node);
+    if (is('(')) {
       index += 1;
-      node.length = Number.parseFloat(tokens[index]) || 0;
+      node.children.push(subtree(depth+1));
+      while (is(',')) {index += 1; node.children.push(subtree(depth+1));}
+      if (!is(')')) fail('expected comma or closing parenthesis');
       index += 1;
+    }
+    if (tokens[index]?.kind === 'label') node.label = tokens[index++].value;
+    if (node.children.length && node.label) node.internalLabelInterpretation = 'unresolved';
+    comments(node);
+    if (is(':')) {
+      index += 1;
+      comments(node);
+      const token = tokens[index];
+      if (token?.kind !== 'label' || token.quoted || !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(token.value) || !Number.isFinite(Number(token.value))) fail('invalid finite branch length');
+      node.length = Number(token.value);
+      index += 1;
+      comments(node);
     }
     return node;
   }
-
-  function readSubtree() {
-    if (tokens[index] === "(") {
-      index += 1;
-      const children = [];
-      while (index < tokens.length && tokens[index] !== ")") {
-        children.push(readSubtree());
-        if (tokens[index] === ",") {
-          index += 1;
-        }
-      }
-      if (tokens[index] !== ")") {
-        throw new Error("Invalid Newick tree: missing closing parenthesis.");
-      }
-      index += 1;
-      const node = { label: "", length: 0, children };
-      if (tokens[index] && !",):;".includes(tokens[index])) {
-        node.label = tokens[index];
-        index += 1;
-      }
-      return readLength(node);
-    }
-    const node = { label: tokens[index] || "", length: 0, children: [] };
-    index += 1;
-    return readLength(node);
-  }
-
-  const tree = readSubtree();
-  if (tokens[index] === ";") {
-    index += 1;
-  }
-  if (index < tokens.length) {
-    throw new Error("Invalid Newick tree: unexpected trailing content.");
-  }
-  return tree;
+  const root = subtree(0);
+  if (!is(';')) fail('expected terminating semicolon');
+  index += 1;
+  comments(root);
+  if (index !== tokens.length) fail('unexpected trailing content');
+  return root;
 }
 
 function collectLeaves(node, leaves = []) {
@@ -175,6 +173,13 @@ function buildRootedSubtree(graph, node, parent, length) {
 }
 
 export function midpointRootTree(root) {
+  const nodes = collectNodes(root);
+  if (nodes.some(node => node !== root && (node.length === null || node.length === undefined || !Number.isFinite(node.length) || node.length < 0))) {
+    throw new Error("Midpoint rooting requires complete finite nonnegative branch lengths.");
+  }
+  if (nodes.some(node => node.comments?.length || (node.children?.length && node.label))) {
+    throw new Error("Midpoint rooting requires explicit interpretation of internal labels and comments; this renderer does not relocate unresolved support or annotations.");
+  }
   const leaves = collectLeaves(root);
   if (leaves.length < 2) {
     return root;
@@ -264,8 +269,9 @@ export function renderPhylogramSvg(newick, {
   const maxLabelWidth = Math.max(...[...labelMap.values()].map((label) => textWidthPx(label, tipFontSize)), 64);
   const depths = setDepths(root);
   let maxDepth = Math.max(...depths.values(), 0);
+  const unavailableMetric = collectNodes(root).some(node => node !== root && (node.length == null || !Number.isFinite(node.length) || node.length < 0));
   let usedUnitBranches = false;
-  if (maxDepth <= 0) {
+  if (maxDepth <= 0 || unavailableMetric) {
     usedUnitBranches = true;
     function unitDepths(node, depth = 0) {
       depths.set(node, depth);
@@ -303,6 +309,7 @@ export function renderPhylogramSvg(newick, {
   }
   setPositions(root);
 
+  if (unavailableMetric) note = "Cladogram: missing or negative lengths; branch distances are not represented.";
   const parts = [
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}">`,
     "<style>",

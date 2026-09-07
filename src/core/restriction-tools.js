@@ -117,13 +117,20 @@ export function selectRestrictionEnzymes(records, enzymeIds) {
   return selected.length > 0 ? selected : records;
 }
 
-export function findRestrictionSites(sequence, enzymes, context = {}) {
+export function findRestrictionSites(sequence, enzymes, context = {}, options = {}) {
   const hits = [];
+  const circular = options.topology === "circular";
+  const length = sequence.length;
+  if (!length) return hits;
+  const modulo = n => ((n % length) + length) % length;
+  const circularSlice = (start, count) => Array.from({length: count}, (_, i) => sequence[modulo(start + i)]).join("");
 
   for (const [enzymeIndex, enzyme] of enzymes.entries()) {
     context.throwIfCancelled?.();
     for (const orientation of makeOrientationPatterns(enzyme)) {
-      const matches = findPatternMatches(sequence, orientation.pattern, {
+      if (circular && orientation.pattern.length > length) continue;
+      const searchSequence = circular ? sequence + sequence.slice(0, orientation.pattern.length - 1) : sequence;
+      const matches = findPatternMatches(searchSequence, orientation.pattern, {
         alphabet: "dna-rna",
         patternMode: "iupac",
         caseInsensitive: true,
@@ -134,18 +141,22 @@ export function findRestrictionSites(sequence, enzymes, context = {}) {
         if (matchIndex > 0 && matchIndex % 4096 === 0) {
           context.throwIfCancelled?.();
         }
-        const sequenceContext = makeSequenceContext(sequence, match.start, match.end);
+        if (circular && match.start > length) continue;
+        const flank = Math.min(10, length);
+        const sequenceContext = circular
+          ? makeSequenceContext(circularSlice(match.start - 1 - flank, orientation.pattern.length + 2 * flank), flank + 1, flank + orientation.pattern.length, flank)
+          : makeSequenceContext(sequence, match.start, match.end);
         const topCutAfter = match.start + orientation.topOffset - 1;
         const bottomCutAfter = match.start + orientation.bottomOffset - 1;
-        if (
+        if (!circular && (
           topCutAfter < 0 || topCutAfter > sequence.length ||
           bottomCutAfter < 0 || bottomCutAfter > sequence.length
-        ) {
+        )) {
           continue;
         }
-        const overhangSequence = String(sequence)
-          .slice(Math.min(topCutAfter, bottomCutAfter), Math.max(topCutAfter, bottomCutAfter))
-          .toUpperCase();
+        const overhangSequence = (circular
+          ? circularSlice(Math.min(topCutAfter, bottomCutAfter), Math.abs(topCutAfter - bottomCutAfter))
+          : String(sequence).slice(Math.min(topCutAfter, bottomCutAfter), Math.max(topCutAfter, bottomCutAfter))).toUpperCase();
         hits.push({
           enzyme: enzyme.name,
           enzyme_id: enzyme.id,
@@ -154,9 +165,10 @@ export function findRestrictionSites(sequence, enzymes, context = {}) {
           cut_notation: enzyme.cutNotation,
           strand: orientation.strand,
           site_start: match.start,
-          site_end: match.end,
-          cut_after: topCutAfter,
-          complement_cut_after: bottomCutAfter,
+          site_end: circular ? modulo(match.end - 1) + 1 : match.end,
+          ...(circular && match.end > length ? {wraps_origin:true} : {}),
+          cut_after: circular ? modulo(topCutAfter) : topCutAfter,
+          complement_cut_after: circular ? modulo(bottomCutAfter) : bottomCutAfter,
           overhang: enzyme.overhang,
           overhang_sequence: overhangSequence,
           ...sequenceContext
@@ -184,7 +196,9 @@ export function getUniqueCutPositions(hits, sequenceLength) {
 }
 
 export function makeRestrictionFragments(sequenceLength, hits, topology = "linear") {
-  const cutPositions = getUniqueCutPositions(hits, sequenceLength);
+  const cutPositions = [...new Set(getUniqueCutPositions(hits, sequenceLength)
+    .map((position) => topology === "circular" && position === sequenceLength ? 0 : position))]
+    .sort((left, right) => left - right);
   if (topology === "circular") {
     if (cutPositions.length === 0) {
       return [{ fragment: 1, start: 1, end: sequenceLength, length: sequenceLength, topology: "circular" }];
@@ -195,7 +209,7 @@ export function makeRestrictionFragments(sequenceLength, hits, topology = "linea
       return {
         fragment: index + 1,
         start: position + 1,
-        end: next,
+        end: next === 0 ? sequenceLength : next,
         length,
         topology: "circular"
       };

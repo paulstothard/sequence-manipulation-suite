@@ -1,5 +1,5 @@
 export function parseSequenceInput(input, fallbackTitle = "sequence") {
-  const text = String(input ?? "").trim();
+  const text = String(input ?? "").replace(/\r\n?/g, "\n").trim();
   if (!text) {
     return [];
   }
@@ -29,6 +29,7 @@ export function parseSequenceInput(input, fallbackTitle = "sequence") {
 }
 
 export function formatFastaRecord(title, sequence, lineWidth = 60) {
+  if (/[\r\n]/.test(String(title))) throw new Error("FASTA titles must not contain line breaks.");
   const width = Math.max(1, Number.parseInt(lineWidth, 10) || 60);
   const lines = [`>${title}`];
 

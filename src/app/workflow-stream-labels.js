@@ -69,6 +69,7 @@ export function describeStream(stream) {
     }
     return stream.alphabet === "protein" ? "protein sequences" : "DNA/RNA sequences";
   }
+  if (stream.kind === "collection" && stream.itemKind === "tree-document") return "Tree document";
   if (stream.kind === "collection") {
     const itemDescription =
       stream.itemDescription ??

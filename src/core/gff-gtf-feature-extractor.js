@@ -1,3 +1,4 @@
+import { parseUnsignedIntegerToken } from "./integer-token.js";
 import { createBioWasmCli, requireBioWasmRuntime } from "./biowasm-runner.js";
 import { parseSequenceInput } from "./fasta.js";
 import { exportDelimitedTable } from "./table.js";
@@ -128,7 +129,8 @@ function parseGff3Attributes(value) {
     const key = trimmed.slice(0, equalsIndex).trim();
     const rawValue = trimmed.slice(equalsIndex + 1).trim();
     if (key) {
-      attributes[key] = decodeURIComponent(rawValue);
+      // Commas delimit raw IDs; an escaped comma belongs to one ID.
+      attributes[key] = key === "Parent" ? rawValue.split(",").map(decodeURIComponent) : decodeURIComponent(rawValue);
     }
   }
   return attributes;
@@ -157,6 +159,7 @@ function parentList(attributes, format) {
   if (format === "gtf") {
     return attributes.transcript_id ? [attributes.transcript_id] : [];
   }
+  if (Array.isArray(attributes.Parent)) return attributes.Parent.filter(Boolean);
   return String(attributes.Parent ?? "")
     .split(",")
     .map((item) => item.trim())
@@ -206,8 +209,8 @@ export function parseGffGtfAnnotation(annotationText, rawOptions = {}, context =
     if (typeFilter.size && !typeFilter.has(type.toLowerCase())) {
       continue;
     }
-    const start = Number.parseInt(rawStart, 10);
-    const end = Number.parseInt(rawEnd, 10);
+    const start = parseUnsignedIntegerToken(rawStart);
+    const end = parseUnsignedIntegerToken(rawEnd);
     if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start) {
       warnings.push(`Line ${lineNumber} was skipped because coordinates are not valid 1-based inclusive values.`);
       continue;
@@ -281,7 +284,7 @@ function attributesToGff3(feature) {
     entries.push(`${key}=${encodeGff3Value(value)}`);
   };
   add("ID", feature.id);
-  if (feature.parents.length > 0) add("Parent", feature.parents.join(","));
+  if (feature.parents.length > 0) entries.push(`Parent=${feature.parents.map(encodeGff3Value).join(",")}`);
   if (feature.name && feature.name !== feature.id) add("Name", feature.name);
   for (const key of ["gene_id", "transcript_id", "gene_name", "product", "locus_tag", "protein_id"]) {
     if (feature.attributes[key]) add(key, feature.attributes[key]);

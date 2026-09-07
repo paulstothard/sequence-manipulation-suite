@@ -83,8 +83,11 @@ export function makeAlignmentSvg({
   const hasConsensus = consensus.length > 0;
   const blockGap = hasConsensus ? CONSENSUS_BLOCK_GAP_PX : ALIGNMENT_BLOCK_GAP_PX;
   const blockHeight = rows.length * rowHeight + (hasConsensus ? 20 : 0);
-  const width = left + renderedBlockColumns * cell + endCoordinatePadding + coordinatePixelWidth + 24;
   const footerLines = [legend, note, summary].filter(Boolean);
+  // Reserve a conservative em per character for DOM-independent SVG export.
+  // Caption extents matter even when the alignment contains only a few bases.
+  const captionWidth = Math.max(String(title).length * 18, ...footerLines.map(line => String(line).length * 12), 0) + 48;
+  const width = Math.max(captionWidth, left + renderedBlockColumns * cell + endCoordinatePadding + coordinatePixelWidth + 24);
   const footerLineHeight = 18;
   const footerTop = top + blocks * (blockHeight + blockGap) + 20;
   const height = footerTop + footerLines.length * footerLineHeight + 14;

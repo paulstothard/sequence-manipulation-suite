@@ -1,3 +1,4 @@
+import { createEditorSession } from './editor-session.js';
 import {
   addTimestampToFilename,
   getPngExportScale,
@@ -3229,7 +3230,8 @@ function makeSettingsTabs(tabs, initialId) {
   return { wrapper, setActive };
 }
 
-function installFigureEditor(panel, sourceRecords, figure) {
+function installFigureEditor(panel, sourceRecords, figure, editorDocument) {
+  const originalFigure = structuredClone(figure);
   const recordChoices = genomeFigureRecordChoices(sourceRecords);
   const initialVisibleRecordKeys = new Set(recordChoices.map((choice) => choice.key));
   const sourceLength = sourceRecords.reduce((sum, record) => sum + (record.length || 0), 0);
@@ -3283,7 +3285,6 @@ function installFigureEditor(panel, sourceRecords, figure) {
     showAddedLabels: true,
     labelBoxes: true,
     labels: [],
-    labelHistory: [],
     selectedLabelId: "",
     svgIdPrefix: `genome-figure-${Math.random().toString(36).slice(2)}`
   };
@@ -3388,14 +3389,10 @@ function installFigureEditor(panel, sourceRecords, figure) {
   const applyText = document.createElement("button");
   applyText.type = "button";
   applyText.textContent = "Apply";
-  const undoLabel = document.createElement("button");
-  undoLabel.type = "button";
-  undoLabel.textContent = "Undo";
-  undoLabel.disabled = true;
   const deleteLabel = document.createElement("button");
   deleteLabel.type = "button";
   deleteLabel.textContent = "Remove";
-  editor.append(textInput, applyText, undoLabel, deleteLabel);
+  editor.append(textInput, applyText, deleteLabel);
   const labelTools = document.createElement("div");
   labelTools.className = "genome-figure-label-tools";
   labelTools.append(status, suggestedLabelsToggle.label, addedLabelsToggle.label, densityControl.label, labelBoxToggle.label, searchControl.wrapper);
@@ -3423,44 +3420,12 @@ function installFigureEditor(panel, sourceRecords, figure) {
     return state.labels.find((label) => label.id === state.selectedLabelId);
   }
 
-  function pushLabelHistory() {
-    state.labelHistory.push(JSON.stringify({
-      labels: state.labels,
-      forceLabelIds: [...state.forceLabelIds],
-      selectedLabelId: state.selectedLabelId,
-      showAddedLabels: state.showAddedLabels,
-      showSuggestedLabels: state.showSuggestedLabels
-    }));
-    if (state.labelHistory.length > 60) {
-      state.labelHistory.shift();
-    }
-    undoLabel.disabled = false;
-  }
-
-  function undoLabelChange() {
-    const snapshot = state.labelHistory.pop();
-    if (!snapshot) {
-      return;
-    }
-    const previous = JSON.parse(snapshot);
-    state.labels = previous.labels ?? [];
-    state.forceLabelIds = new Set(previous.forceLabelIds ?? []);
-    state.selectedLabelId = previous.selectedLabelId ?? "";
-    state.showAddedLabels = previous.showAddedLabels !== false;
-    state.showSuggestedLabels = previous.showSuggestedLabels !== false;
-    addedLabelsToggle.input.checked = state.showAddedLabels;
-    suggestedLabelsToggle.input.checked = state.showSuggestedLabels;
-    undoLabel.disabled = state.labelHistory.length === 0;
-    render();
-  }
-
   function syncEditor() {
     const label = selectedLabel();
     textInput.value = label?.text ?? "";
     textInput.disabled = !label;
     applyText.disabled = !label;
     deleteLabel.disabled = !label;
-    undoLabel.disabled = state.labelHistory.length === 0;
     status.textContent = label
       ? "Drag the selected label or edit its text. Right-click the figure to add a label."
       : "Right-click the figure to add a label. Click a label to edit or drag it.";
@@ -3611,7 +3576,6 @@ function installFigureEditor(panel, sourceRecords, figure) {
   }
 
   function addUserLabelAt(clickPoint) {
-    pushLabelHistory();
     const anchor = customAnchorForPoint(clickPoint);
     const labelPoint = initialCustomLabelPosition(clickPoint, anchor);
     const id = `custom:${Date.now()}:${Math.random().toString(36).slice(2)}`;
@@ -3682,7 +3646,6 @@ function installFigureEditor(panel, sourceRecords, figure) {
       const id = labelGroup.dataset.labelId;
       const label = state.labels.find((item) => item.id === id);
       if (!label) return;
-      pushLabelHistory();
       promoteLabelToAdded(label);
       state.selectedLabelId = id;
       tabs.setActive("labels");
@@ -3713,9 +3676,11 @@ function installFigureEditor(panel, sourceRecords, figure) {
     label.y = snapped.y;
     render();
   });
-  window.addEventListener("pointerup", () => {
+  const finishDrag = () => {
+    if (drag) session.changed("Move label");
     drag = null;
-  });
+  };
+  window.addEventListener("pointerup", finishDrag);
   figureHost.addEventListener("dblclick", (event) => {
     const labelGroup = event.target.closest?.(".genome-figure-label");
     if (!labelGroup) return;
@@ -3931,12 +3896,10 @@ function installFigureEditor(panel, sourceRecords, figure) {
   });
   searchControl.labelSelected.addEventListener("click", () => {
     const index = Number.parseInt(searchControl.resultSelect.value, 10);
-    pushLabelHistory();
     labelSearchMatch(Number.isFinite(index) ? index : currentSearchIndex);
   });
   searchControl.labelMatches.addEventListener("click", () => {
     const matches = updateSearchCount().slice(0, 36);
-    pushLabelHistory();
     for (const feature of matches) state.forceLabelIds.add(feature.id);
     appendMissingForcedLabels();
     tabs.setActive("labels");
@@ -3966,7 +3929,6 @@ function installFigureEditor(panel, sourceRecords, figure) {
   applyText.addEventListener("click", () => {
     const label = selectedLabel();
     if (!label) return;
-    pushLabelHistory();
     promoteLabelToAdded(label);
     label.text = textInput.value.trim() || label.text;
     render();
@@ -3976,12 +3938,10 @@ function installFigureEditor(panel, sourceRecords, figure) {
   });
   deleteLabel.addEventListener("click", () => {
     if (!state.selectedLabelId) return;
-    pushLabelHistory();
     state.labels = state.labels.filter((label) => label.id !== state.selectedLabelId);
     state.selectedLabelId = "";
     render();
   });
-  undoLabel.addEventListener("click", undoLabelChange);
   png.addEventListener("click", () => {
     if (!currentSvg) return;
     const stem = makeSafeFileStem(currentDisplayRecord()?.title, "genome-figure");
@@ -3996,9 +3956,35 @@ function installFigureEditor(panel, sourceRecords, figure) {
   workspace.append(figureHost, toolbar);
   panel.append(titleBar, workspace);
   render();
+  const scalarKeys = ['paletteName','gcBaselineMode','plotScaleMode','featureLayout','featureSlotGrouping','featureColorMode','featureOpacity','featureGlyph','labelDensity','tickDensity','figureWidth','slotWidth','plotBandWidth','plotWindowSize','contigOrder','regionRecordKey','viewRangeStart','viewRangeEnd','showLegend','showSlotDividers','showSuggestedLabels','showAddedLabels','labelBoxes'];
+  const setKeys = ['visiblePlots','visibleFeatureTypes','visibleRecordKeys','forceLabelIds'];
+  const selects = {paletteName:paletteControl.select,gcBaselineMode:gcBaselineControl.select,plotScaleMode:plotScaleControl.select,featureLayout:featureLayoutControl.select,featureSlotGrouping:featureSlotGroupingControl.select,featureColorMode:featureColorControl.select,featureGlyph:featureGlyphControl.select,labelDensity:densityControl.select,contigOrder:contigOrderControl.select};
+  const ranges = {featureOpacity:featureOpacityControl,tickDensity:tickDensityControl,slotWidth:slotWidthControl,plotBandWidth:plotWidthControl,plotWindowSize:plotWindowControl};
+  const toggles = {showLegend:legendToggle.input,showSlotDividers:slotDividerToggle.input,showSuggestedLabels:suggestedLabelsToggle.input,showAddedLabels:addedLabelsToggle.input,labelBoxes:labelBoxToggle.input};
+  const session = createEditorSession({host:panel, toolbar:titleBar, tool:figure.layout === 'linear' ? 'linear-genome-figure' : 'circular-genome-figure', source:originalFigure, initial:editorDocument?.state,
+    read:() => ({...Object.fromEntries(scalarKeys.map(k=>[k,state[k]])),...Object.fromEntries(setKeys.map(k=>[k,[...state[k]]])),labels:state.labels.filter(l=>!isSuggestedLabel(l))}),
+    apply:snapshot => {
+      for (const key of scalarKeys) if (Object.hasOwn(snapshot,key)) state[key] = snapshot[key];
+      for (const key of setKeys) {state[key].clear(); for (const value of snapshot[key] || []) state[key].add(value);}
+      state.labels = structuredClone(snapshot.labels || []);
+      if (!state.labels.some(label => label.id === state.selectedLabelId)) state.selectedLabelId = '';
+      state.palette = PALETTES[state.paletteName] || PALETTES.classic;
+      for (const [key,control] of Object.entries(selects)) control.value = String(state[key]);
+      for (const [key,control] of Object.entries(ranges)) {control.input.value=String(state[key]);control.valueLabel.textContent=(key==='plotWindowSize'?formatWindowSize(state[key]):String(state[key]))+(control.unit||'');}
+      for (const [key,control] of Object.entries(toggles)) control.checked = state[key];
+      for (const [group,key] of [[plotControl,'visiblePlots'],[featureTypeControl,'visibleFeatureTypes'],[contigVisibilityControl.wrapper,'visibleRecordKeys']]) for (const input of group.querySelectorAll('input[type=checkbox]')) input.checked=state[key].has(input.value);
+      Object.assign(state.figure, {featureLayout:state.featureLayout,featureSlotGrouping:state.featureSlotGrouping,featureColorMode:state.featureColorMode,labelDensity:state.labelDensity,palette:state.paletteName});
+      contigVisibilityControl.render();
+      invalidateFeatureLayout(); render();
+    }
+  });
+  panel.parentElement._sms3VisualCleanup = () => {
+    session.dispose();
+    window.removeEventListener("pointerup", finishDrag);
+  };
 }
 
-export function renderGenomeFigure(container, figure) {
+export function renderGenomeFigure(container, figure, editorDocument) {
   container.classList.add("genome-figure-output");
   const records = Array.isArray(figure?.records) ? figure.records : [];
   if (records.length === 0) {
@@ -4011,5 +3997,5 @@ export function renderGenomeFigure(container, figure) {
   const panel = document.createElement("section");
   panel.className = "dna-viewer-panel genome-figure-panel";
   container.append(panel);
-  installFigureEditor(panel, records, figure);
+  installFigureEditor(panel, records, figure, editorDocument);
 }

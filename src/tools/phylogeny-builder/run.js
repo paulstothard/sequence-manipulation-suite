@@ -1,3 +1,7 @@
+import { makeAlignmentTreeViewerResult } from "../../core/alignment-tree-viewer.js";
+import { buildNeighborJoiningTree } from "../../core/multiple-sequence-alignment.js";
+import { parseTreeDocument } from "../../../packages/tree-viewer/src/core/index.js";
+import { makeTreeDocumentStream } from "../../core/tree-document-stream.js";
 import {
   PHYLOGENY_OUTPUT_FORMATS,
   alignPhylogenyInput,
@@ -68,9 +72,16 @@ export async function runPhylogenyBuilder(input, options = {}, context = {}) {
     });
   }
 
+  if (outputFormat === PHYLOGENY_OUTPUT_FORMATS.treeViewer) {
+    return makeAlignmentTreeViewerResult(prepared, "Phylogeny Builder", context);
+  }
+
   context.reportProgress?.({ phase: "building-tree", progress: 0.85 });
   context.throwIfCancelled?.();
   const artifacts = makePhylogenyArtifacts(prepared);
+  const newick = buildNeighborJoiningTree(prepared.alignment);
+  const { document } = await parseTreeDocument(newick, { sourceName: "Phylogeny Builder" }, context);
+  const treeDocument = makeTreeDocumentStream(document);
   context.reportProgress?.({ phase: "finished", progress: 1 });
 
   return makeToolResult({
@@ -81,6 +92,8 @@ export async function runPhylogenyBuilder(input, options = {}, context = {}) {
     basesProcessed: prepared.totalSymbols,
     charactersRemoved: prepared.charactersRemoved,
     streams: {
+      treeDocument,
+      newick: makeTextStream(newick, "text/x-newick"),
       plot: makeTextStream(artifacts.treeSvg, "image/svg+xml"),
       tree: makeTextStream(artifacts.treeReport, "text/plain"),
       distanceTable: makeTableStream(phylogenyDistanceTableColumns, artifacts.distanceRows, "phylogeny-distance-table"),

@@ -181,7 +181,7 @@ export function runRestrictionDigest(input, options = {}, context = {}) {
     if (cleaned.sequence.length === 0) {
       warnings.push(`${record.title}: no DNA/RNA sequence characters were found.`);
     }
-    const hits = findRestrictionSites(cleaned.sequence, enzymes, context);
+    const hits = findRestrictionSites(cleaned.sequence, enzymes, context, normalized);
     records.push({
       title: record.title,
       sequence: cleaned.sequence,

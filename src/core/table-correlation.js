@@ -173,7 +173,7 @@ export function makeCorrelationReport(result) {
     ...result.rows
       .filter((row) => row.row_column !== row.column)
       .slice(0, 12)
-      .map((row) => `${row.row_column} vs ${row.column}: n=${row.n}, Pearson r=${row.correlation || "n/a"}, Spearman rho=${row.spearman || "n/a"}, Kendall tau-b=${row.kendall || "n/a"}, covariance=${row.covariance || "n/a"}`)
+      .map((row) => `${row.row_column} vs ${row.column}: n=${row.n}, Pearson r=${Number.isFinite(row.correlation) ? row.correlation : "n/a"}, Spearman rho=${Number.isFinite(row.spearman) ? row.spearman : "n/a"}, Kendall tau-b=${Number.isFinite(row.kendall) ? row.kendall : "n/a"}, covariance=${Number.isFinite(row.covariance) ? row.covariance : "n/a"}`)
   ].join("\n").trimEnd() + "\n";
 }
 

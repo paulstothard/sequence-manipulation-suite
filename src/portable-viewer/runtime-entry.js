@@ -19,13 +19,15 @@ import {
   validateViewerSequenceRegionRequest
 } from "../app/viewer-sequence-navigation-ui.js";
 
-function renderSequenceViewerRecord(host, viewer, selection, viewerState) {
+function renderSequenceViewerRecord(host, viewer, selection, viewerState, explicitNavigation = false) {
   host.textContent = "";
   const selectedViewer = {
     ...viewer,
     records: [viewer.records[selection.index]]
   };
-  const savedState = viewerState?.title === selection.title
+  const savedState = explicitNavigation
+    ? makeViewerSequenceInitialState(viewer, selection, viewerState)
+    : viewerState?.title === selection.title
     ? viewerState
     : makeViewerSequenceInitialState(viewer, selection);
   const viewerOptions = {
@@ -84,11 +86,11 @@ function renderPortableSequenceViewer(container, artifact) {
   container.append(heading);
   const host = document.createElement("div");
   host.className = "viewer-sequence-host";
-  const showSelection = (selection) => {
+  const showSelection = (selection, explicitNavigation = true) => {
     captureCurrentState(host);
     activeSelection = selection;
     heading.textContent = formatViewerSequenceHeading(viewer.title || "Sequence viewer", selection);
-    renderSequenceViewerRecord(host, viewer, selection, savedStates.get(selection.sequenceKey));
+    renderSequenceViewerRecord(host, viewer, selection, savedStates.get(selection.sequenceKey), explicitNavigation);
   };
   const navigation = renderViewerSequenceNavigation(container, viewer, {
     initialSelection: checked.selection,
@@ -96,7 +98,7 @@ function renderPortableSequenceViewer(container, artifact) {
   });
   if (!navigation) throw new Error("The portable viewer sequence navigation could not be created.");
   container.append(host);
-  showSelection(navigation.initialSelection);
+  showSelection(navigation.initialSelection, false);
 }
 
 function renderPortableProteinStructure(container, artifact) {

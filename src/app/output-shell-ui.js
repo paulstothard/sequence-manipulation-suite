@@ -1,3 +1,4 @@
+import { renderTreeViewer } from "./tree-viewer-ui.js";
 import { describeStream, describeViewerStream, describeWorkflowStreamChoice } from "./workflow-stream-labels.js";
 import { buildOutputDescriptionText, sha256Hex } from "./output-description.js";
 import { saveWorkspaceFeatureLayer, saveWorkspaceSequence } from "./workspace-storage.js";
@@ -84,7 +85,8 @@ export function createOutputShellController({
   flattenOptions,
   getOptions,
   pluralize,
-  loadAlignmentViewerRegion
+  loadAlignmentViewerRegion,
+  openTreeDocument
 }) {
   const alignmentViewerRegionHistory = createAlignmentViewerRegionHistory();
 
@@ -95,11 +97,26 @@ function renderMessages(result) {
   const summary = document.createElement("div");
   summary.className = "message info";
   summary.textContent = `${pluralize(result.recordsProcessed, "record")}, ${pluralize(result.basesProcessed, processedUnitLabel)}, ${pluralize(result.charactersRemoved, "character")} removed.`;
+  if (state.selectedTool?.metadata?.id === "tree-viewer" && result.visual?.treeViewer?.document) {
+    const trees = result.visual.treeViewer.document.trees;
+    let tips = 0, nodes = 0;
+    for (const tree of trees) {
+      const parents = new Set(tree.edges.map(edge => edge.parent));
+      nodes += tree.nodes.length;
+      tips += tree.nodes.filter(node => !parents.has(node.id)).length;
+    }
+    summary.textContent = `${pluralize(trees.length, "tree")} · ${pluralize(tips, "tip")} · ${pluralize(nodes, "node")}`;
+  }
   elements.messages.append(summary);
 
   appendOutputDetails(elements.messages, getToolOutputDetails(result));
   appendToolDescriptionActions(elements.messages);
   appendAdditionalDownloadActions(elements.messages, result);
+  if (state.selectedTool?.metadata.id === "phylogeny-builder" && result.streams?.treeDocument && openTreeDocument) {
+    const button = document.createElement("button"); button.type = "button"; button.textContent = "Open in Tree Viewer";
+    button.addEventListener("click", () => openTreeDocument(result.streams.treeDocument));
+    elements.messages.append(button);
+  }
   appendWorkspacePromotionActions(elements.messages, result);
   appendWorkspaceFeatureLayerPromotionActions(elements.messages, result);
   appendWarningSummary(elements.messages, result.warnings);
@@ -1647,7 +1664,7 @@ function renderVisualOutput(scope, svg, options = {}) {
     }
   }
   visualOutput._sms3PortableViewerSnapshot = null;
-  if (!svg && !options.viewer && !options.figure && !options.proteinStructure && !options.notebook && !options.sangerTrace && !options.sequenceEditor && !options.sequenceExtractor) {
+  if (!svg && !options.viewer && !options.figure && !options.proteinStructure && !options.notebook && !options.sangerTrace && !options.sequenceEditor && !options.sequenceExtractor && !options.treeViewer) {
     visualOutput.hidden = true;
     visualOutput.textContent = "";
     return;
@@ -1656,7 +1673,7 @@ function renderVisualOutput(scope, svg, options = {}) {
   visualOutput.textContent = "";
   const heading = document.createElement("h4");
   heading.className = "visual-output-heading";
-  heading.textContent = options.figure
+  heading.textContent = options.treeViewer ? "Tree Viewer" : options.figure
     ? "Genome Figure"
     : options.sequenceExtractor
       ? "Interactive sequence extractor"
@@ -1674,12 +1691,16 @@ function renderVisualOutput(scope, svg, options = {}) {
             ? "Markdown Notebook"
             : "Plot";
   appendPortableViewerHeading(visualOutput, heading, options);
+  if (options.treeViewer) {
+    renderTreeViewer(visualOutput, options.treeViewer, options.editorDocument);
+    return "";
+  }
   if (options.notebook) {
     renderMarkdownNotebook(visualOutput, options.notebook);
     return "";
   }
   if (options.sangerTrace) {
-    renderSangerTraceViewer(visualOutput, options.sangerTrace);
+    renderSangerTraceViewer(visualOutput, options.sangerTrace, options.editorDocument);
     return "";
   }
   if (options.sequenceEditor) {
@@ -1702,12 +1723,15 @@ function renderVisualOutput(scope, svg, options = {}) {
       viewerLayout: options.sequenceEditor.viewerLayout === "circular" ? "circular" : "linear",
       filename: options.sequenceEditor.filename ?? "sequence-editor-cleaned.fasta",
       lineWidth: String(options.sequenceEditor.lineWidth ?? "60"),
-      featureTrackOverrides: options.sequenceEditor.featureTrackOverrides ?? []
+      featureTrackOverrides: options.sequenceEditor.featureTrackOverrides ?? [],
+      ...options.editorDocument?.state,
+      __documentLoaded:!!options.editorDocument,
+      __documentSource:options.editorDocument?.source
     });
     return "";
   }
   if (options.sequenceExtractor) {
-    renderSequenceExtractorWorkspace(visualOutput, options.sequenceExtractor);
+    renderSequenceExtractorWorkspace(visualOutput, options.sequenceExtractor, {editorDocument:options.editorDocument});
     return "";
   }
   if (options.proteinStructure) {
@@ -1715,7 +1739,7 @@ function renderVisualOutput(scope, svg, options = {}) {
     return "";
   }
   if (options.figure) {
-    renderGenomeFigure(visualOutput, options.figure);
+    renderGenomeFigure(visualOutput, options.figure, options.editorDocument);
     return "";
   }
   if (options.viewer) {
@@ -1773,7 +1797,7 @@ function renderVisualOutput(scope, svg, options = {}) {
 }
 
 function applyToolOutputChoice(choice) {
-  const hasVisualOutput = Boolean(choice.svg || choice.viewer || choice.figure || choice.proteinStructure || choice.notebook || choice.sangerTrace || choice.sequenceEditor || choice.sequenceExtractor);
+  const hasVisualOutput = Boolean(choice.svg || choice.viewer || choice.figure || choice.proteinStructure || choice.notebook || choice.sangerTrace || choice.sequenceEditor || choice.sequenceExtractor || choice.treeViewer);
   const hasPrimaryOutput = Boolean(choice.text || choice.tableStream || hasVisualOutput);
   elements.toolOutput.dataset.rawOutput = choice.text;
   elements.toolOutput.value = choice.tableStream
@@ -1796,7 +1820,8 @@ function applyToolOutputChoice(choice) {
     notebook: choice.notebook,
     sangerTrace: choice.sangerTrace,
     sequenceEditor: choice.sequenceEditor,
-    sequenceExtractor: choice.sequenceExtractor
+    sequenceExtractor: choice.sequenceExtractor,
+    treeViewer: choice.treeViewer
   });
   if (choice.svg && displayedSvg) {
     elements.toolOutput.dataset.rawOutput = displayedSvg;
@@ -1811,7 +1836,7 @@ function applyToolOutputChoice(choice) {
   elements.toolOutput.hidden = Boolean(choice.tableStream || hasVisualOutput || !choice.text);
   setOutputSearchRowVisible("tool", Boolean(choice.tableStream || (!hasVisualOutput && choice.text)));
   updateOutputActions("tool", {
-    hidden: Boolean(choice.tableStream || choice.viewer || choice.figure || choice.proteinStructure || choice.notebook || choice.sangerTrace || choice.sequenceEditor || choice.sequenceExtractor || (!choice.text && !choice.svg)),
+    hidden: Boolean(choice.tableStream || choice.viewer || choice.figure || choice.proteinStructure || choice.notebook || choice.sangerTrace || choice.sequenceEditor || choice.sequenceExtractor || choice.treeViewer || (!choice.text && !choice.svg)),
     mimeType: choice.download.mimeType,
     label: choice.label
   });
@@ -1863,7 +1888,8 @@ function renderGeneratedToolOutputChoice(result) {
     notebook,
     sangerTrace,
     sequenceEditor,
-    sequenceExtractor
+    sequenceExtractor,
+    treeViewer: result.visual?.treeViewer ?? null
   };
   state.currentToolOutputChoices = [choice];
   elements.outputFormatSelect.textContent = "";

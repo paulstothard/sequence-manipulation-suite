@@ -1,3 +1,4 @@
+import { createEditorSession } from './editor-session.js';
 import { addTimestampToFilename, downloadCanvasPng, downloadCanvasSvg, makeSafeFileStem } from "./canvas-export.js";
 import { geneticCodes } from "../core/genetic-code.js";
 import { makeSixFrameTranslations } from "../core/translation.js";
@@ -327,9 +328,18 @@ function updateDetails(panel, state) {
 }
 
 function syncControls(panel, state) {
-  panel.querySelector("[data-sanger-control='clipStart']").value = String(state.clipStart);
-  panel.querySelector("[data-sanger-control='clipEnd']").value = String(state.clipEnd);
-  panel.querySelector("[data-sanger-control='editBase']").value = selectedCall(state)?.base ?? "N";
+  // Resizing and theme redraws must not overwrite an unapplied control value.
+  const syncValue = (name, value, key = value) => {
+    const input = panel.querySelector(`[data-sanger-control="${name}"]`);
+    if (input.dataset.syncedValue !== String(key)) {
+      input.value = String(value);
+      input.dataset.syncedValue = String(key);
+    }
+  };
+  syncValue("clipStart", state.clipStart);
+  syncValue("clipEnd", state.clipEnd);
+  const base = selectedCall(state)?.base ?? "N";
+  syncValue("editBase", base, `${state.selectedIndex}:${base}`);
   const visibleStart = Math.floor(state.visibleStart);
   const visibleEnd = Math.min(state.calls.length, visibleStart + basesPerVisibleWidth(state) - 1);
   panel.querySelector("[data-sanger-control='viewInfo']").textContent =
@@ -1134,6 +1144,8 @@ function renderSingleSangerTraceViewer(container, data) {
     const end = clamp(Number.parseInt(clipEnd.value, 10) || state.calls.length, start, state.calls.length);
     state.clipStart = start;
     state.clipEnd = end;
+    clipStart.value = String(start);
+    clipEnd.value = String(end);
     state.visibleStart = start;
     state.selectedIndex = start;
     render(`Export keeps bases ${start}-${end}.`);
@@ -1208,6 +1220,17 @@ function renderSingleSangerTraceViewer(container, data) {
     stopActiveInertia();
     cleanupController.abort();
   };
+  container._sms3TraceState = {
+    read:() => ({bases:state.calls.map(c=>c.base).join(''),clipStart:state.clipStart,clipEnd:state.clipEnd,geneticCode:state.geneticCode,showForwardTranslations:state.showForwardTranslations,showReverseTranslations:state.showReverseTranslations}),
+    apply:snapshot => {
+      if (typeof snapshot.bases !== 'string' || snapshot.bases.length !== state.calls.length || /[^ACGTRYSWKMBDHVN]/i.test(snapshot.bases)) throw new Error('Invalid edited trace calls.');
+      if (!Number.isInteger(snapshot.clipStart) || !Number.isInteger(snapshot.clipEnd) || snapshot.clipStart < 1 || snapshot.clipEnd > state.calls.length || snapshot.clipStart > snapshot.clipEnd) throw new Error('Invalid trace clipping coordinates.');
+      state.calls.forEach((call,i) => {call.base=snapshot.bases[i];call.edited=call.base!==call.originalBase;});
+      state.clipStart=snapshot.clipStart;state.clipEnd=snapshot.clipEnd;state.selectedIndex=state.clipStart;state.visibleStart=state.clipStart;
+      state.geneticCode=String(snapshot.geneticCode||data.geneticCode||'1');state.showForwardTranslations=snapshot.showForwardTranslations===true;state.showReverseTranslations=snapshot.showReverseTranslations===true;
+      render('Trace edits restored.');
+    }
+  };
   render("Interactive trace ready. Click a base to inspect or edit it.");
 }
 
@@ -1251,11 +1274,16 @@ function renderSangerTraceSetViewer(container, data) {
   panel.append(header, traceHost, warningBox);
   container.append(panel);
 
+  const traceStates = new Map(data.traceViews.map((trace,index)=>[index,{bases:trace.baseCalls.map(c=>c.base).join(""),clipStart:trace.clipStart??1,clipEnd:trace.clipEnd??trace.baseCalls.length,geneticCode:String(trace.geneticCode||'1'),showForwardTranslations:trace.showForwardTranslations===true,showReverseTranslations:trace.showReverseTranslations===true}]));
+  let previousIndex = null;
   const renderSelected = () => {
+    if (previousIndex !== null && traceHost._sms3TraceState) traceStates.set(previousIndex,traceHost._sms3TraceState.read());
     traceHost._sms3VisualCleanup?.();
     traceHost.innerHTML = "";
     const index = clamp(Number.parseInt(selector.value, 10) || 0, 0, data.traceViews.length - 1);
     renderSingleSangerTraceViewer(traceHost, data.traceViews[index]);
+    if (traceStates.has(index)) traceHost._sms3TraceState.apply(traceStates.get(index));
+    previousIndex = index;
   };
 
   selector.addEventListener("change", renderSelected, listenerOptions);
@@ -1264,12 +1292,22 @@ function renderSangerTraceSetViewer(container, data) {
     cleanupController.abort();
   };
   renderSelected();
+  container._sms3TraceState = {
+    read:() => {traceStates.set(previousIndex,traceHost._sms3TraceState.read()); return {traces:Object.fromEntries(traceStates)};},
+    apply:snapshot => {
+      traceStates.clear(); for (const [key,value] of Object.entries(snapshot.traces || {})) traceStates.set(Number(key),value);
+      previousIndex=null; renderSelected();
+    }
+  };
 }
 
-export function renderSangerTraceViewer(container, data) {
-  if (Array.isArray(data?.traceViews) && data.traceViews.length > 0) {
-    renderSangerTraceSetViewer(container, data);
-    return;
-  }
-  renderSingleSangerTraceViewer(container, data);
+export function renderSangerTraceViewer(container, data, editorDocument) {
+  if (Array.isArray(data?.traceViews) && data.traceViews.length > 0) renderSangerTraceSetViewer(container, data);
+  else renderSingleSangerTraceViewer(container, data);
+  const toolbar = container.querySelector('.sanger-trace-set-toolbar,.sanger-trace-toolbar');
+  const session = createEditorSession({host:container, toolbar, tool:'sanger-trace-viewer', source:data, initial:editorDocument?.state,
+    read:() => container._sms3TraceState.read(), apply:snapshot => container._sms3TraceState.apply(snapshot)
+  });
+  const cleanup = container._sms3VisualCleanup;
+  container._sms3VisualCleanup = () => {session.dispose();cleanup?.();};
 }

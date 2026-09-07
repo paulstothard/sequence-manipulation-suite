@@ -194,7 +194,7 @@ export function runRestrictionSummary(input, options = {}, context = {}) {
     const cleaned = cleanRecord(record, normalized, warnings);
     basesProcessed += cleaned.sequence.length;
     charactersRemoved += cleaned.removedCount;
-    const allHits = findRestrictionSites(cleaned.sequence, enzymes, context);
+    const allHits = findRestrictionSites(cleaned.sequence, enzymes, context, normalized);
     analyzedRecords.push({
       title: cleaned.title,
       sequence: cleaned.sequence,

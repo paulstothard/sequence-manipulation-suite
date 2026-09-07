@@ -139,7 +139,7 @@ export async function prepareSequenceExtractor(input, options = {}, context = {}
     });
     const hits = options.showRestrictionSites === false
       ? []
-      : findRestrictionSites(sourceRecord.sequence, enzymes, context);
+      : findRestrictionSites(sourceRecord.sequence, enzymes, context, {topology: sourceRecord.topology});
     totalRestrictionSites += hits.length;
 
     let siteRows = [];

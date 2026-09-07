@@ -1,3 +1,4 @@
+import { parseUnsignedIntegerToken } from "../integer-token.js";
 import {
   BgzipIndexedFasta,
   BlobFile,
@@ -8,7 +9,7 @@ import { makeBioWasmFallbackWarning } from "../biowasm-runner.js";
 import { canRunBioWasmHtsTools, runSamtoolsFaidx } from "./biowasm-hts.js";
 
 function parseInteger(value, label) {
-  const number = Number.parseInt(String(value ?? "").trim(), 10);
+  const number = parseUnsignedIntegerToken(value);
   if (!Number.isInteger(number) || number < 0) {
     throw new Error(`Invalid FAI ${label}: ${value}`);
   }
@@ -29,6 +30,8 @@ export function parseFaiIndex(text) {
     }
     const [name, rawLength, rawOffset, rawLineBases, rawLineWidth] = fields;
     try {
+      if (!name || /\s/.test(name)) throw new Error("FAI sequence name must be nonempty and contain no whitespace.");
+      if (records.has(name)) throw new Error(`Duplicate FAI sequence name "${name}"; index is ambiguous.`);
       records.set(name, {
         name,
         length: parseInteger(rawLength, "length"),
@@ -59,8 +62,8 @@ export function parseIndexedFastaRegions(text) {
         return {
           index: index + 1,
           seqid: match[1],
-          start: Number.parseInt(match[2], 10),
-          end: Number.parseInt(match[3], 10),
+          start: parseUnsignedIntegerToken(match[2]),
+          end: parseUnsignedIntegerToken(match[3]),
           label: line.slice(regionEnd).trim()
         };
       }
@@ -79,8 +82,8 @@ export function parseIndexedFastaRegions(text) {
       return {
         index: index + 1,
         seqid,
-        start: Number.parseInt(rawStart, 10),
-        end: Number.parseInt(rawEnd, 10),
+        start: parseUnsignedIntegerToken(rawStart),
+        end: parseUnsignedIntegerToken(rawEnd),
         label: tabFields.length >= 3 ? tabFields.slice(3).filter(Boolean).join(" ") : [label, ...fields.slice(4)].filter(Boolean).join(" ")
       };
     });
@@ -332,6 +335,8 @@ function makeBioWasmIndexedFastaReader(indexedInput) {
 }
 
 export function makeIndexedFastaReader(indexedInput) {
+  const parsed = parseFaiIndex(indexedInput.faiText);
+  if (parsed.warnings.length) throw new Error(parsed.warnings.join(" "));
   if (canRunBioWasmHtsTools()) {
     return makeBioWasmIndexedFastaReader(indexedInput);
   }
@@ -367,6 +372,7 @@ async function readIndexedFastaRegionsWithBioWasm(indexedInput, context = {}) {
     throw new Error("Indexed FASTA extraction requires a local FASTA file.");
   }
   const fai = parseFaiIndex(faiText);
+  if (fai.warnings.length) throw new Error(fai.warnings.join(" "));
   const requestedRegions = parseIndexedFastaRegions(rangesText);
   const warnings = [...fai.warnings];
   const rows = [];
@@ -460,6 +466,7 @@ async function readIndexedFastaRegionsWithJsReader(indexedInput, context = {}, i
     throw new Error("Indexed FASTA extraction requires a local FASTA file.");
   }
   const fai = parseFaiIndex(faiText);
+  if (fai.warnings.length) throw new Error(fai.warnings.join(" "));
   const requestedRegions = parseIndexedFastaRegions(rangesText);
   const warnings = [...initialWarnings, ...fai.warnings];
   const rows = [];

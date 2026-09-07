@@ -654,23 +654,29 @@ function shiftJunctions(junctions, offset) {
   }));
 }
 
+function clipProvenanceSegment(segment, start, end, offset = 0) {
+  const leftRemoved = start - Number(segment.outputStart);
+  const rightRemoved = Number(segment.outputEnd) - end;
+  const reverse = segment.orientation === "-";
+  return {
+    ...segment,
+    outputStart: start + offset,
+    outputEnd: end + offset,
+    sourceStart: Number(segment.sourceStart) + (reverse ? rightRemoved : leftRemoved),
+    sourceEnd: Number(segment.sourceEnd) - (reverse ? leftRemoved : rightRemoved)
+  };
+}
+
 function retainLeftSegments(segments, retainedLength) {
   return (segments || [])
-    .filter((segment) => Number(segment.outputStart) <= retainedLength)
-    .map((segment) => ({
-      ...segment,
-      outputEnd: Math.min(Number(segment.outputEnd), retainedLength)
-    }));
+    .filter(segment => Number(segment.outputStart) <= retainedLength)
+    .map(segment => clipProvenanceSegment(segment, Number(segment.outputStart), Math.min(Number(segment.outputEnd), retainedLength)));
 }
 
 function retainRightSegments(segments, trimmedLength, offset) {
   return (segments || [])
-    .filter((segment) => Number(segment.outputEnd) > trimmedLength)
-    .map((segment) => ({
-      ...segment,
-      outputStart: Math.max(Number(segment.outputStart), trimmedLength + 1) + offset,
-      outputEnd: Number(segment.outputEnd) + offset
-    }));
+    .filter(segment => Number(segment.outputEnd) > trimmedLength)
+    .map(segment => clipProvenanceSegment(segment, Math.max(Number(segment.outputStart), trimmedLength + 1), Number(segment.outputEnd), offset));
 }
 
 function mergeOverlapPair(leftProduct, rightProduct, overlap, method, leftIndex, rightIndex, options = {}) {
@@ -872,6 +878,10 @@ function applyRecombinationAssembly(fragments, options, preview) {
 export function applyFragmentAssembly(methodId, fragments = [], options = {}) {
   const normalizedFragments = Array.isArray(fragments) ? fragments.filter(Boolean) : [];
   const preview = previewFragmentAssembly(methodId, normalizedFragments, options);
+  if (options.circular) {
+    const warnings = [...preview.warnings, "Circular product assembly is not implemented; no linear product was substituted. The circular preview describes junction compatibility only."];
+    return {method: preview.method, preview: {...preview, ready:false, warnings}, product:null, warnings};
+  }
   if (!preview.ready) return { method: preview.method, preview, product: null, warnings: preview.warnings };
   if (["direct-ligation", "ta-cloning", "golden-gate"].includes(methodId)) {
     return applyCompatibleEndAssembly(normalizedFragments, options, preview);
