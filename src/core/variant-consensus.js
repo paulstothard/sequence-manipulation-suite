@@ -30,7 +30,7 @@ export function consensusSettings(options = {}) {
     missing: choice('missingPolicy', ['error','mask','reference'], 'error'),
     filter: choice('filterPolicy', ['pass','pass-or-unfiltered','all'], 'pass-or-unfiltered'),
     unsupported: choice('unsupportedPolicy', ['error','skip'], 'error'),
-    outputFormat: choice('outputFormat', ['fasta','audit','coordinates','map','report'], 'fasta'),
+    outputFormat: choice('outputFormat', ['fasta','viewer','audit','coordinates','map','report'], 'fasta'),
     maxVariants: integer('maxVariants', CONSENSUS_LIMITS.variants, CONSENSUS_LIMITS.variants) };
 }
 export async function parseConsensusFasta(text, context = {}) {
@@ -130,8 +130,9 @@ export async function buildConsensus(references, parsed, s, context = {}) {
   const warnings=['Positions absent from this VCF retain reference bases; this does not establish sequencing coverage.'];
   const grouped=new Map(); for(const r of parsed.records) { if(!references.has(r.chrom)) throw new Error(`VCF contig "${r.chrom}" is absent from the reference FASTA.`); if(!grouped.has(r.chrom)) grouped.set(r.chrom,[]); grouped.get(r.chrom).push(r); }
   if(s.chromosome&&!references.has(s.chromosome)) throw new Error(`Reference "${s.chromosome}" was not found.`);
-  const outputs=[],audit=[],coordinates=[]; let totalBases=0, totalEdits=0, skipped=0;
-  const needSequence=s.outputFormat==='fasta', needAudit=s.outputFormat==='audit'||s.outputFormat==='map', needCoordinates=s.outputFormat==='coordinates';
+  const outputs=[],audit=[],coordinates=[],viewerSites=[]; let totalBases=0, totalEdits=0, skipped=0;
+  const needViewer=s.outputFormat==='viewer';
+  const needSequence=s.outputFormat==='fasta'||needViewer, needAudit=s.outputFormat==='audit'||s.outputFormat==='map', needCoordinates=s.outputFormat==='coordinates'||needViewer;
   for(const reference of references.values()) {
     if(s.chromosome&&reference.id!==s.chromosome) continue;
     const first=reference.start??1, last=first+reference.sequence.length-1;
@@ -151,7 +152,13 @@ export async function buildConsensus(references, parsed, s, context = {}) {
         if(s.unsupported==='error') throw new Error(`${r.chrom}:${r.pos}: selected symbolic, spanning-deletion (*) or breakend allele is unsupported. Use explicit sequence alleles or choose Skip unsupported calls.`);
         reason='unsupported selected allele';
       }
-      if(reason) { skipped++; if(needAudit) audit.push({sample:parsed.sample,chrom:r.chrom,pos:r.pos,ref:r.ref,alt:r.alts.join(','),gt:r.gt,phase_set:r.ps,path:'all',status:'skipped',reason}); continue; }
+      if(reason) {
+        skipped++;
+        const skippedSite={sample:parsed.sample,chrom:r.chrom,pos:r.pos,ref:r.ref,alt:r.alts.join(','),gt:r.gt,phase_set:r.ps,path:'all',status:'skipped',reason};
+        if(needAudit) audit.push(skippedSite);
+        if(needViewer) viewerSites.push({...skippedSite,sourceLine:r.line,referenceStart0:r.pos-1,referenceEnd0:r.pos-1+r.ref.length,selectedAlt:r.ref});
+        continue;
+      }
       active.push(r);
     }
     const het=active.filter(r=>!r.missing&&r.ploidy===2&&r.alleles[0]!==r.alleles[1]);
@@ -200,6 +207,7 @@ export async function buildConsensus(references, parsed, s, context = {}) {
             if(edit.start===edit.end) insertions.add(edit.start);
           }
           if(needAudit) audit.push({sample:parsed.sample,sequence_id:title,chrom:r.chrom,pos:r.pos,ref:r.ref,alt:r.alts.join(','),gt:r.gt,phase_set:r.phased?r.ps:'',path,status:choice.status,reason:choice.reason});
+          if(needViewer) viewerSites.push({sample:parsed.sample,sequence_id:title,chrom:r.chrom,pos:r.pos,ref:r.ref,alt:r.alts.join(','),gt:r.gt,phase_set:r.phased?r.ps:'',path,status:choice.status,reason:choice.reason,sourceLine:r.line,referenceStart0:changes?edit.start:r.pos-1,referenceEnd0:changes?edit.end:r.pos-1+r.ref.length,selectedAlt:choice.alt,editedAlt:changes?edit.alt:choice.alt,changes});
         }
         append(cursor,segment.end,null,'unchanged'); totalBases+=out;totalEdits+=edits;
         if(outputs.length>=CONSENSUS_LIMITS.outputRecords) throw new Error('More than 4,000 output sequences. Select fewer contigs or phase blocks.');
@@ -212,5 +220,5 @@ export async function buildConsensus(references, parsed, s, context = {}) {
   if(skipped) warnings.push(`${skipped} variant record(s) skipped; reference bases retained at skipped sites.`);
   if(s.missing!=='error'&&parsed.records.some(r=>r.missing)) warnings.push(`Missing calls: ${s.missing==='mask'?'reference spans masked with N':'reference retained'}; unknown insertion/deletion lengths are not inferred.`);
   await checkpoint(context,'building-output',0.9);
-  return {outputs,audit,coordinates,warnings:[...new Set(warnings)],totalBases,totalEdits,sample:parsed.sample,settings:s,variantCount:parsed.records.length};
+  return {outputs,audit,coordinates,viewerSites,warnings:[...new Set(warnings)],totalBases,totalEdits,sample:parsed.sample,settings:s,variantCount:parsed.records.length};
 }

@@ -1,6 +1,7 @@
 import { loadConsensusInput } from '../../core/variant-consensus-input.js';
 import { buildConsensus } from '../../core/variant-consensus.js';
-import { consensusAuditColumns,consensusCoordinateColumns,renderConsensusMap,checkConsensusTableSize } from '../../core/variant-consensus-output.js';
+import { consensusAuditColumns,consensusCoordinateColumns,makeConsensusViewerData,renderConsensusMap,checkConsensusTableSize } from '../../core/variant-consensus-output.js';
+import { makeDnaViewerStream } from '../../core/dna-viewer-data.js';
 import { makeToolResult,makeTextStream,makeTableStream } from '../../core/workflow.js';
 import { exportDelimitedTable } from '../../core/table.js';
 export async function runVariantConsensus(input,options={},context={}) {
@@ -12,6 +13,9 @@ export async function runVariantConsensus(input,options={},context={}) {
     output=a.outputs.map(r=>`>${r.title}\n${r.sequence.match(/.{1,60}/g)?.join('\n')??''}`).join('\n')+'\n';
     extension='fasta';mimeType='text/x-fasta';streams.fasta=makeTextStream(output,mimeType);
     streams.sequenceRecords={kind:'sequence-records',alphabet:'dna-rna',records:a.outputs.map(({title,sequence})=>({title,sequence}))};
+  } else if(format==='viewer') {
+    const viewer=makeConsensusViewerData(a);
+    output=JSON.stringify(viewer,null,2);extension='json';mimeType='application/json';visual={viewer};streams.viewer=makeDnaViewerStream(viewer);
   } else if(format==='audit'||format==='coordinates') {
     const columns=format==='audit'?consensusAuditColumns:consensusCoordinateColumns,rows=a[format];
     await checkConsensusTableSize(columns, rows, context);
