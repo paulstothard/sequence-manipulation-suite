@@ -443,6 +443,72 @@ export const workspaceSamples = [
         ]
       })
     ]
+  },
+  {
+    id: "mixed-sequence-test-set",
+    name: "Mixed sequence test set",
+    description: "A small DNA, RNA, and protein collection for trying compatible SMS3 tools without preparing input first.",
+    sourceTypes: ["Linear DNA/RNA records", "Protein record"],
+    sequences: [
+      makeSequence({
+        id: "sample-workspace-test-dna",
+        name: "Test coding DNA",
+        sequence: "ATGGCTGCTGAACTGAAATTTGGTTAA",
+        alphabet: "dna-rna",
+        topology: "linear"
+      }),
+      makeSequence({
+        id: "sample-workspace-test-dna-variant",
+        name: "Test coding DNA variant",
+        sequence: "ATGGCTGCTGAGCTGAAATTCGGTTAA",
+        alphabet: "dna-rna",
+        topology: "linear"
+      }),
+      makeSequence({
+        id: "sample-workspace-test-rna",
+        name: "Test ambiguous RNA",
+        sequence: "AUGGCUACGURYSWKMBDHVNAA",
+        alphabet: "dna-rna",
+        topology: "linear"
+      }),
+      makeSequence({
+        id: "sample-workspace-test-protein",
+        name: "Test peptide",
+        sequence: "MAEWMKQGKTKXVV",
+        alphabet: "protein",
+        topology: ""
+      }),
+      makeSequence({
+        id: "sample-workspace-test-protein-variant",
+        name: "Test peptide variant",
+        sequence: "MAEWMKQGRTKLVV",
+        alphabet: "protein",
+        topology: ""
+      })
+    ],
+    featureLayers: [
+      makeLayer({
+        id: "sample-workspace-test-dna-regions",
+        sequenceId: "sample-workspace-test-dna",
+        alphabet: "dna-rna",
+        label: "Test coding regions",
+        trackId: "test-coding-regions",
+        recordTitle: "Test coding DNA",
+        features: [
+          {
+            start: 1,
+            end: 27,
+            label: "example CDS",
+            name: "example CDS",
+            type: "CDS",
+            strand: "+",
+            length: 27,
+            location: "1..27",
+            source: "Sample workspace"
+          }
+        ]
+      })
+    ]
   }
 ];
 

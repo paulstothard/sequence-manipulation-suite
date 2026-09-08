@@ -4,7 +4,7 @@ function makeWorkflow() {
   return {
     inputs: [
       { id: "input", kind: "text", mediaType: "text/plain" },
-      { id: "sequenceRecords", kind: "sequence-records" }
+      { id: "sequenceRecords", kind: "sequence-records", minRecords: 2, maxRecords: 2 }
     ],
     outputs: [
       { id: "primary", kind: "text", mediaType: "image/svg+xml" },

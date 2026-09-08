@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light dark" />
-    <meta name="sms3-tool-worker" content="./src/workers/tool-worker.bundle-ZBMZL3J4.js" />
+    <meta name="sms3-tool-worker" content="./src/workers/tool-worker.bundle-564ITKAX.js" />
     <title>SMS3</title>
     <style>
       html,
@@ -35,7 +35,7 @@
         }
       })();
     </script>
-    <link rel="stylesheet" href="./src/app/styles.bundle-WSSD6ZZ2.css" />
+    <link rel="stylesheet" href="./src/app/styles.bundle-HVCLVAKR.css" />
   </head>
   <body>
     <div class="app-shell">
@@ -96,14 +96,6 @@
               <button id="homeLink" class="reference-link" type="button">Home</button>
             </section>
 
-            <section class="reference-panel" aria-label="Workflows">
-              <button id="workflowLink" class="reference-link" type="button">Workflows</button>
-            </section>
-
-            <section class="reference-panel" aria-label="Workspace">
-              <button id="workspaceLink" class="reference-link" type="button">Workspace</button>
-            </section>
-
             <div id="toolList" class="tool-list">
               <div id="appStartupStatus" class="app-startup-status" role="status" aria-live="polite">
                 <strong>Loading tools…</strong>
@@ -111,6 +103,16 @@
                 <button id="appStartupRetry" type="button" hidden>Reload SMS3</button>
               </div>
             </div>
+
+            <section class="reference-panel" aria-labelledby="automationTitle">
+              <h2 id="automationTitle">Automation</h2>
+              <button id="workflowLink" class="reference-link" type="button">Workflows</button>
+            </section>
+
+            <section class="reference-panel" aria-labelledby="savedDataTitle">
+              <h2 id="savedDataTitle">Saved data</h2>
+              <button id="workspaceLink" class="reference-link" type="button">Workspace</button>
+            </section>
 
             <section class="reference-panel" aria-labelledby="referenceTitle">
               <h2 id="referenceTitle">Reference</h2>
@@ -299,6 +301,10 @@
               <p class="summary">
                 Reusable chains of SMS3 tools that pass outputs from one step into the next.
               </p>
+              <aside class="workflow-quick-start" aria-label="Workflow quick start">
+                <strong>Quick start</strong>
+                <span>Use the example input or choose a Workspace record, then run the recipe. Expand a step only when you want to inspect or change it.</span>
+              </aside>
 
               <section class="options-panel workflow-steps-panel" aria-labelledby="workflowStepsTitle">
                 <div class="panel-heading">
@@ -316,8 +322,9 @@
                           <select id="workflowPreset" aria-label="Starting workflow" aria-describedby="workflowPresetHelp"></select>
                         </label>
                         <button id="workflowLoadRecipe" type="button" disabled>Load selected recipe</button>
+                        <p id="workflowRecipeDescription" class="workflow-recipe-description"></p>
                         <p id="workflowPresetHelp" class="summary workflow-source-note">
-                          Replaces the current workflow and loads bundled example input.
+                          Choose from the bundled examples. Loading one replaces the current workflow and its input.
                         </p>
                       </div>
                     </details>
@@ -341,10 +348,10 @@
                       Open saved
                     </button>
                     <label class="text-row workflow-save-name-row">
-                      Save as
+                      Recipe name
                       <input id="workflowSaveName" type="text" autocomplete="off" placeholder="Name this workflow" />
                     </label>
-                    <button id="workflowSaveCurrent" type="button">Save</button>
+                    <button id="workflowSaveCurrent" type="button" aria-describedby="workflowSaveHelp">Save recipe</button>
                     <button id="workflowExportJson" type="button">Export</button>
                   </div>
                   <div class="run-button-row workflow-run-toolbar">
@@ -352,6 +359,9 @@
                     <button id="cancelWorkflow" type="button" disabled aria-hidden="true">Cancel workflow</button>
                   </div>
                 </div>
+                <p id="workflowSaveHelp" class="summary workflow-save-help">
+                  Save recipe adds a named reusable copy to Open saved. The current draft is also auto-saved in this browser for recovery.
+                </p>
                 <div class="workflow-source-chooser" aria-label="Workflow source">
                   <div id="workflowSavedPanel" class="workflow-source-pane" role="tabpanel" aria-labelledby="workflowSavedTab" hidden>
                     <div class="workflow-save-grid" aria-label="Saved workflow definitions">
@@ -558,7 +568,7 @@
     <script src="./src/vendor/observablehq-plot/plot.umd.min.js"></script>
     <script async src="./src/vendor/exceljs/exceljs.min.js"></script>
     <script async src="./src/vendor/3dmol/3Dmol-min.js"></script>
-    <script id="sms3AppLoader" type="module" data-app-module="./src/app/app.bundle-USVLMTA3.js">
+    <script id="sms3AppLoader" type="module" data-app-module="./src/app/app.bundle-XMXNEQVB.js">
       const loader = document.querySelector("#sms3AppLoader");
       const status = document.querySelector("#appStartupStatus");
       const retryButton = document.querySelector("#appStartupRetry");

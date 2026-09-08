@@ -114,6 +114,7 @@ export function describeStream(stream) {
 
 function getWorkflowSchemaLabel(schema) {
   const labels = {
+    "plate-assignments": "Well assignments",
     "base-composition-plot": "Composition table",
     "codon-usage": "Codon usage table",
     "dna-rna-pattern-finder": "Match table",
@@ -122,6 +123,7 @@ function getWorkflowSchemaLabel(schema) {
     "generic-table": "Table rows",
     "orf-finder": "ORF table",
     "protein-hydropathy": "Hydropathy table",
+    "protein-digest-peptides": "Digest peptides",
     "protein-motif-scanner": "Motif match table",
     "protein-pattern-finder": "Match table",
     "protein-stats": "Protein sequence statistics table",

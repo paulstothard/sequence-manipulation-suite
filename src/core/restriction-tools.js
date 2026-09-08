@@ -383,9 +383,17 @@ export function makeRestrictionLineMapSvg(records, options = {}) {
 }
 
 export function makeRestrictionGelSvg(records, options = {}) {
+  if (options.poolLinearMolecules && records.length) {
+    if (options.topology === "circular") throw new Error("Pooling gel lanes requires linear molecules.");
+    // Pool already-digested molecules, never concatenate their DNA sequences.
+    records = [{ title: "Pooled sample", length: records.reduce((sum, r) => sum + r.length, 0),
+      fragments: records.flatMap(r => r.fragments?.length ? r.fragments : [{ length: r.length }]) }, ...records];
+  }
   const title = options.title || "Simulated restriction digest gel";
   const subtitle = options.subtitle || "Uncut plasmids are modeled as mixed conformations; restriction digests are modeled primarily as linear fragments.";
-  const note = options.note || "Qualitative schematic gel: apparent-size migration, mass-scaled intensity, merged overlapping bands.";
+  const note = options.note || (options.poolLinearMolecules
+    ? "Pooled lane assumes equal molecule counts; separate lanes explain each input. Qualitative bands, not predicted PCR yield."
+    : "Qualitative schematic gel: apparent-size migration, mass-scaled intensity, merged overlapping bands.");
   const laneCount = records.length + 1;
   const ladderLabelGutter = 74;
   const margin = { top: 96, right: 30, bottom: 54, left: 58 };

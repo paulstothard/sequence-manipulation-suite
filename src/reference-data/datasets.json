@@ -119,6 +119,21 @@
       ],
       "validationTest": "test/reference-data-text-stop-words.test.js",
       "notes": "Snowball-derived English stop-word seed used by Word Cloud; expand to other languages only through source-specific provenance and UI language selection."
+    },
+    {
+      "id": "protein-digest",
+      "name": "Protein digest specificity models",
+      "fetchScript": null,
+      "buildScript": "reference-data:build:protein-digest",
+      "requiresNetworkForFetch": false,
+      "offlineBuild": true,
+      "generatedFiles": [
+        "src/reference-data/protein-digest/records.json",
+        "src/reference-data/protein-digest/records.js",
+        "src/reference-data/protein-digest/provenance.json"
+      ],
+      "validationTest": "test/reference-data-protein-digest.test.js",
+      "notes": "Six independently encoded ExPASy specificity models for single-enzyme protein digestion; pinned Pyteomics oracle fixtures validate behavior."
     }
   ]
 }

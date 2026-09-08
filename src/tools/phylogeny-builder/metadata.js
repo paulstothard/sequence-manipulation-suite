@@ -26,7 +26,7 @@ export const phylogenyBuilderMetadata = {
   workflow: {
     inputs: [
       { id: "input", kind: "text", mediaType: "text/plain" },
-      { id: "sequenceRecords", kind: "sequence-records" }
+      { id: "sequenceRecords", kind: "sequence-records", minRecords: 2 }
     ],
     outputs: [
       treeDocumentContract,

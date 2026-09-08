@@ -10,7 +10,7 @@ function makeWorkflow(alphabet) {
   return {
     inputs: [
       { id: "input", kind: "text", mediaType: "text/plain" },
-      { id: "sequenceRecords", kind: "sequence-records", alphabet }
+      { id: "sequenceRecords", kind: "sequence-records", alphabet, minRecords: 2, maxRecords: 2 }
     ],
     outputs: [
       { id: "primary", kind: "text", mediaType: "text/plain" },
@@ -29,7 +29,7 @@ function makeCodonWorkflow() {
   return {
     inputs: [
       { id: "input", kind: "text", mediaType: "text/plain" },
-      { id: "sequenceRecords", kind: "sequence-records", alphabet: "dna-rna" }
+      { id: "sequenceRecords", kind: "sequence-records", alphabet: "dna-rna", minRecords: 2, maxRecords: 2 }
     ],
     outputs: [
       { id: "primary", kind: "text", mediaType: "text/plain" },

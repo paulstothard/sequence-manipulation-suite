@@ -9,7 +9,7 @@ export const heatmapMetadata = {
   inputType: "CSV, TSV, or Excel table",
   outputType: "Heatmap plot or heatmap cell table",
   workflow: {
-    inputs: [{ id: "input", kind: "text", mediaType: "text/plain" }],
+    inputs: [{ id: "input", kind: "text", mediaType: "text/plain" }, { id: "table", kind: "table" }],
     outputs: [
       { id: "primary", kind: "text", mediaType: "image/svg+xml" },
       { id: "cellTable", kind: "table", schema: "heatmap-cells", columns: heatmapColumns },

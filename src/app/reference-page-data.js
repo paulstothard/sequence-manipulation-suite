@@ -141,14 +141,7 @@ function makeLicenseAttributionRows() {
       terms.license ?? "not recorded",
       terms.sourceUrl ?? terms.source ?? "see provenance files",
       dataset.generatedFiles.join("; "),
-      [
-        terms.source ? `Source: ${terms.source}` : "",
-        terms.notes ?? dataset.notes,
-        `Build: ${dataset.buildScript}`,
-        `Validation: ${dataset.validationTest}`
-      ]
-        .filter(Boolean)
-        .join(" ")
+      terms.notes ?? ""
     ];
   });
 

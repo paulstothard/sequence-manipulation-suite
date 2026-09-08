@@ -2,8 +2,11 @@ import {
   canToolUseWorkspaceSequence,
   canWorkflowUseWorkspaceSequence,
   formatWorkspaceSequenceAsFasta,
+  formatWorkspaceSequencesAsFasta,
   getToolWorkspaceSequenceInputs,
+  getToolWorkspaceSequenceRequirement,
   getWorkflowWorkspaceSequenceAlphabets,
+  getWorkflowWorkspaceSequenceRequirement,
   toolAcceptsWorkspaceSequences
 } from "../core/workspace.js";
 
@@ -86,6 +89,145 @@ function appendWorkspaceSequencePicker({ parent, labelText, compatible, selected
   parent.append(picker);
 }
 
+function recordCountText(count) {
+  return `${count.toLocaleString()} ${count === 1 ? "record" : "records"}`;
+}
+
+function selectionRequirementText(requirement) {
+  if (requirement.minRecords === 2 && requirement.maxRecords === 2) {
+    return "Choose sequence A and sequence B. Each Workspace record contributes one FASTA sequence.";
+  }
+  if (requirement.maxRecords === null) {
+    return `Choose at least ${recordCountText(requirement.minRecords)}. Input order follows the selected-record list.`;
+  }
+  return `Choose ${recordCountText(requirement.minRecords)} to ${recordCountText(requirement.maxRecords)}.`;
+}
+
+function validSelectionSummaryText(selected, requirement, runLabel) {
+  if (requirement.minRecords === 2 && requirement.maxRecords === 2) {
+    const distinctRecordCount = new Set(selected.map((sequence) => sequence.id)).size;
+    return `Using sequence A and sequence B from ${recordCountText(distinctRecordCount)} in the local browser workspace for this ${runLabel}.`;
+  }
+  return `Using ${recordCountText(selected.length)} from the local browser workspace for this ${runLabel}.`;
+}
+
+function appendExactWorkspaceSequencePickers({ parent, labelText, compatible, selected, onChange, summaryText }) {
+  const picker = document.createElement("div");
+  picker.className = "workspace-source-picker workspace-multi-source-picker workspace-paired-source-picker";
+  const heading = document.createElement("strong");
+  heading.textContent = labelText;
+  const help = document.createElement("p");
+  help.className = "workspace-source-help";
+  help.textContent = selectionRequirementText({ minRecords: 2, maxRecords: 2 });
+  const fields = document.createElement("div");
+  fields.className = "workspace-paired-source-fields";
+  ["Sequence A", "Sequence B"].forEach((fieldLabel, index) => {
+    const label = document.createElement("label");
+    label.className = "select-row";
+    label.textContent = fieldLabel;
+    const select = document.createElement("select");
+    select.setAttribute("aria-label", fieldLabel);
+    for (const sequence of compatible) {
+      const option = document.createElement("option");
+      option.value = sequence.id;
+      option.textContent = getWorkspaceSequenceLabel(sequence);
+      select.append(option);
+    }
+    select.value = selected[index]?.id ?? compatible[0]?.id ?? "";
+    select.addEventListener("change", () => {
+      const ids = selected.map((sequence) => sequence.id);
+      ids[index] = select.value;
+      onChange(ids);
+    });
+    label.append(select);
+    fields.append(label);
+  });
+  const summary = document.createElement("p");
+  summary.className = "workspace-source-summary";
+  summary.textContent = summaryText;
+  picker.append(heading, help, fields, summary);
+  parent.append(picker);
+}
+
+function appendWorkspaceSequenceCollectionPicker({ parent, labelText, compatible, selected, requirement, onChange, summaryText }) {
+  const picker = document.createElement("div");
+  picker.className = "workspace-source-picker workspace-multi-source-picker workspace-collection-source-picker";
+  const heading = document.createElement("strong");
+  heading.textContent = labelText;
+  const help = document.createElement("p");
+  help.className = "workspace-source-help";
+  help.textContent = selectionRequirementText(requirement);
+  const list = document.createElement("ol");
+  list.className = "workspace-selected-record-list";
+  selected.forEach((sequence, index) => {
+    const item = document.createElement("li");
+    const name = document.createElement("span");
+    name.textContent = getWorkspaceSequenceLabel(sequence);
+    const actions = document.createElement("span");
+    actions.className = "workspace-selected-record-actions";
+    const moveUp = document.createElement("button");
+    moveUp.type = "button";
+    moveUp.textContent = "Up";
+    moveUp.disabled = index === 0;
+    moveUp.setAttribute("aria-label", `Move ${sequence.name} up`);
+    moveUp.addEventListener("click", () => {
+      const ids = selected.map((record) => record.id);
+      [ids[index - 1], ids[index]] = [ids[index], ids[index - 1]];
+      onChange(ids);
+    });
+    const moveDown = document.createElement("button");
+    moveDown.type = "button";
+    moveDown.textContent = "Down";
+    moveDown.disabled = index === selected.length - 1;
+    moveDown.setAttribute("aria-label", `Move ${sequence.name} down`);
+    moveDown.addEventListener("click", () => {
+      const ids = selected.map((record) => record.id);
+      [ids[index], ids[index + 1]] = [ids[index + 1], ids[index]];
+      onChange(ids);
+    });
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.textContent = "Remove";
+    remove.disabled = selected.length <= requirement.minRecords;
+    remove.setAttribute("aria-label", `Remove ${sequence.name}`);
+    remove.addEventListener("click", () => onChange(selected.filter((_, itemIndex) => itemIndex !== index).map((record) => record.id)));
+    actions.append(moveUp, moveDown, remove);
+    item.append(name, actions);
+    list.append(item);
+  });
+
+  const available = compatible.filter((sequence) => !selected.some((item) => item.id === sequence.id));
+  const addRow = document.createElement("div");
+  addRow.className = "workspace-add-record-row";
+  if (available.length > 0 && (requirement.maxRecords === null || selected.length < requirement.maxRecords)) {
+    const addLabel = document.createElement("label");
+    addLabel.className = "select-row";
+    addLabel.textContent = "Add record";
+    const addSelect = document.createElement("select");
+    addSelect.setAttribute("aria-label", "Workspace record to add");
+    for (const sequence of available) {
+      const option = document.createElement("option");
+      option.value = sequence.id;
+      option.textContent = getWorkspaceSequenceLabel(sequence);
+      addSelect.append(option);
+    }
+    addLabel.append(addSelect);
+    const addButton = document.createElement("button");
+    addButton.type = "button";
+    addButton.textContent = "Add";
+    addButton.addEventListener("click", () => onChange([...selected.map((sequence) => sequence.id), addSelect.value]));
+    addRow.append(addLabel, addButton);
+  } else {
+    addRow.classList.add("workspace-add-record-complete");
+    addRow.textContent = "All compatible Workspace records are selected.";
+  }
+  const summary = document.createElement("p");
+  summary.className = "workspace-source-summary";
+  summary.textContent = summaryText;
+  picker.append(heading, help, list, addRow, summary);
+  parent.append(picker);
+}
+
 function splitInputCanUseWorkspaceSourcePanel(tool) {
   return Boolean(
     (tool?.metadata?.splitInput?.separator === "##FASTA" ||
@@ -120,14 +262,16 @@ export function createWorkspaceInputSourceController({
   isTabbedInputWorkflowTool,
   selectTool,
   applyWorkspaceSequenceToToolInput,
+  syncToolOptionsForWorkspaceSequences = () => {},
   clearToolOutput,
-  clearWorkflowOutput
+  clearWorkflowOutput,
+  retireWorkflowRun = () => {}
 }) {
   const toolModeById = new Map();
-  const selectedSequenceByToolId = new Map();
+  const selectedSequenceIdsByToolId = new Map();
   const nativeWorkspaceSequenceByToolId = new Map();
   let workflowInputSourceMode = "paste";
-  let selectedWorkflowSequenceId = "";
+  let selectedWorkflowSequenceIds = [];
 
   function canRenderToolSource(tool) {
     return (
@@ -168,16 +312,50 @@ export function createWorkspaceInputSourceController({
     toolModeById.set(toolId, mode === "workspace" ? "workspace" : "paste");
   }
 
-  function getSelectedToolSequence(tool = getSelectedTool()) {
+  function normalizeSelectedSequences(compatible, selectedIds, requirement, { initialize = false } = {}) {
+    const compatibleById = new Map(compatible.map((sequence) => [sequence.id, sequence]));
+    const allowDuplicates = requirement.minRecords === 2 && requirement.maxRecords === 2;
+    const ids = (selectedIds ?? []).filter((id, index, items) =>
+      compatibleById.has(id) && (allowDuplicates || items.indexOf(id) === index)
+    );
+    if (requirement.maxRecords !== null) {
+      ids.splice(requirement.maxRecords);
+    }
+    if (initialize) {
+      for (const sequence of compatible) {
+        if (ids.length >= requirement.minRecords) {
+          break;
+        }
+        if (allowDuplicates || !ids.includes(sequence.id)) {
+          ids.push(sequence.id);
+        }
+      }
+      while (allowDuplicates && ids.length < requirement.minRecords && compatible[0]) {
+        ids.push(compatible[0].id);
+      }
+    }
+    return ids.map((id) => compatibleById.get(id)).filter(Boolean);
+  }
+
+  function getSelectedToolSequences(tool = getSelectedTool()) {
     const compatible = getCompatibleToolSequences(tool);
     if (compatible.length === 0) {
-      return null;
+      return [];
     }
     const toolId = tool?.metadata?.id ?? "";
-    const selectedId = selectedSequenceByToolId.get(toolId);
-    const selected = compatible.find((sequence) => sequence.id === selectedId) ?? compatible[0];
-    selectedSequenceByToolId.set(toolId, selected.id);
+    const requirement = getToolWorkspaceSequenceRequirement(tool?.metadata) ?? { minRecords: 1, maxRecords: 1 };
+    const selected = normalizeSelectedSequences(
+      compatible,
+      selectedSequenceIdsByToolId.get(toolId),
+      requirement,
+      { initialize: true }
+    );
+    selectedSequenceIdsByToolId.set(toolId, selected.map((sequence) => sequence.id));
     return selected;
+  }
+
+  function getSelectedToolSequence(tool = getSelectedTool()) {
+    return getSelectedToolSequences(tool)[0] ?? null;
   }
 
   function getFeatureLayerCountForSequence(sequence) {
@@ -209,7 +387,8 @@ export function createWorkspaceInputSourceController({
     }
     let sequence = null;
     if (getToolSourceMode(tool) === "workspace") {
-      sequence = getSelectedToolSequence(tool);
+      const selected = getSelectedToolSequences(tool);
+      sequence = selected.length === 1 ? selected[0] : null;
     } else {
       const nativeSequenceId = nativeWorkspaceSequenceByToolId.get(tool.metadata?.id ?? "");
       sequence = getWorkspaceSequences().find((item) => item.id === nativeSequenceId) ?? null;
@@ -271,25 +450,55 @@ export function createWorkspaceInputSourceController({
     });
 
     if (activeMode === "workspace") {
-      const selected = getSelectedToolSequence(tool);
+      const selected = getSelectedToolSequences(tool);
+      const requirement = getToolWorkspaceSequenceRequirement(tool.metadata) ?? { minRecords: 1, maxRecords: 1 };
+      syncToolOptionsForWorkspaceSequences(tool, selected);
       elements.dropZone.hidden = true;
       elements.fileInput.closest(".file-button").hidden = true;
       elements.sequenceInput.hidden = true;
       elements.splitInputPanel.hidden = true;
       elements.inputPanel.classList.add("workspace-source-active");
 
-      appendWorkspaceSequencePicker({
-        parent: panel,
-        labelText: getToolWorkspaceInputLabel(tool),
-        compatible,
-        selected,
-        onChange: (id) => {
-          selectedSequenceByToolId.set(tool.metadata.id, id);
-          renderToolSource();
-          clearToolOutput();
-        },
-        summaryText: formatWorkspaceToolSummary(selected)
-      });
+      const onChange = (ids) => {
+        selectedSequenceIdsByToolId.set(tool.metadata.id, ids);
+        syncToolOptionsForWorkspaceSequences(tool, getSelectedToolSequences(tool));
+        renderToolSource();
+        clearToolOutput();
+      };
+      const valid = selected.length >= requirement.minRecords &&
+        (requirement.maxRecords === null || selected.length <= requirement.maxRecords);
+      const summaryText = valid
+        ? validSelectionSummaryText(selected, requirement, "run")
+        : `Selected ${recordCountText(selected.length)}; choose at least ${recordCountText(requirement.minRecords)} before running.`;
+      if (requirement.minRecords === 2 && requirement.maxRecords === 2) {
+        appendExactWorkspaceSequencePickers({
+          parent: panel,
+          labelText: getToolWorkspaceInputLabel(tool),
+          compatible,
+          selected,
+          onChange,
+          summaryText
+        });
+      } else if (requirement.explicitCardinality && (requirement.minRecords > 1 || requirement.maxRecords === null)) {
+        appendWorkspaceSequenceCollectionPicker({
+          parent: panel,
+          labelText: getToolWorkspaceInputLabel(tool),
+          compatible,
+          selected,
+          requirement,
+          onChange,
+          summaryText
+        });
+      } else {
+        appendWorkspaceSequencePicker({
+          parent: panel,
+          labelText: getToolWorkspaceInputLabel(tool),
+          compatible,
+          selected: selected[0] ?? null,
+          onChange: (id) => onChange([id]),
+          summaryText: formatWorkspaceToolSummary(selected[0] ?? null)
+        });
+      }
     }
 
     elements.dropZone.before(panel);
@@ -301,7 +510,7 @@ export function createWorkspaceInputSourceController({
       return;
     }
     selectTool(tool);
-    selectedSequenceByToolId.set(tool.metadata.id, sequence.id);
+    selectedSequenceIdsByToolId.set(tool.metadata.id, [sequence.id]);
     if (canRenderToolSource(tool)) {
       toolModeById.set(tool.metadata.id, "workspace");
       nativeWorkspaceSequenceByToolId.delete(tool.metadata.id);
@@ -323,8 +532,29 @@ export function createWorkspaceInputSourceController({
     if (getToolSourceMode(tool) !== "workspace") {
       return null;
     }
-    const selected = getSelectedToolSequence(tool);
-    return selected ? formatWorkspaceSequenceAsFasta(selected) : null;
+    const selected = getSelectedToolSequences(tool);
+    return selected.length > 0 ? formatWorkspaceSequencesAsFasta(selected) : "";
+  }
+
+  function getToolWorkspaceSelectionValidation(tool = getSelectedTool()) {
+    if (getToolSourceMode(tool) !== "workspace") {
+      return { valid: true, message: "" };
+    }
+    const requirement = getToolWorkspaceSequenceRequirement(tool?.metadata) ?? { minRecords: 1, maxRecords: 1 };
+    const count = getSelectedToolSequences(tool).length;
+    if (count < requirement.minRecords) {
+      return {
+        valid: false,
+        message: `Choose at least ${recordCountText(requirement.minRecords)} from Workspace before running ${tool?.metadata?.name ?? "this tool"}.`
+      };
+    }
+    if (requirement.maxRecords !== null && count > requirement.maxRecords) {
+      return {
+        valid: false,
+        message: `Choose no more than ${recordCountText(requirement.maxRecords)} from Workspace.`
+      };
+    }
+    return { valid: true, message: "" };
   }
 
   function getWorkflowCompatibleSequences(workflow) {
@@ -347,17 +577,25 @@ export function createWorkspaceInputSourceController({
     workflowInputSourceMode = mode === "workspace" ? "workspace" : "paste";
   }
 
-  function getSelectedWorkflowSequence(workflow) {
+  function getSelectedWorkflowSequences(workflow) {
     const compatible = getWorkflowCompatibleSequences(workflow);
     if (compatible.length === 0) {
-      selectedWorkflowSequenceId = "";
-      return null;
+      selectedWorkflowSequenceIds = [];
+      return [];
     }
-    const selected =
-      compatible.find((sequence) => sequence.id === selectedWorkflowSequenceId) ??
-      compatible[0];
-    selectedWorkflowSequenceId = selected.id;
+    const requirement = getWorkflowWorkspaceSequenceRequirement(workflow, tools) ?? { minRecords: 1, maxRecords: 1 };
+    const selected = normalizeSelectedSequences(
+      compatible,
+      selectedWorkflowSequenceIds,
+      requirement,
+      { initialize: true }
+    );
+    selectedWorkflowSequenceIds = selected.map((sequence) => sequence.id);
     return selected;
+  }
+
+  function getSelectedWorkflowSequence(workflow) {
+    return getSelectedWorkflowSequences(workflow)[0] ?? null;
   }
 
   function removeWorkflowPanel() {
@@ -389,6 +627,7 @@ export function createWorkspaceInputSourceController({
       className: "workflow-source-tabs",
       label: "Workflow input source",
       onSelect: (value) => {
+        retireWorkflowRun();
         setWorkflowInputSourceMode(value);
         renderWorkflowSource(workflow, needsInput);
         clearWorkflowOutput();
@@ -396,21 +635,50 @@ export function createWorkspaceInputSourceController({
     });
 
     if (activeMode === "workspace") {
-      const selected = getSelectedWorkflowSequence(workflow);
-      appendWorkspaceSequencePicker({
-        parent: panel,
-        labelText: getWorkflowWorkspaceInputLabel(workflow, tools),
-        compatible,
-        selected,
-        onChange: (id) => {
-          selectedWorkflowSequenceId = id;
-          renderWorkflowSource(workflow, needsInput);
-          clearWorkflowOutput();
-        },
-        summaryText: selected
-          ? `Using ${selected.name} from the local browser workspace for this workflow run.`
-          : "No compatible workspace sequence is available."
-      });
+      const selected = getSelectedWorkflowSequences(workflow);
+      const requirement = getWorkflowWorkspaceSequenceRequirement(workflow, tools) ?? { minRecords: 1, maxRecords: 1 };
+      const onChange = (ids) => {
+        retireWorkflowRun();
+        selectedWorkflowSequenceIds = ids;
+        renderWorkflowSource(workflow, needsInput);
+        clearWorkflowOutput();
+      };
+      const valid = selected.length >= requirement.minRecords &&
+        (requirement.maxRecords === null || selected.length <= requirement.maxRecords);
+      const summaryText = valid
+        ? validSelectionSummaryText(selected, requirement, "workflow run")
+        : `Selected ${recordCountText(selected.length)}; choose at least ${recordCountText(requirement.minRecords)} before running.`;
+      if (requirement.minRecords === 2 && requirement.maxRecords === 2) {
+        appendExactWorkspaceSequencePickers({
+          parent: panel,
+          labelText: getWorkflowWorkspaceInputLabel(workflow, tools),
+          compatible,
+          selected,
+          onChange,
+          summaryText
+        });
+      } else if (requirement.explicitCardinality && (requirement.minRecords > 1 || requirement.maxRecords === null)) {
+        appendWorkspaceSequenceCollectionPicker({
+          parent: panel,
+          labelText: getWorkflowWorkspaceInputLabel(workflow, tools),
+          compatible,
+          selected,
+          requirement,
+          onChange,
+          summaryText
+        });
+      } else {
+        appendWorkspaceSequencePicker({
+          parent: panel,
+          labelText: getWorkflowWorkspaceInputLabel(workflow, tools),
+          compatible,
+          selected: selected[0] ?? null,
+          onChange: (id) => onChange([id]),
+          summaryText: selected[0]
+            ? `Using ${selected[0].name} from the local browser workspace for this workflow run.`
+            : "No compatible workspace sequence is available."
+        });
+      }
     }
 
     elements.workflowInput.before(panel);
@@ -420,14 +688,43 @@ export function createWorkspaceInputSourceController({
     if (getWorkflowInputSourceMode(workflow) !== "workspace") {
       return null;
     }
-    const selected = getSelectedWorkflowSequence(workflow);
-    return selected ? formatWorkspaceSequenceAsFasta(selected) : null;
+    const selected = getSelectedWorkflowSequences(workflow);
+    return selected.length > 0 ? formatWorkspaceSequencesAsFasta(selected) : "";
   }
 
   function getWorkflowSourceSequence(workflow) {
+    if (getWorkflowInputSourceMode(workflow) !== "workspace") {
+      return null;
+    }
+    const selected = getSelectedWorkflowSequences(workflow);
+    return selected.length === 1 ? selected[0] : null;
+  }
+
+  function getWorkflowSourceSequences(workflow) {
     return getWorkflowInputSourceMode(workflow) === "workspace"
-      ? getSelectedWorkflowSequence(workflow)
-      : null;
+      ? getSelectedWorkflowSequences(workflow)
+      : [];
+  }
+
+  function getWorkflowWorkspaceSelectionValidation(workflow) {
+    if (getWorkflowInputSourceMode(workflow) !== "workspace") {
+      return { valid: true, message: "" };
+    }
+    const requirement = getWorkflowWorkspaceSequenceRequirement(workflow, tools) ?? { minRecords: 1, maxRecords: 1 };
+    const count = getSelectedWorkflowSequences(workflow).length;
+    if (count < requirement.minRecords) {
+      return {
+        valid: false,
+        message: `Choose at least ${recordCountText(requirement.minRecords)} from Workspace before running this workflow.`
+      };
+    }
+    if (requirement.maxRecords !== null && count > requirement.maxRecords) {
+      return {
+        valid: false,
+        message: `Choose no more than ${recordCountText(requirement.maxRecords)} from Workspace.`
+      };
+    }
+    return { valid: true, message: "" };
   }
 
   return {
@@ -438,15 +735,20 @@ export function createWorkspaceInputSourceController({
     getToolSourceMode,
     setToolSourceMode,
     getSelectedToolSequence,
+    getSelectedToolSequences,
     getToolLayerContext,
     renderToolSource,
     getToolInputText,
+    getToolWorkspaceSelectionValidation,
     getWorkflowCompatibleSequences,
     getWorkflowInputSourceMode,
     setWorkflowInputSourceMode,
     getSelectedWorkflowSequence,
+    getSelectedWorkflowSequences,
     renderWorkflowSource,
     getWorkflowInputText,
-    getWorkflowSourceSequence
+    getWorkflowSourceSequence,
+    getWorkflowSourceSequences,
+    getWorkflowWorkspaceSelectionValidation
   };
 }

@@ -1,5 +1,6 @@
 import { wrapFastaText } from "../core/fasta.js";
 import { EDITOR_TOOLS } from "./editor-session.js";
+import { createTableInputPreview } from "./table-input-preview-ui.js";
 
 export function getToolInputFileUiForMetadata(tool) {
   const metadata = tool?.metadata ?? {};
@@ -270,6 +271,7 @@ export function createToolInputShellController({
   helpers,
   callbacks
 }) {
+  const inputPreview = createTableInputPreview({ input: elements.sequenceInput, panel: elements.inputPanel, getMetadata: () => state.selectedTool?.metadata });
   const {
     appendToolOptionControl,
     flattenOptions,
@@ -490,6 +492,7 @@ export function createToolInputShellController({
   }
 
   function updateInputFileUi(tool) {
+    inputPreview.refresh();
     const isSplitInput = Boolean(tool?.metadata?.splitInput);
     const isMarkdownNotebook = tool?.metadata?.id === "markdown-notebook";
     const isTabbedInputWorkflow = isTabbedInputWorkflowTool(tool);
@@ -533,7 +536,8 @@ export function createToolInputShellController({
       isAlignmentViewerTool() ||
       isFastaSourceTabbedTool(tool) ||
       isFastaRegionExtractorTool() ||
-      tool?.metadata?.id === "read-mapping-coverage"
+      tool?.metadata?.id === "read-mapping-coverage" ||
+      tool?.metadata?.id === "variant-consensus-builder"
     ) {
       return;
     }
@@ -732,6 +736,9 @@ export function createToolInputShellController({
     elements.splitInputPanel.querySelectorAll(".split-input-textarea").forEach((textarea) => {
       textarea.value = "";
     });
+    if (state.selectedTool?.metadata.id === "variant-consensus-builder") {
+      elements.splitInputPanel.onconsensusclear?.();
+    }
     if (isSangerTraceViewerTool()) {
       sangerTraceWorkspace.clearInputs();
     }
@@ -864,9 +871,11 @@ export function createToolInputShellController({
     updateToolOptionSuggestions({ autofillColumns: true, forceAutofillColumns: true });
     updateMarkdownInputUi();
     workspaceInputSources.renderToolSource();
+    inputPreview.refresh({ preferPreview: true });
   }
 
-  function updateInputActionButtons() {
+  function updateInputActionButtons({ previewTable = false } = {}) {
+    inputPreview.refresh({ preferPreview: previewTable });
     elements.clearInput.hidden = false;
     elements.workflowClearInput.hidden = false;
     const canLoadExample = hasLoadableExampleForActiveInputMode(state.selectedTool);

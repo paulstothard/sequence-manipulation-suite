@@ -1,3 +1,4 @@
+import { labWorkflowOperations, validateLabOperation, runLabOperation } from "./workflow-lab-operations.js";
 import { readTreeDocumentStream } from "./tree-document-stream.js";
 import { exportDelimitedTable } from "./table.js";
 import { formatFastaRecord, parseSequenceInput } from "./fasta.js";
@@ -5,6 +6,7 @@ import { isWorkflowStreamCompatible } from "./workflow-contracts.js";
 import { makeCollectionStream, makeTableStream, makeTextStream } from "./workflow.js";
 
 const STEP_TYPES = new Set([
+  ...Object.keys(labWorkflowOperations),
   "input",
   "tool",
   "select-stream",
@@ -15,8 +17,11 @@ const STEP_TYPES = new Set([
   "map",
   "gather",
   "orf-gff3-bundle",
-  "feature-table-gff3-bundle"
+  "feature-table-gff3-bundle",
+  "reference-reads-bundle"
 ]);
+
+const REFERENCE_READS_BUNDLE_OUTPUT = { id: "primary", kind: "text", mediaType: "text/plain", label: "Reference and reads" };
 
 const ORF_GFF3_BUNDLE_OUTPUT = {
   id: "primary",
@@ -850,7 +855,30 @@ function runFeatureTableGff3BundleStep(step, value, context) {
   return { value: stream, result: undefined, warnings };
 }
 
+function runReferenceReadsBundleStep(step, value, context) {
+  const reference = resolveStepInput(step, value, context);
+  const reads = resolveStepReference(step.reads, context, step.id);
+  for (const [name, source] of [["Reference", reference], ["Reads", reads]]) {
+    if (!["text", "sequence-records"].includes(source?.kind) || source.alphabet === "protein" ||
+        (source.kind === "text" && !["text/plain", "text/x-fasta", "text/x-fastq"].includes(source.mediaType ?? "text/plain"))) {
+      throw new Error(`${name} must be DNA/RNA sequence text, FASTA or FASTQ.`);
+    }
+  }
+  const referenceText = streamToToolInput(reference).trim();
+  const readsText = streamToToolInput(reads).trim();
+  if (!referenceText || !readsText) throw new Error("Both reference and reads are required for mapping.");
+  if (referenceText.length + readsText.length > 50_000_000) throw new Error("Combined reference and reads exceed the 50,000,000-character workflow limit.");
+  return { value: { ...makeTextStream(`${referenceText}\n---\n${readsText}\n`, "text/plain"), label: "Reference and reads" }, warnings: [] };
+}
+
 async function runStep(step, value, context) {
+  const operation = labWorkflowOperations[step.type];
+  if (operation) {
+    const source = resolveStepInput(step, value, context);
+    const secondary = operation.secondary ? resolveStepReference(step[operation.secondary], context, step.id) : undefined;
+    const sourceResult = step.input?.from ? context.stepResults.get(step.input.from)?.result : context.lastToolResult;
+    return { value: runLabOperation(step, source, secondary, { toText: streamToToolInput, sourceWarnings: sourceResult?.warnings ?? [], sourceSites: sourceResult?.streams?.bindingSites?.rows }), warnings: [] };
+  }
   if (step.type === "input") {
     return { value: runInputStep(step), result: undefined, warnings: [] };
   }
@@ -887,6 +915,9 @@ async function runStep(step, value, context) {
   }
   if (step.type === "gather") {
     return { value: runGatherStep(step, value), result: undefined, warnings: [] };
+  }
+  if (step.type === "reference-reads-bundle") {
+    return runReferenceReadsBundleStep(step, value, context);
   }
   if (step.type === "orf-gff3-bundle") {
     return runOrfGff3BundleStep(step, value, context);
@@ -955,6 +986,18 @@ export function validateWorkflowDefinition(workflow, options = {}) {
 
     if (step.type === "input") {
       lastOutput = { id: "primary", kind: "text", mediaType: step.mediaType ?? "text/plain" };
+      stepOutputs.set(stepId, lastOutput);
+      stepTools.delete(stepId);
+      return;
+    }
+
+    const operation = labWorkflowOperations[step.type];
+    if (operation) {
+      const source = getBoundInput({ ...step, id: stepId });
+      const secondary = operation.secondary && step[operation.secondary]?.from
+        ? getBoundInput({ id: stepId, input: step[operation.secondary] }) : undefined;
+      errors.push(...validateLabOperation(step, source, secondary));
+      lastOutput = operation.output;
       stepOutputs.set(stepId, lastOutput);
       stepTools.delete(stepId);
       return;
@@ -1030,6 +1073,22 @@ export function validateWorkflowDefinition(workflow, options = {}) {
           : step.as === "text"
             ? { kind: "text" }
             : { kind: "sequence-records" };
+      stepOutputs.set(stepId, lastOutput);
+      stepTools.delete(stepId);
+      return;
+    }
+
+    if (step.type === "reference-reads-bundle") {
+      const reference = getBoundInput({ ...step, id: stepId });
+      const reads = step.reads?.from ? getBoundInput({ id: stepId, input: step.reads }) : undefined;
+      if (!step.reads?.from) errors.push(`Step "${stepId}" must specify a reads source step.`);
+      for (const [name, source] of [["reference", reference], ["reads", reads]]) {
+        if (source && (!["text", "sequence-records"].includes(source.kind) || source.alphabet === "protein" ||
+            (source.kind === "text" && !["text/plain", "text/x-fasta", "text/x-fastq"].includes(source.mediaType ?? "text/plain")))) {
+          errors.push(`Step "${stepId}" needs DNA/RNA text, FASTA or FASTQ for its ${name} source.`);
+        }
+      }
+      lastOutput = REFERENCE_READS_BUNDLE_OUTPUT;
       stepOutputs.set(stepId, lastOutput);
       stepTools.delete(stepId);
       return;

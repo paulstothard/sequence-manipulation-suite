@@ -1,3 +1,5 @@
+import { makeBrowserStorageError } from "./browser-storage-errors.js";
+
 const WORKFLOW_DB_NAME = "sms3-workflow-library";
 const WORKFLOW_DB_VERSION = 1;
 const WORKFLOW_STORE_NAME = "saved-workflows";
@@ -28,21 +30,37 @@ function withWorkflowStore(mode, callback) {
         const transaction = db.transaction(WORKFLOW_STORE_NAME, mode);
         const store = transaction.objectStore(WORKFLOW_STORE_NAME);
         let callbackResult;
-        transaction.oncomplete = () => {
+        let finished = false;
+        const finish = (action, value) => {
+          if (finished) return;
+          finished = true;
           db.close();
-          resolve(callbackResult);
+          action(value);
+        };
+        transaction.oncomplete = () => {
+          finish(resolve, callbackResult);
         };
         transaction.onerror = () => {
-          const error = transaction.error;
-          db.close();
-          reject(error);
+          finish(reject, makeBrowserStorageError(transaction.error, {
+            scope: "Workflow",
+            operation: mode === "readwrite" ? "write" : "read"
+          }));
         };
         transaction.onabort = () => {
-          const error = transaction.error ?? new Error("Workflow storage transaction was aborted.");
-          db.close();
-          reject(error);
+          finish(reject, makeBrowserStorageError(transaction.error ?? { name: "AbortError" }, {
+            scope: "Workflow",
+            operation: mode === "readwrite" ? "write" : "read"
+          }));
         };
-        callbackResult = callback(store);
+        try {
+          callbackResult = callback(store);
+        } catch (error) {
+          try { transaction.abort(); } catch {}
+          finish(reject, makeBrowserStorageError(error, {
+            scope: "Workflow",
+            operation: mode === "readwrite" ? "write" : "read"
+          }));
+        }
       })
   );
 }

@@ -11,7 +11,7 @@ export const lightweightSequenceAssemblyMetadata = {
   workflow: {
     inputs: [
       { id: "input", kind: "text", mediaType: "text/plain" },
-      { id: "sequenceRecords", kind: "sequence-records", alphabet: "dna-rna" }
+      { id: "sequenceRecords", kind: "sequence-records", alphabet: "dna-rna", minRecords: 2 }
     ],
     outputs: [
       { id: "primary", kind: "text", mediaType: "text/plain" },

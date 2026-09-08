@@ -1,3 +1,5 @@
+import { makeBrowserStorageError } from "./browser-storage-errors.js";
+
 const WORKSPACE_DB_NAME = "sms3-workspace-library";
 const WORKSPACE_DB_VERSION = 2;
 const WORKSPACE_SEQUENCE_STORE_NAME = "sequences";
@@ -33,30 +35,49 @@ function openWorkspaceDatabase() {
   });
 }
 
-function withWorkspaceStore(storeName, mode, callback) {
+function withWorkspaceStores(storeNames, mode, callback) {
   return openWorkspaceDatabase().then(
     (db) =>
       new Promise((resolve, reject) => {
-        const transaction = db.transaction(storeName, mode);
-        const store = transaction.objectStore(storeName);
+        const transaction = db.transaction(storeNames, mode);
         let callbackResult;
-        transaction.oncomplete = () => {
+        let finished = false;
+        const finish = (action, value) => {
+          if (finished) return;
+          finished = true;
           db.close();
-          resolve(callbackResult);
+          action(value);
+        };
+        transaction.oncomplete = () => {
+          finish(resolve, callbackResult);
         };
         transaction.onerror = () => {
-          const error = transaction.error;
-          db.close();
-          reject(error);
+          finish(reject, makeBrowserStorageError(transaction.error, {
+            scope: "Workspace",
+            operation: mode === "readwrite" ? "write" : "read"
+          }));
         };
         transaction.onabort = () => {
-          const error = transaction.error ?? new Error("Workspace storage transaction was aborted.");
-          db.close();
-          reject(error);
+          finish(reject, makeBrowserStorageError(transaction.error ?? { name: "AbortError" }, {
+            scope: "Workspace",
+            operation: mode === "readwrite" ? "write" : "read"
+          }));
         };
-        callbackResult = callback(store);
+        try {
+          callbackResult = callback(transaction);
+        } catch (error) {
+          try { transaction.abort(); } catch {}
+          finish(reject, makeBrowserStorageError(error, {
+            scope: "Workspace",
+            operation: mode === "readwrite" ? "write" : "read"
+          }));
+        }
       })
   );
+}
+
+function withWorkspaceStore(storeName, mode, callback) {
+  return withWorkspaceStores([storeName], mode, (transaction) => callback(transaction.objectStore(storeName)));
 }
 
 function requestResult(request) {
@@ -78,19 +99,79 @@ export async function listWorkspaceSequences() {
   return [...records].sort((left, right) => String(right.updatedAt).localeCompare(String(left.updatedAt)));
 }
 
-export async function saveWorkspaceSequence(sequenceRecord) {
-  const now = new Date().toISOString();
-  const record = {
+function normalizeWorkspaceSequence(sequenceRecord, now) {
+  const sequence = String(sequenceRecord.sequence ?? "");
+  if (/^\s*>/m.test(sequence)) {
+    throw new Error("A Workspace record can contain only one sequence. Import multi-record FASTA through Workspace so SMS3 can save each FASTA record separately.");
+  }
+  return {
     ...sequenceRecord,
+    sequence,
     id: sequenceRecord.id || makeWorkspaceStorageId("workspace-sequence"),
     name: sequenceRecord.name || sequenceRecord.title || "Workspace sequence",
     createdAt: sequenceRecord.createdAt || now,
     updatedAt: now
   };
-  await withWorkspaceStore(WORKSPACE_SEQUENCE_STORE_NAME, "readwrite", (store) => {
-    store.put(record);
+}
+
+function normalizeWorkspaceFeatureLayer(layerRecord, now) {
+  return {
+    ...layerRecord,
+    id: layerRecord.id || makeWorkspaceStorageId("workspace-feature-layer"),
+    kind: "feature-layer",
+    label: layerRecord.label || layerRecord.name || "Workspace feature layer",
+    createdAt: layerRecord.createdAt || now,
+    updatedAt: now
+  };
+}
+
+export async function saveWorkspaceBatch({ sequences = [], featureLayers = [] } = {}) {
+  const now = new Date().toISOString();
+  const savedSequences = sequences.map((record) => normalizeWorkspaceSequence(record, now));
+  const savedFeatureLayers = featureLayers.map((record) => normalizeWorkspaceFeatureLayer(record, now));
+  const storeNames = [];
+  if (savedSequences.length > 0) storeNames.push(WORKSPACE_SEQUENCE_STORE_NAME);
+  if (savedFeatureLayers.length > 0) storeNames.push(WORKSPACE_FEATURE_LAYER_STORE_NAME);
+  if (storeNames.length === 0) return { sequences: [], featureLayers: [] };
+  await withWorkspaceStores(storeNames, "readwrite", (transaction) => {
+    const sequenceStore = savedSequences.length > 0
+      ? transaction.objectStore(WORKSPACE_SEQUENCE_STORE_NAME)
+      : null;
+    const layerStore = savedFeatureLayers.length > 0
+      ? transaction.objectStore(WORKSPACE_FEATURE_LAYER_STORE_NAME)
+      : null;
+    savedSequences.forEach((record) => sequenceStore.put(record));
+    savedFeatureLayers.forEach((record) => layerStore.put(record));
   });
-  return record;
+  return { sequences: savedSequences, featureLayers: savedFeatureLayers };
+}
+
+export async function saveWorkspaceSequenceLayerGroups(groups = []) {
+  const now = new Date().toISOString();
+  const savedSequences = groups.map((group) => normalizeWorkspaceSequence(group.sequenceDraft, now));
+  const savedFeatureLayers = groups.flatMap((group, index) =>
+    (group.layerDrafts ?? []).map((layerDraft) => normalizeWorkspaceFeatureLayer({
+      ...layerDraft,
+      id: "",
+      sequenceId: savedSequences[index].id,
+      sequenceHash: savedSequences[index].sequenceHash ?? layerDraft.sequenceHash ?? ""
+    }, now))
+  );
+  await withWorkspaceStores(
+    [WORKSPACE_SEQUENCE_STORE_NAME, WORKSPACE_FEATURE_LAYER_STORE_NAME],
+    "readwrite",
+    (transaction) => {
+      const sequenceStore = transaction.objectStore(WORKSPACE_SEQUENCE_STORE_NAME);
+      const layerStore = transaction.objectStore(WORKSPACE_FEATURE_LAYER_STORE_NAME);
+      savedSequences.forEach((record) => sequenceStore.put(record));
+      savedFeatureLayers.forEach((record) => layerStore.put(record));
+    }
+  );
+  return { sequences: savedSequences, featureLayers: savedFeatureLayers };
+}
+
+export async function saveWorkspaceSequence(sequenceRecord) {
+  return (await saveWorkspaceBatch({ sequences: [sequenceRecord] })).sequences[0];
 }
 
 export async function deleteWorkspaceSequence(id) {
@@ -110,19 +191,7 @@ export async function listWorkspaceFeatureLayers({ sequenceId = "" } = {}) {
 }
 
 export async function saveWorkspaceFeatureLayer(layerRecord) {
-  const now = new Date().toISOString();
-  const record = {
-    ...layerRecord,
-    id: layerRecord.id || makeWorkspaceStorageId("workspace-feature-layer"),
-    kind: "feature-layer",
-    label: layerRecord.label || layerRecord.name || "Workspace feature layer",
-    createdAt: layerRecord.createdAt || now,
-    updatedAt: now
-  };
-  await withWorkspaceStore(WORKSPACE_FEATURE_LAYER_STORE_NAME, "readwrite", (store) => {
-    store.put(record);
-  });
-  return record;
+  return (await saveWorkspaceBatch({ featureLayers: [layerRecord] })).featureLayers[0];
 }
 
 export async function deleteWorkspaceFeatureLayer(id) {

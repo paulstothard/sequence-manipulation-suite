@@ -1,4 +1,5 @@
 import { renderTreeSvg } from "../../packages/tree-viewer/src/export/svg.js";
+import { renderPlateSvg } from "../core/plate-layout-svg.js";
 import { renderObservablePlotPreview } from "./plot-preview-ui.js";
 import { renderSequenceExtractorWorkspace } from "./sequence-extractor-workspace-ui.js";
 import { alignmentViewerReferenceExample } from "../examples/alignment-viewer-example.js";
@@ -510,7 +511,10 @@ async function renderShowcaseCard(card, item, token, context) {
       ? renderObservablePlotPreview(result.visual.plotSpec)
       : null;
     const svg = result.visual?.svg ?? (String(result.output ?? "").trimStart().startsWith("<svg") ? result.output : "");
-    if (result.visual?.treeViewer) {
+    if (result.visual?.plateLayout) {
+      preview.insertAdjacentHTML("beforeend", renderPlateSvg(result.visual.plateLayout.layout));
+      preview.querySelectorAll("svg").forEach(normalizeShowcaseSvg);
+    } else if (result.visual?.treeViewer) {
       const treeDocument = result.visual.treeViewer.document;
       const figure = await renderTreeSvg(treeDocument, treeDocument.trees[0].id);
       if (context.state.showcaseRenderToken !== token) return;

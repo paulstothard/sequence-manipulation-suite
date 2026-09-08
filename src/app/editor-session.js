@@ -1,6 +1,7 @@
 import { downloadText } from "./file-download.js";
+import { validatePlateLayout } from "../core/plate-layout.js";
 const EDITOR_DOCUMENT_FORMAT = "sms3-editor-document";
-const EDITOR_TOOLS = ["workflow", "tree-viewer", "sequence-editor", "markdown-notebook", "linear-genome-figure", "circular-genome-figure", "sequence-extractor", "sanger-trace-viewer", "sanger-trace-assembly", "sanger-trace-reference-comparison"];
+const EDITOR_TOOLS = ["workflow", "tree-viewer", "plate-layout-planner", "sequence-editor", "markdown-notebook", "linear-genome-figure", "circular-genome-figure", "sequence-extractor", "sanger-trace-viewer", "sanger-trace-assembly", "sanger-trace-reference-comparison"];
 const MAX_BYTES = 25 * 1024 * 1024;
 const copy = (value) => structuredClone(value);
 const recoveryWrites = new Map();
@@ -15,6 +16,11 @@ function parseEditorDocument(text) {
   };
   const object = (value) => value && typeof value === "object" && !Array.isArray(value);
   const records = doc.source.records;
+  if (doc.tool === "plate-layout-planner") {
+    if (typeof doc.source.input !== "string" || doc.source.input.length > 1_000_000) fail();
+    validatePlateLayout(doc.source.layout);
+    validatePlateLayout(doc.state.layout);
+  }
   if (doc.tool === "sequence-editor" && (typeof doc.source.input !== "string" || typeof doc.state.text !== "string" || !Array.isArray(doc.state.featureTrackOverrides))) fail();
   if (doc.tool === "markdown-notebook" && typeof doc.state.markdown !== "string") fail();
   if (doc.tool === "tree-viewer" && (!object(doc.source.document) || !object(doc.state.document) || !Array.isArray(doc.state.document.trees))) fail();

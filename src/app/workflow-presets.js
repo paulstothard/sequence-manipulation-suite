@@ -1,4 +1,14 @@
+import { labWorkflowPresets } from "./workflow-lab-presets.js";
+
 const WORKFLOW_EXAMPLE_LOADERS = {
+  ...Object.fromEntries([
+    ["haplotype-restriction-gel", "haplotypeRestrictionExample"],
+    ["compare-protein-digests", "proteinDigestComparisonExample"],
+    ["qpcr-expression-heatmap", "qpcrHeatmapExample"],
+    ["simulated-sequencing-run", "sequencingWorkflowExample"],
+    ["compare-fastq-trimming", "fastqTrimmingExample"],
+    ["review-target-variants", "targetVariantExample"]
+  ].map(([id, name]) => [id, async () => (await import("../examples/workflow-lab-examples.js"))[name]()])),
   "hbb-dna-phylogeny": async () => (await import("../examples/workflow-phylogeny-examples.js")).workflowDnaFamilyExample,
   "hbb-protein-phylogeny": async () => (await import("../examples/workflow-phylogeny-examples.js")).workflowProteinFamilyExample,
   "human-mitochondrion-genbank": async () => {
@@ -475,7 +485,7 @@ CTGCAGAAATTCC`,
   {
     id: "orf-codon-usage",
     name: "ORFs to codon usage",
-    summary: "Find complete forward-strand ORFs, pass ORF nucleotide records to Codon Usage, and show the codon usage table.",
+    summary: "Find complete forward-strand ORFs, calculate codon usage, and show only codons observed in each ORF and the combined total when available.",
     example: `>orf-example-one
 AAACCCATGAAATAGGGGATGCCCTAA
 >orf-example-two
@@ -505,6 +515,11 @@ GGGATGAAACCCGGGTAAATGCCCAAATAG`,
           input: { from: "find-orfs", stream: "orfRecords" },
           selectStream: "table",
           options: { outputFormat: "table" }
+        },
+        {
+          id: "nonzero-codons",
+          type: "filter",
+          criteria: { field: "count", operator: ">", value: 0 }
         }
       ]
     }
@@ -778,5 +793,6 @@ ACGTRYSWKMBDHVN`,
         }
       ]
     }
-  }
+  },
+  ...labWorkflowPresets
 ];

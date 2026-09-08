@@ -35,11 +35,15 @@ Fetched files:
 - `bedtools/2.31.0/bedtools.data` from `https://biowasm.com/cdn/v3/bedtools/2.31.0/bedtools.data`
 
 The vendored Aioli bootstrap is patched to create its nested worker from a
-same-origin `Blob` URL when SMS3 runs BioWasm from a module worker.
+same-origin `Blob` URL when SMS3 runs BioWasm from a module worker. The URL stays
+alive until the worker responds or fails, avoiding WebKit startup races. Worker
+startup errors reject initialization and terminate the failed worker rather than
+leaving Comlink requests pending. Preserve these local changes when updating
+Aioli; `e2e/biowasm-worker-startup.spec.js` covers lifecycle and error handling.
 
 SHA-256 checksums:
 
-- `aioli/3.2.1/aioli.js`: `eefafecf0ac799c44284ac045e09862d6f62766a364fe4245365243e6082f515`
+- `aioli/3.2.1/aioli.js`: `73dfa2f4bad4f4b07fbf72e4a62a33c2bef24428e48d520ed01864b8a16d2f1a`
 - `muscle/5.1.0/muscle.js`: `a857f4120fa752316e985d4e15df0004cd54997568b903e2297356735ce7fa10`
 - `muscle/5.1.0/muscle.wasm`: `bfd665c7cbd0847bbdc4d672a9fc975ab6f785b26e99d8a7adf0497f213a95cd`
 - `seq-align/2017.10.18/needleman_wunsch.js`: `f806e8f02dbf52366c6fbec589a3bc72bfd7ff92e7acf705068c01bde31a3260`

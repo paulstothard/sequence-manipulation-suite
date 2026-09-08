@@ -1,7 +1,11 @@
 import { renderTreeViewer } from "./tree-viewer-ui.js";
+import { renderPlateLayout } from "./plate-layout-ui.js";
 import { describeStream, describeViewerStream, describeWorkflowStreamChoice } from "./workflow-stream-labels.js";
 import { buildOutputDescriptionText, sha256Hex } from "./output-description.js";
-import { saveWorkspaceFeatureLayer, saveWorkspaceSequence } from "./workspace-storage.js";
+import {
+  saveWorkspaceBatch,
+  saveWorkspaceSequenceLayerGroups
+} from "./workspace-storage.js";
 import {
   getResultWorkspaceFeatureLayerDrafts,
   getResultWorkspaceSequenceDrafts,
@@ -147,9 +151,7 @@ function appendWorkspacePromotionActions(parent, result) {
   button.addEventListener("click", async () => {
     button.disabled = true;
     try {
-      for (const draft of drafts) {
-        await saveWorkspaceSequence(draft);
-      }
+      await saveWorkspaceBatch({ sequences: drafts });
       status.textContent = `Saved ${pluralize(drafts.length, "sequence")} to the workspace.`;
       await refreshWorkspaceSequences();
     } catch (error) {
@@ -183,25 +185,6 @@ function getWorkspaceSequenceLayerGroupsFromResult(result) {
     sourceStreamId: "visual.viewer",
     options: result.optionsUsed ?? {}
   });
-}
-
-async function saveWorkspaceSequenceLayerGroups(groups) {
-  let sequenceCount = 0;
-  let layerCount = 0;
-  for (const group of groups) {
-    const savedSequence = await saveWorkspaceSequence(group.sequenceDraft);
-    sequenceCount += 1;
-    for (const layerDraft of group.layerDrafts) {
-      await saveWorkspaceFeatureLayer({
-        ...layerDraft,
-        id: "",
-        sequenceId: savedSequence.id,
-        sequenceHash: savedSequence.sequenceHash ?? layerDraft.sequenceHash ?? ""
-      });
-      layerCount += 1;
-    }
-  }
-  return { sequenceCount, layerCount };
 }
 
 function getSequenceLayerPromotionButtonText(sequenceCount, layerCount) {
@@ -244,11 +227,9 @@ function appendWorkspaceFeatureLayerPromotionActions(parent, result) {
     try {
       if (shouldCreateSequences) {
         const saved = await saveWorkspaceSequenceLayerGroups(sequenceLayerGroups);
-        status.textContent = `Created ${pluralize(saved.sequenceCount, "sequence")} and saved ${pluralize(saved.layerCount, "feature layer")} to the workspace.`;
+        status.textContent = `Created ${pluralize(saved.sequences.length, "sequence")} and saved ${pluralize(saved.featureLayers.length, "feature layer")} to the workspace.`;
       } else {
-        for (const draft of drafts) {
-          await saveWorkspaceFeatureLayer({ ...draft, id: "" });
-        }
+        await saveWorkspaceBatch({ featureLayers: drafts.map((draft) => ({ ...draft, id: "" })) });
         status.textContent = `Saved ${pluralize(drafts.length, "feature layer")} to the workspace.`;
       }
       await refreshWorkspaceSequences();
@@ -284,9 +265,7 @@ function appendWorkflowWorkspacePromotionActions(parent, result, workflowDefinit
   button.addEventListener("click", async () => {
     button.disabled = true;
     try {
-      for (const draft of drafts) {
-        await saveWorkspaceSequence(draft);
-      }
+      await saveWorkspaceBatch({ sequences: drafts });
       status.textContent = `Saved ${pluralize(drafts.length, "sequence")} to the workspace.`;
       await refreshWorkspaceSequences();
     } catch (error) {
@@ -353,11 +332,9 @@ function appendWorkflowFeatureLayerPromotionActions(parent, result, workflowDefi
     try {
       if (shouldCreateSequences) {
         const saved = await saveWorkspaceSequenceLayerGroups(sequenceLayerGroups);
-        status.textContent = `Created ${pluralize(saved.sequenceCount, "sequence")} and saved ${pluralize(saved.layerCount, "feature layer")} to the workspace.`;
+        status.textContent = `Created ${pluralize(saved.sequences.length, "sequence")} and saved ${pluralize(saved.featureLayers.length, "feature layer")} to the workspace.`;
       } else {
-        for (const draft of drafts) {
-          await saveWorkspaceFeatureLayer({ ...draft, id: "" });
-        }
+        await saveWorkspaceBatch({ featureLayers: drafts.map((draft) => ({ ...draft, id: "" })) });
         status.textContent = `Saved ${pluralize(drafts.length, "feature layer")} to the workspace.`;
       }
       await refreshWorkspaceSequences();
@@ -1664,7 +1641,7 @@ function renderVisualOutput(scope, svg, options = {}) {
     }
   }
   visualOutput._sms3PortableViewerSnapshot = null;
-  if (!svg && !options.viewer && !options.figure && !options.proteinStructure && !options.notebook && !options.sangerTrace && !options.sequenceEditor && !options.sequenceExtractor && !options.treeViewer) {
+  if (!svg && !options.viewer && !options.figure && !options.proteinStructure && !options.notebook && !options.sangerTrace && !options.sequenceEditor && !options.sequenceExtractor && !options.treeViewer && !options.plateLayout) {
     visualOutput.hidden = true;
     visualOutput.textContent = "";
     return;
@@ -1673,7 +1650,7 @@ function renderVisualOutput(scope, svg, options = {}) {
   visualOutput.textContent = "";
   const heading = document.createElement("h4");
   heading.className = "visual-output-heading";
-  heading.textContent = options.treeViewer ? "Tree Viewer" : options.figure
+  heading.textContent = options.plateLayout ? "Plate Layout Planner" : options.treeViewer ? "Tree Viewer" : options.figure
     ? "Genome Figure"
     : options.sequenceExtractor
       ? "Interactive sequence extractor"
@@ -1691,6 +1668,10 @@ function renderVisualOutput(scope, svg, options = {}) {
             ? "Markdown Notebook"
             : "Plot";
   appendPortableViewerHeading(visualOutput, heading, options);
+  if (options.plateLayout) {
+    renderPlateLayout(visualOutput, options.plateLayout, options.editorDocument);
+    return "";
+  }
   if (options.treeViewer) {
     renderTreeViewer(visualOutput, options.treeViewer, options.editorDocument);
     return "";
@@ -1797,7 +1778,7 @@ function renderVisualOutput(scope, svg, options = {}) {
 }
 
 function applyToolOutputChoice(choice) {
-  const hasVisualOutput = Boolean(choice.svg || choice.viewer || choice.figure || choice.proteinStructure || choice.notebook || choice.sangerTrace || choice.sequenceEditor || choice.sequenceExtractor || choice.treeViewer);
+  const hasVisualOutput = Boolean(choice.svg || choice.viewer || choice.figure || choice.proteinStructure || choice.notebook || choice.sangerTrace || choice.sequenceEditor || choice.sequenceExtractor || choice.treeViewer || choice.plateLayout);
   const hasPrimaryOutput = Boolean(choice.text || choice.tableStream || hasVisualOutput);
   elements.toolOutput.dataset.rawOutput = choice.text;
   elements.toolOutput.value = choice.tableStream
@@ -1821,7 +1802,8 @@ function applyToolOutputChoice(choice) {
     sangerTrace: choice.sangerTrace,
     sequenceEditor: choice.sequenceEditor,
     sequenceExtractor: choice.sequenceExtractor,
-    treeViewer: choice.treeViewer
+    treeViewer: choice.treeViewer,
+    plateLayout: choice.plateLayout
   });
   if (choice.svg && displayedSvg) {
     elements.toolOutput.dataset.rawOutput = displayedSvg;
@@ -1836,7 +1818,7 @@ function applyToolOutputChoice(choice) {
   elements.toolOutput.hidden = Boolean(choice.tableStream || hasVisualOutput || !choice.text);
   setOutputSearchRowVisible("tool", Boolean(choice.tableStream || (!hasVisualOutput && choice.text)));
   updateOutputActions("tool", {
-    hidden: Boolean(choice.tableStream || choice.viewer || choice.figure || choice.proteinStructure || choice.notebook || choice.sangerTrace || choice.sequenceEditor || choice.sequenceExtractor || choice.treeViewer || (!choice.text && !choice.svg)),
+    hidden: Boolean(choice.tableStream || choice.viewer || choice.figure || choice.proteinStructure || choice.notebook || choice.sangerTrace || choice.sequenceEditor || choice.sequenceExtractor || choice.treeViewer || choice.plateLayout || (!choice.text && !choice.svg)),
     mimeType: choice.download.mimeType,
     label: choice.label
   });
@@ -1889,7 +1871,8 @@ function renderGeneratedToolOutputChoice(result) {
     sangerTrace,
     sequenceEditor,
     sequenceExtractor,
-    treeViewer: result.visual?.treeViewer ?? null
+    treeViewer: result.visual?.treeViewer ?? null,
+    plateLayout: result.visual?.plateLayout ?? null
   };
   state.currentToolOutputChoices = [choice];
   elements.outputFormatSelect.textContent = "";

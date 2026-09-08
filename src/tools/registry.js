@@ -1,4 +1,13 @@
+import { variantConsensusMetadata } from "./variant-consensus-builder/metadata.js";
+import { runVariantConsensus } from "./variant-consensus-builder/run.js";
+import { variantConsensusExample } from "../examples/variant-consensus-example.js";
+import { qpcrAnalysisMetadata } from "./qpcr-analysis/metadata.js";
+import { runQpcrAnalysis } from "./qpcr-analysis/run.js";
+import { qpcrExample } from "../examples/qpcr-example.js";
 import { treeViewerMetadata } from "./tree-viewer/metadata.js";
+import { plateLayoutMetadata } from "./plate-layout-planner/metadata.js";
+import { runPlateLayout } from "./plate-layout-planner/run.js";
+import { plateLayoutExample } from "../examples/plate-layout-example.js";
 import { runTreeViewer } from "./tree-viewer/run.js";
 import { treeViewerExample } from "../examples/tree-viewer-example.js";
 import {
@@ -175,6 +184,9 @@ import { runVcfRandomSampler } from "./vcf-random-sampler/run.js";
 import { samBamSummaryRegionViewerMetadata } from "./sam-bam-summary-region-viewer/metadata.js";
 import { runSamBamSummaryRegionViewer } from "./sam-bam-summary-region-viewer/run.js";
 import { proteinHydropathyMetadata } from "./protein-hydropathy/metadata.js";
+import { proteinDigestMetadata } from "./protein-digest/metadata.js";
+import { runProteinDigest } from "./protein-digest/run.js";
+import { proteinDigestExample } from "../examples/protein-digest-example.js";
 import { runProteinHydropathy } from "./protein-hydropathy/run.js";
 import { proteinPatternFinderMetadata } from "./protein-pattern-finder/metadata.js";
 import { runProteinPatternFinder } from "./protein-pattern-finder/run.js";
@@ -446,6 +458,9 @@ function makeFastqQcExample() {
 }
 
 export const tools = [
+  { metadata: plateLayoutMetadata, run: runPlateLayout, example: plateLayoutExample },
+  { metadata: variantConsensusMetadata, run: runVariantConsensus, example: variantConsensusExample },
+  { metadata: qpcrAnalysisMetadata, run: runQpcrAnalysis, example: qpcrExample },
   { metadata: treeViewerMetadata, run: runTreeViewer, example: treeViewerExample },
   {
     metadata: reverseComplementMetadata,
@@ -2109,6 +2124,11 @@ GCTGTCCCCGGACGATATTGAACAATGGTTCACTGAAGACCCAGGTCCAGATGAAGCTCCCAGAA`
 MEEPQSDPSVEPPLSQETFSDLWKLLPENNVLSPLPSQAMDDLMLSPDDIEQWFTEDPGP
 DEAPRMPEAAPPVAPAPAAPTPAAPAPAPSWPLSSSVPSQKTYQGSYGFRLGFLHSGTA
 KSVTCTYSPALNKMFCQLAKTCPVQLWVDSTPPPGTRVRAMAIYKQSQHMTEVVRRCPHH`
+  },
+  {
+    metadata: proteinDigestMetadata,
+    run: runProteinDigest,
+    example: proteinDigestExample
   },
   {
     metadata: proteinHydropathyMetadata,

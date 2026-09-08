@@ -4,6 +4,8 @@ import { generateRandomSeed } from "./random-sequence.js";
 import { exportDelimitedTable } from "./table.js";
 import { createBioWasmCli, requireBioWasmRuntime } from "./biowasm-runner.js";
 
+// WGSIM by Heng Li: https://github.com/lh3/wgsim
+// Browser build and execution: https://biowasm.com/documentation
 export const WGSIM_VERSION = "2011.10.17";
 
 const OUTPUT_FORMATS = new Set(["fastq", "fasta", "truth-table", "report"]);
@@ -401,7 +403,11 @@ export function makeReadSimulatorReport(result) {
   if (result.warnings.length > 0) {
     lines.push("", "Warnings:", ...result.warnings.map((warning) => `- ${warning}`));
   }
-  lines.push("", "Reference: Li H. wgsim read simulator, distributed with SAMtools.");
+  lines.push(
+    "", "References:", "",
+    `Li H. WGSIM read simulator (${WGSIM_VERSION}). https://github.com/lh3/wgsim`,
+    "", "BioWasm documentation. https://biowasm.com/documentation"
+  );
   return lines.join("\n");
 }
 

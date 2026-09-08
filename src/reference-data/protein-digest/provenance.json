@@ -1,0 +1,16 @@
+{
+  "name": "Protein digest specificity models",
+  "version": "1.0.0",
+  "accessDate": "2026-09-07",
+  "sourceName": "ExPASy PeptideCutter cleavage specificity documentation",
+  "sourceUrl": "https://web.expasy.org/peptide_cutter/peptidecutter_enzymes.html",
+  "upstreamVersion": "Documentation accessed 2026-09-07",
+  "buildScript": "scripts/reference-data/build-protein-digest-data.mjs",
+  "license": "SMS3 independently encoded scientific specificity facts; no upstream code or descriptive passages are bundled.",
+  "assumptions": [
+    "Sequence-based predictions; experimental cleavage may differ.",
+    "Single enzyme, unmodified linear peptides, free termini; no disulfide linkage or modification correction.",
+    "Ambiguous residues are retained but their peptide masses are unavailable; neighboring cleavage may be uncertain."
+  ],
+  "recordCount": 6
+}

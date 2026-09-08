@@ -1,11 +1,43 @@
 import {
   deleteWorkspaceFeatureLayer,
   deleteWorkspaceSequence,
-  saveWorkspaceFeatureLayer,
+  saveWorkspaceBatch,
   saveWorkspaceSequence
 } from "./workspace-storage.js";
 import { parseSequenceInput } from "../core/fasta.js";
 import { workspaceSamples } from "../examples/workspace-sample.js";
+
+const WORKSPACE_SELECTED_SEQUENCE_KEY = "sms3-workspace-selected-sequence-id";
+
+function readSelectedWorkspaceSequenceId() {
+  try {
+    return globalThis.localStorage?.getItem(WORKSPACE_SELECTED_SEQUENCE_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function saveSelectedWorkspaceSequenceId(sequenceId = "") {
+  try {
+    if (sequenceId) {
+      globalThis.localStorage?.setItem(WORKSPACE_SELECTED_SEQUENCE_KEY, sequenceId);
+    } else {
+      globalThis.localStorage?.removeItem(WORKSPACE_SELECTED_SEQUENCE_KEY);
+    }
+  } catch {
+    // Workspace remains usable when browser preference storage is unavailable.
+  }
+}
+
+export function groupCompatibleWorkspaceTools(tools = []) {
+  const groups = new Map();
+  for (const tool of tools) {
+    const category = tool?.metadata?.category || "Other tools";
+    if (!groups.has(category)) groups.set(category, []);
+    groups.get(category).push(tool);
+  }
+  return [...groups].map(([category, groupedTools]) => ({ category, tools: groupedTools }));
+}
 
 function fallbackPluralize(count, singular, plural = `${singular}s`) {
   const label = Math.abs(Number(count)) === 1 ? singular : plural;
@@ -71,11 +103,16 @@ export function createWorkspaceViewController({
   let sampleStatusMessage = "";
   let manualStatusMessage = "";
   let workspaceStatusMessage = "";
-  let activeWorkspaceSequenceId = "";
+  let activeWorkspaceSequenceId = readSelectedWorkspaceSequenceId();
   let workspaceListQuery = "";
   let workspaceListFilter = "all";
   let workspaceListSort = "newest";
   let refocusWorkspaceSearch = false;
+
+  function selectWorkspaceSequence(sequenceId = "") {
+    activeWorkspaceSequenceId = sequenceId;
+    saveSelectedWorkspaceSequenceId(sequenceId);
+  }
 
   function splitGeneratedName(name = "") {
     const text = String(name || "Workspace sequence");
@@ -139,7 +176,7 @@ export function createWorkspaceViewController({
     const empty = document.createElement("div");
     empty.className = "workspace-empty-state";
     empty.textContent =
-      "No sequence records yet. Import one, load an example project, or save a sequence output from a tool.";
+      "No sequence records yet. Try an example project to see how one saved sequence and its feature layers can reopen together in compatible tools.";
     parent.append(empty);
   }
 
@@ -240,14 +277,12 @@ export function createWorkspaceViewController({
 
   function getSelectedSequence(sequences) {
     if (sequences.length === 0) {
-      activeWorkspaceSequenceId = "";
       return null;
     }
     const selected = sequences.find((sequence) => sequence.id === activeWorkspaceSequenceId);
     if (selected) {
       return selected;
     }
-    activeWorkspaceSequenceId = sequences[0].id;
     return sequences[0];
   }
 
@@ -316,7 +351,7 @@ export function createWorkspaceViewController({
     button.setAttribute("aria-pressed", String(selectedSequence?.id === sequence.id));
     button.title = sequence.name || "";
     button.addEventListener("click", () => {
-      activeWorkspaceSequenceId = sequence.id;
+      selectWorkspaceSequence(sequence.id);
       render();
     });
 
@@ -393,7 +428,7 @@ export function createWorkspaceViewController({
       ...sequence,
       name: nextName
     });
-    activeWorkspaceSequenceId = saved.id;
+    selectWorkspaceSequence(saved.id);
     workspaceStatusMessage = `Renamed record to "${saved.name}".`;
     setStorageStatus(workspaceStatusMessage);
     await refresh();
@@ -408,7 +443,7 @@ export function createWorkspaceViewController({
       createdAt: "",
       updatedAt: ""
     });
-    activeWorkspaceSequenceId = saved.id;
+    selectWorkspaceSequence(saved.id);
     workspaceStatusMessage = `Duplicated "${sequence.name}".`;
     setStorageStatus(workspaceStatusMessage);
     await refresh();
@@ -518,11 +553,16 @@ export function createWorkspaceViewController({
       label.className = "select-row workspace-tool-picker";
       label.textContent = "Analyze with";
       const select = document.createElement("select");
-      for (const tool of selectableTools) {
-        const option = document.createElement("option");
-        option.value = tool.metadata.id;
-        option.textContent = tool.metadata.name;
-        select.append(option);
+      for (const group of groupCompatibleWorkspaceTools(selectableTools)) {
+        const optionGroup = document.createElement("optgroup");
+        optionGroup.label = group.category;
+        for (const tool of group.tools) {
+          const option = document.createElement("option");
+          option.value = tool.metadata.id;
+          option.textContent = tool.metadata.name;
+          optionGroup.append(option);
+        }
+        select.append(optionGroup);
       }
       const fallbackToolId = getPreferredWorkspaceToolId(sequence, selectableTools, {
         hasFeatureLayers: featureLayers.length > 0
@@ -536,7 +576,10 @@ export function createWorkspaceViewController({
       openButton.addEventListener("click", () => openSequenceInTool(sequence, select.value));
       label.append(select);
       actionRow.append(label, openButton);
-      toolSection.append(analyzeHeading, actionRow);
+      const compatibleNote = document.createElement("p");
+      compatibleNote.className = "workspace-muted-note workspace-compatible-note";
+      compatibleNote.textContent = "Only tools that accept this record type are shown, grouped by task.";
+      toolSection.append(analyzeHeading, actionRow, compatibleNote);
     }
 
     const layerSection = document.createElement("div");
@@ -605,7 +648,7 @@ export function createWorkspaceViewController({
         await deleteWorkspaceFeatureLayer(layer.id);
       }
       await deleteWorkspaceSequence(sequence.id);
-      activeWorkspaceSequenceId = "";
+      selectWorkspaceSequence("");
       await refresh();
     });
     managementSection.append(managementHeading, renameRow, managementButtons, managementNote, deleteButton);
@@ -680,15 +723,12 @@ export function createWorkspaceViewController({
       return;
     }
     try {
-      let firstSavedId = "";
-      for (const record of cleanRecords) {
-        const saved = await saveWorkspaceSequence(record);
-        firstSavedId = firstSavedId || saved.id;
-      }
+      const saved = await saveWorkspaceBatch({ sequences: cleanRecords });
+      const firstSavedId = saved.sequences[0]?.id ?? "";
       textarea.value = "";
       const message = `Imported ${pluralize(cleanRecords.length, "sequence record")} to the workspace.`;
       activeSetupPanel = "";
-      activeWorkspaceSequenceId = firstSavedId;
+      selectWorkspaceSequence(firstSavedId);
       workspaceStatusMessage = message;
       manualStatusMessage = message;
       status.textContent = message;
@@ -713,21 +753,16 @@ export function createWorkspaceViewController({
         changes.updatedFeatureLayers === 0
       ) {
         activeSetupPanel = "sample";
-        activeWorkspaceSequenceId = sample.sequences[0]?.id || activeWorkspaceSequenceId;
+        selectWorkspaceSequence(sample.sequences[0]?.id || activeWorkspaceSequenceId);
         workspaceStatusMessage = "";
         sampleStatusMessage = message;
         status.textContent = message;
         render();
         return;
       }
-      for (const sequence of sample.sequences) {
-        await saveWorkspaceSequence(sequence);
-      }
-      for (const layer of sample.featureLayers) {
-        await saveWorkspaceFeatureLayer(layer);
-      }
+      await saveWorkspaceBatch({ sequences: sample.sequences, featureLayers: sample.featureLayers });
       activeSetupPanel = "";
-      activeWorkspaceSequenceId = sample.sequences[0]?.id || "";
+      selectWorkspaceSequence(sample.sequences[0]?.id || "");
       workspaceStatusMessage = message;
       sampleStatusMessage = "";
       await refresh();
@@ -762,6 +797,12 @@ export function createWorkspaceViewController({
     stats.className = "workspace-overview-stats";
     stats.textContent = `${pluralize(sequences.length, "sequence record")} - ${pluralize(getFeatureLayerCount(sequences), "feature layer")} attached - saved locally in this browser`;
     overviewCopy.append(intro, stats);
+    if (sequences.length === 0) {
+      const quickStart = document.createElement("p");
+      quickStart.className = "workspace-quick-start";
+      quickStart.textContent = "Quick start: load an example project, choose a record, then open it with its annotations in a viewer.";
+      overviewCopy.append(quickStart);
+    }
     if (workspaceStatusMessage) {
       const actionStatus = document.createElement("p");
       actionStatus.className = "workspace-action-status";
@@ -937,6 +978,7 @@ export function createWorkspaceViewController({
 
     const controls = document.createElement("div");
     controls.className = "workspace-list-controls";
+    controls.hidden = sequences.length === 0;
     const searchLabel = document.createElement("label");
     searchLabel.className = "text-row workspace-search-field";
     searchLabel.textContent = "Find records";

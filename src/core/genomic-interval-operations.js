@@ -315,7 +315,11 @@ export function parseGenomicIntervalInput(input, options = {}) {
   const reference = referenceText
     ? parseIntervalSet(referenceText, normalized.referenceFormat, "reference", normalized.maxReferenceIntervals)
     : { format: normalized.referenceFormat, intervals: [], warnings: [] };
-  if (query.intervals.length === 0) {
+  // A filtered, header-only VCF is a valid empty set. Invalid data rows must
+  // still fail rather than masquerading as an absence of overlaps.
+  const emptyVcf = query.format === "vcf" && /^#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO(?:\t|\r?$)/m.test(queryText)
+    && nonCommentLines(queryText).every(line => line.startsWith("#"));
+  if (query.intervals.length === 0 && !emptyVcf) {
     throw new Error("No query intervals could be parsed.");
   }
   if (normalized.operation !== "merge" && reference.intervals.length === 0) {
@@ -642,7 +646,11 @@ export async function runGenomicIntervalOperationsCore(input, options = {}, cont
   let engine = "sms3";
   let command = "";
 
-  if (parsed.options.intervalEngine === "bedtools") {
+  if (parsed.query.intervals.length === 0) {
+    rows = [];
+    engine = "not run (empty query set)";
+    warnings.push("The input VCF contains no variant records; there are no intervals to compare.");
+  } else if (parsed.options.intervalEngine === "bedtools") {
     const bedtoolsResult = await runBedtoolsIntervals(parsed.query.intervals, parsed.reference.intervals, parsed.options, context);
     rows = limitRows(bedtoolsResult.rows, parsed.options, warnings);
     engine = `bedtools ${BEDTOOLS_VERSION}`;

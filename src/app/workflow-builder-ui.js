@@ -1,3 +1,5 @@
+import { labWorkflowOperations } from "../core/workflow-lab-operations.js";
+import { parseEditorDocument } from "./editor-session.js";
 import { readTreeDocumentStream, TREE_DOCUMENT_MEDIA_TYPE } from "../core/tree-document-stream.js";
 import {
   deleteSavedWorkflow,
@@ -17,6 +19,10 @@ function sequenceRecordsToFasta(stream) {
   return (stream.records ?? [])
     .map((record) => `>${record.title ?? "sequence"}\n${record.sequence ?? ""}`)
     .join("\n");
+}
+
+function makeReferenceReadsOutput() {
+  return { id: "primary", kind: "text", mediaType: "text/plain", label: "Reference and reads" };
 }
 
 function makeGff3BundleOutput(label = "GFF3 + FASTA annotation bundle") {
@@ -99,6 +105,7 @@ export function createWorkflowBuilderController({
   const {
     addWorkflowMessage,
     clearWorkflowOutput,
+    retireWorkflowRun,
     updateInputActionButtons
   } = callbacks;
 
@@ -135,6 +142,15 @@ export function createWorkflowBuilderController({
     }
 
     if (value.kind === "text") {
+      if (value.mediaType?.includes("json")) {
+        let candidate;
+        try { candidate = JSON.parse(value.text); } catch { /* Ordinary JSON text keeps its existing display. */ }
+        if (candidate?.format === "sms3-editor-document" && candidate.tool === "plate-layout-planner") {
+          const doc = parseEditorDocument(value.text);
+          return { text: "", rawText: value.text, summary: "Workflow output: editable plate layout", outputLabel: "Plate layout", isTsv: false,
+            plateLayout: doc.source, editorDocument: doc, filename: "plate-layout-planner.sms3.json", mimeType: "application/json" };
+        }
+      }
       return {
         text: value.text ?? "",
         rawText: value.text ?? "",
@@ -220,6 +236,7 @@ export function createWorkflowBuilderController({
   }
 
   function setWorkflowDefinition(workflow) {
+    retireWorkflowRun();
     state.importedWorkflow = workflow;
     elements.workflowJson.value = JSON.stringify(workflow, null, 2);
   }
@@ -315,6 +332,10 @@ export function createWorkflowBuilderController({
       return;
     }
     const selectedRecipe = elements.workflowPreset.value;
+    const recipe = workflowPresets.find((item) => item.id === selectedRecipe);
+    if (elements.workflowRecipeDescription) {
+      elements.workflowRecipeDescription.textContent = recipe?.summary ?? "";
+    }
     const canResetActiveWorkflow = Boolean(state.importedWorkflow || state.activeSavedWorkflowId);
     elements.workflowLoadRecipe.disabled = !selectedRecipe ||
       (selectedRecipe === state.selectedWorkflow && !canResetActiveWorkflow);
@@ -380,6 +401,7 @@ export function createWorkflowBuilderController({
         setWorkflowSavedStatus(`Saved workflow is not valid: ${errors.join(" ")}`);
         return;
       }
+      retireWorkflowRun();
       const workflow = cloneWorkflow(savedWorkflow.workflow);
       state.importedWorkflow = workflow;
       state.activeSavedWorkflowId = savedWorkflow.id;
@@ -456,21 +478,28 @@ export function createWorkflowBuilderController({
     if (inputStep) {
       const activeMode = workspaceInputSources.getWorkflowInputSourceMode(workflowDefinition);
       if (activeMode === "workspace") {
-        const selected = workspaceInputSources.getWorkflowSourceSequence(workflowDefinition);
+        const selected = workspaceInputSources.getWorkflowSourceSequences(workflowDefinition);
         const workspaceInputText = workspaceInputSources.getWorkflowInputText(workflowDefinition);
-        if (!selected || workspaceInputText === null) {
-          throw new Error("Choose a compatible workspace sequence or switch the workflow input to Paste / upload.");
+        const validation = workspaceInputSources.getWorkflowWorkspaceSelectionValidation(workflowDefinition);
+        if (!validation.valid || selected.length === 0 || workspaceInputText === null) {
+          throw new Error(validation.message || "Choose compatible Workspace records or switch the workflow input to Paste / upload.");
         }
         inputStep.text = workspaceInputText;
-        inputStep.workspaceSource = {
-          id: selected.id,
-          name: selected.name,
-          alphabet: selected.alphabet,
-          length: selected.length
-        };
+        inputStep.workspaceSources = selected.map((sequence) => ({
+          id: sequence.id,
+          name: sequence.name,
+          alphabet: sequence.alphabet,
+          length: sequence.length
+        }));
+        if (selected.length === 1) {
+          inputStep.workspaceSource = inputStep.workspaceSources[0];
+        } else {
+          delete inputStep.workspaceSource;
+        }
       } else {
         inputStep.text = elements.workflowInput.value;
         delete inputStep.workspaceSource;
+        delete inputStep.workspaceSources;
       }
     }
     return workflow;
@@ -550,6 +579,16 @@ export function createWorkflowBuilderController({
         continue;
       }
 
+      if (labWorkflowOperations[step.type]) {
+        lastOutput = labWorkflowOperations[step.type].output;
+        lastTool = undefined;
+        continue;
+      }
+      if (step.type === "reference-reads-bundle") {
+        lastOutput = makeReferenceReadsOutput();
+        lastTool = undefined;
+        continue;
+      }
       if (step.type === "orf-gff3-bundle") {
         lastOutput = makeGff3BundleOutput();
         continue;
@@ -609,6 +648,12 @@ export function createWorkflowBuilderController({
         }
       } else if (step.type === "split") {
         lastOutput = { kind: "collection", itemKind: "sequence-records", itemDescription: "sequence records" };
+      } else if (labWorkflowOperations[step.type]) {
+        lastOutput = labWorkflowOperations[step.type].output;
+        lastTool = undefined;
+      } else if (step.type === "reference-reads-bundle") {
+        lastOutput = makeReferenceReadsOutput();
+        lastTool = undefined;
       } else if (step.type === "orf-gff3-bundle") {
         lastOutput = makeGff3BundleOutput();
       } else if (step.type === "feature-table-gff3-bundle") {
@@ -778,6 +823,16 @@ export function createWorkflowBuilderController({
         output = { kind: "collection", itemKind: "sequence-records", itemDescription: "sequence records" };
         stepOutputs.set(step.id, output);
         stepTools.delete(step.id);
+      } else if (labWorkflowOperations[step.type]) {
+        output = labWorkflowOperations[step.type].output;
+        stepOutputs.set(step.id, output);
+        stepTools.delete(step.id);
+        lastTool = undefined;
+      } else if (step.type === "reference-reads-bundle") {
+        output = makeReferenceReadsOutput();
+        stepOutputs.set(step.id, output);
+        stepTools.delete(step.id);
+        lastTool = undefined;
       } else if (step.type === "orf-gff3-bundle") {
         output = makeGff3BundleOutput();
         stepOutputs.set(step.id, output);
@@ -835,6 +890,8 @@ export function createWorkflowBuilderController({
     if (step.type === "select-stream") {
       return "Choose a different result";
     }
+    if (labWorkflowOperations[step.type]) return step.label || labWorkflowOperations[step.type].name;
+    if (step.type === "reference-reads-bundle") return "Combine reference and reads";
     if (step.type === "orf-gff3-bundle") {
       return "Build ORF annotation bundle";
     }
@@ -893,6 +950,7 @@ export function createWorkflowBuilderController({
   }
 
   function describeWorkflowStep(step, workflow) {
+    if (labWorkflowOperations[step.type]) return labWorkflowOperations[step.type].summary;
     if (step.type === "input") {
       return "Start from pasted or loaded sequence text";
     }
@@ -935,6 +993,7 @@ export function createWorkflowBuilderController({
     if (step.type === "gather") {
       return `Gather items as ${step.as ?? "auto"}`;
     }
+    if (step.type === "reference-reads-bundle") return "Pair the original reference with the simulated reads for mapping";
     if (step.type === "orf-gff3-bundle") {
       return "Combine the sequence and predicted ORFs into a GFF3 + FASTA annotation bundle";
     }
@@ -1454,6 +1513,14 @@ export function createWorkflowBuilderController({
       return;
     }
 
+    if (step.type === "reference-reads-bundle") {
+      const note = document.createElement("p");
+      note.className = "workflow-builder-guidance";
+      note.textContent = "Pairs the reference input with the generated reads. Edit the Read Simulator step to change read count, length, errors or seed. Combined input is limited to 50 million characters.";
+      container.append(note);
+      return;
+    }
+
     if (step.type === "orf-gff3-bundle") {
       const note = document.createElement("p");
       note.className = "workflow-builder-guidance";
@@ -1599,6 +1666,15 @@ export function createWorkflowBuilderController({
     help.textContent = describeWorkflowStep(step, workflow);
     container.append(help);
 
+    if (labWorkflowOperations[step.type]) {
+      if (step.type === "text-section") {
+        const note = document.createElement("p");
+        note.className = "workflow-builder-guidance";
+        note.textContent = `Keep one ${step.separator} line between the two sections in the workflow input.`;
+        container.append(note);
+      }
+      return;
+    }
     if (step.type === "input") {
       const note = document.createElement("p");
       note.className = "workflow-builder-guidance";
@@ -1644,7 +1720,7 @@ export function createWorkflowBuilderController({
       return;
     }
 
-    if (step.type === "filter" || step.type === "sort" || step.type === "take" || step.type === "gather" || step.type === "split" || step.type === "orf-gff3-bundle" || step.type === "feature-table-gff3-bundle") {
+    if (step.type === "filter" || step.type === "sort" || step.type === "take" || step.type === "gather" || step.type === "split" || step.type === "orf-gff3-bundle" || step.type === "feature-table-gff3-bundle" || step.type === "reference-reads-bundle") {
       renderWorkflowOperationEditor(workflow, step, container);
       return;
     }

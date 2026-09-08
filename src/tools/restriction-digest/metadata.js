@@ -83,6 +83,14 @@ export const restrictionDigestMetadata = {
       ]
     },
     {
+      id: "poolLinearMolecules",
+      type: "checkbox",
+      label: "Include a pooled sample lane",
+      defaultValue: false,
+      visibleWhen: { option: "outputFormat", value: "svg-gel" },
+      help: "For linear DNA, combine fragments from all input molecules in one lane, followed by separate explanatory lanes. Assumes equal molecule counts; does not predict PCR efficiency or yield."
+    },
+    {
       id: "outputFormat",
       type: "radio",
       label: "Output format",

@@ -1280,10 +1280,13 @@ export function makeHeatmapPlot(input, options = {}) {
     return { table, rows: [], warnings, svg: renderEmptyPlot("Heatmap", warnings) };
   }
   const merged = new Map();
+  const inputX = new Set(), inputY = new Set();
   let skipped = 0;
   for (const row of table.rows) {
     const x = String(row[xColumn.id] ?? "").trim() || "(blank)";
     const y = String(row[yColumn.id] ?? "").trim() || "(blank)";
+    inputX.add(x);
+    inputY.add(y);
     const value = asNumber(row[valueColumn.id]);
     if (value === null) {
       skipped += 1;
@@ -1311,22 +1314,10 @@ export function makeHeatmapPlot(input, options = {}) {
     warnings.push("No numeric heatmap values were available for the selected columns.");
   }
   const categoryOrder = options.categoryOrder === "alphabetical" ? "alphabetical" : "input";
-  const xValues = orderValues(rows.map((row) => row.x), categoryOrder);
-  const yValues = orderValues(rows.map((row) => row.y), categoryOrder);
-  const rowByCell = new Map(rows.map((row) => [`${row.x}\u0000${row.y}`, row]));
-  const missingCells = [];
-  if (options.showMissingCells !== false) {
-    for (const y of yValues) {
-      for (const x of xValues) {
-        if (!rowByCell.has(`${x}\u0000${y}`)) {
-          missingCells.push({ x, y, title: `${y} / ${x}: missing` });
-        }
-      }
-    }
-    if (missingCells.length > 0) {
-      warnings.push(`${missingCells.length.toLocaleString()} missing X/Y cell combination(s) are shown as pale blank cells in the SVG.`);
-    }
-  }
+  // Preserve categories whose measurements are all unavailable, so a missing
+  // condition/target stays visible instead of silently disappearing.
+  const xValues = orderValues(inputX, categoryOrder);
+  const yValues = orderValues(inputY, categoryOrder);
   const visualCellCount = xValues.length * yValues.length;
   if (xValues.length > HEATMAP_CATEGORY_LIMIT || yValues.length > HEATMAP_CATEGORY_LIMIT) {
     warnings.push(`Heatmap has ${xValues.length} X categories and ${yValues.length} Y categories; category labels may be hard to read.`);
@@ -1340,6 +1331,20 @@ export function makeHeatmapPlot(input, options = {}) {
       plotSpec: null,
       svg: renderEmptyPlot(options.title || "Heatmap", warnings)
     };
+  }
+  const rowByCell = new Map(rows.map((row) => [`${row.x}\u0000${row.y}`, row]));
+  const missingCells = [];
+  if (options.showMissingCells !== false) {
+    for (const y of yValues) {
+      for (const x of xValues) {
+        if (!rowByCell.has(`${x}\u0000${y}`)) {
+          missingCells.push({ x, y, title: `${y} / ${x}: missing` });
+        }
+      }
+    }
+    if (missingCells.length > 0) {
+      warnings.push(`${missingCells.length.toLocaleString()} missing X/Y cell combination(s) are shown as pale blank cells in the SVG.`);
+    }
   }
   const values = rows.map((row) => row.value).filter((value) => Number.isFinite(value));
   const valueDomain = values.length > 0 ? [Math.min(...values), Math.max(...values)] : [0, 1];

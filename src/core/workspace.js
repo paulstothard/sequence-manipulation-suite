@@ -38,6 +38,29 @@ export function getToolWorkspaceSequenceInputs(metadata = {}) {
     }));
 }
 
+function normalizeRecordCount(value, fallback) {
+  const numeric = Number(value);
+  return Number.isInteger(numeric) && numeric > 0 ? numeric : fallback;
+}
+
+export function getToolWorkspaceSequenceRequirement(metadata = {}) {
+  const inputs = getToolWorkspaceSequenceInputs(metadata);
+  if (inputs.length === 0) {
+    return null;
+  }
+  const minRecords = Math.max(...inputs.map((input) => normalizeRecordCount(input.minRecords, 1)));
+  const maximums = inputs.map((input) => input.maxRecords !== undefined && input.maxRecords !== null
+    ? normalizeRecordCount(input.maxRecords, 1)
+    : null);
+  const finiteMaximums = maximums.filter((value) => value !== null);
+  const maxRecords = maximums.includes(null) ? null : Math.min(...finiteMaximums);
+  return {
+    minRecords,
+    maxRecords: maxRecords === null ? null : Math.max(minRecords, maxRecords),
+    explicitCardinality: inputs.some((input) => input.minRecords !== undefined || input.maxRecords !== undefined)
+  };
+}
+
 export function toolAcceptsWorkspaceSequences(metadata = {}) {
   return getToolWorkspaceSequenceInputs(metadata).length > 0;
 }
@@ -60,6 +83,9 @@ function makeWorkflowToolMap(tools = []) {
 function getWorkflowStepSequenceInputAlphabets(step = {}, toolMap) {
   if (step.type !== "tool" && step.type !== "map") {
     return [];
+  }
+  if (step.toolId === "phylogeny-builder") {
+    return step.options?.sequenceType === "protein" ? ["protein"] : ["dna-rna"];
   }
   const tool = toolMap.get(step.toolId);
   return getToolWorkspaceSequenceInputs(tool?.metadata).map((input) => input.alphabet).filter(Boolean);
@@ -101,6 +127,34 @@ function getWorkflowConsumerSequenceAlphabets(steps, consumerIndex, toolMap) {
   return getWorkflowStepSequenceInputAlphabets(step, toolMap);
 }
 
+function getWorkflowConsumerSequenceRequirement(steps, consumerIndex, toolMap) {
+  const step = steps[consumerIndex];
+  if (!step) {
+    return null;
+  }
+  if (step.type === "split") {
+    return { minRecords: 1, maxRecords: null, explicitCardinality: false };
+  }
+  if (step.type !== "tool" && step.type !== "map") {
+    return null;
+  }
+  return getToolWorkspaceSequenceRequirement(toolMap.get(step.toolId)?.metadata);
+}
+
+function getWorkflowInputConsumers(steps, inputStep, inputIndex) {
+  const consumerIndexes = new Set();
+  const sequentialIndex = getSequentialConsumerIndex(steps, inputIndex);
+  if (sequentialIndex >= 0) {
+    consumerIndexes.add(sequentialIndex);
+  }
+  steps.forEach((step, index) => {
+    if (step?.input?.from === inputStep.id) {
+      consumerIndexes.add(index);
+    }
+  });
+  return consumerIndexes;
+}
+
 function intersectAlphabetSets(left, right) {
   return new Set([...left].filter((value) => right.has(value)));
 }
@@ -118,16 +172,7 @@ export function getWorkflowWorkspaceSequenceAlphabets(workflow = {}, tools = [])
 
   let allowedAlphabets;
   for (const { step: inputStep, index: inputIndex } of inputSteps) {
-    const consumerIndexes = new Set();
-    const sequentialIndex = getSequentialConsumerIndex(steps, inputIndex);
-    if (sequentialIndex >= 0) {
-      consumerIndexes.add(sequentialIndex);
-    }
-    steps.forEach((step, index) => {
-      if (step?.input?.from === inputStep.id) {
-        consumerIndexes.add(index);
-      }
-    });
+    const consumerIndexes = getWorkflowInputConsumers(steps, inputStep, inputIndex);
 
     if (consumerIndexes.size === 0) {
       return [];
@@ -144,6 +189,45 @@ export function getWorkflowWorkspaceSequenceAlphabets(workflow = {}, tools = [])
   }
 
   return [...(allowedAlphabets ?? [])].sort();
+}
+
+export function getWorkflowWorkspaceSequenceRequirement(workflow = {}, tools = []) {
+  const steps = workflow.steps ?? [];
+  const toolMap = makeWorkflowToolMap(tools);
+  const inputSteps = steps
+    .map((step, index) => ({ step, index }))
+    .filter(({ step }) => step?.type === "input");
+  if (inputSteps.length === 0) {
+    return null;
+  }
+
+  let minRecords = 1;
+  let maxRecords = null;
+  let explicitCardinality = false;
+  for (const { step, index } of inputSteps) {
+    const consumers = getWorkflowInputConsumers(steps, step, index);
+    if (consumers.size === 0) {
+      return null;
+    }
+    for (const consumerIndex of consumers) {
+      const requirement = getWorkflowConsumerSequenceRequirement(steps, consumerIndex, toolMap);
+      if (!requirement) {
+        return null;
+      }
+      minRecords = Math.max(minRecords, requirement.minRecords);
+      explicitCardinality ||= requirement.explicitCardinality;
+      if (requirement.maxRecords !== null) {
+        maxRecords = maxRecords === null
+          ? requirement.maxRecords
+          : Math.min(maxRecords, requirement.maxRecords);
+      }
+    }
+  }
+  return {
+    minRecords,
+    maxRecords: maxRecords === null ? null : Math.max(minRecords, maxRecords),
+    explicitCardinality
+  };
 }
 
 export function canWorkflowUseWorkspaceSequence(workflow = {}, sequenceRecord = {}, tools = []) {
@@ -164,6 +248,10 @@ export function formatWorkspaceSequenceAsFasta(record = {}) {
     String(record.sequence ?? ""),
     60
   );
+}
+
+export function formatWorkspaceSequencesAsFasta(records = []) {
+  return records.map((record) => formatWorkspaceSequenceAsFasta(record).trimEnd()).join("\n") + (records.length > 0 ? "\n" : "");
 }
 
 export function getSequenceRecordStreams(result = {}) {

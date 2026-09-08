@@ -1,3 +1,4 @@
+import { renderVariantConsensusInput } from './variant-consensus-input-ui.js';
 import { EDITOR_TOOLS, parseEditorDocument, readEditorDocumentFile, readEditorRecovery, createEditorSession } from './editor-session.js';
 import { readTreeDocumentStream } from "../core/tree-document-stream.js";
 import { tools } from "../tools/registry.js";
@@ -26,9 +27,7 @@ import {
 } from "./workspace-promotion.js";
 import {
   listWorkspaceFeatureLayers,
-  listWorkspaceSequences,
-  saveWorkspaceFeatureLayer,
-  saveWorkspaceSequence
+  listWorkspaceSequences
 } from "./workspace-storage.js";
 import {
   buildOutputDescriptionText,
@@ -43,6 +42,7 @@ import { renderSangerTraceViewer } from "./sanger-trace-viewer.js";
 import { createSangerTraceWorkspaceController } from "./sanger-trace-workspace-ui.js";
 import { downloadBlob, downloadText } from "./file-download.js";
 import { readToolInputFileText } from "./input-file-readers.js";
+import { makeWarningsStream } from "../core/workflow.js";
 import { downloadSvgAsPng, getPngFilename, serializeSvgElement } from "./svg-export.js";
 import {
   alignTsv,
@@ -138,6 +138,7 @@ const state = {
     workflow: { sortColumn: null, sortDirection: "asc", hiddenColumns: new Set(), columnPreset: "all" }
   },
   directInputFile: null,
+  inputImport: null,
   currentToolOutputChoices: [],
   currentToolDescription: ""
 };
@@ -219,6 +220,7 @@ const elements = {
   workflowRecipePanel: document.querySelector("#workflowRecipePanel"),
   workflowSavedPanel: document.querySelector("#workflowSavedPanel"),
   workflowPreset: document.querySelector("#workflowPreset"),
+  workflowRecipeDescription: document.querySelector("#workflowRecipeDescription"),
   workflowLoadRecipe: document.querySelector("#workflowLoadRecipe"),
   workflowInputTitle: document.querySelector("#workflowInputTitle"),
   workflowInputActions: document.querySelector("#workflowInputActions"),
@@ -354,8 +356,10 @@ const workspaceInputSources = createWorkspaceInputSourceController({
   isTabbedInputWorkflowTool,
   selectTool,
   applyWorkspaceSequenceToToolInput,
+  syncToolOptionsForWorkspaceSequences,
   clearToolOutput,
-  clearWorkflowOutput
+  clearWorkflowOutput,
+  retireWorkflowRun
 });
 
 const workspaceView = createWorkspaceViewController({
@@ -531,6 +535,7 @@ const workflowBuilder = createWorkflowBuilderController({
     addWorkflowMessage,
     clearWorkflowOutput,
     parseWorkflowJson,
+    retireWorkflowRun,
     updateInputActionButtons
   }
 });
@@ -782,6 +787,7 @@ function scrollActiveToolIntoSidebarView() {
 }
 
 function selectHome({ updateHash = true } = {}) {
+  retireWorkflowRun();
   state.activeView = "home";
   scrollWorkspaceToTop();
   renderActiveView();
@@ -797,6 +803,7 @@ function selectHome({ updateHash = true } = {}) {
 let editorRecoveryEpoch = 0;
 function selectTool(tool, { updateHash = true, revealInToolList = false, recover = true } = {}) {
   const recoveryEpoch = ++editorRecoveryEpoch;
+  retireWorkflowRun();
   elements.markdownWorkspace._sms3VisualCleanup?.();
   if (state.toolRun) {
     state.toolRun.abortController.abort();
@@ -825,6 +832,7 @@ function selectTool(tool, { updateHash = true, revealInToolList = false, recover
 }
 
 function selectReference(referenceId, { updateHash = true } = {}) {
+  retireWorkflowRun();
   state.selectedReference = referenceId;
   state.activeView = "reference";
   scrollWorkspaceToTop();
@@ -839,6 +847,7 @@ function selectReference(referenceId, { updateHash = true } = {}) {
 }
 
 function selectFeedback({ updateHash = true } = {}) {
+  retireWorkflowRun();
   state.activeView = "feedback";
   scrollWorkspaceToTop();
   renderActiveView();
@@ -854,6 +863,7 @@ function selectFeedback({ updateHash = true } = {}) {
 let workflowDocumentSession;
 function selectWorkflow(workflowId = state.selectedWorkflow, { updateHash = true, recover = true } = {}) {
   const recoveryEpoch = ++editorRecoveryEpoch;
+  retireWorkflowRun();
   const alreadyOpen = Boolean(workflowDocumentSession) && workflowId === state.selectedWorkflow;
   const preset = workflowPresets.find((item) => item.id === workflowId) ?? workflowPresets[0];
   state.selectedWorkflow = preset.id;
@@ -884,6 +894,7 @@ function selectWorkflow(workflowId = state.selectedWorkflow, { updateHash = true
         if (inputStep) {
           inputStep.text = input;
           delete inputStep.workspaceSource;
+          delete inputStep.workspaceSources;
         }
         return {workflow, input};
       },
@@ -903,6 +914,7 @@ function selectWorkflow(workflowId = state.selectedWorkflow, { updateHash = true
 }
 
 function selectWorkspace({ updateHash = true } = {}) {
+  retireWorkflowRun();
   state.activeView = "workspace";
   scrollWorkspaceToTop();
   renderActiveView();
@@ -1103,6 +1115,10 @@ function renderSplitInputPanel(tool) {
   elements.splitInputPanel.classList.remove("sanger-trace-workspace");
   elements.splitInputPanel.hidden = !splitInput;
   if (!splitInput) {
+    return;
+  }
+  if (tool.metadata.id === 'variant-consensus-builder') {
+    renderVariantConsensusInput({ root: elements.splitInputPanel, tool, onChange: () => { clearToolOutput(); updateInputActionButtons(); }, onMessage: addMessage });
     return;
   }
   if (isSangerTraceViewerTool(tool)) {
@@ -3257,6 +3273,23 @@ function applyWorkspaceSequenceToToolInput(tool, sequence, inputText) {
   return true;
 }
 
+function syncToolOptionsForWorkspaceSequences(tool, sequences = []) {
+  if (tool?.metadata?.id !== "phylogeny-builder" || sequences.length === 0) {
+    return;
+  }
+  const alphabets = new Set(sequences.map((sequence) => sequence.alphabet));
+  if (alphabets.size !== 1) {
+    return;
+  }
+  const alphabet = [...alphabets][0];
+  const current = getToolOptionValue("sequenceType", "dna-rna");
+  if (alphabet === "protein") {
+    setToolOptionValue("sequenceType", "protein");
+  } else if (current === "protein") {
+    setToolOptionValue("sequenceType", "dna-rna");
+  }
+}
+
 function loadBiologicalRecordModeExampleIfSafe(panel, sourceMode) {
   const annotationInput = panel.querySelector('[data-bio-record-section="annotation"] .split-input-textarea');
   const fastaInput = panel.querySelector('[data-bio-record-section="fasta"] .split-input-textarea');
@@ -4379,8 +4412,10 @@ function autofillSuggestedOptionValues(suggestionsBySource, { force = false } = 
 
 function updateToolOptionSuggestions({ autofillColumns = false, forceAutofillColumns = false } = {}) {
   const suggestionsBySource = new Map();
+  const requestedSources = new Set(flattenOptions(state.selectedTool?.metadata?.options ?? []).map(option => option.suggestionsFrom));
   for (const source of ["table-columns", "table-numeric-columns", "table-left-columns", "table-right-columns"]) {
     const datalist = elements.toolOptions.querySelector(`#${getSuggestionListId(source)}`);
+    if (!datalist && !requestedSources.has(source)) continue;
     const columns = getTableColumnSuggestions(source);
     suggestionsBySource.set(source, columns);
     if (datalist) {
@@ -4888,6 +4923,7 @@ function renderGeneratedToolOutputChoice(result) {
 }
 
 function clearToolInputOutput(...args) {
+  state.inputImport = null;
   return toolInputShell.clearToolInputOutput(...args);
 }
 
@@ -4896,6 +4932,7 @@ function formatExampleInputForDisplay(...args) {
 }
 
 function loadSelectedToolExample(...args) {
+  state.inputImport = null;
   return toolInputShell.loadSelectedToolExample(...args);
 }
 
@@ -5058,6 +5095,7 @@ function focusWorkflowRecipeTrigger() {
 }
 
 function loadSelectedWorkflowRecipe({ focusPicker = false } = {}) {
+  retireWorkflowRun();
   state.selectedWorkflow = state.pendingWorkflowRecipe || elements.workflowPreset.value || state.selectedWorkflow;
   state.pendingWorkflowRecipe = "";
   setWorkflowSourceMode("recipe");
@@ -5109,6 +5147,24 @@ function cancelSelectedWorkflowRun() {
   elements.cancelWorkflow.disabled = true;
   elements.workflowMessages.textContent = "";
   addWorkflowMessage("Cancelling workflow run...");
+}
+
+function retireWorkflowRun() {
+  const run = state.workflowRun;
+  if (!run) {
+    return;
+  }
+  state.workflowRun = null;
+  run.abortController.abort();
+  run.cancelActiveTool?.();
+  state.workflowRunSummary = {
+    status: "Cancelled",
+    output: "",
+    stepCount: 0
+  };
+  elements.workflowMessages.textContent = "";
+  addWorkflowMessage("Workflow run cancelled after leaving or changing the workflow.");
+  setWorkflowRunning(false);
 }
 
 function cancelSelectedToolRun() {
@@ -5176,6 +5232,7 @@ function makeRunAbortError(message = "Tool run was cancelled.") {
 }
 
 async function loadWorkflowExample() {
+  retireWorkflowRun();
   const requestId = workflowExampleLoadRequest + 1;
   workflowExampleLoadRequest = requestId;
   const preset = getSelectedWorkflowPreset();
@@ -5200,6 +5257,7 @@ async function loadWorkflowExample() {
 }
 
 function clearWorkflowInput() {
+  retireWorkflowRun();
   workflowExampleLoadRequest += 1;
   workspaceInputSources.setWorkflowInputSourceMode("paste");
   elements.workflowInput.value = "";
@@ -5215,6 +5273,7 @@ function copyWorkflowDefinitionToEditor() {
   if (inputStep) {
     inputStep.text = "";
     delete inputStep.workspaceSource;
+    delete inputStep.workspaceSources;
   }
   elements.workflowJson.value = JSON.stringify(workflow, null, 2);
   elements.workflowJsonPanel.open = true;
@@ -5233,6 +5292,7 @@ function parseWorkflowJson() {
 async function loadWorkflowFile(file) {
   if (!file) return;
   editorRecoveryEpoch++;
+  elements.workflowMessages.textContent = "";
   try {
     if (file.size > 25 * 1024 * 1024) throw new Error("Workflow file exceeds 25 MB.");
     const doc = await readEditorDocumentFile(file);
@@ -5247,7 +5307,10 @@ async function loadWorkflowFile(file) {
     importWorkflowJson();
     workflowDocumentSession.changed("Import workflow");
   } catch (error) {
-    addWorkflowMessage(error.message, "warning");
+    const detail = error instanceof SyntaxError
+      ? "The workflow file is not valid JSON."
+      : error.message;
+    addWorkflowMessage(`Could not import workflow: ${detail}`, "warning");
   }
 }
 
@@ -5264,12 +5327,18 @@ function importWorkflowJson() {
     return false;
   }
 
+  retireWorkflowRun();
   state.importedWorkflow = parsed.workflow;
   state.activeSavedWorkflowId = "";
   state.selectedWorkflowStepId = null;
   state.expandedWorkflowStepIds = new Set();
   workspaceInputSources.setWorkflowInputSourceMode("paste");
   elements.workflowSaveName.value = parsed.workflow?.name ?? "";
+  const inputStep = parsed.workflow.steps.find(step => step.type === "input");
+  if (inputStep && Object.hasOwn(inputStep, "text")) {
+    elements.workflowInput.value = inputStep.text ?? "";
+  }
+  updateInputActionButtons();
   setWorkflowSavedStatus("");
   renderWorkflowView();
   clearWorkflowOutput();
@@ -5412,7 +5481,7 @@ async function runAppTool(tool, input, options = {}, context = {}) {
     options,
     onProgress: (message) => {
       onProgress?.(message);
-      if (state.workflowRun && context.step) {
+      if (state.workflowRun && signal === state.workflowRun.abortController.signal && context.step) {
         showWorkflowWorkerProgress(tool, context, message);
       }
     }
@@ -5447,6 +5516,8 @@ async function runSelectedWorkflow() {
     abortController,
     cancelActiveTool: null
   };
+  const runState = state.workflowRun;
+  const isCurrent = () => state.workflowRun === runState && state.activeView === "workflow";
   state.workflowRunSummary = {
     status: "Running",
     output: "",
@@ -5469,10 +5540,12 @@ async function runSelectedWorkflow() {
       runTool: runAppTool,
       signal: abortController.signal,
       onStepStart: (step, index, total) => {
+        if (!isCurrent()) return;
         elements.workflowMessages.textContent = "";
         addWorkflowMessage(getWorkflowStepRunStatus(step, index, total));
       }
     });
+    if (!isCurrent()) return;
     const formatted = formatWorkflowValue(result.value);
     const inputStep = workflow.steps.find((step) => step.type === "input");
     const workflowSource = inputStep?.workspaceSource;
@@ -5507,7 +5580,7 @@ async function runSelectedWorkflow() {
       stepCount: result.steps.length
     };
     renderWorkflowView();
-    const hasWorkflowVisual = Boolean(formatted.svg || formatted.viewer || formatted.figure || formatted.sequenceExtractor || formatted.treeViewer);
+    const hasWorkflowVisual = Boolean(formatted.svg || formatted.viewer || formatted.figure || formatted.sequenceExtractor || formatted.treeViewer || formatted.plateLayout);
     elements.workflowOutput.value = formatted.text;
     elements.workflowOutput.dataset.rawOutput = formatted.rawText;
     elements.workflowOutput.dataset.filename = formatted.filename ?? "sms3-workflow-output.txt";
@@ -5520,12 +5593,14 @@ async function runSelectedWorkflow() {
       viewer: formatted.viewer,
       figure: formatted.figure,
       sequenceExtractor: formatted.sequenceExtractor,
-      treeViewer: formatted.treeViewer
+      treeViewer: formatted.treeViewer,
+      plateLayout: formatted.plateLayout,
+      editorDocument: formatted.editorDocument
     });
     elements.workflowOutput.hidden = Boolean(formatted.tableStream || hasWorkflowVisual);
     setOutputSearchRowVisible("workflow", Boolean(formatted.tableStream || (!hasWorkflowVisual && formatted.text)));
     updateOutputActions("workflow", {
-      hidden: Boolean(formatted.tableStream),
+      hidden: Boolean(formatted.tableStream || formatted.plateLayout),
       mimeType: formatted.mimeType,
       label: formatted.outputLabel
     });
@@ -5541,6 +5616,7 @@ async function runSelectedWorkflow() {
     );
     renderOutputSearch("workflow");
   } catch (error) {
+    if (!isCurrent()) return;
     clearWorkflowOutput();
     if (error.name === "AbortError" || abortController.signal.aborted) {
       state.workflowRunSummary = {
@@ -5560,13 +5636,23 @@ async function runSelectedWorkflow() {
       addWorkflowMessage(`Could not run workflow: ${error.message}`, "warning");
     }
   } finally {
-    state.workflowRun = null;
-    setWorkflowRunning(false);
+    if (state.workflowRun === runState) {
+      state.workflowRun = null;
+      setWorkflowRunning(false);
+    }
   }
 }
 
 async function displayToolResult(result, inputText, options, isCurrent = () => true) {
   if (!isCurrent()) return;
+  // Retain material import warnings (for example ignored Excel worksheets) with
+  // results only while the same tool and unchanged imported source are in use.
+  const imported = state.inputImport;
+  if (imported?.toolId === state.selectedTool.metadata.id && imported.text === inputText && imported.warnings.length) {
+    const warnings = [...(result.warnings ?? [])];
+    for (const message of imported.warnings) if (!warnings.some(w => (typeof w === "string" ? w : w.message) === message)) warnings.push(message);
+    result = { ...result, warnings, streams: { ...result.streams, warnings: makeWarningsStream(warnings) } };
+  }
   const description = await buildToolOutputDescription(result, inputText, options);
   if (!isCurrent()) return;
   state.currentToolDescription = description;
@@ -5595,6 +5681,10 @@ async function runSelectedTool() {
   try {
     elements.messages.textContent = "";
     addMessage(getToolRunStatus(tool));
+    const workspaceValidation = workspaceInputSources.getToolWorkspaceSelectionValidation(tool);
+    if (!workspaceValidation.valid) {
+      throw new Error(workspaceValidation.message);
+    }
     const inputText = getSelectedToolInputText();
     const options = getOptions();
     await displayToolResult(
@@ -5651,7 +5741,10 @@ async function loadInputFile(file) {
 
   try {
     workspaceInputSources.setToolSourceMode(state.selectedTool?.metadata?.id, "paste");
-    elements.sequenceInput.value = await readToolInputFileText(file, { onMessage: addMessage });
+    const importMessages = [];
+    elements.sequenceInput.value = await readToolInputFileText(file, { onMessage: (...args) => importMessages.push(args) });
+    state.inputImport = { toolId: state.selectedTool.metadata.id, text: elements.sequenceInput.value,
+      warnings: importMessages.filter(([, level]) => level === "warning").map(([message]) => message) };
     if (isMarkdownNotebookSelected()) {
       elements.markdownInputFileName.value = markdownFilenameFromLoadedFile(file.name);
       setMarkdownInputStatus(`Loaded ${file.name}. Click Run to start editing.`);
@@ -5680,8 +5773,9 @@ async function loadInputFile(file) {
       updateProteinStructureViewerUi();
     }
     clearToolOutput();
-    updateInputActionButtons();
+    updateInputActionButtons({ previewTable: true });
     workspaceInputSources.renderToolSource();
+    for (const args of importMessages) addMessage(...args);
     addMessage(`Loaded ${file.name} (${file.size.toLocaleString()} bytes).`);
   } catch (error) {
     const detail = error?.message ? ` ${error.message}` : "";
@@ -5785,7 +5879,10 @@ elements.workflowPreset.addEventListener("change", () => {
 elements.workflowLoadRecipe.addEventListener("click", () => loadSelectedWorkflowRecipe({ focusPicker: true }));
 elements.workflowLoadExample.addEventListener("click", loadWorkflowExample);
 elements.workflowClearInput.addEventListener("click", clearWorkflowInput);
-elements.workflowInput.addEventListener("input", updateInputActionButtons);
+elements.workflowInput.addEventListener("input", () => {
+  retireWorkflowRun();
+  updateInputActionButtons();
+});
 elements.workflowSavedSelect.addEventListener("change", updateSavedWorkflowActionButtons);
 elements.workflowSaveCurrent.addEventListener("click", saveCurrentWorkflowToLibrary);
 elements.workflowLoadSaved.addEventListener("click", loadSavedWorkflowFromLibrary);
@@ -5835,6 +5932,7 @@ keepOutputSearchButtonFromScrollingPage(elements.workflowOutputSearchNext);
 elements.loadExample.addEventListener("click", loadSelectedToolExample);
 elements.clearInput.addEventListener("click", clearToolInputOutput);
 elements.sequenceInput.addEventListener("input", () => {
+  state.inputImport = null;
   if (getCurrentDirectInputFile(state.selectedTool)) {
     clearDirectInputFile();
   }
@@ -6048,13 +6146,15 @@ async function openEditorDocument(doc, {recovered = false} = {}) {
     elements.sequenceInput.value = doc.state.markdown || '';
     markdownWorkspace.render({...doc.state,__documentLoaded:true,__documentSource:doc.source});
   } else {
-    const key = doc.tool === 'tree-viewer' ? 'treeViewer' : doc.tool === 'sequence-editor' ? 'sequenceEditor' : doc.tool === 'sequence-extractor' ? 'sequenceExtractor' : doc.tool.includes('genome-figure') ? 'figure' : 'sangerTrace';
+    const key = doc.tool === 'plate-layout-planner' ? 'plateLayout' : doc.tool === 'tree-viewer' ? 'treeViewer' : doc.tool === 'sequence-editor' ? 'sequenceEditor' : doc.tool === 'sequence-extractor' ? 'sequenceExtractor' : doc.tool.includes('genome-figure') ? 'figure' : 'sangerTrace';
     if (doc.tool === 'tree-viewer') elements.sequenceInput.value=JSON.stringify(doc.state.document,null,2);
     if (doc.tool === 'sequence-editor') elements.sequenceInput.value=String(doc.source.input||'');
+    if (doc.tool === 'plate-layout-planner') elements.sequenceInput.value=doc.source.input;
     renderVisualOutput('tool', null, {[key]:doc.source, editorDocument:doc});
     elements.toolOutputEmpty.hidden = true;
   }
   addMessage(recovered ? 'Recovered your browser changes.' : 'Opened SMS3 document.');
+  updateInputActionButtons({ previewTable: true });
 }
 window.addEventListener('sms3-open-editor-document', event => {
   openEditorDocument(event.detail).catch(error => addMessage(error.message, 'warning'));

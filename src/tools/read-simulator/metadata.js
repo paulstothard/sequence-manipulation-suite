@@ -1,4 +1,4 @@
-import { readSimulatorTruthColumns } from "../../core/read-simulator.js";
+import { readSimulatorTruthColumns, WGSIM_VERSION } from "../../core/read-simulator.js";
 
 export const readSimulatorMetadata = {
   id: "read-simulator",
@@ -180,9 +180,14 @@ export const readSimulatorMetadata = {
       ]
     },
     {
-      id: "methodsAndCitations",
+      id: "methodNote",
       type: "note",
-      text: "Uses local WGSIM read simulation; this tool is intended for compact teaching, testing, and workflow fixtures."
+      text: `Reads are simulated with WGSIM ${WGSIM_VERSION} by Heng Li, using BioWasm to run in your browser.`
+    },
+    {
+      id: "citationNote",
+      type: "note",
+      text: "References:\n\nRead simulation: WGSIM documentation.\n\nBrowser execution: BioWasm documentation."
     }
   ]
 };

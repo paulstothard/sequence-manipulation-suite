@@ -28,7 +28,7 @@ function buildMetadata(alphabet) {
     workflow: {
       inputs: [
         { id: "input", kind: "text", mediaType: "text/plain" },
-        { id: "sequenceRecords", kind: "sequence-records", alphabet: isProtein ? "protein" : "dna-rna" }
+        { id: "sequenceRecords", kind: "sequence-records", alphabet: isProtein ? "protein" : "dna-rna", minRecords: 2 }
       ],
       outputs: [
         treeDocumentContract,

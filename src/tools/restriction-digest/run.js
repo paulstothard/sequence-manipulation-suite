@@ -21,6 +21,7 @@ function normalizeOptions(options = {}) {
     enzyme3: String(options.enzyme3 ?? "").toLowerCase(),
     topology: options.topology === "circular" ? "circular" : "linear",
     geneticCode: String(options.geneticCode ?? "1"),
+    poolLinearMolecules: options.poolLinearMolecules === true,
     outputFormat: new Set(["report", "tsv", "fasta", "text-map", "svg-map", "svg-gel", ...viewerFormats]).has(options.outputFormat)
       ? options.outputFormat
       : "svg-gel"
@@ -209,7 +210,12 @@ export function runRestrictionDigest(input, options = {}, context = {}) {
   const mapSvg = normalized.outputFormat === "svg-map"
     ? makeRestrictionMapSvg(records, { ...normalized, forceLinear: true })
     : "";
-  const gelSvg = normalized.outputFormat === "svg-gel" ? makeRestrictionGelSvg(records, normalized) : "";
+  const gelSvg = normalized.outputFormat === "svg-gel" ? makeRestrictionGelSvg(records, {
+    ...normalized,
+    subtitle: `${enzymes.map(enzyme => enzyme.name).join(" + ")} · ${normalized.topology === "circular"
+      ? "Circular DNA; uncut molecules modeled as mixed conformations."
+      : "Linear DNA · Complete digestion"}`
+  }) : "";
   const viewer = isInteractiveViewerFormat(normalized.outputFormat) ? makeInteractiveViewer(records, normalized) : null;
   const output = normalized.outputFormat === "tsv"
     ? tsv
