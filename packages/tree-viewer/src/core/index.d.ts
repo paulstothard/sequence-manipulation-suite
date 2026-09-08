@@ -170,6 +170,7 @@ export type PresentationPatch = Partial<
 export type CommandAction =
   | { type: "clade-annotation"; nodeId:string; annotation:{label:string; color:string; opacity:number; bracket?:boolean} | null }
   | { type: "reroot"; nodeId: string; midpoint?: false }
+  | { type: "reroot"; edgeChildId: string; midpoint?: false }
   | { type: "reroot"; midpoint: true }
   | { type: "prune"; nodeId: string }
   | { type: "presentation"; patch: PresentationPatch }

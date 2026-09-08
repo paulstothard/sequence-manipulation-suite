@@ -1,11 +1,18 @@
 import { checkpoint } from './limits.js';
 
 // Reroot the undirected tree: edge identity and evidence stay with each split.
-export async function rerootTree(tree, { nodeId, midpoint = false }, context = {}) {
+export async function rerootTree(tree, { nodeId, edgeChildId, midpoint = false }, context = {}) {
   if (tree.nodes.some(n => n.labelInterpretation === 'unresolved'))
     throw new Error('Interpret numeric internal labels before rerooting so support values stay with their branches.');
   if (tree.edges.filter(e => e.parent === tree.root.nodeId).length < 2)
     throw new Error('Rerooting requires a root with at least two children.');
+  // Root markers describe the source root only. Once the working topology is
+  // rerooted, keep the unchanged original source separately and serialize one
+  // fresh marker for the new root rather than retaining a stale internal marker.
+  const withoutRootMarkers = comments => comments.filter(comment => comment.text !== '&R' && comment.text !== '&U');
+  tree.root.stem.comments = withoutRootMarkers(tree.root.stem.comments);
+  const oldRoot = tree.nodes.find(node => node.id === tree.root.nodeId);
+  oldRoot.comments = withoutRootMarkers(oldRoot.comments);
   let adjacency = new Map(tree.nodes.map(n => [n.id, []]));
   const index = () => {
     adjacency = new Map(tree.nodes.map(n => [n.id, []]));
@@ -15,6 +22,30 @@ export async function rerootTree(tree, { nodeId, midpoint = false }, context = {
     }
   };
   index();
+  const unique = (prefix, ids) => {
+    let i = 1;
+    while (ids.has(`${tree.id}:${prefix}${i}`)) i++;
+    return `${tree.id}:${prefix}${i}`;
+  };
+  const insertRootOnEdge = (edge, childLength, parentLength) => {
+    const originalParent = edge.parent;
+    nodeId = unique('root', new Set(tree.nodes.map(n => n.id)));
+    tree.nodes.push({id:nodeId, label:'', labelInterpretation:'name', comments:[], annotations:{}});
+    edge.parent = nodeId;
+    edge.length = childLength;
+    edge.lexical = null;
+    tree.edges.push({
+      id:unique('rootedge', new Set(tree.edges.map(e => e.id))),
+      parent:nodeId,
+      child:originalParent,
+      length:parentLength,
+      lexical:null,
+      comments:[],
+      annotations:{},
+      support:{},
+    });
+    index();
+  };
   if (midpoint) {
     if (!tree.edges.length || tree.edges.some(e => e.length === null || e.length < 0))
       throw new Error('Midpoint rooting requires nonnegative lengths on every branch.');
@@ -41,19 +72,20 @@ export async function rerootTree(tree, { nodeId, midpoint = false }, context = {
       const step = diameter.previous.get(at), edge = step.edge;
       if (remaining === 0) { nodeId = at; break; }
       if (remaining < edge.length) {
-        const unique = (prefix, ids) => { let i=1; while (ids.has(`${tree.id}:${prefix}${i}`)) i++; return `${tree.id}:${prefix}${i}`; };
-        nodeId = unique('root', new Set(tree.nodes.map(n=>n.id)));
-        tree.nodes.push({id:nodeId, label:'', labelInterpretation:'name', comments:[], annotations:{}});
-        const originalParent = edge.parent, originalChild = edge.child;
+        const originalChild = edge.child;
         const childLength = at === originalChild ? remaining : edge.length - remaining;
         const parentLength = edge.length - childLength;
-        edge.parent = nodeId; edge.length = childLength; edge.lexical = null;
-        tree.edges.push({id:unique('rootedge', new Set(tree.edges.map(e=>e.id))), parent:nodeId, child:originalParent,
-          length:parentLength, lexical:null, comments:[], annotations:{}, support:{}});
-        index(); break;
+        insertRootOnEdge(edge, childLength, parentLength);
+        break;
       }
       remaining -= edge.length; at = step.id; nodeId = at;
     }
+  } else if (edgeChildId !== undefined) {
+    const edge = tree.edges.find(candidate => candidate.child === edgeChildId);
+    if (!edge) throw new Error('Choose a non-root node to root on its incoming branch.');
+    const childLength = edge.length === null ? null : edge.length / 2;
+    const parentLength = edge.length === null ? null : edge.length - childLength;
+    insertRootOnEdge(edge, childLength, parentLength);
   } else if (!adjacency.has(nodeId) || adjacency.get(nodeId).length < 2) {
     throw new Error('Choose an internal node for node rooting.');
   }

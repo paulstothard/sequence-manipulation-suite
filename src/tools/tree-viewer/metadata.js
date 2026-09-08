@@ -57,7 +57,7 @@ export const treeViewerMetadata = {
     },
     {
       type: "note",
-      text: "Style and export after Run. Original labels, branch lengths and topology remain intact. Interpret numeric internal labels here or under Style → Branch support after Run. Figures support up to 1,000 visible tips and 4,001 visible nodes; larger documents can be inspected in the table and focused or collapsed explicitly.",
+      text: "Style and export after Run. Rectangular and circular layouts use the input tree's top-level node as the initial root; an unrooted layout changes only the drawing. Under Style → Tree layout, root at the branch leading to a selected outgroup or use midpoint rooting. Original labels, branch lengths and topology remain intact. Interpret numeric internal labels here or under Style → Branch support after Run. Figures support up to 1,000 visible tips and 4,001 visible nodes; larger documents can be inspected in the table and focused or collapsed explicitly.",
     },
   ],
 };
