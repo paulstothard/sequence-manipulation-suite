@@ -108,6 +108,7 @@ export async function applyTreeCommand(document, command, context = {}) {
           "spacing",
           "width",
           "showSupport",
+          "supportFilter",
           "supportField",
           "supportMinimum",
           "supportPrecision",

@@ -20,6 +20,7 @@ export const DEFAULT_PRESENTATION = Object.freeze({
   spacing: 22,
   width: 1200,
   showSupport: true,
+  supportFilter: "auto",
   supportField: "",
   supportMinimum: null,
   supportPrecision: 2,

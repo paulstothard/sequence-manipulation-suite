@@ -120,6 +120,7 @@ export function validatePresentation(p, ids, children) {
   for (const [key, min, max] of [["supportPrecision", 0, 6], ["supportSize", 6, 40], ["circularRotation", -360, 360], ["circularArc", 30, 360], ["legendSize", 6, 40]])
     if (p[key] !== undefined) need(Number.isFinite(p[key]) && p[key] >= min && p[key] <= max && (key !== "supportPrecision" || Number.isInteger(p[key])), `presentation ${key}`);
   need(p.supportMinimum == null || Number.isFinite(p.supportMinimum), "support minimum");
+  need(p.supportFilter === undefined || ["auto", "all", "minimum"].includes(p.supportFilter), "support filter");
   need(p.supportField === undefined || typeof p.supportField === "string", "support field");
   need(p.supportPosition === undefined || ["node", "branch"].includes(p.supportPosition), "support position");
   for (const [key, values] of Object.entries({branchShape:["square","slanted","curved"],unrootedAlgorithm:["equal-angle","equal-daylight"],labelAlignment:["aligned","at-tip"],supportEncoding:["text","symbol","color"],supportSymbol:["circle","square","triangle"],legendPosition:["right","bottom"]}))

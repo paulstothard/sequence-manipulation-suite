@@ -68,6 +68,7 @@ export interface Presentation {
   spacing: number;
   width: number;
   showSupport: boolean;
+  supportFilter?: "auto" | "all" | "minimum";
   supportField?: string;
   supportMinimum?: number | null;
   supportPrecision?: number;
