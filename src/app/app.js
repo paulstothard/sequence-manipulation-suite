@@ -78,6 +78,7 @@ import { createAppLayoutController } from "./app-layout-ui.js";
 import { createOutputShellController } from "./output-shell-ui.js";
 import { createToolInputShellController } from "./tool-input-shell-ui.js";
 import { createToolOptionsController } from "./tool-options-ui.js";
+import { createTableInputPreview } from "./table-input-preview-ui.js";
 import { createWorkflowBuilderController } from "./workflow-builder-ui.js";
 import {
   formatPcrPrimerDesignSummary,
@@ -332,6 +333,8 @@ const elements = {
   toolTableOutput: document.querySelector("#toolTableOutput")
 };
 
+let splitTableInputPreviews = [];
+
 const sangerTraceWorkspace = createSangerTraceWorkspaceController({
   panel: elements.splitInputPanel,
   toolOptions: elements.toolOptions,
@@ -565,6 +568,7 @@ const toolInputShell = createToolInputShellController({
     isTabbedInputWorkflowTool,
     isVcfTabbedInputTool,
     loadSequenceExtractorModeExample: loadSequenceExtractorModeExampleIfSafe,
+    refreshSplitTableInputPreviews,
     renderSplitInputPanel,
     resetToolOutputViewer,
     setFastaRegionSourceMode,
@@ -1109,8 +1113,13 @@ function renderInputPlacementOptions(...args) {
   return toolInputShell.renderInputPlacementOptions(...args);
 }
 
+function refreshSplitTableInputPreviews(options = {}) {
+  for (const preview of splitTableInputPreviews) preview.refresh(options);
+}
+
 function renderSplitInputPanel(tool) {
   const splitInput = tool?.metadata?.splitInput;
+  splitTableInputPreviews = [];
   elements.splitInputPanel.textContent = "";
   elements.splitInputPanel.classList.remove("sanger-trace-workspace");
   elements.splitInputPanel.hidden = !splitInput;
@@ -1199,6 +1208,21 @@ function renderSplitInputPanel(tool) {
     if (panel.placeholder) {
       textarea.placeholder = panel.placeholder;
     }
+    section.append(heading, description, dropZone, textarea);
+    const tableInputPreview = panel.inputTable
+      ? createTableInputPreview({
+          input: textarea,
+          panel: section,
+          getMetadata: () => tool.metadata,
+          getConfig: () => panel.inputTable,
+          getOptionValues: () => getOptions(),
+          getOwner: () => `${tool.metadata.id}:${panel.id ?? index}`
+        })
+      : null;
+    if (tableInputPreview) {
+      splitTableInputPreviews.push(tableInputPreview);
+      tableInputPreview.refresh({ preferPreview: true });
+    }
     const loadFiles = async (fileList) => {
       const files = Array.from(fileList ?? []).filter(Boolean);
       if (files.length === 0) {
@@ -1217,6 +1241,7 @@ function renderSplitInputPanel(tool) {
         texts.push(await readToolInputFileText(file, { onMessage: addMessage }));
       }
       textarea.value = texts.join("\n");
+      tableInputPreview?.refresh({ preferPreview: true });
       clearToolOutput();
       updateInputActionButtons();
       updateToolOptionSuggestions();
@@ -1244,7 +1269,6 @@ function renderSplitInputPanel(tool) {
       updateToolOptionSuggestions();
       updateProteinStructureViewerUi();
     });
-    section.append(heading, description, dropZone, textarea);
     elements.splitInputPanel.append(section);
   };
   const sectionCount = Math.max((splitInput.panels ?? []).length, exampleParts.length);
@@ -5975,6 +5999,7 @@ elements.toolOptions.addEventListener("input", (event) => {
 elements.toolOptions.addEventListener("change", (event) => {
   handleProteinStructureChainControlChange(event.target);
   persistLimitOptionControlValue(event.target);
+  refreshSplitTableInputPreviews();
   updateToolOptionSuggestions();
   updateSamBamInputModeUi();
   updateVcfInputModeUi();

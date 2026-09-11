@@ -11,8 +11,8 @@ export const tableJoinMetadata = {
   splitInput: {
     separator: "---",
     panels: [
-      { id: "left", label: "Left table", dropLabel: "Drop left CSV, TSV, Excel workbook, or plain-text table here", accept: ".csv,.tsv,.tab,.xlsx,.txt" },
-      { id: "right", label: "Right table", dropLabel: "Drop right CSV, TSV, Excel workbook, or plain-text table here", accept: ".csv,.tsv,.tab,.xlsx,.txt" }
+      { id: "left", label: "Left table", dropLabel: "Drop left CSV, TSV, Excel workbook, or plain-text table here", accept: ".csv,.tsv,.tab,.xlsx,.txt", inputTable: { label: "Left table format" } },
+      { id: "right", label: "Right table", dropLabel: "Drop right CSV, TSV, Excel workbook, or plain-text table here", accept: ".csv,.tsv,.tab,.xlsx,.txt", inputTable: { label: "Right table format" } }
     ]
   },
   workflow: {

@@ -1,5 +1,6 @@
 export function makeOptionalReferenceGenomeOptionGroup({
-  help = "Optional reference sequence used to replace placeholder bases in bounded viewers. Leave this set to None when the alignment or variant input is enough."
+  help = "Optional reference sequence used to replace placeholder bases in bounded viewers. Leave this set to None when the alignment or variant input is enough.",
+  additionalOptions = []
 } = {}) {
   return {
     type: "group",
@@ -51,7 +52,8 @@ export function makeOptionalReferenceGenomeOptionGroup({
         dropLabel: "Drop matching .gzi here",
         visibleWhen: { option: "referenceGenomeMode", value: "bgzf" },
         help: "Required for BGZF-compressed FASTA random access. Ordinary gzip FASTA is not random-access indexed FASTA."
-      }
+      },
+      ...additionalOptions
     ]
   };
 }

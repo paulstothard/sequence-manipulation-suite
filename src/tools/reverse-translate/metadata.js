@@ -69,6 +69,36 @@ export const reverseTranslateMetadata = {
       help: "Used in degenerate mode to determine the codons that belong to each amino acid."
     },
     {
+      id: "plotSettings",
+      type: "group",
+      label: "Plot settings",
+      visibleWhen: { option: "outputFormat", value: "plot" },
+      options: [
+        {
+          id: "plotResiduesPerRow",
+          type: "number",
+          label: "Residues per plot row",
+          defaultValue: 60,
+          min: 20,
+          max: 160,
+          step: 10,
+          visibleWhen: { option: "outputFormat", value: "plot" },
+          help: "Wraps each protein record across multiple plot rows so longer sequences remain readable."
+        },
+        {
+          id: "plotMaxResidues",
+          type: "number",
+          label: "Maximum plotted residues per record",
+          defaultValue: 1000,
+          min: 10,
+          max: 5000,
+          step: 50,
+          visibleWhen: { option: "outputFormat", value: "plot" },
+          help: "Controls how much of each protein is included in the probability plot. Longer records are reported as truncated."
+        }
+      ]
+    },
+    {
       id: "outputFormat",
       label: "Output format",
       type: "radio",
@@ -89,24 +119,9 @@ export const reverseTranslateMetadata = {
       visibleWhen: { option: "outputFormat", value: "plot" },
       options: [
         {
-          id: "plotResiduesPerRow",
-          type: "number",
-          label: "Residues per plot row",
-          defaultValue: 60,
-          min: 20,
-          max: 160,
-          step: 10,
-          help: "Wraps each protein record across multiple plot rows so longer sequences remain readable."
-        },
-        {
-          id: "plotMaxResidues",
-          type: "number",
-          label: "Maximum plotted residues per record",
-          defaultValue: 1000,
-          min: 10,
-          max: 5000,
-          step: 50,
-          help: "Safety cap for very large proteins. The plot wraps rows before this cap is reached."
+          id: "probabilityPlotLimitNote",
+          type: "note",
+          text: "Codon base probability plots support up to 5,000 residues per protein record. Longer sequence input remains available to the FASTA, table, and report outputs."
         }
       ]
     },

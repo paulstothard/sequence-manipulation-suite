@@ -73,7 +73,7 @@ function normalizeJsonTableShape(parsed, warnings) {
   return [{ value: parsed }];
 }
 
-function rowsFromJson(input) {
+export function parseJsonTableInput(input) {
   const warnings = [];
   const parsed = JSON.parse(String(input ?? ""));
   const array = normalizeJsonTableShape(parsed, warnings);
@@ -106,7 +106,7 @@ export function convertTableDataFormat(input, options = {}) {
   let rows = [];
   if (inputFormat === "json") {
     try {
-      const table = rowsFromJson(input);
+      const table = parseJsonTableInput(input);
       columns = table.columns;
       rows = table.rows;
       warnings.push(...table.warnings);

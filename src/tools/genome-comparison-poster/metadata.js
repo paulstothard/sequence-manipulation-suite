@@ -112,6 +112,17 @@ export const genomeComparisonPosterMetadata = {
           type: "checkbox",
           label: "Show reverse-complement blocks",
           defaultValue: true
+        },
+        {
+          id: "seedSize",
+          type: "number",
+          label: "Exact-screen seed size",
+          defaultValue: 14,
+          min: 6,
+          max: 200,
+          step: 1,
+          visibleWhen: { option: "alignmentEngine", value: "exact" },
+          help: "Controls the exact shared-block screen. Smaller seeds are more sensitive and may produce more candidate blocks."
         }
       ]
     },
@@ -279,16 +290,6 @@ export const genomeComparisonPosterMetadata = {
       collapsible: true,
       collapsed: true,
       options: [
-        {
-          id: "seedSize",
-          type: "number",
-          label: "Exact-screen seed size",
-          defaultValue: 14,
-          min: 6,
-          max: 200,
-          step: 1,
-          help: "Only used when the exact shared-block screen is selected."
-        },
         {
           id: "maxBlocks",
           type: "number",

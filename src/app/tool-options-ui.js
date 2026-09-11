@@ -4,6 +4,7 @@ import {
   getStoredLimitOptionValues,
   persistLimitOptionValue
 } from "./limit-option-storage.js";
+import { prepareToolOptionsForDisplay } from "./tool-option-layout.js";
 
 export function createToolOptionsController({
   elements,
@@ -17,7 +18,8 @@ export function createToolOptionsController({
   } = callbacks;
 
   function renderToolOptions(options) {
-    const visibleOptions = options.filter(shouldRenderToolOption);
+    const displayOptions = prepareToolOptionsForDisplay(options);
+    const visibleOptions = displayOptions.filter(shouldRenderToolOption);
     const shouldAppendLimitDisclosure = shouldAppendGeneratedLimitDisclosure(state.selectedTool?.metadata);
     if (visibleOptions.length === 0 && !shouldAppendLimitDisclosure) {
       elements.toolOptions.textContent = "";

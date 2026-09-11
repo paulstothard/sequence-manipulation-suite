@@ -5867,6 +5867,16 @@ legend {
   font-weight: 700;
 }
 
+.iupac-reference-table-wrap {
+  width: min(100%, 48rem);
+  overflow: hidden;
+}
+
+.iupac-reference-table {
+  min-width: 0;
+  table-layout: auto;
+}
+
 .tool-summary-sections {
   display: grid;
   gap: 1.2rem;
@@ -13689,8 +13699,8 @@ details[open] > .sequence-extractor-section-header .sequence-extractor-section-h
 .markdown-document-toolbar { padding:.4rem .6rem; background:var(--app-output-surface-soft); border-bottom:1px solid var(--app-output-border); }
 .workflow-document-actions { display:flex; flex-wrap:wrap; align-items:center; gap:.4rem; margin:.5rem 0; }
 
-/* Plate layouts use the shared editor controls; the exportable map is paper-white. */
-.input-panel[data-table-input-view="preview"] > #sequenceInput { display: none; }
+/* Table previews preserve the textarea as the editable source. */
+[data-table-input-view="preview"] > :is(#sequenceInput, .split-input-textarea) { display: none; }
 .table-input-tools { min-width: 0; margin-top: 12px; }
 .table-input-help { margin: 0 0 12px; font-size: .86rem; color: var(--muted); }
 .table-input-help summary { cursor: pointer; color: var(--text); font-weight: 600; }

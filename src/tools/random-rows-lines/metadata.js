@@ -8,6 +8,10 @@ export const randomRowsLinesMetadata = {
   summary: "Randomly sample lines or table rows, with optional header preservation, replacement, and reproducible seeds.",
   inputType: "Plain text, CSV, or TSV",
   outputType: "Sampled text or sampling table",
+  inputTable: {
+    visibleWhen: { option: "mode", value: "table" },
+    description: "Preview delimited rows using the selected delimiter and header setting. Switch back to Edit text to change the source."
+  },
   workflow: {
     inputs: [{ id: "input", kind: "text", mediaType: "text/plain" }],
     outputs: [

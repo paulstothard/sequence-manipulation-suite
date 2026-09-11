@@ -7,6 +7,7 @@ export const qpcrAnalysisMetadata = {
   inputType: "CSV, TSV, or Excel Cq table", outputType: "Expression plot, comparison and replicate tables, or report",
   fileInput: { accept: ".csv,.tsv,.tab,.txt,.xlsx", dropLabel: "Drop CSV, TSV, or Excel Cq tables here", description: "One reaction per row, with sample, target, condition and cq columns." },
   inputTable: {
+    label: "Cq table format",
     requiredColumns: ["sample", "target", "condition"], maxCharacters: 5_000_000,
     description: "Paste CSV or tab-separated spreadsheet cells, or choose a CSV, TSV, or Excel (.xlsx) file. Excel uses the first non-empty worksheet. One row is one reaction; repeated sample/target rows are technical replicates. Each independent biological sample needs its own sample ID. Use the column names below; cq may also be named ct or cp. The example contains simulated measurements.",
     columns: [

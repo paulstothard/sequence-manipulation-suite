@@ -55,7 +55,20 @@ export const sirnaDesignMetadata = {
       ]
     },
     makeOptionalReferenceGenomeOptionGroup({
-      help: "Optional local reference genome or transcript set used to count near matches for each siRNA candidate target window. Hits are reported for interpretation, not treated as automatic failures, because the intended target may also be present in the reference."
+      help: "Optional local reference genome or transcript set used to count near matches for each siRNA candidate target window. Hits are reported for interpretation, not treated as automatic failures, because the intended target may also be present in the reference.",
+      additionalOptions: [
+        {
+          id: "maxOffTargetMismatches",
+          type: "number",
+          label: "Maximum mismatches",
+          defaultValue: 2,
+          min: 0,
+          max: 5,
+          step: 1,
+          visibleWhen: { option: "referenceGenomeMode", value: ["loaded", "indexed", "bgzf"] },
+          help: "Reference hits are ungapped candidate target-window comparisons against the reference."
+        }
+      ]
     }),
     {
       type: "group",
@@ -85,16 +98,6 @@ export const sirnaDesignMetadata = {
       collapsed: true,
       visibleWhen: { option: "referenceGenomeMode", value: ["loaded", "indexed", "bgzf"] },
       options: [
-        {
-          id: "maxOffTargetMismatches",
-          type: "number",
-          label: "Maximum mismatches",
-          defaultValue: 2,
-          min: 0,
-          max: 5,
-          step: 1,
-          help: "Reference hits are ungapped candidate target-window comparisons against the reference."
-        },
         {
           id: "maxOffTargetMatchesPerCandidate",
           type: "number",

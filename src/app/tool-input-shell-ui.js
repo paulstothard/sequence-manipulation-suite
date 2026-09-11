@@ -271,7 +271,12 @@ export function createToolInputShellController({
   helpers,
   callbacks
 }) {
-  const inputPreview = createTableInputPreview({ input: elements.sequenceInput, panel: elements.inputPanel, getMetadata: () => state.selectedTool?.metadata });
+  const inputPreview = createTableInputPreview({
+    input: elements.sequenceInput,
+    panel: elements.inputPanel,
+    getMetadata: () => state.selectedTool?.metadata,
+    getOptionValues: () => getOptions()
+  });
   const {
     appendToolOptionControl,
     flattenOptions,
@@ -292,6 +297,7 @@ export function createToolInputShellController({
     isTabbedInputWorkflowTool,
     isVcfTabbedInputTool,
     loadSequenceExtractorModeExample,
+    refreshSplitTableInputPreviews,
     renderSplitInputPanel,
     resetToolOutputViewer,
     setFastaRegionSourceMode,
@@ -305,6 +311,8 @@ export function createToolInputShellController({
     updateToolOptionSuggestions,
     updateVcfInputModeUi
   } = callbacks;
+
+  elements.toolOptions.addEventListener("change", () => inputPreview.refresh());
 
   function getRunButtonLabel(tool = state.selectedTool) {
     return "Run";
@@ -876,6 +884,7 @@ export function createToolInputShellController({
 
   function updateInputActionButtons({ previewTable = false } = {}) {
     inputPreview.refresh({ preferPreview: previewTable });
+    refreshSplitTableInputPreviews?.({ preferPreview: previewTable });
     elements.clearInput.hidden = false;
     elements.workflowClearInput.hidden = false;
     const canLoadExample = hasLoadableExampleForActiveInputMode(state.selectedTool);

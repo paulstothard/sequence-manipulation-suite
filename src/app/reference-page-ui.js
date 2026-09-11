@@ -96,6 +96,10 @@ export function createReferencePageController({
     wrapper.className = "reference-table-wrap";
     const table = document.createElement("table");
     table.className = "reference-table";
+    if (topic.id === "iupac-nucleotide" || topic.id === "iupac-amino-acid") {
+      wrapper.classList.add("iupac-reference-table-wrap");
+      table.classList.add("iupac-reference-table");
+    }
 
     const thead = document.createElement("thead");
     const headerRow = document.createElement("tr");

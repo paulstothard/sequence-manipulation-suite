@@ -7,6 +7,7 @@ export const plateLayoutMetadata = {
   inputType: "CSV, TSV, Excel sample table, or saved plate layout", outputType: "Editable plate map, well-assignment table",
   fileInput: { dropLabel: "Drop CSV, TSV, Excel, or saved plate layouts here", accept: ".csv,.tsv,.tab,.txt,.xlsx,.json", description: "CSV, TSV, Excel (.xlsx), or a saved SMS3 plate layout (.sms3.json)." },
   inputTable: {
+    label: "Sample table format",
     requiredColumns: ["sample"], maxCharacters: 1_000_000,
     description: "Paste CSV or tab-separated cells copied from a spreadsheet, or choose a CSV, TSV, or Excel (.xlsx) file. Excel imports the first non-empty worksheet. One row describes a sample or control; only sample is required. Choose file also reopens saved SMS3 plate layouts (.sms3.json). The preview shows input rows; Run expands replicates into wells.",
     columns: [
@@ -30,6 +31,8 @@ export const plateLayoutMetadata = {
     { type: "group", label: "Plate layout", options: [
       { id: "title", type: "text", label: "Layout title", defaultValue: "Plate layout" },
       { id: "plateSize", type: "radio", label: "Plate size", defaultValue: "96", choices: [{ value: "96", label: "96 wells" }, { value: "384", label: "384 wells" }] },
+      { id: "maxPlates", type: "number", label: "Maximum plates", defaultValue: 20, min: 1, max: 20, step: 1,
+        help: "Allocation stops if the requested wells need more plates. Choose a lower value when the plan must fit within a fixed plate count." },
       { id: "replicates", type: "number", label: "Replicates per sample", defaultValue: 3, min: 1, max: 384, step: 1,
         help: "Number of repeated wells for each input row when its replicates cell is blank. Three wells of the same sample are technical repeats, not three independent biological samples. Enter separate rows for distinct biological samples. Each repeat gets its own assignment ID." },
       { id: "fillOrder", type: "select", label: "Fill order", defaultValue: "row", choices: [{ value: "row", label: "By row" }, { value: "column", label: "By column" }, { value: "random", label: "Randomized" }],
@@ -51,8 +54,7 @@ export const plateLayoutMetadata = {
         help: "The map supports manual edits, Undo/Redo, browser recovery, and current-layout exports. The table includes assigned, empty, and reserved wells. Saved layouts reopen through Choose file." }
     ] },
     { type: "group", label: "Limits", collapsible: true, collapsed: true, options: [
-      { id: "maxPlates", type: "number", label: "Maximum plates", defaultValue: 20, min: 1, max: 20, step: 1,
-        help: "Allocation stops if it needs more plates. Each run supports at most 2,000 sample rows, 7,680 assignments, 1 million input characters, and 8 MB of expanded assignment data. The editor displays one plate at a time." }
+      { id: "plateLayoutLimitNote", type: "note", text: "Each run supports at most 20 plates, 2,000 sample rows, 7,680 assignments, 1 million input characters, and 8 MB of expanded assignment data. The editor displays one plate at a time." }
     ] },
     { id: "planningReference", type: "note", text: "References:\n\nPlate use and positional effects: Assay Guidance Manual, Microplate Selection and Recommended Practices in High-throughput Screening and Quantitative Biology." }
   ]
