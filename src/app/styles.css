@@ -9924,8 +9924,15 @@ legend {
   gap: 0.45rem;
 }
 
-.output-search-row input {
-  min-width: 12rem;
+.output-search-row .output-search-query {
+  flex: 1 1 30rem;
+  max-width: 38rem;
+  min-width: min(100%, 24rem);
+}
+
+.output-search-row .output-search-query input {
+  flex: 1 1 22rem;
+  min-width: 20rem;
 }
 
 .output-search-row .output-search-mode {
@@ -9939,6 +9946,23 @@ legend {
 .output-search-count {
   color: var(--muted-text);
   font-size: 0.82rem;
+}
+
+@media (max-width: 640px) {
+  .output-search-row .output-search-query {
+    align-items: stretch;
+    flex-basis: 100%;
+    flex-direction: column;
+    max-width: none;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .output-search-row .output-search-query input {
+    flex-basis: auto;
+    min-width: 0;
+    width: 100%;
+  }
 }
 
 .output-format-row {
