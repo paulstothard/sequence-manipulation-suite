@@ -65,6 +65,7 @@ export const histogramMetadata = {
         { id: "title", type: "text", label: "Plot title", defaultValue: "Read length histogram" }
       ]
     },
+    makeAxisLimitsGroup({ x: true, y: true }),
     {
       type: "group",
       label: "Output format",
@@ -74,7 +75,6 @@ export const histogramMetadata = {
           { value: "bin-tsv", label: "Bin table" }
         ] }
       ]
-    },
-    makeAxisLimitsGroup({ x: true, y: true })
+    }
   ]
 };

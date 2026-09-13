@@ -1937,6 +1937,70 @@ function channelForAssemblyRead(channel, read) {
   return { A: "T", C: "G", G: "C", T: "A" }[channel] ?? channel;
 }
 
+function assemblyConsensusInspectionText(contig, position) {
+  const consensusBase = contig.sequence?.[position - 1] ?? "N";
+  const evidence = (contig.reads ?? [])
+    .filter((read) => position >= read.start && position <= read.end)
+    .map((read) => ({
+      base: read.sequence?.[position - read.start] ?? "N",
+      title: read.title
+    }));
+  const counts = new Map();
+  for (const item of evidence) {
+    counts.set(item.base, (counts.get(item.base) ?? 0) + 1);
+  }
+  const evidenceText = [...counts.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([base, count]) => `${base} ${count}`)
+    .join(", ") || "none";
+  const sourceText = evidence.map((item) => item.title).join(", ") || "none";
+  return `Consensus ${contig.title} position ${position}: ${consensusBase}; coverage ${evidence.length} read${evidence.length === 1 ? "" : "s"}; evidence ${evidenceText}; sources ${sourceText}`;
+}
+
+function traceCallEvidenceText(traceResult, read, call) {
+  if (!traceResult || !call) return "trace evidence unavailable";
+  const quality = call.quality === null || call.quality === undefined
+    ? "quality unavailable"
+    : `Q${call.quality} Phred quality`;
+  const originalTracePosition = call.originalTracePosition === null || call.originalTracePosition === undefined
+    ? ""
+    : `; original trace position ${call.originalTracePosition}`;
+  const signals = SANGER_TRACE_CHANNELS.map((channel) => {
+    const sourceChannel = channelForAssemblyRead(channel, read);
+    const value = traceResult.view.traces[sourceChannel]?.[call.tracePosition - 1] ?? 0;
+    return `${channel} ${Math.round(Number(value) || 0)}`;
+  }).join(", ");
+  return `trace position ${call.tracePosition}${originalTracePosition}; ${quality}; signals ${signals}`;
+}
+
+function assemblyReadInspectionText({ traceResult, read, contig, position, readPosition }) {
+  const base = read.sequence?.[readPosition - 1] ?? "N";
+  const consensusBase = contig.sequence?.[position - 1] ?? "N";
+  const call = traceResult ? callForAssemblyReadPosition(traceResult, read, readPosition) : null;
+  const orientation = read.orientation === "reverse-complement" ? "reverse complement" : "forward";
+  const sourceCall = call?.base && call.base !== base ? `; source call ${call.base}` : "";
+  return `${read.title}; ${contig.title} assembly position ${position}; read position ${readPosition}; called base ${base}${sourceCall}; consensus ${consensusBase}; ${orientation}; ${traceCallEvidenceText(traceResult, read, call)}`;
+}
+
+function makeAssemblyConsensusInspectionTargetsSvg({ contig, chunk, sequenceLeft, cellWidth, rowTop }) {
+  const parts = [];
+  for (let position = chunk.start; position <= chunk.end; position += 1) {
+    const x = sequenceLeft + (position - chunk.start) * cellWidth;
+    parts.push(`<rect class="sanger-assembly-consensus-inspection-target" data-sanger-contig="${escapeXml(contig.id)}" data-sanger-assembly-position="${position}" x="${x.toFixed(2)}" y="${(rowTop + 1).toFixed(2)}" width="${cellWidth.toFixed(2)}" height="22" fill="transparent"><title>${escapeXml(assemblyConsensusInspectionText(contig, position))}</title></rect>`);
+  }
+  return parts.join("");
+}
+
+function makeAssemblyReadInspectionTargetsSvg({ traceResult, read, contig, segment, chunk, sequenceLeft, cellWidth, rowTop, rowHeight }) {
+  const parts = [];
+  for (let position = segment.segmentStart; position <= segment.segmentEnd; position += 1) {
+    const readPosition = position - read.start + 1;
+    const x = sequenceLeft + (position - chunk.start) * cellWidth;
+    parts.push(`<rect class="sanger-assembly-base-inspection-target" data-sanger-read="${escapeXml(read.title)}" data-sanger-assembly-position="${position}" data-sanger-read-position="${readPosition}" x="${x.toFixed(2)}" y="${(rowTop + 2).toFixed(2)}" width="${cellWidth.toFixed(2)}" height="${(rowHeight - 8).toFixed(2)}" fill="transparent"><title>${escapeXml(assemblyReadInspectionText({ traceResult, read, contig, position, readPosition }))}</title></rect>`);
+  }
+  return parts.join("");
+}
+
 function makeTracePositionToSequenceX(anchors, fallbackStep = 14) {
   const ordered = anchors
     .filter((anchor) => Number.isFinite(anchor.tracePosition) && Number.isFinite(anchor.x))
@@ -2082,6 +2146,22 @@ function queryPositionCallForReferenceTrace(traceResult, orientation, queryPosit
     ? traceResult.view.baseCalls.length - queryPosition + 1
     : queryPosition;
   return traceResult.view.baseCalls.find((call) => call.displayIndex === displayIndex) ?? null;
+}
+
+function referenceReadInspectionText({ traceResult, placement, reference, item }) {
+  const call = queryPositionCallForReferenceTrace(traceResult, placement.orientation, item.queryPosition);
+  const referenceBase = reference.sequence?.[item.referencePosition - 1] ?? "N";
+  const orientation = placement.orientation === "reverse-complement" ? "reverse complement" : "forward";
+  const relation = referenceBase === item.base ? "match" : "difference";
+  const sourceCall = call?.base && call.base !== item.base ? `; source call ${call.base}` : "";
+  return `${placement.title}; reference ${reference.title} position ${item.referencePosition}: ${referenceBase}; query position ${item.queryPosition}; called base ${item.base}${sourceCall}; ${relation}; ${orientation}; ${traceCallEvidenceText(traceResult, placement, call)}`;
+}
+
+function makeReferenceReadInspectionTargetsSvg({ traceResult, placement, reference, segment, chunk, sequenceLeft, cellWidth, rowTop, rowHeight }) {
+  return segment.mapped.map((item) => {
+    const x = sequenceLeft + (item.referencePosition - chunk.start) * cellWidth;
+    return `<rect class="sanger-reference-read-inspection-target" data-sanger-read="${escapeXml(placement.title)}" data-sanger-reference-position="${item.referencePosition}" data-sanger-query-position="${item.queryPosition}" x="${x.toFixed(2)}" y="${(rowTop + 2).toFixed(2)}" width="${cellWidth.toFixed(2)}" height="${(rowHeight - 8).toFixed(2)}" fill="transparent"><title>${escapeXml(referenceReadInspectionText({ traceResult, placement, reference, item }))}</title></rect>`;
+  }).join("");
 }
 
 function makeReferenceTracePlacement(session, alignment) {
@@ -2349,6 +2429,11 @@ export function makeSangerReferenceTraceMapSvg(session, options = {}) {
       const x = sequenceLeft + (position - chunk.start) * cellWidth;
       parts.push(`<text x="${(x + cellWidth / 2).toFixed(1)}" y="${y + 16}" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" font-weight="700" fill="${CHANNEL_COLORS[base] ?? "#475569"}">${escapeXml(base)}</text>`);
     }
+    for (let position = chunk.start; position <= chunk.end; position += 1) {
+      const base = reference.sequence[position - 1] ?? "N";
+      const x = sequenceLeft + (position - chunk.start) * cellWidth;
+      parts.push(`<rect class="sanger-reference-base-inspection-target" data-sanger-reference-position="${position}" x="${x.toFixed(2)}" y="${(y + 1).toFixed(2)}" width="${cellWidth.toFixed(2)}" height="22" fill="transparent"><title>${escapeXml(`Reference ${reference.title} position ${position}: ${base}`)}</title></rect>`);
+    }
     y += referenceRowHeight;
     if (translationFrames.length > 0) {
       parts.push(`<g class="sanger-reference-translation-tracks" data-translation-source="reference">${makeSangerTranslationTracksSvg({
@@ -2366,9 +2451,9 @@ export function makeSangerReferenceTraceMapSvg(session, options = {}) {
     for (const [placementIndex, { placement, segment }] of chunk.visiblePlacements.entries()) {
       const rowTop = y;
       const clippedLabel = compactMiddle(placement.title, 30);
+      parts.push(`<g class="sanger-reference-read-row" data-sanger-read="${escapeXml(placement.title)}" data-orientation="${escapeXml(placement.orientation)}"><title>${escapeXml(`${placement.title} (${placement.orientation}; ${formatIdentityPercent(placement.identityPercent)}% identity)`)}</title>`);
       parts.push(makeAssemblyReadOrientationMarker(placement, left, rowTop + 14));
       parts.push(`<text x="${left + 20}" y="${rowTop + 18}" font-family="system-ui, sans-serif" font-size="11" fill="#334155">${escapeXml(clippedLabel)}</text>`);
-      parts.push(`<title>${escapeXml(`${placement.title} (${placement.orientation}; ${formatIdentityPercent(placement.identityPercent)}% identity)`)}</title>`);
       for (const run of splitReferenceMappedRuns(segment.mapped)) {
         const runStart = run[0].referencePosition;
         const runEnd = run.at(-1).referencePosition;
@@ -2390,6 +2475,18 @@ export function makeSangerReferenceTraceMapSvg(session, options = {}) {
         rowTop,
         rowHeight: readRowHeight
       }));
+      parts.push(makeReferenceReadInspectionTargetsSvg({
+        traceResult: placement.traceResult,
+        placement,
+        reference,
+        segment,
+        chunk,
+        sequenceLeft,
+        cellWidth,
+        rowTop,
+        rowHeight: readRowHeight
+      }));
+      parts.push("</g>");
       y += readRowHeight + (placementIndex < chunk.visiblePlacements.length - 1 ? readRowGap : 0);
     }
     y += chunkGap;
@@ -2465,6 +2562,13 @@ export function makeSangerAssemblyTraceMapSvg(session, options = {}) {
       const x = sequenceLeft + (position - chunk.start) * cellWidth;
       parts.push(`<text x="${(x + cellWidth / 2).toFixed(1)}" y="${y + 16}" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" font-weight="700" fill="${CHANNEL_COLORS[base] ?? "#475569"}">${escapeXml(base)}</text>`);
     }
+    parts.push(makeAssemblyConsensusInspectionTargetsSvg({
+      contig: chunk.contig,
+      chunk,
+      sequenceLeft,
+      cellWidth,
+      rowTop: y
+    }));
     y += consensusRowHeight;
     const translationFrames = translationFramesByContig.get(chunk.contig.id) ?? [];
     if (translationFrames.length > 0) {
@@ -2484,9 +2588,9 @@ export function makeSangerAssemblyTraceMapSvg(session, options = {}) {
       const rowTitle = `${read.title} (${read.orientation === "reverse-complement" ? "reverse complement" : "forward"})`;
       const clippedLabel = compactMiddle(read.title, 30);
       const rowTop = y;
+      parts.push(`<g class="sanger-assembly-read-row" data-sanger-read="${escapeXml(read.title)}" data-orientation="${escapeXml(read.orientation)}"><title>${escapeXml(rowTitle)}</title>`);
       parts.push(makeAssemblyReadOrientationMarker(read, left, rowTop + 14));
       parts.push(`<text x="${left + 20}" y="${rowTop + 18}" font-family="system-ui, sans-serif" font-size="11" fill="#334155">${escapeXml(clippedLabel)}</text>`);
-      parts.push(`<title>${escapeXml(rowTitle)}</title>`);
       const spanX = sequenceLeft + (segment.segmentStart - chunk.start) * cellWidth;
       const spanWidth = (segment.segmentEnd - segment.segmentStart + 1) * cellWidth;
       parts.push(`<rect x="${spanX.toFixed(1)}" y="${rowTop + 2}" width="${spanWidth.toFixed(1)}" height="${readRowHeight - 8}" fill="#f8fafc" stroke="#d8e1ea"/>`);
@@ -2506,6 +2610,18 @@ export function makeSangerAssemblyTraceMapSvg(session, options = {}) {
         rowTop,
         rowHeight: readRowHeight
       }));
+      parts.push(makeAssemblyReadInspectionTargetsSvg({
+        traceResult,
+        read,
+        contig: chunk.contig,
+        segment,
+        chunk,
+        sequenceLeft,
+        cellWidth,
+        rowTop,
+        rowHeight: readRowHeight
+      }));
+      parts.push("</g>");
       y += readRowHeight;
     }
     y += chunkGap;

@@ -54,6 +54,7 @@ export const boxPlotMetadata = {
         { id: "title", type: "text", label: "Plot title", defaultValue: "RNA integrity by treatment" }
       ]
     },
+    makeAxisLimitsGroup({ x: false, y: true }),
     {
       type: "group",
       label: "Output format",
@@ -63,7 +64,6 @@ export const boxPlotMetadata = {
           { value: "box-tsv", label: "Box summary table" }
         ] }
       ]
-    },
-    makeAxisLimitsGroup({ x: false, y: true })
+    }
   ]
 };

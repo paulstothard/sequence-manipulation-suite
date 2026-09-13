@@ -20,6 +20,7 @@ export function serializeSvgElement(svgElement) {
     mark.removeAttribute("data-sms3-title-mark");
     mark.removeAttribute("data-sms3-title-text");
     mark.removeAttribute("data-sms3-inspection-active");
+    mark.removeAttribute("data-sms3-inspection-nearby");
   }
   const describedBy = String(clone.getAttribute("aria-describedby") ?? "")
     .split(/\s+/)

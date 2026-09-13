@@ -56,13 +56,14 @@ export const volcanoPlotMetadata = {
           label: "Maximum plotted points",
           defaultValue: 10000,
           min: 100,
-          max: 100000,
+          max: 20000,
           step: 100,
           help: "The Point TSV still contains all parsed points; this only caps visual drawing for browser responsiveness."
         },
         { id: "title", type: "text", label: "Plot title", defaultValue: "Differential expression volcano plot" }
       ]
     },
+    makeAxisLimitsGroup({ x: true, y: true }),
     {
       type: "group",
       label: "Output format",
@@ -78,7 +79,6 @@ export const volcanoPlotMetadata = {
           ]
         }
       ]
-    },
-    makeAxisLimitsGroup({ x: true, y: true })
+    }
   ]
 };

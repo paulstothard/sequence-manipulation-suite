@@ -1,5 +1,6 @@
 const TITLE_MARK_ATTRIBUTE = "data-sms3-title-mark";
 const ACTIVE_ATTRIBUTE = "data-sms3-inspection-active";
+const NEARBY_ATTRIBUTE = "data-sms3-inspection-nearby";
 const EXPLICIT_MARK_SELECTOR = [
   "[data-sms3-inspection-text]",
   "[data-alignment-column]",
@@ -7,10 +8,25 @@ const EXPLICIT_MARK_SELECTOR = [
 ].join(",");
 
 let inspectionId = 0;
-const MAX_CANVAS_KEYBOARD_TARGETS = 2000;
+const MAX_KEYBOARD_TARGETS = 2000;
+const MAX_NEARBY_LINE_MARKS = 400;
+const NEARBY_LINE_HIT_RADIUS = 6;
+const NEAREST_POINT_SELECTOR = '[data-sms3-nearest-point="true"]';
+const NEAREST_POINT_HIT_RADIUS = 11;
+const NEAREST_POINT_HYSTERESIS = 2;
+const NEAREST_POINT_GRID_SIZE = 16;
 
 function normalizedText(value) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
+}
+
+function evenlyLimitedTargets(targets, limit = MAX_KEYBOARD_TARGETS) {
+  const unique = [...new Set(targets)];
+  if (unique.length <= limit) return unique;
+  if (limit <= 1) return unique.slice(0, 1);
+  return Array.from({ length: limit }, (_unused, index) =>
+    unique[Math.round((index * (unique.length - 1)) / (limit - 1))]
+  );
 }
 
 function directTitle(element) {
@@ -90,8 +106,19 @@ export function installVisualInspection(container, {
   container.append(tooltip, liveStatus, instructions);
 
   let activeMark = null;
+  let activeSource = null;
   let pinnedMark = null;
   let keyboardIndex = -1;
+  let pointerFrame = 0;
+  let pendingPointer = null;
+  let lastPointerPosition = null;
+  let keyboardPointerAnchor = null;
+
+  function cancelPendingPointerInspection() {
+    if (pointerFrame) window.cancelAnimationFrame(pointerFrame);
+    pointerFrame = 0;
+    pendingPointer = null;
+  }
 
   function prepareTitle(title) {
     const mark = title.parentElement;
@@ -100,6 +127,17 @@ export function installVisualInspection(container, {
     titleStates.set(title, text);
     mark.dataset.sms3TitleText = text;
     mark.setAttribute(TITLE_MARK_ATTRIBUTE, "");
+    const tag = mark.tagName?.toLowerCase();
+    if (tag === "line") {
+      mark.setAttribute(NEARBY_ATTRIBUTE, "line");
+    } else if (["rect", "circle", "ellipse", "path", "polygon", "polyline"].includes(tag)) {
+      try {
+        const box = mark.getBBox();
+        if (box.width < 1 || box.height < 1) mark.setAttribute(NEARBY_ATTRIBUTE, "degenerate");
+      } catch {
+        // Some detached SVG engines do not expose geometry until the next frame.
+      }
+    }
     title.textContent = "";
   }
 
@@ -108,7 +146,8 @@ export function installVisualInspection(container, {
     const state = {
       tabindex: svg.getAttribute("tabindex"),
       describedBy: svg.getAttribute("aria-describedby"),
-      keyShortcuts: svg.getAttribute("aria-keyshortcuts")
+      keyShortcuts: svg.getAttribute("aria-keyshortcuts"),
+      nearestPointIndex: null
     };
     svgStates.set(svg, state);
     const hasFocusableMarks = Boolean(svg.querySelector("[tabindex],a,button,[role='button'],[role='link']"));
@@ -121,6 +160,40 @@ export function installVisualInspection(container, {
     }
   }
 
+  function prepareNearestPointIndex(svg) {
+    const state = svgStates.get(svg);
+    if (!state || state.nearestPointIndex) return;
+    const marks = [...svg.querySelectorAll(NEAREST_POINT_SELECTOR)];
+    if (marks.length === 0) {
+      state.nearestPointIndex = { grid: new Map(), count: 0 };
+      return;
+    }
+    const grid = new Map();
+    const svgScreenMatrix = svg.getScreenCTM?.();
+    if (!svgScreenMatrix) {
+      state.nearestPointIndex = { grid, count: 0 };
+      return;
+    }
+    const screenToSvg = svgScreenMatrix.inverse();
+    let count = 0;
+    for (const mark of marks) {
+      const x = Number(mark.getAttribute("cx") ?? mark.dataset.sms3PointX);
+      const y = Number(mark.getAttribute("cy") ?? mark.dataset.sms3PointY);
+      const matrix = mark.getScreenCTM?.();
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !matrix) continue;
+      const localPoint = svg.createSVGPoint();
+      localPoint.x = x;
+      localPoint.y = y;
+      const point = localPoint.matrixTransform(matrix).matrixTransform(screenToSvg);
+      const key = `${Math.floor(point.x / NEAREST_POINT_GRID_SIZE)}:${Math.floor(point.y / NEAREST_POINT_GRID_SIZE)}`;
+      const bucket = grid.get(key) ?? [];
+      bucket.push({ mark, x: point.x, y: point.y });
+      grid.set(key, bucket);
+      count += 1;
+    }
+    state.nearestPointIndex = { grid, count };
+  }
+
   function refresh() {
     for (const title of titleStates.keys()) {
       if (!container.contains(title)) titleStates.delete(title);
@@ -130,6 +203,7 @@ export function installVisualInspection(container, {
     }
     if (activeMark && !container.contains(activeMark)) {
       activeMark = null;
+      activeSource = null;
       pinnedMark = null;
       tooltip.hidden = true;
       tooltip.classList.remove("is-pinned");
@@ -138,6 +212,7 @@ export function installVisualInspection(container, {
     if (includeSvgTitles) {
       for (const title of container.querySelectorAll("svg title")) prepareTitle(title);
     }
+    for (const svg of container.querySelectorAll("svg")) prepareNearestPointIndex(svg);
   }
 
   function resolveDirectMark(node) {
@@ -146,14 +221,197 @@ export function installVisualInspection(container, {
     return mark && container.contains(mark) && getVisualInspectionText(mark) ? mark : null;
   }
 
+  function resolveCircleMembershipMark(node, position) {
+    if (!(node instanceof Element) || !position) return null;
+    const svg = node.closest('svg[data-sms3-spatial-inspection="circle-membership"]');
+    if (!(svg instanceof SVGSVGElement)) return null;
+    const circles = [...svg.querySelectorAll("circle[data-sms3-membership-index]")]
+      .sort((left, right) => Number(left.dataset.sms3MembershipIndex) - Number(right.dataset.sms3MembershipIndex));
+    if (circles.length === 0) return null;
+
+    const screenPoint = svg.createSVGPoint();
+    screenPoint.x = position.clientX;
+    screenPoint.y = position.clientY;
+    const membership = circles.map((circle) => {
+      const matrix = circle.getScreenCTM();
+      if (!matrix) return "0";
+      const point = screenPoint.matrixTransform(matrix.inverse());
+      const cx = Number(circle.getAttribute("cx"));
+      const cy = Number(circle.getAttribute("cy"));
+      const radius = Number(circle.getAttribute("r"));
+      return Number.isFinite(cx) && Number.isFinite(cy) && Number.isFinite(radius)
+        && Math.hypot(point.x - cx, point.y - cy) <= radius
+        ? "1"
+        : "0";
+    }).join("");
+    if (!membership.includes("1")) return null;
+
+    const mark = svg.querySelector(`[data-sms3-region-membership="${membership}"]`);
+    return mark && getVisualInspectionText(mark) ? mark : null;
+  }
+
+  function svgForPointer(node, position) {
+    const closest = node instanceof Element ? node.closest("svg") : null;
+    if (closest instanceof SVGSVGElement) return closest;
+    if (!position) return null;
+    return [...container.querySelectorAll("svg")].find((svg) => {
+      const rect = svg.getBoundingClientRect();
+      return position.clientX >= rect.left && position.clientX <= rect.right
+        && position.clientY >= rect.top && position.clientY <= rect.bottom;
+    }) ?? null;
+  }
+
+  function resolveNearestPointMark(node, position) {
+    if (!position) return null;
+    const svg = svgForPointer(node, position);
+    if (!(svg instanceof SVGSVGElement)) return null;
+    const index = svgStates.get(svg)?.nearestPointIndex;
+    if (!index?.count) return null;
+    const screenMatrix = svg.getScreenCTM();
+    if (!screenMatrix) return null;
+    const scaleX = Math.hypot(screenMatrix.a, screenMatrix.b);
+    const scaleY = Math.hypot(screenMatrix.c, screenMatrix.d);
+    const minimumScale = Math.max(0.001, Math.min(scaleX, scaleY));
+    const localRadius = NEAREST_POINT_HIT_RADIUS / minimumScale;
+    const screenPoint = svg.createSVGPoint();
+    screenPoint.x = position.clientX;
+    screenPoint.y = position.clientY;
+    const localPointer = screenPoint.matrixTransform(screenMatrix.inverse());
+    const minGridX = Math.floor((localPointer.x - localRadius) / NEAREST_POINT_GRID_SIZE);
+    const maxGridX = Math.floor((localPointer.x + localRadius) / NEAREST_POINT_GRID_SIZE);
+    const minGridY = Math.floor((localPointer.y - localRadius) / NEAREST_POINT_GRID_SIZE);
+    const maxGridY = Math.floor((localPointer.y + localRadius) / NEAREST_POINT_GRID_SIZE);
+    let nearest = null;
+    let nearestDistance = NEAREST_POINT_HIT_RADIUS;
+    let activeDistance = Infinity;
+    for (let gridX = minGridX; gridX <= maxGridX; gridX += 1) {
+      for (let gridY = minGridY; gridY <= maxGridY; gridY += 1) {
+        for (const candidate of index.grid.get(`${gridX}:${gridY}`) ?? []) {
+          const screenX = screenMatrix.a * candidate.x + screenMatrix.c * candidate.y + screenMatrix.e;
+          const screenY = screenMatrix.b * candidate.x + screenMatrix.d * candidate.y + screenMatrix.f;
+          const distance = Math.hypot(position.clientX - screenX, position.clientY - screenY);
+          if (candidate.mark === activeMark) activeDistance = distance;
+          if (distance <= nearestDistance && getVisualInspectionText(candidate.mark)) {
+            nearest = candidate.mark;
+            nearestDistance = distance;
+          }
+        }
+      }
+    }
+    if (activeDistance <= NEAREST_POINT_HIT_RADIUS
+      && activeDistance <= nearestDistance + NEAREST_POINT_HYSTERESIS) {
+      return activeMark;
+    }
+    return nearest;
+  }
+
+  function resolveNearbyLineMark(node, position) {
+    if (!(node instanceof Element) || !position) return null;
+    const svg = svgForPointer(node, position);
+    if (!(svg instanceof SVGSVGElement)) return null;
+    const lines = [...svg.querySelectorAll(`line[${NEARBY_ATTRIBUTE}="line"]`)];
+    if (lines.length === 0 || lines.length > MAX_NEARBY_LINE_MARKS) return null;
+    let nearest = null;
+    let nearestDistance = NEARBY_LINE_HIT_RADIUS;
+    for (const line of lines) {
+      const matrix = line.getScreenCTM();
+      if (!matrix) continue;
+      const makePoint = (x, y) => {
+        const point = svg.createSVGPoint();
+        point.x = Number(x);
+        point.y = Number(y);
+        return point.matrixTransform(matrix);
+      };
+      const start = makePoint(line.getAttribute("x1"), line.getAttribute("y1"));
+      const end = makePoint(line.getAttribute("x2"), line.getAttribute("y2"));
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const lengthSquared = dx * dx + dy * dy;
+      const projection = lengthSquared > 0
+        ? Math.max(0, Math.min(1, ((position.clientX - start.x) * dx + (position.clientY - start.y) * dy) / lengthSquared))
+        : 0;
+      const x = start.x + projection * dx;
+      const y = start.y + projection * dy;
+      const distance = Math.hypot(position.clientX - x, position.clientY - y);
+      if (distance <= nearestDistance && getVisualInspectionText(line)) {
+        nearest = line;
+        nearestDistance = distance;
+      }
+    }
+    return nearest;
+  }
+
+  function resolveNearbyDegenerateMark(node, position) {
+    if (!(node instanceof Element) || !position) return null;
+    const svg = svgForPointer(node, position);
+    if (!(svg instanceof SVGSVGElement)) return null;
+    const marks = [...svg.querySelectorAll(`[${NEARBY_ATTRIBUTE}="degenerate"]`)];
+    if (marks.length === 0 || marks.length > 650) return null;
+    let nearest = null;
+    let nearestDistance = NEARBY_LINE_HIT_RADIUS;
+    for (const mark of marks) {
+      let rect = mark.getBoundingClientRect();
+      try {
+        const box = mark.getBBox();
+        const matrix = mark.getScreenCTM();
+        if (matrix) {
+          const corners = [
+            [box.x, box.y],
+            [box.x + box.width, box.y],
+            [box.x, box.y + box.height],
+            [box.x + box.width, box.y + box.height]
+          ].map(([pointX, pointY]) => {
+            const point = svg.createSVGPoint();
+            point.x = pointX;
+            point.y = pointY;
+            return point.matrixTransform(matrix);
+          });
+          const xs = corners.map((point) => point.x);
+          const ys = corners.map((point) => point.y);
+          rect = {
+            left: Math.min(...xs),
+            right: Math.max(...xs),
+            top: Math.min(...ys),
+            bottom: Math.max(...ys),
+            width: Math.max(...xs) - Math.min(...xs),
+            height: Math.max(...ys) - Math.min(...ys)
+          };
+        }
+      } catch {
+        // Browser geometry fallback above remains sufficient for ordinary marks.
+      }
+      if (rect.width >= 1 && rect.height >= 1) continue;
+      const x = Math.max(rect.left, Math.min(position.clientX, rect.right));
+      const y = Math.max(rect.top, Math.min(position.clientY, rect.bottom));
+      const distance = Math.hypot(position.clientX - x, position.clientY - y);
+      if (distance < nearestDistance && getVisualInspectionText(mark)) {
+        nearest = mark;
+        nearestDistance = distance;
+      }
+    }
+    return nearest;
+  }
+
   function resolveMark(node, position) {
+    const spatialMark = resolveCircleMembershipMark(node, position);
+    if (spatialMark) return spatialMark;
     const directMark = resolveDirectMark(node);
+    if (directMark?.tagName?.toLowerCase() === "line") return directMark;
+    if (directMark?.matches(NEAREST_POINT_SELECTOR)) {
+      return resolveNearestPointMark(node, position) ?? directMark;
+    }
+    const nearbyLineMark = resolveNearbyLineMark(node, position);
+    if (nearbyLineMark) return nearbyLineMark;
+    const nearestPointMark = resolveNearestPointMark(node, position);
+    if (nearestPointMark) return nearestPointMark;
     if (directMark || !position || typeof document.elementsFromPoint !== "function") return directMark;
     for (const candidate of document.elementsFromPoint(position.clientX, position.clientY)) {
+      const candidateSpatialMark = resolveCircleMembershipMark(candidate, position);
+      if (candidateSpatialMark) return candidateSpatialMark;
       const mark = resolveDirectMark(candidate);
       if (mark) return mark;
     }
-    return null;
+    return resolveNearbyDegenerateMark(node, position);
   }
 
   function keyboardMarks(svg) {
@@ -165,18 +423,27 @@ export function installVisualInspection(container, {
       const mark = walker.currentNode;
       if (!mark.matches("[data-sms3-inspection-text],[data-alignment-column]")) continue;
       if (getVisualInspectionText(mark)) detailedMarks.push(mark);
-      if (detailedMarks.length > 2000) return titleMarks;
+      if (detailedMarks.length > MAX_KEYBOARD_TARGETS) {
+        return evenlyLimitedTargets(titleMarks);
+      }
     }
     // Dense alignments can contain hundreds of thousands of pointer targets. Keep
     // exact pointer inspection, while keyboard traversal uses titled row summaries.
-    return [...new Set([...detailedMarks, ...titleMarks])];
+    return evenlyLimitedTargets([...detailedMarks, ...titleMarks]);
+  }
+
+  let highlightedMark = null;
+
+  function markContainsDetailedInspection(mark) {
+    return Boolean(mark?.querySelector(EXPLICIT_MARK_SELECTOR));
   }
 
   function setActiveMark(mark) {
     if (activeMark === mark) return;
-    activeMark?.removeAttribute(ACTIVE_ATTRIBUTE);
+    highlightedMark?.removeAttribute(ACTIVE_ATTRIBUTE);
     activeMark = mark;
-    activeMark?.setAttribute(ACTIVE_ATTRIBUTE, "true");
+    highlightedMark = mark && !markContainsDetailedInspection(mark) ? mark : null;
+    highlightedMark?.setAttribute(ACTIVE_ATTRIBUTE, "true");
   }
 
   function placeTooltip(position) {
@@ -195,10 +462,14 @@ export function installVisualInspection(container, {
     tooltip.style.top = `${Math.max(minTop, Math.min(preferredTop, Math.max(minTop, maxTop)))}px`;
   }
 
-  function show(mark, position, { announce = false } = {}) {
+  function show(mark, position, { announce = false, source = "pointer" } = {}) {
     const text = getVisualInspectionText(mark);
     if (!text) return hide();
     setActiveMark(mark);
+    activeSource = source;
+    keyboardPointerAnchor = source === "keyboard" && lastPointerPosition
+      ? { ...lastPointerPosition }
+      : null;
     tooltip.textContent = text;
     tooltip.hidden = false;
     tooltip.classList.toggle("is-pinned", mark === pinnedMark);
@@ -212,6 +483,8 @@ export function installVisualInspection(container, {
   function hide({ force = false } = {}) {
     if (pinnedMark && !force) return;
     setActiveMark(null);
+    activeSource = null;
+    keyboardPointerAnchor = null;
     tooltip.hidden = true;
     tooltip.classList.remove("is-pinned");
   }
@@ -223,17 +496,55 @@ export function installVisualInspection(container, {
   }
 
   function inspectFromPointer(event) {
+    if (activeSource === "keyboard") return;
     const mark = resolveMark(event.target, event);
-    if (!mark || pinnedMark) return;
-    show(mark, event);
+    if (pinnedMark) {
+      if (!mark || mark === pinnedMark) return;
+      unpin({ hideTooltip: false });
+    }
+    if (mark) {
+      show(mark, event);
+    } else {
+      hide();
+    }
   }
 
   container.addEventListener("pointerover", inspectFromPointer, listenerOptions);
-  container.addEventListener("pointermove", inspectFromPointer, listenerOptions);
-  container.addEventListener("pointerleave", () => hide(), listenerOptions);
+  container.addEventListener("pointermove", (event) => {
+    pendingPointer = {
+      target: event.target,
+      clientX: event.clientX,
+      clientY: event.clientY
+    };
+    if (pointerFrame) return;
+    pointerFrame = window.requestAnimationFrame(() => {
+      pointerFrame = 0;
+      const pointer = pendingPointer;
+      pendingPointer = null;
+      if (pointer) inspectFromPointer(pointer);
+    });
+  }, listenerOptions);
+  container.addEventListener("pointerleave", () => {
+    cancelPendingPointerInspection();
+    if (activeSource === "keyboard") return;
+    hide();
+  }, listenerOptions);
+  document.addEventListener("pointermove", (event) => {
+    const position = { clientX: event.clientX, clientY: event.clientY };
+    const anchor = keyboardPointerAnchor ?? lastPointerPosition;
+    lastPointerPosition = position;
+    if (activeSource !== "keyboard") return;
+    if (anchor && Math.hypot(position.clientX - anchor.clientX, position.clientY - anchor.clientY) <= 0.5) return;
+    activeSource = null;
+    keyboardPointerAnchor = null;
+    if (!container.contains(event.target)) hide();
+  }, listenerOptions);
+  document.addEventListener("pointerdown", (event) => {
+    if (pinnedMark && !container.contains(event.target)) unpin();
+  }, listenerOptions);
   container.addEventListener("focusin", (event) => {
     const mark = resolveMark(event.target);
-    if (mark && !pinnedMark) show(mark, pointerPositionForElement(mark), { announce: true });
+    if (mark && !pinnedMark) show(mark, pointerPositionForElement(mark), { announce: true, source: "keyboard" });
   }, listenerOptions);
   container.addEventListener("focusout", (event) => {
     if (!resolveMark(event.relatedTarget)) hide();
@@ -255,6 +566,7 @@ export function installVisualInspection(container, {
   }, listenerOptions);
   container.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
+      cancelPendingPointerInspection();
       if (pinnedMark || !tooltip.hidden) {
         event.preventDefault();
         unpin();
@@ -268,6 +580,7 @@ export function installVisualInspection(container, {
     if (marks.length === 0) return;
     if (["ArrowRight", "ArrowDown", "ArrowLeft", "ArrowUp", "Home", "End"].includes(event.key)) {
       event.preventDefault();
+      cancelPendingPointerInspection();
       unpin({ hideTooltip: false });
       if (event.key === "Home") keyboardIndex = 0;
       else if (event.key === "End") keyboardIndex = marks.length - 1;
@@ -275,13 +588,14 @@ export function installVisualInspection(container, {
         const direction = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : -1;
         keyboardIndex = (keyboardIndex + direction + marks.length) % marks.length;
       }
-      show(marks[keyboardIndex], pointerPositionForElement(marks[keyboardIndex]), { announce: true });
+      show(marks[keyboardIndex], pointerPositionForElement(marks[keyboardIndex]), { announce: true, source: "keyboard" });
       return;
     }
     if (allowPin && event.key === "Enter" && activeMark) {
       event.preventDefault();
+      cancelPendingPointerInspection();
       pinnedMark = pinnedMark === activeMark ? null : activeMark;
-      show(activeMark, pointerPositionForElement(activeMark), { announce: true });
+      show(activeMark, pointerPositionForElement(activeMark), { announce: true, source: "keyboard" });
     }
   }, listenerOptions);
 
@@ -292,6 +606,7 @@ export function installVisualInspection(container, {
   const cleanup = () => {
     controller.abort();
     observer.disconnect();
+    cancelPendingPointerInspection();
     setActiveMark(null);
     for (const [title, text] of titleStates) {
       const mark = title.parentElement;
@@ -299,6 +614,7 @@ export function installVisualInspection(container, {
       if (mark) {
         delete mark.dataset.sms3TitleText;
         mark.removeAttribute(TITLE_MARK_ATTRIBUTE);
+        mark.removeAttribute(NEARBY_ATTRIBUTE);
       }
     }
     for (const [svg, state] of svgStates) {
@@ -395,7 +711,7 @@ export function installCanvasVisualInspection(container, {
       if (!key || seen.has(key)) continue;
       seen.add(key);
       targets.push(target);
-      if (targets.length >= MAX_CANVAS_KEYBOARD_TARGETS) break;
+      if (targets.length >= MAX_KEYBOARD_TARGETS) break;
     }
     return targets;
   }

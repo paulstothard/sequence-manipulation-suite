@@ -64,6 +64,7 @@ export const manhattanPlotMetadata = {
         { id: "genomeWideThreshold", type: "number", label: "Genome-wide threshold (-log10 p)", defaultValue: 7.3, min: 0, max: 100, step: 0.1, help: "Use 0 to hide the genome-wide threshold line." }
       ]
     },
+    makeAxisLimitsGroup({ x: false, y: true }),
     {
       type: "group",
       label: "Output format",
@@ -80,7 +81,6 @@ export const manhattanPlotMetadata = {
         }
       ]
     },
-    makeAxisLimitsGroup({ x: false, y: true }),
     {
       id: "advancedLimits",
       type: "group",
@@ -92,9 +92,9 @@ export const manhattanPlotMetadata = {
           id: "maxPointsDrawn",
           type: "number",
           label: "Maximum plotted points",
-          defaultValue: 50000,
+          defaultValue: 20000,
           min: 1000,
-          max: 500000,
+          max: 20000,
           step: 1000,
           help: "The Point table contains all parsed markers; this only caps visual drawing for browser responsiveness."
         }

@@ -49,13 +49,14 @@ export const linePlotMetadata = {
           label: "Maximum plotted points",
           defaultValue: 10000,
           min: 100,
-          max: 100000,
+          max: 20000,
           step: 100,
           help: "The Point TSV still contains all parsed points; this only caps visual drawing for browser responsiveness."
         },
         { id: "title", type: "text", label: "Plot title", defaultValue: "Expression time course" }
       ]
     },
+    makeAxisLimitsGroup({ x: true, y: true }),
     {
       type: "group",
       label: "Output format",
@@ -65,7 +66,6 @@ export const linePlotMetadata = {
           { value: "point-tsv", label: "Point table" }
         ] }
       ]
-    },
-    makeAxisLimitsGroup({ x: true, y: true })
+    }
   ]
 };

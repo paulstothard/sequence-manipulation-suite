@@ -131,7 +131,7 @@ export function renderLinePlotSpecToSvg(spec, options = {}) {
     }
     for (const item of rowsBySeries.get(seriesName) ?? []) {
       parts.push(
-        `<circle class="dot" cx="${scaleX(item.x).toFixed(2)}" cy="${scaleY(item.y).toFixed(2)}" r="3" fill="${color}"><title>${escapeXml(`${seriesName}: ${item.x}, ${item.y}`)}</title></circle>`
+        `<circle class="dot" data-sms3-nearest-point="true" cx="${scaleX(item.x).toFixed(2)}" cy="${scaleY(item.y).toFixed(2)}" r="3" fill="${color}"><title>${escapeXml(`${seriesName}: ${item.x}, ${item.y}`)}</title></circle>`
       );
     }
   });

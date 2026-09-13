@@ -112,6 +112,7 @@ export const tsnePlotMetadata = {
         { id: "title", type: "text", label: "Title", defaultValue: "RNA expression t-SNE" }
       ]
     },
+    makeAxisLimitsGroup({ x: true, y: true }),
     {
       type: "group",
       label: "Output format",
@@ -123,7 +124,6 @@ export const tsnePlotMetadata = {
         ] }
       ]
     },
-    makeAxisLimitsGroup({ x: true, y: true }),
     {
       type: "group",
       id: "limits",
@@ -139,7 +139,7 @@ export const tsnePlotMetadata = {
           label: "Maximum plotted points",
           defaultValue: 5000,
           min: 100,
-          max: 50000,
+          max: 20000,
           step: 100,
           help: "The embedding table still contains all embedded rows; this only caps visual drawing for browser responsiveness."
         }

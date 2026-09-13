@@ -115,7 +115,7 @@ export function renderConsensusMap(a) {
     for(const tick of x.ticks(6).filter(t=>Number.isInteger(t)&&t<=o.end)) p.push(`<text x="${x(tick)}" y="${y+55}" font-size="11" text-anchor="middle">${tick}</text>`);
     for(const r of a.audit.filter(r=>r.sequence_id===o.title || (r.status==='skipped'&&r.chrom===o.chrom&&r.pos>=o.start&&r.pos<=o.end))) {
       const color=({applied:'#0072b2',ambiguous:'#cc79a7',masked:'#d55e00',reference:'#758595','retained-reference':'#d55e00',skipped:'#758595'})[r.status];
-      p.push(`<circle cx="${x(Math.max(o.start,r.pos))}" cy="${y+26}" r="5" fill="${color}" stroke="white"><title>${escape(`${r.chrom}:${r.pos} ${r.ref}>${r.alt}; GT ${r.gt}; ${r.status}${r.reason?'; '+r.reason:''}`)}</title></circle>`);
+      p.push(`<circle data-sms3-nearest-point="true" cx="${x(Math.max(o.start,r.pos))}" cy="${y+26}" r="5" fill="${color}" stroke="white"><title>${escape(`${r.chrom}:${r.pos} ${r.ref}>${r.alt}; GT ${r.gt}; ${r.status}${r.reason?'; '+r.reason:''}`)}</title></circle>`);
     }
   }
   p.push(`<text x="30" y="${height-25}" font-size="13">Blue: applied · Purple: ambiguity · Orange: missing call · Grey: reference or skipped</text></g></svg>`);return p.join('');

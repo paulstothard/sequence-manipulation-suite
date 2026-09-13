@@ -6649,6 +6649,13 @@ legend {
   filter: drop-shadow(0 0 2px #ffffff) drop-shadow(0 0 3px #2563eb);
 }
 
+:is(.visual-output, .showcase-preview) svg :is(rect, line, polyline, polygon)[data-sms3-inspection-active="true"] {
+  filter: none !important;
+  stroke: #2563eb !important;
+  stroke-width: 2px !important;
+  vector-effect: non-scaling-stroke !important;
+}
+
 .visual-inspection-tooltip {
   background: rgb(15 23 42 / 0.96);
   border: 1px solid rgb(255 255 255 / 0.24);

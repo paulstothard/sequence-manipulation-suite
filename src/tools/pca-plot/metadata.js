@@ -62,7 +62,7 @@ export const pcaPlotMetadata = {
           defaultValue: true,
           help: "Scaling gives each selected variable equal variance before PCA, which is usually appropriate when columns use different units or ranges."
         },
-        { id: "maxPointsDrawn", type: "number", label: "Maximum points drawn", defaultValue: 5000, min: 100, max: 50000, step: 100 }
+        { id: "maxPointsDrawn", type: "number", label: "Maximum points drawn", defaultValue: 5000, min: 100, max: 20000, step: 100 }
       ]
     },
     {
@@ -72,6 +72,7 @@ export const pcaPlotMetadata = {
         { id: "title", type: "text", label: "Title", defaultValue: "RNA expression PCA" }
       ]
     },
+    makeAxisLimitsGroup({ x: true, y: true }),
     {
       type: "group",
       label: "Output format",
@@ -84,8 +85,7 @@ export const pcaPlotMetadata = {
           { value: "report", label: "Summary report" }
         ] }
       ]
-    },
-    makeAxisLimitsGroup({ x: true, y: true })
+    }
   ],
   citations: [
     {

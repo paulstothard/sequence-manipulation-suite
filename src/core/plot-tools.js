@@ -1,5 +1,11 @@
 import "../vendor/d3/d3.min.js";
 import { HEATMAP_LEGEND_LABEL_GAP, escapeXml, makeHeatmapPlotSpec, renderHeatmapPlotSvg } from "./plot-renderer.js";
+import {
+  annotatePointCrowding,
+  pointCrowdingFact,
+  pointSamplingFact,
+  sampleStratifiedPoints
+} from "./point-plot-inspection.js";
 import { findColumn, parseDelimitedTable } from "./table.js";
 
 export const scatterPlotColumns = [
@@ -97,6 +103,7 @@ export const qqPlotColumns = [
 const COLORS = ["#2563eb", "#0f766e", "#a33a3a", "#7c3aed", "#d97706", "#0369a1", "#be123c", "#4b5563"];
 const HEATMAP_VISUAL_CELL_LIMIT = 900;
 const HEATMAP_CATEGORY_LIMIT = 80;
+const MAX_DENSE_SVG_POINTS = 20000;
 const DEFAULT_SCATTER_POINT_LIMIT = 5000;
 const DEFAULT_LINE_POINT_LIMIT = 10000;
 const DEFAULT_BOX_DOT_LIMIT = 1000;
@@ -104,7 +111,7 @@ const DEFAULT_VIOLIN_DOT_LIMIT = 1000;
 const DEFAULT_VIOLIN_GRID_POINTS = 80;
 const DEFAULT_BAR_LIMIT = 300;
 const DEFAULT_VOLCANO_POINT_LIMIT = 10000;
-const DEFAULT_MANHATTAN_POINT_LIMIT = 50000;
+const DEFAULT_MANHATTAN_POINT_LIMIT = MAX_DENSE_SVG_POINTS;
 const DEFAULT_QQ_POINT_LIMIT = 10000;
 const MANHATTAN_DEFAULT_COLORS = [
   "#E69F00",
@@ -434,6 +441,13 @@ function limitedRowsForSvg(rows, limit, warnings, label) {
   return rows.slice(0, limit);
 }
 
+export function stratifiedRowsForSvg(rows, limit, warnings, label, getGroup = (row) => row.group ?? "Data") {
+  if (rows.length <= limit) return rows;
+  const sampled = sampleStratifiedPoints(rows, limit, { getGroup });
+  warnings.push(`${label} SVG draws a deterministic group-stratified sample of ${sampled.length.toLocaleString()} point(s); the table output contains all ${rows.length.toLocaleString()} parsed row(s).`);
+  return sampled;
+}
+
 function evenlyLimitedRowsForSvg(rows, limit, warnings, label) {
   if (rows.length <= limit) {
     return rows;
@@ -451,8 +465,8 @@ function limitedManhattanRowsForSvg(rows, limit, warnings) {
   if (rows.length <= limit) {
     return rows;
   }
-  warnings.push(`Manhattan plot SVG draws ${limit.toLocaleString()} evenly sampled point(s), plus top-marker labels when enabled; the point table contains all ${rows.length.toLocaleString()} parsed row(s).`);
-  const sampled = evenlyLimitedRowsForSvg(rows, limit, [], "Manhattan plot");
+  warnings.push(`Manhattan plot SVG draws a deterministic chromosome-stratified sample of ${limit.toLocaleString()} point(s), plus top-marker labels when enabled; the point table contains all ${rows.length.toLocaleString()} parsed row(s).`);
+  const sampled = sampleStratifiedPoints(rows, limit, { getGroup: (row) => row.chromosome });
   const byPosition = new Map(sampled.map((row) => [row.plot_position, row]));
   for (const row of rows) {
     if (row.top_marker === "yes") {
@@ -625,11 +639,12 @@ export function makeScatterPlot(input, options = {}) {
   if (rows.length === 0) {
     warnings.push("No rows had numeric values for both selected axes.");
   }
-  const svgRows = limitedRowsForSvg(
+  const svgRows = stratifiedRowsForSvg(
     rows,
-    parsePositiveInteger(options.maxPointsDrawn, DEFAULT_SCATTER_POINT_LIMIT, 100, 50000),
+    parsePositiveInteger(options.maxPointsDrawn, DEFAULT_SCATTER_POINT_LIMIT, 100, MAX_DENSE_SVG_POINTS),
     warnings,
-    "Scatter plot"
+    "Scatter plot",
+    (row) => row.group || "Data"
   );
   return {
     table,
@@ -640,6 +655,8 @@ export function makeScatterPlot(input, options = {}) {
       xLabel: xColumn.label,
       yLabel: yColumn.label,
       showLegend: groupColumn !== null,
+      totalPointCount: rows.length,
+      sampleMethod: "group-stratified",
       ...axisRenderOptions(options, warnings)
     })
   };
@@ -699,11 +716,12 @@ export function makeVolcanoPlot(input, options = {}) {
   if (rows.length === 0) {
     warnings.push("No rows had valid values for the selected volcano plot columns.");
   }
-  const svgRows = limitedRowsForSvg(
+  const svgRows = stratifiedRowsForSvg(
     rows,
-    parsePositiveInteger(options.maxPointsDrawn, DEFAULT_VOLCANO_POINT_LIMIT, 100, 100000),
+    parsePositiveInteger(options.maxPointsDrawn, DEFAULT_VOLCANO_POINT_LIMIT, 100, MAX_DENSE_SVG_POINTS),
     warnings,
-    "Volcano plot"
+    "Volcano plot",
+    (row) => row.class
   );
   return {
     table,
@@ -715,6 +733,8 @@ export function makeVolcanoPlot(input, options = {}) {
       yLabel: `-log10(${pValueColumn.label})`,
       foldChangeCutoff,
       pValueCutoff,
+      totalPointCount: rows.length,
+      sampleMethod: "significance-class-stratified",
       ...axisRenderOptions(options, warnings)
     })
   };
@@ -864,7 +884,7 @@ export function makeManhattanPlot(input, options = {}) {
 
   const svgRows = limitedManhattanRowsForSvg(
     rows,
-    parsePositiveInteger(options.maxPointsDrawn, DEFAULT_MANHATTAN_POINT_LIMIT, 1000, 500000),
+    parsePositiveInteger(options.maxPointsDrawn, DEFAULT_MANHATTAN_POINT_LIMIT, 1000, MAX_DENSE_SVG_POINTS),
     warnings
   );
   const significanceLines = manhattanSignificanceLines(options, warnings);
@@ -884,6 +904,8 @@ export function makeManhattanPlot(input, options = {}) {
       chromosomeOrder,
       significanceLines,
       labelTopMarkers: options.labelTopMarkers === true,
+      totalPointCount: rows.length,
+      sampleMethod: "chromosome-stratified",
       ...axisRenderOptions(options, warnings)
     })
   };
@@ -940,7 +962,7 @@ export function makeQqPlot(input, options = {}) {
   });
   const svgRows = evenlyLimitedRowsForSvg(
     rows,
-    parsePositiveInteger(options.maxPointsDrawn, DEFAULT_QQ_POINT_LIMIT, 100, 100000),
+    parsePositiveInteger(options.maxPointsDrawn, DEFAULT_QQ_POINT_LIMIT, 100, MAX_DENSE_SVG_POINTS),
     warnings,
     "Q-Q plot"
   );
@@ -953,6 +975,8 @@ export function makeQqPlot(input, options = {}) {
       xLabel: "Theoretical normal quantile",
       yLabel: valueColumn.label,
       valueLabel: valueColumn.label,
+      totalPointCount: rows.length,
+      sampleMethod: "quantile-spaced",
       ...axisRenderOptions(options, warnings)
     })
   };
@@ -995,11 +1019,12 @@ export function makeLinePlot(input, options = {}) {
   if (rows.length === 0) {
     warnings.push("No rows had numeric values for both selected axes.");
   }
-  const svgRows = limitedRowsForSvg(
+  const svgRows = stratifiedRowsForSvg(
     rows,
-    parsePositiveInteger(options.maxPointsDrawn, DEFAULT_LINE_POINT_LIMIT, 100, 100000),
+    parsePositiveInteger(options.maxPointsDrawn, DEFAULT_LINE_POINT_LIMIT, 100, MAX_DENSE_SVG_POINTS),
     warnings,
-    "Line plot"
+    "Line plot",
+    (row) => row.series || "Data"
   );
   return {
     table,
@@ -1010,6 +1035,8 @@ export function makeLinePlot(input, options = {}) {
       xLabel: xColumn.label,
       yLabel: yColumn.label,
       showLegend: seriesColumn !== null,
+      totalPointCount: rows.length,
+      sampleMethod: "series-stratified",
       ...axisRenderOptions(options, warnings)
     })
   };
@@ -1136,9 +1163,9 @@ export function makeBoxPlot(input, options = {}) {
     warnings.push(`Skipped ${skipped} row(s) without numeric values for the selected box plot column.`);
   }
   const dotLimit = parsePositiveInteger(options.maxDotsDrawn, DEFAULT_BOX_DOT_LIMIT, 0, 10000);
-  const plottedPoints = dotLimit === 0 ? [] : points.slice(0, dotLimit);
+  const plottedPoints = dotLimit === 0 ? [] : sampleStratifiedPoints(points, dotLimit);
   if (points.length > plottedPoints.length) {
-    warnings.push(`Box plot SVG draws ${plottedPoints.length.toLocaleString()} individual measurement dot(s); quartiles and the table use all ${points.length.toLocaleString()} numeric value(s).`);
+    warnings.push(`Box plot SVG draws a deterministic group-stratified sample of ${plottedPoints.length.toLocaleString()} individual measurement dot(s); quartiles and the table use all ${points.length.toLocaleString()} numeric value(s).`);
   }
   return {
     table,
@@ -1151,6 +1178,7 @@ export function makeBoxPlot(input, options = {}) {
       xLabel: groupColumn?.label ?? "Group",
       yLabel: valueColumn.label,
       points: plottedPoints,
+      totalPointCount: points.length,
       ...axisRenderOptions(options, warnings)
     })
   };
@@ -1183,15 +1211,34 @@ export function makeViolinPlot(input, options = {}) {
     };
   }
   const grouped = new Map();
+  const points = [];
+  const pointLabelColumn = table.columns.find((column) =>
+    column.id !== valueColumn.id
+      && column.id !== groupColumn?.id
+      && /(^|_)(sample|specimen|subject|record|id|name|label)($|_)/i.test(column.id)
+  ) ?? table.columns.find((column) =>
+    column.id !== valueColumn.id && column.id !== groupColumn?.id && column.type !== "number"
+  );
   let skipped = 0;
-  for (const row of table.rows) {
+  for (const [rowIndex, row] of table.rows.entries()) {
     const group = groupColumn ? String(row[groupColumn.id] ?? "").trim() || "(blank)" : "All rows";
     const value = asNumber(row[valueColumn.id]);
     if (value === null) {
       skipped += 1;
       continue;
     }
-    grouped.set(group, [...(grouped.get(group) ?? []), value]);
+    const values = grouped.get(group) ?? [];
+    values.push(value);
+    grouped.set(group, values);
+    const pointLabel = pointLabelColumn ? String(row[pointLabelColumn.id] ?? "").trim() : "";
+    points.push({
+      group,
+      value: round(value),
+      index: values.length,
+      sourceRow: rowIndex + 1,
+      pointLabel,
+      pointLabelName: pointLabelColumn?.label ?? ""
+    });
   }
   const allValues = [...grouped.values()].flat();
   if (allValues.length === 0) {
@@ -1210,7 +1257,6 @@ export function makeViolinPlot(input, options = {}) {
   const hasFixedBandwidth = Number.isFinite(fixedBandwidth) && fixedBandwidth > 0;
   const summaries = [];
   const rawDensityRows = [];
-  const points = [];
   for (const [group, values] of grouped.entries()) {
     const sorted = values.slice().sort((a, b) => a - b);
     if (sorted.length === 0) continue;
@@ -1234,7 +1280,6 @@ export function makeViolinPlot(input, options = {}) {
       value: row.value,
       density: row.density
     })));
-    points.push(...values.map((value, index) => ({ group, value: round(value), index: index + 1 })));
   }
   const maxDensity = Math.max(0, ...rawDensityRows.map((row) => row.density));
   const densityRows = rawDensityRows.map((row) => ({
@@ -1244,9 +1289,9 @@ export function makeViolinPlot(input, options = {}) {
     scaled_width: maxDensity > 0 ? round(row.density / maxDensity) : 0
   }));
   const dotLimit = parsePositiveInteger(options.maxDotsDrawn, DEFAULT_VIOLIN_DOT_LIMIT, 0, 10000);
-  const plottedPoints = dotLimit === 0 ? [] : points.slice(0, dotLimit);
+  const plottedPoints = sampleStratifiedPoints(points, dotLimit);
   if (points.length > plottedPoints.length) {
-    warnings.push(`Violin plot SVG draws ${plottedPoints.length.toLocaleString()} individual measurement dot(s); density and summary tables use all ${points.length.toLocaleString()} numeric value(s).`);
+    warnings.push(`Violin plot SVG draws ${plottedPoints.length.toLocaleString()} individual measurement dot(s), selected as a deterministic group-stratified sample; density and summary tables use all ${points.length.toLocaleString()} numeric value(s).`);
   }
   return {
     table,
@@ -1259,6 +1304,7 @@ export function makeViolinPlot(input, options = {}) {
       xLabel: groupColumn?.label ?? "Group",
       yLabel: valueColumn.label,
       points: plottedPoints,
+      totalPointCount: points.length,
       ...axisRenderOptions(options, warnings)
     })
   };
@@ -1540,6 +1586,16 @@ export function renderScatterSvg(rows, options = {}) {
   const groups = [...new Set(rows.map((row) => row.group || "Data"))];
   const xTicks = makeAxisTicks(xMin, xMax);
   const yTicks = makeAxisTicks(yMin, yMax);
+  const pointRows = annotatePointCrowding(rows.map((row) => ({
+    ...row,
+    plotX: scale(row.x, xMin, xMax, 0, plotWidth),
+    plotY: scale(row.y, yMin, yMax, plotHeight, 0)
+  })), { getX: (row) => row.plotX, getY: (row) => row.plotY });
+  const sampleFact = pointSamplingFact({
+    displayed: pointRows.length,
+    total: options.totalPointCount,
+    method: options.sampleMethod || "group-stratified"
+  });
   const parts = [
     `<g transform="translate(${margin.left} ${margin.top})">`,
     ...xTicks.map((tick) => {
@@ -1552,9 +1608,9 @@ export function renderScatterSvg(rows, options = {}) {
     }),
     `<line class="axis" x1="0" x2="${plotWidth}" y1="${plotHeight}" y2="${plotHeight}"/>`,
     `<line class="axis" x1="0" x2="0" y1="0" y2="${plotHeight}"/>`,
-    ...rows.map((row) => {
-      const x = scale(row.x, xMin, xMax, 0, plotWidth);
-      const y = scale(row.y, yMin, yMax, plotHeight, 0);
+    ...pointRows.map((row) => {
+      const x = row.plotX;
+      const y = row.plotY;
       const color = groupColor(row.group || "Data", groups);
       const facts = [
         String(row.label || "Point"),
@@ -1562,7 +1618,10 @@ export function renderScatterSvg(rows, options = {}) {
         `${options.yLabel || "y"}: ${row.y}`
       ];
       if (row.group && row.group !== "Data") facts.push(`group: ${row.group}`);
-      return `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="4.5" fill="${color}" fill-opacity="0.78"><title>${escapeXml(facts.join("; "))}</title></circle>`;
+      const crowdingFact = pointCrowdingFact(row);
+      if (crowdingFact) facts.push(crowdingFact);
+      if (sampleFact) facts.push(sampleFact);
+      return `<circle data-sms3-nearest-point="true" cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="4.5" fill="${color}" fill-opacity="0.78"><title>${escapeXml(facts.join("; "))}</title></circle>`;
     }),
     "</g>"
   ];
@@ -1611,6 +1670,16 @@ export function renderVolcanoSvg(rows, options = {}) {
   const pointRadius = 4.2;
   const pointOpacity = 0.78;
   const classLabels = ["up", "down", "not significant"];
+  const pointRows = annotatePointCrowding(rows.map((row) => ({
+    ...row,
+    plotX: scale(row.log2_fold_change, xMin, xMax, 0, plotWidth),
+    plotY: scale(row.neg_log10_p, yMin, yUpper, plotHeight, 0)
+  })), { getX: (row) => row.plotX, getY: (row) => row.plotY });
+  const sampleFact = pointSamplingFact({
+    displayed: pointRows.length,
+    total: options.totalPointCount,
+    method: options.sampleMethod || "significance-class-stratified"
+  });
   const parts = [
     `<g transform="translate(${margin.left} ${margin.top})">`,
     ...xTicks.map((tick) => {
@@ -1629,11 +1698,15 @@ export function renderVolcanoSvg(rows, options = {}) {
       return `<g><line x1="${x}" x2="${x}" y1="0" y2="${plotHeight}" stroke="#f59e0b" stroke-width="1.4" stroke-dasharray="5 5"><title>${escapeXml(`log2 fold-change threshold ${niceNumber(cutoff)}`)}</title></line><text x="${x + (cutoff < 0 ? -6 : 6)}" y="-10" text-anchor="${cutoff < 0 ? "end" : "start"}" font-size="11" fill="#b45309" paint-order="stroke" stroke="#ffffff" stroke-width="3" stroke-opacity="0.88" stroke-linejoin="round">log₂FC ${cutoff < 0 ? "≤" : "≥"} ${escapeXml(niceNumber(cutoff))}</text></g>`;
     }),
     `<g><line x1="0" x2="${plotWidth}" y1="${scale(thresholdY, yMin, yUpper, plotHeight, 0)}" y2="${scale(thresholdY, yMin, yUpper, plotHeight, 0)}" stroke="#f59e0b" stroke-width="1.4" stroke-dasharray="5 5"><title>${escapeXml(`p-value threshold ${niceNumber(pValueThreshold)}`)}</title></line><text x="${plotWidth - 4}" y="${scale(thresholdY, yMin, yUpper, plotHeight, 0) - 7}" text-anchor="end" font-size="11" fill="#b45309" paint-order="stroke" stroke="#ffffff" stroke-width="3" stroke-opacity="0.88" stroke-linejoin="round">p ≤ ${escapeXml(niceNumber(pValueThreshold))}</text></g>`,
-    ...rows.map((row) => {
-      const x = scale(row.log2_fold_change, xMin, xMax, 0, plotWidth);
-      const y = scale(row.neg_log10_p, yMin, yUpper, plotHeight, 0);
+    ...pointRows.map((row) => {
+      const x = row.plotX;
+      const y = row.plotY;
       const color = colorByClass[row.class] ?? colorByClass["not significant"];
-      return `<circle data-volcano-point="true" cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="${pointRadius}" fill="${color}" fill-opacity="${pointOpacity}"><title>${escapeXml(`${row.label}: log2FC=${row.log2_fold_change}, p=${row.p_value}, ${row.class}`)}</title></circle>`;
+      const details = [`${row.label}: log2FC=${row.log2_fold_change}, p=${row.p_value}, ${row.class}`];
+      const crowdingFact = pointCrowdingFact(row);
+      if (crowdingFact) details.push(crowdingFact);
+      if (sampleFact) details.push(sampleFact);
+      return `<circle data-volcano-point="true" data-sms3-nearest-point="true" cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="${pointRadius}" fill="${color}" fill-opacity="${pointOpacity}"><title>${escapeXml(details.join("; "))}</title></circle>`;
     }),
     "</g>",
     ...classLabels.map((label, index) => {
@@ -1698,6 +1771,16 @@ export function renderManhattanSvg(rows, options = {}) {
     return next.center - item.center < (item.width + next.width) / 2 + 8;
   });
   const xTickAngle = chromosomeOrder.length > 18 || labelsOverlap ? -36 : 0;
+  const pointRows = annotatePointCrowding(rows.map((row) => ({
+    ...row,
+    plotX: xForPlotPosition(row.plot_position),
+    plotY: yForValue(row.neg_log10_p)
+  })), { getX: (row) => row.plotX, getY: (row) => row.plotY });
+  const sampleFact = pointSamplingFact({
+    displayed: pointRows.length,
+    total: options.totalPointCount,
+    method: options.sampleMethod || "chromosome-stratified"
+  });
   const parts = [
     `<g transform="translate(${margin.left} ${margin.top})">`,
     ...yTicks.map((tick) => {
@@ -1720,13 +1803,17 @@ export function renderManhattanSvg(rows, options = {}) {
     }),
     `<line class="axis" x1="0" x2="${plotWidth}" y1="${plotHeight}" y2="${plotHeight}"/>`,
     `<line class="axis" x1="0" x2="0" y1="0" y2="${plotHeight}"/>`,
-    ...rows.map((row) => {
-      const x = xForPlotPosition(row.plot_position);
-      const y = yForValue(row.neg_log10_p);
+    ...pointRows.map((row) => {
+      const x = row.plotX;
+      const y = row.plotY;
       const color = colorByChromosome.get(row.chromosome) ?? "#2563eb";
       const stroke = row.top_marker === "yes" ? "#263238" : "none";
       const strokeWidth = row.top_marker === "yes" ? "0.8" : "0";
-      return `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="${pointRadius}" fill="${color}" fill-opacity="0.78" stroke="${stroke}" stroke-width="${strokeWidth}"><title>${escapeXml(`${row.marker}; ${row.chromosome}:${row.position}; p=${row.p_value}; -log10(p)=${row.neg_log10_p}`)}</title></circle>`;
+      const details = [`${row.marker}; ${row.chromosome}:${row.position}; p=${row.p_value}; -log10(p)=${row.neg_log10_p}`];
+      const crowdingFact = pointCrowdingFact(row);
+      if (crowdingFact) details.push(crowdingFact);
+      if (sampleFact) details.push(sampleFact);
+      return `<circle data-sms3-nearest-point="true" cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="${pointRadius}" fill="${color}" fill-opacity="0.78" stroke="${stroke}" stroke-width="${strokeWidth}"><title>${escapeXml(details.join("; "))}</title></circle>`;
     }),
     ...rows.filter((row) => row.top_marker === "yes").map((row) => {
       const x = xForPlotPosition(row.plot_position);
@@ -1771,6 +1858,16 @@ export function renderQqPlotSvg(rows, options = {}) {
   const yTicks = makeAxisTicks(yMin, yMax);
   const refStartY = scale(lineValues[0], yMin, yMax, plotHeight, 0);
   const refEndY = scale(lineValues[1], yMin, yMax, plotHeight, 0);
+  const pointRows = annotatePointCrowding(rows.map((row) => ({
+    ...row,
+    plotX: scale(row.theoretical_quantile, xMin, xMax, 0, plotWidth),
+    plotY: scale(row.sample_quantile, yMin, yMax, plotHeight, 0)
+  })), { getX: (row) => row.plotX, getY: (row) => row.plotY });
+  const sampleFact = pointSamplingFact({
+    displayed: pointRows.length,
+    total: options.totalPointCount,
+    method: options.sampleMethod || "quantile-spaced"
+  });
   const parts = [
     `<g transform="translate(${margin.left} ${margin.top})">`,
     ...xTicks.map((tick) => {
@@ -1784,10 +1881,12 @@ export function renderQqPlotSvg(rows, options = {}) {
     `<line class="axis" x1="0" x2="${plotWidth}" y1="${plotHeight}" y2="${plotHeight}"/>`,
     `<line class="axis" x1="0" x2="0" y1="0" y2="${plotHeight}"/>`,
     `<line x1="0" x2="${plotWidth}" y1="${refStartY.toFixed(2)}" y2="${refEndY.toFixed(2)}" stroke="#64748b" stroke-width="2" stroke-dasharray="6 5"><title>${escapeXml("Reference line based on sample mean and sample standard deviation")}</title></line>`,
-    ...rows.map((row) => {
-      const x = scale(row.theoretical_quantile, xMin, xMax, 0, plotWidth);
-      const y = scale(row.sample_quantile, yMin, yMax, plotHeight, 0);
-      return `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="4.2" fill="#2563eb" fill-opacity="0.76" stroke="#ffffff" stroke-width="0.8"><title>${escapeXml(`${row.label}: normal=${row.theoretical_quantile}, ${options.valueLabel || "value"}=${row.sample_quantile}`)}</title></circle>`;
+    ...pointRows.map((row) => {
+      const details = [`${row.label}: normal=${row.theoretical_quantile}, ${options.valueLabel || "value"}=${row.sample_quantile}`];
+      const crowdingFact = pointCrowdingFact(row);
+      if (crowdingFact) details.push(crowdingFact);
+      if (sampleFact) details.push(sampleFact);
+      return `<circle data-sms3-nearest-point="true" cx="${row.plotX.toFixed(2)}" cy="${row.plotY.toFixed(2)}" r="4.2" fill="#2563eb" fill-opacity="0.76" stroke="#ffffff" stroke-width="0.8"><title>${escapeXml(details.join("; "))}</title></circle>`;
     }),
     "</g>"
   ];
@@ -1868,7 +1967,17 @@ export function renderLineSvg(rows, options = {}) {
   const groups = [...new Set(rows.map((row) => row.series || "Data"))];
   const xTicks = makeAxisTicks(xMin, xMax);
   const yTicks = makeAxisTicks(yMin, yMax);
-  const groupedRows = groups.map((group) => rows.filter((row) => row.series === group).sort((a, b) => a.x - b.x));
+  const pointRows = annotatePointCrowding(rows.map((row) => ({
+    ...row,
+    plotX: scale(row.x, xMin, xMax, 0, plotWidth),
+    plotY: scale(row.y, yMin, yMax, plotHeight, 0)
+  })), { getX: (row) => row.plotX, getY: (row) => row.plotY });
+  const groupedRows = groups.map((group) => pointRows.filter((row) => row.series === group).sort((a, b) => a.x - b.x));
+  const sampleFact = pointSamplingFact({
+    displayed: pointRows.length,
+    total: options.totalPointCount,
+    method: options.sampleMethod || "series-stratified"
+  });
   const parts = [
     `<g transform="translate(${margin.left} ${margin.top})">`,
     ...xTicks.map((tick) => {
@@ -1894,9 +2003,11 @@ export function renderLineSvg(rows, options = {}) {
             return `${pointIndex === 0 ? "M" : "L"}${x},${y}`;
           }).join(" ");
       const points = seriesRows.map((row) => {
-        const x = scale(row.x, xMin, xMax, 0, plotWidth);
-        const y = scale(row.y, yMin, yMax, plotHeight, 0);
-        return `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="3.2" fill="${color}"><title>${escapeXml(`${row.label}: ${row.x}, ${row.y}`)}</title></circle>`;
+        const details = [`${row.label}: ${row.x}, ${row.y}`];
+        const crowdingFact = pointCrowdingFact(row);
+        if (crowdingFact) details.push(crowdingFact);
+        if (sampleFact) details.push(sampleFact);
+        return `<circle data-sms3-nearest-point="true" cx="${row.plotX.toFixed(2)}" cy="${row.plotY.toFixed(2)}" r="3.2" fill="${color}"><title>${escapeXml(details.join("; "))}</title></circle>`;
       }).join("");
       return `<path d="${path}" fill="none" stroke="${color}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>${points}`;
     }),
@@ -2005,6 +2116,25 @@ export function renderBoxSvg(rows, outliers = [], options = {}) {
     }
     return ((hash % 1000) / 999 - 0.5) * 2 * pointJitter;
   };
+  const pointRows = annotatePointCrowding(points.flatMap((point) => {
+    const index = rows.findIndex((row) => row.group === point.group);
+    if (index < 0) return [];
+    return [{
+      ...point,
+      plotX: index * groupWidth + groupWidth / 2 + jitterOffset(point),
+      plotY: scale(point.value, yMin, yMax, plotHeight, 0)
+    }];
+  }), {
+    getX: (point) => point.plotX,
+    getY: (point) => point.plotY,
+    getValue: (point) => point.value
+  });
+  const sampleFact = pointSamplingFact({
+    displayed: pointRows.length,
+    total: options.totalPointCount,
+    noun: "measurement dots",
+    method: "group-stratified"
+  });
   const parts = [
     `<g transform="translate(${margin.left} ${margin.top})">`,
     ...yTicks.map((tick) => {
@@ -2030,12 +2160,12 @@ export function renderBoxSvg(rows, outliers = [], options = {}) {
         renderAngledCategoryTick({ x, plotHeight, label, title: row.group })
       ].join("");
     }),
-    ...points.map((point) => {
-      const index = rows.findIndex((row) => row.group === point.group);
-      if (index < 0) return "";
-      const x = index * groupWidth + groupWidth / 2 + jitterOffset(point);
-      const y = scale(point.value, yMin, yMax, plotHeight, 0);
-      return `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="2.5" fill="#0f172a" fill-opacity="0.42" stroke="#ffffff" stroke-opacity="0.75" stroke-width="0.8"><title>${escapeXml(`${point.group} measurement ${point.index}: ${point.value}`)}</title></circle>`;
+    ...pointRows.map((point) => {
+      const details = [`${point.group} measurement ${point.index}: ${point.value}`];
+      const crowdingFact = pointCrowdingFact(point, { noun: "displayed measurement dots" });
+      if (crowdingFact) details.push(crowdingFact);
+      if (sampleFact) details.push(sampleFact);
+      return `<circle data-sms3-nearest-point="true" cx="${point.plotX.toFixed(2)}" cy="${point.plotY.toFixed(2)}" r="2.5" fill="#0f172a" fill-opacity="0.42" stroke="#ffffff" stroke-opacity="0.75" stroke-width="0.8"><title>${escapeXml(details.join("; "))}</title></circle>`;
     }),
     ...outliers.map((outlier) => {
       const index = rows.findIndex((row) => row.group === outlier.group);
@@ -2059,7 +2189,12 @@ export function renderBoxSvg(rows, outliers = [], options = {}) {
 export function renderViolinSvg(summaryRows, densityRows = [], options = {}) {
   if (summaryRows.length === 0) return renderEmptyPlot(options.title || "Violin plot", ["No violin plot data were available."]);
   const width = 940;
-  const subtitle = "Width shows kernel density; vertical bar shows IQR; horizontal mark shows median; dots show individual measurements.";
+  const points = options.points ?? [];
+  const totalPointCount = Math.max(points.length, Number(options.totalPointCount) || 0);
+  const dotDescription = totalPointCount > points.length
+    ? `dots show a group-stratified sample of ${points.length.toLocaleString()} of ${totalPointCount.toLocaleString()} measurements.`
+    : "dots show individual measurements.";
+  const subtitle = `Width shows kernel density; vertical bar shows IQR; horizontal mark shows median; ${dotDescription}`;
   const layout = applyPlotHeaderLayout({
     width,
     height: 600,
@@ -2077,7 +2212,6 @@ export function renderViolinSvg(summaryRows, densityRows = [], options = {}) {
   const yTicks = makeAxisTicks(yMin, yMax);
   const groupWidth = plotWidth / Math.max(1, summaryRows.length);
   const maxHalfWidth = Math.min(70, groupWidth * 0.36);
-  const points = options.points ?? [];
   const densityByGroup = new Map();
   for (const row of densityRows) {
     densityByGroup.set(row.group, [...(densityByGroup.get(row.group) ?? []), row]);
@@ -2090,6 +2224,21 @@ export function renderViolinSvg(summaryRows, densityRows = [], options = {}) {
     }
     return ((hash % 1000) / 999 - 0.5) * 2 * limit;
   };
+  const summaryIndexByGroup = new Map(summaryRows.map((row, index) => [row.group, index]));
+  const pointGeometry = annotatePointCrowding(points.flatMap((point) => {
+    const index = summaryIndexByGroup.get(point.group);
+    if (!Number.isInteger(index)) return [];
+    const centerX = index * groupWidth + groupWidth / 2;
+    return [{
+      ...point,
+      x: centerX + jitterOffset(point, Math.min(24, maxHalfWidth * 0.38)),
+      y: scale(point.value, yMin, yMax, plotHeight, 0)
+    }];
+  }), {
+    getX: (point) => point.x,
+    getY: (point) => point.y,
+    getValue: (point) => point.value
+  });
   const parts = [
     `<g transform="translate(${margin.left} ${margin.top})">`,
     ...yTicks.map((tick) => {
@@ -2133,13 +2282,21 @@ export function renderViolinSvg(summaryRows, densityRows = [], options = {}) {
         renderAngledCategoryTick({ x: centerX, plotHeight, label, title: row.group })
       ].join("");
     }),
-    ...points.map((point) => {
-      const index = summaryRows.findIndex((row) => row.group === point.group);
-      if (index < 0) return "";
-      const centerX = index * groupWidth + groupWidth / 2;
-      const x = centerX + jitterOffset(point, Math.min(24, maxHalfWidth * 0.38));
-      const y = scale(point.value, yMin, yMax, plotHeight, 0);
-      return `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="2.4" fill="#0f172a" fill-opacity="0.42" stroke="#ffffff" stroke-opacity="0.75" stroke-width="0.8"><title>${escapeXml(`${point.group} measurement ${point.index}: ${point.value}`)}</title></circle>`;
+    ...pointGeometry.map((point) => {
+      const nearby = point.inspectionCrowding;
+      const details = [`${point.group} measurement ${point.index}: ${point.value}`];
+      if (point.pointLabel) details.push(`${point.pointLabelName || "Label"}: ${point.pointLabel}`);
+      if (Number.isInteger(point.sourceRow)) details.push(`input data row ${point.sourceRow}`);
+      if (nearby?.count > 1) {
+        const nearbyValues = nearby.min === nearby.max
+          ? `value ${niceNumber(nearby.min)}`
+          : `values ${niceNumber(nearby.min)}–${niceNumber(nearby.max)}`;
+        details.push(`nearest of ${nearby.count.toLocaleString()} displayed dots in this dense area; nearby ${nearbyValues}`);
+      }
+      if (totalPointCount > pointGeometry.length) {
+        details.push(`displayed dots are a group-stratified sample of ${pointGeometry.length.toLocaleString()} of ${totalPointCount.toLocaleString()} measurements`);
+      }
+      return `<circle data-sms3-nearest-point="true" cx="${point.x.toFixed(2)}" cy="${point.y.toFixed(2)}" r="2.4" fill="#0f172a" fill-opacity="0.42" stroke="#ffffff" stroke-opacity="0.75" stroke-width="0.8"><title>${escapeXml(details.join("; "))}</title></circle>`;
     }),
     "</g>"
   ];

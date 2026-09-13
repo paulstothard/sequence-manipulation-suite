@@ -1,4 +1,4 @@
-import { axisRenderOptions, renderScatterSvg } from "./plot-tools.js";
+import { axisRenderOptions, renderScatterSvg, stratifiedRowsForSvg } from "./plot-tools.js";
 import { isNumericStatisticsColumn, parseStatisticsNumber } from "./statistics-utils.js";
 import { findColumn, parseColumnList, parseDelimitedTable } from "./table.js";
 
@@ -237,16 +237,14 @@ export function makePcaPlot(input, options = {}) {
   }));
   const pc1Percent = varianceRows[0]?.variance_percent || 0;
   const pc2Percent = varianceRows[1]?.variance_percent || 0;
-  const pointLimit = Math.max(100, Math.min(50000, Number.parseInt(options.maxPointsDrawn, 10) || 5000));
-  const svgRows = scoreRows.slice(0, pointLimit).map((row) => ({
+  const pointLimit = Math.max(100, Math.min(20000, Number.parseInt(options.maxPointsDrawn, 10) || 5000));
+  const plottedRows = stratifiedRowsForSvg(scoreRows, pointLimit, warnings, "PCA", (row) => row.group || "Data");
+  const svgRows = plottedRows.map((row) => ({
     label: row.label,
     x: row.pc1,
     y: row.pc2,
     group: row.group
   }));
-  if (scoreRows.length > svgRows.length) {
-    warnings.push(`PCA SVG draws the first ${svgRows.length.toLocaleString()} point(s); score TSV contains all ${scoreRows.length.toLocaleString()} complete rows.`);
-  }
   return {
     table,
     rows: scoreRows,
@@ -260,6 +258,8 @@ export function makePcaPlot(input, options = {}) {
       xLabel: `PC1 (${pc1Percent}%)`,
       yLabel: `PC2 (${pc2Percent}%)`,
       showLegend: groupColumn !== null,
+      totalPointCount: scoreRows.length,
+      sampleMethod: "group-stratified",
       ...axisRenderOptions(options, warnings)
     })
   };

@@ -1,5 +1,6 @@
 import "../vendor/d3/d3.min.js";
 import { escapeXml } from "./plot-renderer.js";
+import { annotatePointCrowding, pointCrowdingFact } from "./point-plot-inspection.js";
 import { findColumn, parseDelimitedTable } from "./table.js";
 import {
   isNumericStatisticsColumn,
@@ -330,6 +331,15 @@ export function renderOutlierDiagnosticsSvg(result, options = {}) {
   const groupWidth = plotWidth / Math.max(1, groups.length);
   const title = options.title || "Outlier diagnostics";
   const yLabel = result.valueColumn?.label ?? "Value";
+  const pointRows = annotatePointCrowding(result.rows.map((row) => {
+    const groupIndex = groups.indexOf(row.group);
+    const centerX = groupIndex * groupWidth + groupWidth / 2;
+    return {
+      ...row,
+      plotX: centerX + jitterOffset(`${row.group}:${row.label}:${row.value}`, Math.min(32, groupWidth * 0.18)),
+      plotY: scale(row.value, yMin, yMax, plotHeight, 0)
+    };
+  }), { getX: (row) => row.plotX, getY: (row) => row.plotY, getValue: (row) => row.value });
   const parts = [
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="d3-outlier-plot-svg" data-plot-renderer="sms3-d3">`,
     "<style>",
@@ -366,14 +376,13 @@ export function renderOutlierDiagnosticsSvg(result, options = {}) {
         `<text class="tick" x="${centerX}" y="${plotHeight + 22}" text-anchor="middle" transform="rotate(-28 ${centerX} ${plotHeight + 22})">${escapeXml(label)}<title>${escapeXml(summary.group)}</title></text>`
       ].join("");
     }),
-    ...result.rows.map((row) => {
-      const groupIndex = groups.indexOf(row.group);
-      const centerX = groupIndex * groupWidth + groupWidth / 2;
-      const x = centerX + jitterOffset(`${row.group}:${row.label}:${row.value}`, Math.min(32, groupWidth * 0.18));
-      const y = scale(row.value, yMin, yMax, plotHeight, 0);
+    ...pointRows.map((row) => {
       const flagged = row.methods_flagged !== "";
       const color = flagged ? "#be123c" : "#334155";
-      return `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="${flagged ? 5.2 : 3.4}" fill="${color}" fill-opacity="${flagged ? "0.88" : "0.5"}" stroke="#ffffff" stroke-width="0.9"><title>${escapeXml(`${row.label}: ${row.value}${flagged ? ` flagged by ${row.methods_flagged}` : ""}`)}</title></circle>`;
+      const details = [`${row.label}: ${row.value}${flagged ? ` flagged by ${row.methods_flagged}` : ""}`];
+      const crowdingFact = pointCrowdingFact(row, { noun: "displayed measurements" });
+      if (crowdingFact) details.push(crowdingFact);
+      return `<circle data-sms3-nearest-point="true" cx="${row.plotX.toFixed(2)}" cy="${row.plotY.toFixed(2)}" r="${flagged ? 5.2 : 3.4}" fill="${color}" fill-opacity="${flagged ? "0.88" : "0.5"}" stroke="#ffffff" stroke-width="0.9"><title>${escapeXml(details.join("; "))}</title></circle>`;
     }),
     "</g>",
     `<text class="label" x="${width / 2}" y="${height - 18}" text-anchor="middle">${escapeXml(result.groupColumn?.label ?? "Group")}</text>`,

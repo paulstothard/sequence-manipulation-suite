@@ -114,7 +114,7 @@ export const tableColumnComparisonMetadata = {
           label: "Maximum scatter points",
           defaultValue: 5000,
           min: 100,
-          max: 50000,
+          max: 20000,
           step: 100,
           help: "Caps points drawn in numeric-vs-numeric plots. Tables and summaries still use all parsed rows within the tool limits."
         },

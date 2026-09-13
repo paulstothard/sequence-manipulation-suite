@@ -34,6 +34,7 @@ import {
 } from "./output-search.js";
 import {
   getColumnPresetDefinitions,
+  formatTableCellValue,
   getHiddenColumnsForPreset,
   getTableActionScopeText,
   getTableViewData as buildTableViewData,
@@ -1312,7 +1313,7 @@ function renderTableStream(scope, stream, query = "") {
     const tr = document.createElement("tr");
     for (const column of visibleColumns) {
       const td = document.createElement("td");
-      const matched = appendHighlightedCellText(td, row[column.id] ?? "", query);
+      const matched = appendHighlightedCellText(td, formatTableCellValue(row[column.id], column), query);
       if (matched) {
         td.classList.add("output-table-match");
       }

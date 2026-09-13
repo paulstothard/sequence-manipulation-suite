@@ -1,5 +1,6 @@
 import "../vendor/d3/d3.min.js";
 import { parseSequenceInput } from "./fasta.js";
+import { annotatePointCrowding, pointCrowdingFact } from "./point-plot-inspection.js";
 
 export const alignmentDotPlotColumns = [
   { id: "orientation", label: "Orientation", type: "string" },
@@ -213,7 +214,11 @@ export function renderAlignmentDotPlotSvg({ records, matches, omittedMatches, wo
   const d3YScale = d3?.scaleLinear?.().domain([1, Math.max(1, sequenceB.sequence.length)]).range([margin.top + plotHeight, margin.top]);
   const xScale = (value) => d3XScale ? d3XScale(value) : margin.left + ((value - 1) / Math.max(1, sequenceA.sequence.length - 1)) * plotWidth;
   const yScale = (value) => d3YScale ? d3YScale(value) : margin.top + plotHeight - ((value - 1) / Math.max(1, sequenceB.sequence.length - 1)) * plotHeight;
-  const points = matches.map(matchPoint);
+  const points = annotatePointCrowding(matches.map(matchPoint).map((point) => ({
+    ...point,
+    plotX: xScale(point.x),
+    plotY: yScale(point.y)
+  })), { getX: (point) => point.plotX, getY: (point) => point.plotY });
   const directPoints = points.filter((point) => point.orientation === "direct");
   const reversePoints = points.filter((point) => point.orientation === "reverse-complement");
   const showReverseComplementLegend = alphabet === "dna-rna" && includeReverseComplement;
@@ -225,9 +230,12 @@ export function renderAlignmentDotPlotSvg({ records, matches, omittedMatches, wo
   const xTicks = axisTicks(sequenceA.sequence.length, 6);
   const yTicks = axisTicks(sequenceB.sequence.length, 6);
 
-  const pointElements = (items, color) => items.map((point) =>
-    `<circle cx="${xScale(point.x).toFixed(2)}" cy="${yScale(point.y).toFixed(2)}" r="${pointRadius}" fill="${color}" fill-opacity="${opacity}"><title>${escapeXml(`${point.orientation}: ${point.word} at ${Math.round(point.x)}, ${Math.round(point.y)}`)}</title></circle>`
-  ).join("\n");
+  const pointElements = (items, color) => items.map((point) => {
+    const details = [`${point.orientation}: ${point.word} at ${Math.round(point.x)}, ${Math.round(point.y)}`];
+    const crowdingFact = pointCrowdingFact(point, { noun: "displayed matches" });
+    if (crowdingFact) details.push(crowdingFact);
+    return `<circle data-sms3-nearest-point="true" cx="${point.plotX.toFixed(2)}" cy="${point.plotY.toFixed(2)}" r="${pointRadius}" fill="${color}" fill-opacity="${opacity}"><title>${escapeXml(details.join("; "))}</title></circle>`;
+  }).join("\n");
 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="d3-alignment-dot-plot" data-plot-renderer="sms3-d3">
   <rect width="${width}" height="${height}" fill="#ffffff"/>

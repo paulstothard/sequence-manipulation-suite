@@ -1624,7 +1624,9 @@ export function renderProteinStructureViewer(container, payload = {}) {
       status.textContent = "PNG downloaded";
     }
   });
+  let disposed = false;
   const resizeObserver = new ResizeObserver(() => {
+    if (disposed || !viewerHost.isConnected) return;
     structureInspection.hide();
     viewer.resize();
     viewer.render();
@@ -1646,6 +1648,7 @@ export function renderProteinStructureViewer(container, payload = {}) {
     view: typeof viewer.getView === "function" ? viewer.getView().map(Number) : []
   });
   container._sms3VisualCleanup = () => {
+    disposed = true;
     structureInspection.cleanup();
     resizeObserver.disconnect();
     container._sms3PortableViewerSnapshot = null;

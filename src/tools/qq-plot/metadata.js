@@ -47,13 +47,14 @@ export const qqPlotMetadata = {
           label: "Max plotted points",
           defaultValue: 10000,
           min: 100,
-          max: 100000,
+          max: 20000,
           step: 100,
           help: "The plot samples evenly across sorted quantiles above this limit; the quantile TSV still includes every usable row."
         },
         { id: "title", type: "text", label: "Plot title", defaultValue: "Normal Q-Q plot of normalized expression" }
       ]
     },
+    makeAxisLimitsGroup({ x: true, y: true }),
     {
       type: "group",
       label: "Output format",
@@ -63,7 +64,6 @@ export const qqPlotMetadata = {
           { value: "quantile-tsv", label: "Quantile table" }
         ] }
       ]
-    },
-    makeAxisLimitsGroup({ x: true, y: true })
+    }
   ]
 };

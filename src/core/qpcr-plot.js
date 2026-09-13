@@ -48,7 +48,7 @@ export function renderQpcrPlot(analysis) {
       parts.push(`<path data-qpcr-mean="true" transform="translate(${x(r[value])},${y - 8})" d="${d3.symbol().type(d3.symbolDiamond).size(45)()}" fill="#263238"><title>${esc(`${target} / ${condition}: geometric mean ${r.fold_change.toPrecision(5)}; ${r.inference}`)}</title></path>`);
       ps.forEach((p, i) => {
         const jitter = ps.length <= 1 ? 0 : ((i * 0.618033988749895) % 1 - 0.5) * 14;
-        parts.push(`<circle data-qpcr-sample="true" cx="${x(p[value])}" cy="${y + 10 + jitter}" r="3.5" fill="${colors[ci % colors.length]}" fill-opacity="0.8"><title>${esc(`${p.sample} / ${target}: relative expression ${p.fold_change.toPrecision(5)}${p.qc ? `; ${p.qc}` : ""}`)}</title></circle>`);
+        parts.push(`<circle data-qpcr-sample="true" data-sms3-nearest-point="true" cx="${x(p[value])}" cy="${y + 10 + jitter}" r="3.5" fill="${colors[ci % colors.length]}" fill-opacity="0.8"><title>${esc(`${p.sample} / ${target}: relative expression ${p.fold_change.toPrecision(5)}${p.qc ? `; ${p.qc}` : ""}`)}</title></circle>`);
       });
     }
   }

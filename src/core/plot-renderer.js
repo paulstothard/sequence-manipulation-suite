@@ -1,4 +1,5 @@
 import "../vendor/d3/d3.min.js";
+import { annotatePointCrowding, pointCrowdingFact } from "./point-plot-inspection.js";
 
 export const PLOT_FOUNDATION = {
   name: "Observable Plot",
@@ -734,6 +735,14 @@ export function renderLinePlotSvg(spec) {
   const scaleY = (y) => yScale
     ? yScale(y)
     : margin.top + ((yMax - y) / Math.max(1, yMax - yMin)) * plotHeight;
+  const inspectablePointGeometry = annotatePointCrowding(series.flatMap((item) => item.points
+    .filter((point) => point.y !== null && point.y !== undefined)
+    .map((point) => ({
+      sourcePoint: point,
+      plotX: scaleX(point.x),
+      plotY: scaleY(point.y)
+    }))), { getX: (point) => point.plotX, getY: (point) => point.plotY });
+  const geometryByPoint = new Map(inspectablePointGeometry.map((point) => [point.sourcePoint, point]));
   const yTicks = yScale
     ? yScale.ticks(yMin < 0 && yMax > 0 ? 5 : 4)
     : yMin < 0 ? [yMin, yMin / 2, 0, yMax / 2, yMax] : [yMin, yMax * 0.25, yMax * 0.5, yMax * 0.75, yMax];
@@ -822,10 +831,16 @@ export function renderLinePlotSvg(spec) {
     }
     const showPointMarkers = shouldShowPointMarkersForSeries(spec, item);
     for (const point of item.points.filter((entry) => entry.y !== null && entry.y !== undefined)) {
-      const inspectionText = point.title ?? `${item.label}; ${spec.xLabel} ${point.x}; ${spec.yLabel} ${point.y}`;
+      const geometry = geometryByPoint.get(point);
+      const details = [point.title ?? `${item.label}; ${spec.xLabel} ${point.x}; ${spec.yLabel} ${point.y}`];
+      const crowdingFact = pointCrowdingFact(geometry);
+      if (crowdingFact) details.push(crowdingFact);
+      const inspectionText = details.join("; ");
+      const pointX = geometry?.plotX ?? scaleX(point.x);
+      const pointY = geometry?.plotY ?? scaleY(point.y);
       parts.push(showPointMarkers
-        ? `<circle class="dot" cx="${scaleX(point.x).toFixed(2)}" cy="${scaleY(point.y).toFixed(2)}" r="2.6" fill="${item.color}"><title>${escapeXml(inspectionText)}</title></circle>`
-        : `<rect class="inspection-dot" x="${(scaleX(point.x) - 5.5).toFixed(2)}" y="${(scaleY(point.y) - 5.5).toFixed(2)}" width="11" height="11" fill="transparent" stroke="none"><title>${escapeXml(inspectionText)}</title></rect>`
+        ? `<circle class="dot" data-sms3-nearest-point="true" cx="${pointX.toFixed(2)}" cy="${pointY.toFixed(2)}" r="2.6" fill="${item.color}"><title>${escapeXml(inspectionText)}</title></circle>`
+        : `<rect class="inspection-dot" data-sms3-nearest-point="true" data-sms3-point-x="${pointX.toFixed(2)}" data-sms3-point-y="${pointY.toFixed(2)}" x="${(pointX - 5.5).toFixed(2)}" y="${(pointY - 5.5).toFixed(2)}" width="11" height="11" fill="transparent" stroke="none"><title>${escapeXml(inspectionText)}</title></rect>`
       );
     }
   }

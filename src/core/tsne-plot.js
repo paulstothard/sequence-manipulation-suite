@@ -1,5 +1,5 @@
 import { createBioWasmCli, requireBioWasmRuntime } from "./biowasm-runner.js";
-import { axisRenderOptions, plotRowsToTsv, renderScatterSvg } from "./plot-tools.js";
+import { axisRenderOptions, plotRowsToTsv, renderScatterSvg, stratifiedRowsForSvg } from "./plot-tools.js";
 import { isNumericStatisticsColumn, parseStatisticsNumber } from "./statistics-utils.js";
 import { findColumn, parseColumnList, parseDelimitedTable } from "./table.js";
 
@@ -262,16 +262,14 @@ export async function runTsneEmbedding(input, options = {}, context = {}) {
     warnings.push(cleanTsvField(exec.stderr));
   }
 
-  const pointLimit = clampInteger(options.maxPointsDrawn, 5000, 100, 50000);
-  const svgRows = embeddingRows.slice(0, pointLimit).map((row) => ({
+  const pointLimit = clampInteger(options.maxPointsDrawn, 5000, 100, 20000);
+  const plottedRows = stratifiedRowsForSvg(embeddingRows, pointLimit, warnings, "t-SNE", (row) => row.group || "Data");
+  const svgRows = plottedRows.map((row) => ({
     label: row.label,
     group: row.group,
     x: Number(row.tsne_1),
     y: Number(row.tsne_2)
   }));
-  if (embeddingRows.length > svgRows.length) {
-    warnings.push(`t-SNE plot draws the first ${svgRows.length.toLocaleString()} point(s); embedding table contains all ${embeddingRows.length.toLocaleString()} rows.`);
-  }
 
   const runOptions = { seed, maxIterations, perplexity, theta, version: BIOWASM_BHTSNE_VERSION };
   const report = makeTsneReport({
@@ -285,6 +283,8 @@ export async function runTsneEmbedding(input, options = {}, context = {}) {
     xLabel: "t-SNE 1",
     yLabel: "t-SNE 2",
     showLegend: prepared.rows.some((row) => row.group !== "Data"),
+    totalPointCount: embeddingRows.length,
+    sampleMethod: "group-stratified",
     ...axisRenderOptions(options, warnings)
   });
   return { ...prepared, warnings, embeddingRows, report, svg, runOptions, stderr: exec.stderr };

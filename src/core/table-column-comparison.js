@@ -7,6 +7,12 @@ import {
   normalizeStatisticsCell
 } from "./statistics-utils.js";
 import { escapeXml, makePlaceholderSvg } from "./plot-renderer.js";
+import {
+  annotatePointCrowding,
+  pointCrowdingFact,
+  pointSamplingFact,
+  sampleStratifiedPoints
+} from "./point-plot-inspection.js";
 
 const OUTPUT_FORMATS = new Set(["plot", "compact-heatmap", "comparison-table", "pair-table", "report"]);
 const COMPARISON_TYPES = new Set(["auto", "numeric-numeric", "numeric-category", "category-category"]);
@@ -467,8 +473,8 @@ function renderNumericNumericPlot(points, columnA, columnB, options = {}) {
   if (points.length === 0) {
     return makePlaceholderSvg("Column comparison plot", ["No complete numeric pairs were available."]);
   }
-  const maxPointsDrawn = normalizePositiveInteger(options.maxPointsDrawn, 5000, 100, 50000);
-  const drawnPoints = points.length > maxPointsDrawn ? points.slice(0, maxPointsDrawn) : points;
+  const maxPointsDrawn = normalizePositiveInteger(options.maxPointsDrawn, 5000, 100, 20000);
+  const drawnPoints = sampleStratifiedPoints(points, maxPointsDrawn);
   const width = 980;
   const height = 680;
   const margin = { top: 102, right: 126, bottom: 78, left: 86 };
@@ -488,6 +494,12 @@ function renderNumericNumericPlot(points, columnA, columnB, options = {}) {
   const plotY = margin.top + histSize + gap;
   const histTopY = margin.top;
   const histRightX = plotX + plotWidth + gap;
+  const pointGeometry = annotatePointCrowding(drawnPoints.map((point) => ({
+    ...point,
+    plotX: scale(point.x, xDomain[0], xDomain[1], 0, plotWidth),
+    plotY: scale(point.y, yDomain[0], yDomain[1], plotHeight, 0)
+  })), { getX: (point) => point.plotX, getY: (point) => point.plotY });
+  const sampleFact = pointSamplingFact({ displayed: pointGeometry.length, total: points.length });
   const parts = [
     `<g>`,
     ...xBins.map((bin) => {
@@ -513,10 +525,12 @@ function renderNumericNumericPlot(points, columnA, columnB, options = {}) {
     }),
     `<line class="axis" x1="0" x2="${plotWidth}" y1="${plotHeight}" y2="${plotHeight}"/>`,
     `<line class="axis" x1="0" x2="0" y1="0" y2="${plotHeight}"/>`,
-    ...drawnPoints.map((point) => {
-      const x = scale(point.x, xDomain[0], xDomain[1], 0, plotWidth);
-      const y = scale(point.y, yDomain[0], yDomain[1], plotHeight, 0);
-      return `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="4" fill="#2563eb" fill-opacity="0.72" stroke="#ffffff" stroke-width="0.7"><title>${escapeXml(`Row ${point.index + 1}: ${point.x}, ${point.y}`)}</title></circle>`;
+    ...pointGeometry.map((point) => {
+      const details = [`Row ${point.index + 1}: ${point.x}, ${point.y}`];
+      const crowdingFact = pointCrowdingFact(point);
+      if (crowdingFact) details.push(crowdingFact);
+      if (sampleFact) details.push(sampleFact);
+      return `<circle data-sms3-nearest-point="true" cx="${point.plotX.toFixed(2)}" cy="${point.plotY.toFixed(2)}" r="4" fill="#2563eb" fill-opacity="0.72" stroke="#ffffff" stroke-width="0.7"><title>${escapeXml(details.join("; "))}</title></circle>`;
     }),
     "</g>",
     `<text class="legend" x="${plotX}" y="${histTopY - 10}">${escapeXml(columnA.label)} marginal distribution</text>`,
@@ -583,7 +597,9 @@ function renderNumericCategoryPlot(result, options = {}) {
   const groupWidth = plotWidth / Math.max(1, summaries.length);
   const maxHalfWidth = Math.min(68, groupWidth * 0.36);
   const densities = style === "violin" ? densityRowsForGroups(values, summaries, gridPoints) : [];
-  const points = maxDotsDrawn === 0 ? [] : values.slice(0, maxDotsDrawn);
+  const points = maxDotsDrawn === 0
+    ? []
+    : sampleStratifiedPoints(values, maxDotsDrawn, { getGroup: (point) => point.group });
   const jitter = (point, limit) => {
     const seed = `${point.group}:${point.index}:${point.value}`;
     let hash = 0;
@@ -594,6 +610,26 @@ function renderNumericCategoryPlot(result, options = {}) {
   for (const density of densities) {
     densityByGroup.set(density.group, [...(densityByGroup.get(density.group) ?? []), density]);
   }
+  const pointGeometry = annotatePointCrowding(points.flatMap((point) => {
+    const groupIndex = summaries.findIndex((summary) => summary.level_a === point.group);
+    if (groupIndex < 0) return [];
+    const centerX = groupIndex * groupWidth + groupWidth / 2;
+    return [{
+      ...point,
+      plotX: centerX + jitter(point, Math.min(24, maxHalfWidth * 0.36)),
+      plotY: scale(point.value, domain[0], domain[1], plotHeight, 0)
+    }];
+  }), {
+    getX: (point) => point.plotX,
+    getY: (point) => point.plotY,
+    getValue: (point) => point.value
+  });
+  const sampleFact = pointSamplingFact({
+    displayed: pointGeometry.length,
+    total: values.length,
+    noun: "measurement dots",
+    method: "group-stratified"
+  });
   const parts = [
     `<g transform="translate(${margin.left} ${margin.top})">`,
     ...yTicks.map((tick) => {
@@ -624,13 +660,12 @@ function renderNumericCategoryPlot(result, options = {}) {
         `<text class="tick" x="${centerX}" y="${plotHeight + 30}" text-anchor="middle" transform="rotate(-28 ${centerX} ${plotHeight + 30})">${escapeXml(label)}<title>${escapeXml(summary.level_a)}</title></text>`
       ].join("");
     }),
-    ...points.map((point) => {
-      const groupIndex = summaries.findIndex((summary) => summary.level_a === point.group);
-      if (groupIndex < 0) return "";
-      const centerX = groupIndex * groupWidth + groupWidth / 2;
-      const x = centerX + jitter(point, Math.min(24, maxHalfWidth * 0.36));
-      const y = scale(point.value, domain[0], domain[1], plotHeight, 0);
-      return `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="2.4" fill="#0f172a" fill-opacity="0.42" stroke="#ffffff" stroke-opacity="0.75" stroke-width="0.8"><title>${escapeXml(`${point.group}, row ${point.index + 1}: ${point.value}`)}</title></circle>`;
+    ...pointGeometry.map((point) => {
+      const details = [`${point.group}, row ${point.index + 1}: ${point.value}`];
+      const crowdingFact = pointCrowdingFact(point, { noun: "displayed measurement dots" });
+      if (crowdingFact) details.push(crowdingFact);
+      if (sampleFact) details.push(sampleFact);
+      return `<circle data-sms3-nearest-point="true" cx="${point.plotX.toFixed(2)}" cy="${point.plotY.toFixed(2)}" r="2.4" fill="#0f172a" fill-opacity="0.42" stroke="#ffffff" stroke-opacity="0.75" stroke-width="0.8"><title>${escapeXml(details.join("; "))}</title></circle>`;
     }),
     "</g>"
   ];

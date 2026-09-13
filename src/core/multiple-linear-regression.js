@@ -1,6 +1,12 @@
 import "../vendor/d3/d3.min.js";
 import { fCdf, twoTailedPValue } from "./hypothesis-tests.js";
 import { escapeXml } from "./plot-renderer.js";
+import {
+  annotatePointCrowding,
+  pointCrowdingFact,
+  pointSamplingFact,
+  sampleStratifiedPoints
+} from "./point-plot-inspection.js";
 import { parseStatisticsNumber } from "./statistics-utils.js";
 import { findColumn, parseColumnList, parseDelimitedTable } from "./table.js";
 
@@ -208,8 +214,14 @@ export function renderMultipleRegressionResidualSvg(result, options = {}) {
   const yTicks = makeTicks(yMin, yMax).filter((tick) => tick >= yMin && tick <= yMax);
   const zeroY = scale(0, yMin, yMax, plotHeight, 0);
   const maxPoints = Number.isFinite(Number(options.maxPlotPoints)) ? Math.max(0, Number(options.maxPlotPoints)) : 500;
-  const drawnRows = rows.slice(0, maxPoints);
+  const drawnRows = sampleStratifiedPoints(rows, maxPoints);
   const omitted = rows.length - drawnRows.length;
+  const pointRows = annotatePointCrowding(drawnRows.map((row) => ({
+    ...row,
+    plotX: scale(row.fitted, xMin, xMax, 0, plotWidth),
+    plotY: scale(row.residual, yMin, yMax, plotHeight, 0)
+  })), { getX: (row) => row.plotX, getY: (row) => row.plotY });
+  const sampleFact = pointSamplingFact({ displayed: pointRows.length, total: rows.length });
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="d3-residual-plot-svg" data-plot-renderer="sms3-d3">`,
     "<style>",
@@ -236,10 +248,12 @@ export function renderMultipleRegressionResidualSvg(result, options = {}) {
     `<line class="zero" x1="0" x2="${plotWidth}" y1="${zeroY}" y2="${zeroY}"/>`,
     `<line class="axis" x1="0" x2="${plotWidth}" y1="${plotHeight}" y2="${plotHeight}"/>`,
     `<line class="axis" x1="0" x2="0" y1="0" y2="${plotHeight}"/>`,
-    ...drawnRows.map((row) => {
-      const x = scale(row.fitted, xMin, xMax, 0, plotWidth);
-      const y = scale(row.residual, yMin, yMax, plotHeight, 0);
-      return `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="4" fill="#2563eb" fill-opacity="0.72"><title>${escapeXml(`${row.label}: observed=${row.observed}, fitted=${row.fitted}, residual=${row.residual}`)}</title></circle>`;
+    ...pointRows.map((row) => {
+      const details = [`${row.label}: observed=${row.observed}, fitted=${row.fitted}, residual=${row.residual}`];
+      const crowdingFact = pointCrowdingFact(row);
+      if (crowdingFact) details.push(crowdingFact);
+      if (sampleFact) details.push(sampleFact);
+      return `<circle data-sms3-nearest-point="true" cx="${row.plotX.toFixed(2)}" cy="${row.plotY.toFixed(2)}" r="4" fill="#2563eb" fill-opacity="0.72"><title>${escapeXml(details.join("; "))}</title></circle>`;
     }),
     "</g>",
     `<text class="label" x="${width / 2}" y="${height - 18}" text-anchor="middle">Fitted value</text>`,

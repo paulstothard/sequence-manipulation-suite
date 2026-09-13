@@ -74,6 +74,7 @@ export const violinPlotMetadata = {
         { id: "title", type: "text", label: "Plot title", defaultValue: "Expression distribution by condition" }
       ]
     },
+    makeAxisLimitsGroup({ x: false, y: true }),
     {
       type: "group",
       label: "Output format",
@@ -84,8 +85,7 @@ export const violinPlotMetadata = {
           { value: "summary-tsv", label: "Summary table" }
         ] }
       ]
-    },
-    makeAxisLimitsGroup({ x: false, y: true })
+    }
   ],
   citations: [
     {

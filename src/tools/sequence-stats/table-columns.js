@@ -19,7 +19,7 @@ export const sequenceStatsTableColumns = [
   { id: "length", label: "Length", type: "number" },
   { id: "unambiguous_bases", label: "Unambiguous bases", type: "number" },
   { id: "gc_count", label: "GC count", type: "number" },
-  { id: "gc_percent", label: "GC percent", type: "number" },
+  { id: "gc_percent", label: "GC percent", type: "number", displayDecimals: 2 },
   { id: "ambiguous_symbols", label: "Ambiguous symbols", type: "number" },
   { id: "n_count", label: "N count", type: "number" },
   { id: "x_count", label: "X count", type: "number" },

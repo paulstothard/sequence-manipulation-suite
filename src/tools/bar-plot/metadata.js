@@ -55,6 +55,7 @@ export const barPlotMetadata = {
         { id: "title", type: "text", label: "Plot title", defaultValue: "Expression by gene and condition" }
       ]
     },
+    makeAxisLimitsGroup({ x: false, y: true }),
     {
       type: "group",
       label: "Output format",
@@ -64,7 +65,6 @@ export const barPlotMetadata = {
           { value: "bar-tsv", label: "Bar table" }
         ] }
       ]
-    },
-    makeAxisLimitsGroup({ x: false, y: true })
+    }
   ]
 };

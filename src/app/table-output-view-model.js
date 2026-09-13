@@ -1,5 +1,39 @@
 export const DEFAULT_TABLE_FULL_RENDER_ROW_LIMIT = 1000;
 export const DEFAULT_TABLE_FULL_RENDER_CELL_LIMIT = 20000;
+export const DEFAULT_TABLE_NUMBER_SIGNIFICANT_DIGITS = 6;
+
+export function formatTableCellValue(value, column = {}) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  const source = String(value);
+  if (column.type !== "number" || typeof value === "boolean" || source.trim() === "") {
+    return source;
+  }
+
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) {
+    return source;
+  }
+
+  const displayDecimals = Number(column.displayDecimals);
+  if (Number.isInteger(displayDecimals) && displayDecimals >= 0 && displayDecimals <= 20) {
+    return numericValue.toFixed(displayDecimals);
+  }
+
+  if (Number.isInteger(numericValue)) {
+    return String(numericValue);
+  }
+
+  const requestedSignificantDigits = Number(column.displaySignificantDigits);
+  const significantDigits = Number.isInteger(requestedSignificantDigits)
+    && requestedSignificantDigits >= 1
+    && requestedSignificantDigits <= 21
+    ? requestedSignificantDigits
+    : DEFAULT_TABLE_NUMBER_SIGNIFICANT_DIGITS;
+  return Number(numericValue.toPrecision(significantDigits)).toString();
+}
 
 export function compareTableValues(left, right, type) {
   if (type === "number") {

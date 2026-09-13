@@ -25,8 +25,6 @@ export function makeAxisLimitsGroup({ x = true, y = true, yStartAtZero = true } 
     id: "axisLimits",
     type: "group",
     label: "Axis limits",
-    collapsible: true,
-    collapsed: true,
     help: "Optional display limits for the plot axes. Leave blank for automatic scaling.",
     options: yStartAtZero ? options : options.filter((option) => option.id !== "yStartAtZero")
   };

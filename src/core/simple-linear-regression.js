@@ -1,5 +1,6 @@
 import "../vendor/d3/d3.min.js";
 import { escapeXml } from "./plot-renderer.js";
+import { annotatePointCrowding, pointCrowdingFact } from "./point-plot-inspection.js";
 import { parseStatisticsNumber } from "./statistics-utils.js";
 import { findColumn, parseDelimitedTable } from "./table.js";
 import { twoTailedPValue } from "./hypothesis-tests.js";
@@ -132,6 +133,11 @@ function renderRegressionSvg(result, options = {}) {
     x2: scale(xMax, xMin, xMax, 0, plotWidth),
     y2: scale(predicted[1], yMin, yMax, plotHeight, 0)
   };
+  const pointRows = annotatePointCrowding(rows.map((row) => ({
+    ...row,
+    plotX: scale(row.x, xMin, xMax, 0, plotWidth),
+    plotY: scale(row.y, yMin, yMax, plotHeight, 0)
+  })), { getX: (row) => row.plotX, getY: (row) => row.plotY });
   const parts = [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(options.title || "Simple linear regression")}" data-plot-foundation="d3-regression-svg" data-plot-renderer="sms3-d3">`,
     "<style>",
@@ -156,11 +162,12 @@ function renderRegressionSvg(result, options = {}) {
     `<line class="axis" x1="0" x2="${plotWidth}" y1="${plotHeight}" y2="${plotHeight}"/>`,
     `<line class="axis" x1="0" x2="0" y1="0" y2="${plotHeight}"/>`,
     `<line x1="${line.x1.toFixed(2)}" y1="${line.y1.toFixed(2)}" x2="${line.x2.toFixed(2)}" y2="${line.y2.toFixed(2)}" stroke="#111827" stroke-width="2.2"/>`,
-    ...rows.map((row) => {
-      const x = scale(row.x, xMin, xMax, 0, plotWidth);
-      const y = scale(row.y, yMin, yMax, plotHeight, 0);
+    ...pointRows.map((row) => {
       const color = groupColor(row.group || "Data", groups);
-      return `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="4.6" fill="${color}" fill-opacity="0.8"><title>${escapeXml(`${row.label}: x=${row.x}, y=${row.y}, fitted=${row.fitted}`)}</title></circle>`;
+      const details = [`${row.label}: x=${row.x}, y=${row.y}, fitted=${row.fitted}`];
+      const crowdingFact = pointCrowdingFact(row);
+      if (crowdingFact) details.push(crowdingFact);
+      return `<circle data-sms3-nearest-point="true" cx="${row.plotX.toFixed(2)}" cy="${row.plotY.toFixed(2)}" r="4.6" fill="${color}" fill-opacity="0.8"><title>${escapeXml(details.join("; "))}</title></circle>`;
     }),
     "</g>",
     `<text class="label" x="${width / 2}" y="${height - 18}" text-anchor="middle">${escapeXml(result.xColumn?.label ?? "X")}</text>`,
