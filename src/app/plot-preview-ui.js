@@ -495,7 +495,7 @@ export function renderObservablePlotPreview(plotSpec) {
         series: series.label,
         x: point.x,
         y: point.y,
-        title: point.title
+        title: point.title ?? `${series.label}; ${plotSpec.xLabel} ${point.x}; ${plotSpec.yLabel} ${point.y}`
       }))
     );
     if (rows.length === 0) {
@@ -516,7 +516,9 @@ export function renderObservablePlotPreview(plotSpec) {
     const markerRows = rows.filter((row) =>
       shouldShowPointMarkersForSeries(plotSpec, plotSpec.series.find((series) => series.label === row.series))
     );
-    if (!lineMark || (bandRows.length > 0 && !areaMark) || (markerRows.length > 0 && !dotMark)) {
+    const markerRowSet = new Set(markerRows);
+    const inspectionRows = rows.filter((row) => !markerRowSet.has(row));
+    if (!lineMark || (bandRows.length > 0 && !areaMark) || !dotMark) {
       return null;
     }
     const series = plotSpec.series ?? [];
@@ -563,7 +565,17 @@ export function renderObservablePlotPreview(plotSpec) {
           return itemMarkerRows.length > 0
             ? [dotMark(itemMarkerRows, { x: "x", y: "y", fill: item.color ?? "#2563eb", title: "title", r: 2.5 })]
             : [];
-        })
+        }),
+        ...(inspectionRows.length > 0
+          ? [dotMark(inspectionRows, {
+              x: "x",
+              y: "y",
+              fill: "transparent",
+              stroke: "none",
+              title: "title",
+              r: 5.5
+            })]
+          : [])
       ]
     });
     const svg = selectObservablePlotSvg(plot);

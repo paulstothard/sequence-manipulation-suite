@@ -59,6 +59,7 @@ import { createSequenceEditorWorkspaceController } from "./sequence-editor-works
 import { renderSequenceExtractorWorkspace } from "./sequence-extractor-workspace-ui.js";
 import { loadMarkdownNotebookDraft, saveMarkdownNotebookDraft } from "./markdown-notebook-model.js";
 import { renderObservablePlotPreview } from "./plot-preview-ui.js";
+import { installVisualInspection } from "./visual-inspection.js";
 import {
   createAlignmentViewerRegionHistory,
   renderAlignmentViewerRegionNavigation
@@ -1631,6 +1632,15 @@ function appendPortableViewerHeading(visualOutput, heading, options) {
   visualOutput.append(header);
 }
 
+function attachVisualInspection(visualOutput, options) {
+  const existingCleanup = visualOutput._sms3VisualCleanup;
+  const inspectionCleanup = installVisualInspection(visualOutput, options);
+  visualOutput._sms3VisualCleanup = () => {
+    inspectionCleanup();
+    existingCleanup?.();
+  };
+}
+
 function renderVisualOutput(scope, svg, options = {}) {
   const visualOutput = getVisualOutputElement(scope);
   if (typeof visualOutput._sms3VisualCleanup === "function") {
@@ -1670,6 +1680,7 @@ function renderVisualOutput(scope, svg, options = {}) {
   appendPortableViewerHeading(visualOutput, heading, options);
   if (options.plateLayout) {
     renderPlateLayout(visualOutput, options.plateLayout, options.editorDocument);
+    attachVisualInspection(visualOutput, { allowPin: false });
     return "";
   }
   if (options.treeViewer) {
@@ -1721,6 +1732,7 @@ function renderVisualOutput(scope, svg, options = {}) {
   }
   if (options.figure) {
     renderGenomeFigure(visualOutput, options.figure, options.editorDocument);
+    attachVisualInspection(visualOutput);
     return "";
   }
   if (options.viewer) {
@@ -1774,6 +1786,7 @@ function renderVisualOutput(scope, svg, options = {}) {
   } else {
     visualOutput.insertAdjacentHTML("beforeend", svg);
   }
+  attachVisualInspection(visualOutput);
   return displayedSvg;
 }
 

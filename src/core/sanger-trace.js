@@ -1612,18 +1612,25 @@ export function makeSangerReferenceAlignmentSvg(session, options = {}) {
       parts.push(`<text class="sanger-align-coord" x="${sequenceLeft - 8}" y="${queryY + 4}" text-anchor="end">${escapeXml(queryStart)}</text>`);
       parts.push(`<text class="sanger-align-coord" x="${sequenceLeft + chunkLength * cell + 6}" y="${referenceY + 4}">${escapeXml(referenceEnd)}</text>`);
       parts.push(`<text class="sanger-align-coord" x="${sequenceLeft + chunkLength * cell + 6}" y="${queryY + 4}">${escapeXml(queryEnd)}</text>`);
+      let referenceCellPosition = referencePosition - 1;
+      let queryCellPosition = queryPosition - 1;
       for (let index = 0; index < chunkLength; index += 1) {
         const referenceBase = referenceChunk[index];
         const queryBase = queryChunk[index];
+        if (referenceBase !== "-") referenceCellPosition += 1;
+        if (queryBase !== "-") queryCellPosition += 1;
         const relation = relationForAlignedPair(referenceBase, queryBase);
         const x = sequenceLeft + index * cell;
         const fill = relation === "gap" ? "#fee2e2" : relation === "mismatch" ? "#fef3c7" : "#f8fafc";
         const stroke = relation === "gap" ? "#fecaca" : relation === "mismatch" ? "#fde68a" : "#e2e8f0";
         const marker = relation === "match" ? "|" : relation === "gap" ? " " : "*";
-        parts.push(`<rect x="${x}" y="${rowTop}" width="${cell - 1}" height="${rowHeight * 3 - 1}" fill="${fill}" stroke="${stroke}" stroke-width="0.5"/>`);
-        parts.push(`<text class="sanger-align-cell" x="${x + cell / 2}" y="${referenceY}">${escapeXml(referenceBase)}</text>`);
-        parts.push(`<text class="sanger-align-marker" x="${x + cell / 2}" y="${markerY}">${escapeXml(marker)}</text>`);
-        parts.push(`<text class="sanger-align-cell" x="${x + cell / 2}" y="${queryY}">${escapeXml(queryBase)}</text>`);
+        const referenceCoordinate = referenceBase === "-" ? "gap" : referenceCellPosition;
+        const queryCoordinate = queryBase === "-" ? "gap" : queryCellPosition;
+        const inspectionText = `${alignment.query_name}; alignment column ${offset + index + 1}; reference ${referenceBase} at ${referenceCoordinate}; query ${queryBase} at ${queryCoordinate}; ${relation}; ${alignment.orientation}`;
+        parts.push(`<rect x="${x}" y="${rowTop}" width="${cell - 1}" height="${rowHeight * 3 - 1}" fill="${fill}" stroke="${stroke}" stroke-width="0.5"><title>${escapeXml(inspectionText)}</title></rect>`);
+        parts.push(`<text class="sanger-align-cell" pointer-events="none" x="${x + cell / 2}" y="${referenceY}">${escapeXml(referenceBase)}</text>`);
+        parts.push(`<text class="sanger-align-marker" pointer-events="none" x="${x + cell / 2}" y="${markerY}">${escapeXml(marker)}</text>`);
+        parts.push(`<text class="sanger-align-cell" pointer-events="none" x="${x + cell / 2}" y="${queryY}">${escapeXml(queryBase)}</text>`);
       }
       referencePosition += referenceCount;
       queryPosition += queryCount;
@@ -1861,7 +1868,8 @@ export function makeSangerDifferenceReviewSvg(session, options = {}) {
     const alignment = findReferenceAlignmentForDifference(session, row);
     const context = makeDifferenceContext(alignment, row, 13);
     const traceResult = findTraceResultForDifference(session, row);
-    parts.push(`<g class="sanger-difference-card" data-index="${index + 1}">`);
+    const differenceInspection = `${row.query_name}; ${row.relation}; reference ${row.reference_base} at ${row.reference_position || "gap"}; query ${row.query_base} at ${row.query_position || "gap"}; alignment column ${row.alignment_column}; ${row.orientation}`;
+    parts.push(`<g class="sanger-difference-card" data-index="${index + 1}"><title>${escapeXml(differenceInspection)}</title>`);
     parts.push(`<rect x="${left}" y="${y}" width="${cardWidth}" height="${cardHeight - 14}" rx="7" fill="#ffffff" stroke="#d8e1ea"/>`);
     parts.push(`<rect x="${left}" y="${y}" width="5" height="${cardHeight - 14}" rx="2.5" fill="${relationStroke}"/>`);
     parts.push(`<text x="${left + 16}" y="${y + 22}" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#172026">${escapeXml(row.query_type)} ${escapeXml(row.query_name)}</text>`);
@@ -2671,6 +2679,17 @@ function qualityAxisMax(baseCalls, threshold) {
   return clampInteger(Math.ceil(Math.max(observedMax, minimumUsefulMax) / 5) * 5, 40, 0, 93);
 }
 
+function sangerCallInspectionText(call) {
+  const quality = call.quality === null || call.quality === undefined
+    ? "quality unavailable"
+    : `Q${call.quality} Phred quality`;
+  const originalBase = call.originalBase && call.originalBase !== call.base
+    ? `; original base ${call.originalBase}`
+    : "";
+  const edited = call.edited ? "; edited call" : "";
+  return `Base ${call.displayIndex}: ${call.base}${originalBase}; trace position ${call.tracePosition}; original trace position ${call.originalTracePosition}; ${quality}${edited}`;
+}
+
 function makeWrappedSangerTraceSvg(result, options = {}) {
   const view = result.view;
   const width = Math.max(860, Number.parseInt(options.width, 10) || 1180);
@@ -2746,6 +2765,14 @@ function makeWrappedSangerTraceSvg(result, options = {}) {
       const fill = quality < result.options.lowQualityThreshold ? "#f59e0b" : "#64748b";
       return `<rect x="${(x - 1.8).toFixed(2)}" y="${(qualityTop + qualityHeight - barHeight).toFixed(2)}" width="3.6" height="${barHeight.toFixed(2)}" fill="${fill}" opacity="0.9"/>`;
     }).join("\n");
+    const inspectionTargets = rowCalls.map((call, callIndex) => {
+      const x = xForPosition(call.tracePosition);
+      const previousX = callIndex > 0 ? xForPosition(rowCalls[callIndex - 1].tracePosition) : plot.left;
+      const nextX = callIndex < rowCalls.length - 1 ? xForPosition(rowCalls[callIndex + 1].tracePosition) : plot.left + plot.width;
+      const targetLeft = callIndex > 0 ? (previousX + x) / 2 : plot.left;
+      const targetRight = callIndex < rowCalls.length - 1 ? (x + nextX) / 2 : plot.left + plot.width;
+      return `<rect class="sanger-base-inspection-target" data-sanger-base="${call.displayIndex}" x="${targetLeft.toFixed(2)}" y="${rowTop + 16}" width="${Math.max(2, targetRight - targetLeft).toFixed(2)}" height="${Math.max(1, qualityBottom - rowTop - 16).toFixed(2)}" fill="transparent"><title>${escapeXml(sangerCallInspectionText(call))}</title></rect>`;
+    }).join("\n");
     const translationTracks = makeSangerTranslationTracksSvg({
       frames: translationFrames,
       visibleStart: rowCalls[0].displayIndex,
@@ -2772,6 +2799,7 @@ ${qualityBars}
 <text x="${axisLabelX}" y="${qualityTop + 3}" text-anchor="end" font-size="7" fill="#64748b">Q${qualityMax}</text>
 <text x="${axisLabelX}" y="${thresholdY.toFixed(2)}" text-anchor="end" dominant-baseline="middle" font-size="7" fill="#b45309">Q${result.options.lowQualityThreshold}</text>
 <text x="${axisLabelX}" y="${qualityBottom - 1}" text-anchor="end" font-size="7" fill="#64748b">Q0</text>
+${inspectionTargets}
 </g>`);
   }
 
@@ -2855,6 +2883,14 @@ export function makeSangerTraceSvg(result, options = {}) {
     const x = xForPosition(call.tracePosition);
     return `<line x1="${x.toFixed(2)}" x2="${x.toFixed(2)}" y1="${plot.top + plot.height}" y2="${plot.top + plot.height + 5}" stroke="#94a3b8" stroke-width="1"/>`;
   }).join("\n");
+  const inspectionTargets = view.baseCalls.map((call, callIndex) => {
+    const x = xForPosition(call.tracePosition);
+    const previousX = callIndex > 0 ? xForPosition(view.baseCalls[callIndex - 1].tracePosition) : plot.left;
+    const nextX = callIndex < view.baseCalls.length - 1 ? xForPosition(view.baseCalls[callIndex + 1].tracePosition) : plot.left + plot.width;
+    const targetLeft = callIndex > 0 ? (previousX + x) / 2 : plot.left;
+    const targetRight = callIndex < view.baseCalls.length - 1 ? (x + nextX) / 2 : plot.left + plot.width;
+    return `<rect class="sanger-base-inspection-target" data-sanger-base="${call.displayIndex}" x="${targetLeft.toFixed(2)}" y="55" width="${Math.max(2, targetRight - targetLeft).toFixed(2)}" height="${Math.max(1, qualityTop + qualityHeight - 55).toFixed(2)}" fill="transparent"><title>${escapeXml(sangerCallInspectionText(call))}</title></rect>`;
+  }).join("\n");
 
   return `<svg class="sanger-svg" xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(view.record)} Sanger trace">
 ${SANGER_SVG_TEXT_STYLE}
@@ -2875,6 +2911,7 @@ ${qualityBars}
 <line x1="${plot.left}" x2="${plot.left + plot.width}" y1="${lowThresholdY.toFixed(2)}" y2="${lowThresholdY.toFixed(2)}" stroke="#f59e0b" stroke-width="1" stroke-dasharray="4 4" opacity="0.75"/>
 <text x="${plot.left - 10}" y="${qualityTop + 4}" text-anchor="end" font-size="10" fill="#64748b">Q${qualityMax}</text>
 <text x="${plot.left - 10}" y="${qualityTop + qualityHeight + 3}" text-anchor="end" font-size="10" fill="#64748b">Q0</text>
+${inspectionTargets}
 </svg>`;
 }
 

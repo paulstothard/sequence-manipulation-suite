@@ -8,6 +8,7 @@ import {
   shouldStartViewerInertia,
   startViewerInertia
 } from "./viewer-inertia.js";
+import { installCanvasVisualInspection } from "./visual-inspection.js";
 
 const CHANNELS = ["A", "C", "G", "T"];
 const CHANNEL_COLORS = {
@@ -245,6 +246,52 @@ function qualityText(call) {
   return call.quality === null || call.quality === undefined
     ? "Q n/a"
     : `Q${call.quality} Phred quality`;
+}
+
+export function describeSangerInspectionTarget(target, state = {}) {
+  if (target?.kind === "clip-handle") {
+    return `Drag the ${target.type === "clip-start" ? "5'" : "3'"} clip handle or click a base and set that clip boundary.`;
+  }
+  if (target?.kind === "translation") {
+    return `${target.frameLabel}: ${target.aminoAcid}; codon ${target.codon}; displayed bases ${target.directStart}-${target.directEnd}; genetic code ${state.geneticCode || "1"}.`;
+  }
+  const call = target?.call;
+  if (!call) return "";
+  return `Base ${call.displayIndex}: ${call.base}; original base ${call.originalBase}; original trace position ${call.originalTracePosition}; ${qualityText(call)}.`;
+}
+
+function findSangerInspectionTarget(canvas, state, event) {
+  const clipHandle = findClipHandle(canvas, state, event);
+  if (clipHandle) return { kind: "clip-handle", ...clipHandle };
+  const translation = findTranslationHitBox(canvas, state, event);
+  if (translation) return { kind: "translation", ...translation };
+  const base = findNearestHitBox(canvas, state, event);
+  return base ? { kind: "base-call", ...base } : null;
+}
+
+function sangerInspectionTargetKey(target) {
+  if (target?.kind === "clip-handle") return target.type;
+  if (target?.kind === "translation") return `${target.frameLabel}:${target.directStart}:${target.directEnd}`;
+  return target?.call ? `base:${target.call.displayIndex}` : "";
+}
+
+function sangerInspectionTargetPosition(canvas, target) {
+  if (!target) return null;
+  const { rect, scaleX, scaleY } = canvasCoordinates(canvas);
+  const pixelRatio = window.devicePixelRatio || 1;
+  const x = target.kind === "translation"
+    ? (target.left + target.right) / 2
+    : target.x;
+  const y = target.kind === "translation"
+    ? (target.top + target.bottom) / 2
+    : target.kind === "clip-handle"
+      ? (target.top + target.bottom) / 2
+      : target.plot.top + Math.min(28, target.plot.height / 3);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return {
+    clientX: rect.left + x * pixelRatio / scaleX,
+    clientY: rect.top + y * pixelRatio / scaleY
+  };
 }
 
 function setStatus(panel, message) {
@@ -1015,6 +1062,28 @@ function renderSingleSangerTraceViewer(container, data) {
     setClipBoundary(state, dragState.type, baseIndexFromPointer(canvas, state, event));
     render(`Dragging ${dragState.type === "clip-start" ? "5'" : "3'"} clip at base ${state.selectedIndex}.`);
   };
+  const inspection = installCanvasVisualInspection(panel, {
+    canvas,
+    ariaLabel: `${data.record || "Sanger trace"} interactive chromatogram`,
+    getTargets: () => state.hitBoxes.map((hit) => ({ kind: "base-call", ...hit })),
+    hitTest: (event) => findSangerInspectionTarget(canvas, state, event),
+    getText: (target) => describeSangerInspectionTarget(target, state),
+    getKey: sangerInspectionTargetKey,
+    getPosition: (target) => sangerInspectionTargetPosition(canvas, target),
+    isInteractionSuppressed: () => Boolean(dragState),
+    keyboardNavigation: false,
+    ariaKeyShortcuts: "ArrowLeft ArrowRight + - Escape",
+    instructionsText: "Move over a base, translation, or clipping handle to inspect it. Use Left and Right Arrow keys to select bases, plus and minus to zoom, and Escape to dismiss inspection.",
+    targetCursor: "crosshair",
+    emptyCursor: "grab"
+  });
+  cleanupController.signal.addEventListener("abort", () => inspection.cleanup(), { once: true });
+  const inspectSelectedBase = () => {
+    const hit = state.hitBoxes.find((item) => item.call.displayIndex === state.selectedIndex);
+    if (!hit) return;
+    const target = { kind: "base-call", ...hit };
+    inspection.inspect(target, sangerInspectionTargetPosition(canvas, target), { shouldAnnounce: true });
+  };
   canvas.addEventListener("wheel", (event) => {
     event.preventDefault();
     stopActiveInertia();
@@ -1027,21 +1096,10 @@ function renderSingleSangerTraceViewer(container, data) {
       }
       return;
     }
-    const clipHandle = findClipHandle(canvas, state, event);
-    canvas.classList.toggle("clip-hover", Boolean(clipHandle));
-    if (clipHandle) {
-      setStatus(panel, `Drag the ${clipHandle.type === "clip-start" ? "5'" : "3'"} clip handle or click a base and set that clip boundary.`);
-      return;
-    }
-    const translationHit = findTranslationHitBox(canvas, state, event);
-    if (translationHit) {
-      setStatus(panel, `${translationHit.frameLabel}: ${translationHit.aminoAcid}; codon ${translationHit.codon}; displayed bases ${translationHit.directStart}-${translationHit.directEnd}; genetic code ${state.geneticCode}.`);
-      return;
-    }
-    const nearest = findNearestHitBox(canvas, state, event);
-    if (!nearest) return;
-    const call = nearest.call;
-    setStatus(panel, `Base ${call.displayIndex}: ${call.base}; original base ${call.originalBase}; original trace position ${call.originalTracePosition}; ${qualityText(call)}.`);
+    const target = findSangerInspectionTarget(canvas, state, event);
+    canvas.classList.toggle("clip-hover", target?.kind === "clip-handle");
+    const description = describeSangerInspectionTarget(target, state);
+    if (description) setStatus(panel, description);
   }, listenerOptions);
   canvas.addEventListener("keydown", (event) => {
     if (event.key === "ArrowLeft") {
@@ -1049,12 +1107,14 @@ function renderSingleSangerTraceViewer(container, data) {
       state.selectedIndex = clamp((state.selectedIndex || 1) - 1, 1, state.calls.length);
       if (state.selectedIndex < state.visibleStart) state.visibleStart = state.selectedIndex;
       render();
+      inspectSelectedBase();
     } else if (event.key === "ArrowRight") {
       event.preventDefault();
       state.selectedIndex = clamp((state.selectedIndex || 1) + 1, 1, state.calls.length);
       const end = state.visibleStart + basesPerVisibleWidth(state) - 1;
       if (state.selectedIndex > end) state.visibleStart = Math.max(1, state.selectedIndex - basesPerVisibleWidth(state) + 1);
       render();
+      inspectSelectedBase();
     } else if (event.key === "+" || event.key === "=") {
       event.preventDefault();
       zoomBy(1.25);
@@ -1067,6 +1127,7 @@ function renderSingleSangerTraceViewer(container, data) {
     if (event.button !== 0) return;
     event.preventDefault();
     stopActiveInertia();
+    inspection.hide();
     canvas.focus();
     const handle = findClipHandle(canvas, state, event);
     dragState = {

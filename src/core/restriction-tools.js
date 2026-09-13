@@ -387,7 +387,8 @@ export function makeRestrictionGelSvg(records, options = {}) {
     if (options.topology === "circular") throw new Error("Pooling gel lanes requires linear molecules.");
     // Pool already-digested molecules, never concatenate their DNA sequences.
     records = [{ title: "Pooled sample", length: records.reduce((sum, r) => sum + r.length, 0),
-      fragments: records.flatMap(r => r.fragments?.length ? r.fragments : [{ length: r.length }]) }, ...records];
+      fragments: records.flatMap((record) => (record.fragments?.length ? record.fragments : [{ length: record.length }])
+        .map((fragment) => ({ ...fragment, sourceRecordTitle: record.title }))) }, ...records];
   }
   const title = options.title || "Simulated restriction digest gel";
   const subtitle = options.subtitle || "Uncut plasmids are modeled as mixed conformations; restriction digests are modeled primarily as linear fragments.";
@@ -412,9 +413,12 @@ export function makeRestrictionGelSvg(records, options = {}) {
     const component = (name, abundanceRange, apparentRange, trueMassMultiplier, type, scale = 1) => ({
       apparentSize: length * deterministicRange(`${record.title}:${name}:apparent`, apparentRange[0], apparentRange[1]),
       trueMass: length * trueMassMultiplier,
+      trueSize: length,
       abundance: deterministicRange(`${record.title}:${name}:abundance`, abundanceRange[0], abundanceRange[1]) * scale,
       type,
-      name
+      name,
+      sourceRecordTitle: record.title,
+      qualitativeConformation: true
     });
     if (isUncutCircular) {
       return [
@@ -435,8 +439,20 @@ export function makeRestrictionGelSvg(records, options = {}) {
       .map((fragment) => ({
         apparentSize: fragment.length,
         trueMass: fragment.length,
+        trueSize: fragment.length,
         abundance: 1,
-        type: "linear"
+        type: "linear",
+        name: fragment.product !== undefined
+          ? `PCR product ${fragment.product}`
+          : fragment.fragment !== undefined
+            ? `fragment ${fragment.fragment}`
+            : fragment.label || "linear fragment",
+        sourceRecordTitle: fragment.sourceRecordTitle || record.title,
+        start: fragment.start,
+        end: fragment.end,
+        product: fragment.product,
+        forwardPrimer: fragment.forward_primer,
+        reversePrimer: fragment.reverse_primer
       }));
     if (isCircular && (record.hits ?? []).length > 0) {
       components.push(
@@ -475,9 +491,10 @@ export function makeRestrictionGelSvg(records, options = {}) {
         previous.y = (previous.y * previous.mass + component.y * component.mass) / totalMass;
         previous.mass = totalMass;
         previous.types.add(component.type);
+        previous.components.push(component);
       } else {
         const jitter = deterministicRange(`${component.name ?? component.type}:${component.apparentSize}:gel-jitter`, -1.5, 1.5);
-        merged.push({ y: component.y + jitter, mass: component.mass, types: new Set([component.type]) });
+        merged.push({ y: component.y + jitter, mass: component.mass, types: new Set([component.type]), components: [component] });
       }
     }
     const maxMass = Math.max(1, ...merged.map((band) => band.mass));
@@ -497,7 +514,8 @@ export function makeRestrictionGelSvg(records, options = {}) {
     className = "band",
     coreClassName = "band-core",
     haloClassName = "band-halo",
-    open = false
+    open = false,
+    inspectionText = ""
   }) => {
     const clampedSignal = Math.max(0, Math.min(1, signal));
     const haloOpacity = Math.min(0.72, 0.08 + clampedSignal * 0.58);
@@ -505,6 +523,7 @@ export function makeRestrictionGelSvg(records, options = {}) {
     const coreOpacity = Math.max(0, (clampedSignal - 0.58) / 0.42) * 0.9;
     const haloHeight = bandHeight * (open ? 2.7 : 2.15);
     const haloWidth = bandWidth + (open ? 10 : 7);
+    parts.push(`<g class="gel-band-inspection-mark" data-sms3-inspection-mark="gel-band">${inspectionText ? `<title>${escapeXml(inspectionText)}</title>` : ""}`);
     parts.push(`<rect class="${haloClassName}" x="${(x - haloWidth / 2).toFixed(1)}" y="${(y - haloHeight / 2).toFixed(1)}" width="${haloWidth.toFixed(1)}" height="${haloHeight.toFixed(1)}" rx="${(haloHeight / 2).toFixed(1)}" opacity="${haloOpacity.toFixed(2)}"/>`);
     parts.push(`<rect class="${className}" x="${(x - bandWidth / 2).toFixed(1)}" y="${(y - bandHeight / 2).toFixed(1)}" width="${bandWidth.toFixed(1)}" height="${bandHeight.toFixed(1)}" rx="${(bandHeight / 2).toFixed(1)}" opacity="${bodyOpacity.toFixed(2)}"/>`);
     if (coreOpacity > 0.02) {
@@ -512,6 +531,29 @@ export function makeRestrictionGelSvg(records, options = {}) {
       const coreWidth = bandWidth * 0.82;
       parts.push(`<rect class="${coreClassName}" x="${(x - coreWidth / 2).toFixed(1)}" y="${(y - coreHeight / 2).toFixed(1)}" width="${coreWidth.toFixed(1)}" height="${coreHeight.toFixed(1)}" rx="${(coreHeight / 2).toFixed(1)}" opacity="${coreOpacity.toFixed(2)}"/>`);
     }
+    parts.push("</g>");
+  };
+  const componentInspectionText = (component) => {
+    const source = component.sourceRecordTitle || "sample";
+    const trueSize = Math.max(1, Math.round(Number(component.trueSize) || Number(component.trueMass) || 1));
+    const apparentSize = Math.max(1, Math.round(Number(component.apparentSize) || trueSize));
+    const coordinates = Number.isFinite(Number(component.start)) && Number.isFinite(Number(component.end))
+      ? `; coordinates ${Number(component.start).toLocaleString()}–${Number(component.end).toLocaleString()}`
+      : "";
+    const primers = component.forwardPrimer || component.reversePrimer
+      ? `; primers ${component.forwardPrimer || "unspecified"} / ${component.reversePrimer || "unspecified"}`
+      : "";
+    if (component.type === "linear" && !component.qualitativeConformation) {
+      return `${source}, ${component.name || "linear fragment"}: ${trueSize.toLocaleString()} bp${coordinates}${primers}`;
+    }
+    return `${source}, ${component.name || component.type}: true molecule length ${trueSize.toLocaleString()} bp; apparent migration approximately ${apparentSize.toLocaleString()} bp; qualitative conformation model`;
+  };
+  const bandInspectionText = (record, band) => {
+    const components = band.components ?? [];
+    if (components.length <= 1) return componentInspectionText(components[0] ?? { sourceRecordTitle: record.title });
+    const shown = components.slice(0, 8).map(componentInspectionText);
+    const omitted = components.length - shown.length;
+    return `${record.title}: merged band with ${components.length} co-migrating components — ${shown.join(" | ")}${omitted > 0 ? ` | ${omitted} more` : ""}`;
   };
   const sampleBandWidth = Math.max(34, Math.min(56, laneWidth * 0.42));
   const placeLadderLabels = (sizes) => {
@@ -580,7 +622,8 @@ export function makeRestrictionGelSvg(records, options = {}) {
       height: bandHeight,
       signal,
       className: "ladder-band",
-      coreClassName: "ladder-core"
+      coreClassName: "ladder-core",
+      inspectionText: `DNA ladder: ${size.toLocaleString()} bp; nominal mass ${ladderMassForSize(size).toLocaleString()} ng; qualitative migration model`
     });
   });
   for (const label of ladderLabels) {
@@ -608,7 +651,8 @@ export function makeRestrictionGelSvg(records, options = {}) {
         height: bandHeight,
         signal: massSignal,
         className,
-        open: isOpen
+        open: isOpen,
+        inspectionText: bandInspectionText(record, band)
       });
     }
   });

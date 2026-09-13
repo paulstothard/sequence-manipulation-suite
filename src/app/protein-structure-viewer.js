@@ -1,4 +1,5 @@
 import { addTimestampToFilename, makeSafeFileStem } from "./canvas-export.js";
+import { installCanvasVisualInspection } from "./visual-inspection.js";
 
 const BACKGROUND_COLORS = {
   white: "#ffffff",
@@ -870,25 +871,9 @@ function selectedResidueTsv(atom, conservationDetails) {
   return `${columns.join("\t")}\n${columns.map((column) => tsvValue(row[column])).join("\t")}`;
 }
 
-function positionTooltip(tooltip, event, text) {
-  if (!text) {
-    hideTooltip(tooltip);
-    return;
-  }
-  tooltip.textContent = text;
-  tooltip.hidden = false;
-  const hostRect = tooltip.parentElement.getBoundingClientRect();
-  const x = Math.max(8, Math.min(hostRect.width - 20, (event?.clientX ?? hostRect.left + 20) - hostRect.left + 12));
-  const y = Math.max(8, Math.min(hostRect.height - 20, (event?.clientY ?? hostRect.top + 20) - hostRect.top + 12));
-  tooltip.style.left = `${x}px`;
-  tooltip.style.top = `${y}px`;
-}
-
-function hideTooltip(tooltip) {
-  tooltip.hidden = true;
-  tooltip.textContent = "";
-  tooltip.style.left = "-9999px";
-  tooltip.style.top = "-9999px";
+export function describeProteinStructureInspectionTarget(atom, conservationDetails = new Map()) {
+  const { lines } = detailLinesForAtom(atom, conservationDetails);
+  return lines.slice(0, conservationDetails.size > 0 ? 5 : 2).join("; ");
 }
 
 function renderSelectedDetails(detailsPanel, atom, conservationDetails, actions = {}) {
@@ -1241,10 +1226,6 @@ export function renderProteinStructureViewer(container, payload = {}) {
 
   const viewerHost = document.createElement("div");
   viewerHost.className = "protein-structure-canvas-host";
-  const tooltip = document.createElement("div");
-  tooltip.className = "protein-structure-tooltip";
-  hideTooltip(tooltip);
-  viewerHost.append(tooltip);
   const detailsPanel = document.createElement("div");
   detailsPanel.className = "protein-structure-details";
   renderSelectedDetails(detailsPanel, null, conservationDetails);
@@ -1278,10 +1259,10 @@ export function renderProteinStructureViewer(container, payload = {}) {
     return;
   }
 
-  let hoverFrame = 0;
   let viewer;
   let viewerModels;
   let structureSearchIndex = { entries: [], byId: new Map() };
+  let structureInspection = { cleanup() {}, hide() {}, inspect() {}, refresh() {} };
   try {
     viewer = window.$3Dmol.createViewer(viewerHost, {
       backgroundColor: getBackgroundColor(settings.background),
@@ -1318,7 +1299,7 @@ export function renderProteinStructureViewer(container, payload = {}) {
       }
     };
     const clearSelection = () => {
-      hideTooltip(tooltip);
+      structureInspection.hide();
       settings.selectedStructureItems = [];
       renderSelectedDetails(detailsPanel, null, conservationDetails);
       renderStructureSelectionChips(findControl.chips, settings.selectedStructureItems, selectionChipActions);
@@ -1327,7 +1308,7 @@ export function renderProteinStructureViewer(container, payload = {}) {
       fitStructure(viewer);
     };
     const centerStructureItem = (item, message = "") => {
-      hideTooltip(tooltip);
+      structureInspection.hide();
       if (!item?.selection) {
         status.textContent = "No item selected";
         return;
@@ -1344,7 +1325,7 @@ export function renderProteinStructureViewer(container, payload = {}) {
       centerStructureItem(item, "Focused selected residue");
     };
     const selectStructureEntry = (entry, { replace = false, source = "search" } = {}) => {
-      hideTooltip(tooltip);
+      structureInspection.hide();
       if (!entry) {
         status.textContent = "No matching residue or molecule";
         return;
@@ -1436,13 +1417,53 @@ export function renderProteinStructureViewer(container, payload = {}) {
     const selectAtom = (atom) => {
       selectStructureEntry(entryForAtom(atom), { replace: true, source: "canvas" });
     };
-    let lastMolHoverAt = 0;
+    const inspectionTargets = () => {
+      const entries = structureSearchIndex.entries
+        .filter((entry) => entry.type !== "chain" && entry.representativeAtom);
+      if (conservationDetails.size === 0) return entries.slice(0, 2000);
+      const mapped = [];
+      const unmapped = [];
+      for (const entry of entries) {
+        (conservationDetails.has(atomResidueKey(entry.representativeAtom)) ? mapped : unmapped).push(entry);
+      }
+      return [...mapped, ...unmapped].slice(0, 2000);
+    };
+    const inspectionText = (entry) => describeProteinStructureInspectionTarget(
+      entry?.representativeAtom,
+      conservationDetails
+    );
+    const inspectionPosition = (entry) => {
+      if (!entry?.representativeAtom || typeof viewer.modelToScreen !== "function") return null;
+      const position = viewer.modelToScreen([entry.representativeAtom])?.[0];
+      if (!Number.isFinite(Number(position?.x)) || !Number.isFinite(Number(position?.y))) return null;
+      return {
+        clientX: Number(position.x) - window.pageXOffset,
+        clientY: Number(position.y) - window.pageYOffset
+      };
+    };
+    const structureCanvas = viewer.getCanvas?.() ?? viewerHost.querySelector("canvas");
+    structureInspection = installCanvasVisualInspection(viewerHost, {
+      canvas: structureCanvas,
+      ariaLabel: `${payload.title || "Protein structure"} interactive 3D molecular structure`,
+      getTargets: inspectionTargets,
+      hitTest: (event) => {
+        const atom = findNearestAtomFromEvent(viewer, settings, event, 16, viewerModels);
+        return atom ? entryForAtom(atom) : null;
+      },
+      getText: inspectionText,
+      getKey: (entry) => entry?.id,
+      getPosition: inspectionPosition,
+      onActivate: (entry) => selectStructureEntry(entry, { replace: true, source: "keyboard" }),
+      instructionsText: "Move over the structure or use Arrow keys to inspect residues and molecules. Press Enter to select the inspected item, and Escape to dismiss inspection.",
+      targetCursor: "pointer",
+      emptyCursor: "grab"
+    });
+    viewerHost.querySelector(":scope > .visual-inspection-canvas-tooltip")
+      ?.classList.add("protein-structure-tooltip");
     viewer.setHoverable(withModelSelection(interactionSelection(settings), viewerModels.primaryModel), true, (atom, _viewer, event) => {
-      lastMolHoverAt = performance.now();
-      const { lines } = detailLinesForAtom(atom, conservationDetails);
-      positionTooltip(tooltip, event, lines.slice(0, conservation ? 5 : 2).join("\n"));
+      structureInspection.inspect(entryForAtom(atom), event);
     }, () => {
-      hideTooltip(tooltip);
+      structureInspection.hide();
     });
     let pointerStart = null;
     let suppressResiduePickUntil = 0;
@@ -1451,7 +1472,7 @@ export function renderProteinStructureViewer(container, payload = {}) {
     };
     const residuePickingSuppressed = () => performance.now() < suppressResiduePickUntil;
     const trackPointerStart = (event) => {
-      hideTooltip(tooltip);
+      structureInspection.hide();
       pointerStart = {
         pointerId: event.pointerId,
         clientX: event.clientX,
@@ -1471,7 +1492,7 @@ export function renderProteinStructureViewer(container, payload = {}) {
     const cancelPointerPick = () => {
       pointerStart = null;
       suppressResiduePick();
-      hideTooltip(tooltip);
+      structureInspection.hide();
     };
     let lastAtomClickAt = 0;
     viewer.setClickable(withModelSelection(interactionSelection(settings), viewerModels.primaryModel), true, (atom) => {
@@ -1479,20 +1500,6 @@ export function renderProteinStructureViewer(container, payload = {}) {
       lastAtomClickAt = Date.now();
       selectAtom(atom);
     });
-    viewerHost.addEventListener("mousemove", (event) => {
-      if (hoverFrame) return;
-      const pointer = { clientX: event.clientX, clientY: event.clientY };
-      hoverFrame = window.requestAnimationFrame(() => {
-        hoverFrame = 0;
-        const atom = findNearestAtomFromEvent(viewer, settings, pointer, 16, viewerModels);
-        if (atom) {
-          const { lines } = detailLinesForAtom(atom, conservationDetails);
-          positionTooltip(tooltip, pointer, lines.slice(0, conservation ? 5 : 2).join("\n"));
-        } else if (performance.now() - lastMolHoverAt > 80) {
-          hideTooltip(tooltip);
-        }
-      });
-    }, { capture: true });
     viewerHost.addEventListener("pointerdown", trackPointerStart, { capture: true, passive: true });
     viewerHost.addEventListener("pointerup", trackPointerEnd, { capture: true, passive: true });
     for (const eventName of ["mouseleave", "pointerleave", "pointercancel", "blur"]) {
@@ -1510,7 +1517,7 @@ export function renderProteinStructureViewer(container, payload = {}) {
     }, { capture: true, passive: false });
     viewerHost.addEventListener("touchstart", cancelPointerPick, { passive: true });
     viewerHost.addEventListener("click", (event) => {
-      hideTooltip(tooltip);
+      structureInspection.hide();
       if (residuePickingSuppressed()) {
         return;
       }
@@ -1554,7 +1561,7 @@ export function renderProteinStructureViewer(container, payload = {}) {
   syncOpacityControls();
 
   const applyControls = () => {
-    hideTooltip(tooltip);
+    structureInspection.hide();
     settings.representation = repControl.select.value;
     settings.colorScheme = colorControl.select.value;
     settings.background = bgControl.select.value;
@@ -1585,20 +1592,20 @@ export function renderProteinStructureViewer(container, payload = {}) {
     control.addEventListener("input", applyControls);
   }
   fitButton.addEventListener("click", () => {
-    hideTooltip(tooltip);
+    structureInspection.hide();
     fitStructure(viewer);
     status.textContent = "Fit structure";
   });
   for (const button of orientationButtons) {
     button.addEventListener("click", () => {
-      hideTooltip(tooltip);
+      structureInspection.hide();
       orientStructure(viewer, button.dataset.orientation);
       status.textContent = `${button.textContent} view`;
     });
   }
   let spinning = false;
   spinButton.addEventListener("click", () => {
-    hideTooltip(tooltip);
+    structureInspection.hide();
     spinning = !spinning;
     spinButton.setAttribute("aria-pressed", String(spinning));
     if (spinButtonLabel) {
@@ -1609,7 +1616,7 @@ export function renderProteinStructureViewer(container, payload = {}) {
     status.textContent = spinning ? "Spinning" : "Spin stopped";
   });
   pngButton.addEventListener("click", () => {
-    hideTooltip(tooltip);
+    structureInspection.hide();
     const stem = makeSafeFileStem(payload.title || "protein-structure", "protein-structure");
     if (!downloadPngFromViewer(viewer, `${stem}.png`)) {
       status.textContent = "PNG snapshot unavailable";
@@ -1618,7 +1625,7 @@ export function renderProteinStructureViewer(container, payload = {}) {
     }
   });
   const resizeObserver = new ResizeObserver(() => {
-    hideTooltip(tooltip);
+    structureInspection.hide();
     viewer.resize();
     viewer.render();
   });
@@ -1639,11 +1646,7 @@ export function renderProteinStructureViewer(container, payload = {}) {
     view: typeof viewer.getView === "function" ? viewer.getView().map(Number) : []
   });
   container._sms3VisualCleanup = () => {
-    hideTooltip(tooltip);
-    if (hoverFrame) {
-      window.cancelAnimationFrame(hoverFrame);
-      hoverFrame = 0;
-    }
+    structureInspection.cleanup();
     resizeObserver.disconnect();
     container._sms3PortableViewerSnapshot = null;
     try {

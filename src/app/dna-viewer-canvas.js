@@ -12,15 +12,16 @@ import {
   createSelectionPanel,
   createViewerInspectorWorkspace,
   createViewerTrackControls,
-  createViewerTooltip,
   createViewerSearchControls,
   getViewerFeatureTypeStyle,
+  getViewerHitTargets,
   getViewerTrackItems,
+  getViewerTargetClientPosition,
   getVisibleViewerTracks,
   getViewerTrackDisplayMode,
   hasHiddenViewerItemTypes,
-  hideViewerTooltip,
   hitTestRegions,
+  makeTooltipText,
   makeViewerItemTargetDetails,
   makeTargetKey,
   makeViewerFeatureSuggestions,
@@ -28,7 +29,6 @@ import {
   renderRangePanel,
   renderSelectionPanel,
   searchResultUsesFeatureGlyph,
-  showViewerTooltip,
   updateViewerSearchControls,
   viewerTargetsMatch
 } from "./dna-viewer-interactions.js";
@@ -50,6 +50,8 @@ import {
   shouldStartViewerInertia,
   startViewerInertia
 } from "./viewer-inertia.js";
+import { installCanvasVisualInspection } from "./visual-inspection.js";
+
 const PLOT_LEFT = 118;
 const PLOT_RIGHT_GUTTER = 34;
 const MIN_LINEAR_PLOT_WIDTH = 260;
@@ -375,7 +377,7 @@ function visibleIntervalItems(track, state, viewStart, viewEnd) {
 }
 
 function viewerTargetMatches(state, target) {
-  return viewerTargetsMatch(state.selectedTarget, target);
+  return viewerTargetsMatch(state.selectedTarget, target) || viewerTargetsMatch(state.inspectedTarget, target);
 }
 
 function searchTargetMatches(state, target) {
@@ -1242,6 +1244,8 @@ function drawViewer(ctx, canvas, status, record, state) {
   rangeLine.textContent = `${Math.floor(state.viewStart + 1).toLocaleString()}-${Math.ceil(state.viewEnd).toLocaleString()} ${unit}`;
   scaleLine.textContent = `${Math.round(span).toLocaleString()} ${unit} span · ${pxPerBp.toFixed(2)} px/${unit}`;
   status.append(rangeLine, scaleLine);
+  canvas.dataset.sms3InspectionReady = "true";
+  canvas.setAttribute("aria-busy", "false");
 }
 
 function createButton(icon, title) {
@@ -1646,8 +1650,9 @@ function installViewer(panel, record, options = {}) {
 
   const canvas = document.createElement("canvas");
   canvas.className = "dna-viewer-canvas";
+  canvas.dataset.sms3InspectionReady = "false";
+  canvas.setAttribute("aria-busy", "true");
   const ctx = canvas.getContext("2d");
-  const tooltip = createViewerTooltip(panel);
   const selectionEmptyText = proteinViewer
     ? "Click a feature, residue, or coordinate to inspect it."
     : "Click a feature, site, base, codon, amino acid, or coordinate to inspect it.";
@@ -1667,6 +1672,7 @@ function installViewer(panel, record, options = {}) {
     dragStartViewStart: 0,
     dragStartViewEnd: Math.max(1, record.length),
     selectedTarget: null,
+    inspectedTarget: null,
     rangeAnchors: Array.isArray(preserved?.rangeAnchors)
       ? preserved.rangeAnchors.filter((anchor) => Number(anchor?.position) >= 1 && Number(anchor?.position) <= record.length).slice(-2)
       : [],
@@ -2058,15 +2064,20 @@ function installViewer(panel, record, options = {}) {
     state.geneticCode = geneticCodeControl.select.value;
     drawViewer(ctx, canvas, status, record, state);
   });
-  canvas.addEventListener("mousemove", (event) => {
-    if (state.dragging) return;
-    const target = hitTestRegions(state, event.clientX, event.clientY, canvas);
-    showViewerTooltip(tooltip, target, event, panel);
-    canvas.style.cursor = target ? "pointer" : "grab";
-  });
-  canvas.addEventListener("mouseleave", () => {
-    hideViewerTooltip(tooltip);
-    canvas.style.cursor = "";
+  const inspection = installCanvasVisualInspection(panel, {
+    canvas,
+    ariaLabel: `${record.title || (proteinViewer ? "Protein sequence" : "DNA sequence")} ${proteinViewer ? "protein" : "linear DNA"} viewer`,
+    getTargets: () => getViewerHitTargets(state),
+    hitTest: (event) => hitTestRegions(state, event.clientX, event.clientY, canvas),
+    getText: makeTooltipText,
+    getKey: (target) => target.key || makeTargetKey(target),
+    getPosition: (target) => getViewerTargetClientPosition(state, target, canvas),
+    onActivate: (target) => selectTarget(target, { keepIfSame: true }),
+    onActiveChange: (target) => {
+      state.inspectedTarget = target;
+      drawViewer(ctx, canvas, status, record, state);
+    },
+    isInteractionSuppressed: () => state.dragging
   });
   canvas.addEventListener("click", (event) => {
     if (state.dragging) return;
@@ -2089,7 +2100,7 @@ function installViewer(panel, record, options = {}) {
   }, { passive: false });
   canvas.addEventListener("mousedown", (event) => {
     cancelInertia();
-    hideViewerTooltip(tooltip);
+    inspection.hide();
     state.dragging = true;
     state.dragStartX = event.clientX;
     state.dragLastX = event.clientX;
@@ -2155,11 +2166,16 @@ function installViewer(panel, record, options = {}) {
   return {
     cleanup: () => {
       cancelInertia();
+      inspection.cleanup();
       window.removeEventListener("mousemove", onWindowMouseMove);
       window.removeEventListener("mouseup", onWindowMouseUp);
       window.removeEventListener("resize", scheduleResize);
       window.removeEventListener("sms3-theme-change", scheduleResize);
       resizeObserver?.disconnect();
+      if (resizeFrame) {
+        cancelAnimationFrame(resizeFrame);
+        resizeFrame = 0;
+      }
     },
     snapshot: () => makeLinearViewerSnapshot(record, state, searchControls)
   };

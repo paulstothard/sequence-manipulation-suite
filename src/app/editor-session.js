@@ -174,22 +174,63 @@ function createEditorSession({ host, toolbar, tool, source, read, apply, initial
   popover.textContent = "SMS3 automatically saves the latest document for this tool in this browser’s site storage on this device. It restores when you return or reload. It is not synced to other browsers or devices. A new run replaces this tool’s recovery copy; clearing site data removes it. " +
     (tool === "tree-viewer" ? "Use Export → Tree document (JSON)" : "Use Download document") +
     " to keep a separate copy or reopen it elsewhere through Choose file.";
-  help.setAttribute("popovertarget", popover.id);
   help.setAttribute("aria-controls", popover.id);
+  let helpPositionFrame = 0;
   const positionHelp = () => {
     if (!popover.matches(":popover-open")) return;
-    const anchor = help.getBoundingClientRect(), box = popover.getBoundingClientRect(), margin = 8;
-    popover.style.left = `${Math.max(margin, Math.min(anchor.left, window.innerWidth - box.width - margin))}px`;
-    popover.style.top = `${Math.max(margin, Math.min(anchor.bottom + 6 + box.height <= window.innerHeight - margin ? anchor.bottom + 6 : anchor.top - box.height - 6, window.innerHeight - box.height - margin))}px`;
+    const visualViewport = window.visualViewport;
+    const layoutWidth = document.documentElement.clientWidth || window.innerWidth;
+    const layoutHeight = document.documentElement.clientHeight || window.innerHeight;
+    const viewportLeft = visualViewport?.offsetLeft ?? 0;
+    const viewportTop = visualViewport?.offsetTop ?? 0;
+    const viewportWidth = Math.min(layoutWidth, visualViewport?.width ?? layoutWidth);
+    const viewportHeight = Math.min(layoutHeight, visualViewport?.height ?? layoutHeight);
+    const viewportRight = viewportLeft + viewportWidth;
+    const viewportBottom = viewportTop + viewportHeight;
+    const anchor = help.getBoundingClientRect(), margin = 8;
+    popover.style.width = `${Math.max(1, Math.min(360, viewportWidth - margin * 2))}px`;
+    const box = popover.getBoundingClientRect();
+    popover.style.left = `${Math.max(viewportLeft + margin, Math.min(anchor.left, viewportRight - box.width - margin))}px`;
+    const preferredTop = anchor.bottom + 6 + box.height <= viewportBottom - margin
+      ? anchor.bottom + 6
+      : anchor.top - box.height - 6;
+    popover.style.top = `${Math.max(viewportTop + margin, Math.min(preferredTop, viewportBottom - box.height - margin))}px`;
   };
+  const scheduleHelpPosition = () => {
+    if (helpPositionFrame) cancelAnimationFrame(helpPositionFrame);
+    helpPositionFrame = requestAnimationFrame(() => {
+      helpPositionFrame = 0;
+      positionHelp();
+    });
+  };
+  help.addEventListener("click", () => {
+    if (popover.matches(":popover-open")) {
+      help.setAttribute("aria-expanded", "false");
+      help.removeAttribute("aria-describedby");
+      popover.hidePopover();
+      return;
+    }
+    help.setAttribute("aria-expanded", "true");
+    help.setAttribute("aria-describedby", popover.id);
+    popover.showPopover();
+    positionHelp();
+    scheduleHelpPosition();
+  }, { signal: controller.signal });
   popover.addEventListener("toggle", () => {
     const open = popover.matches(":popover-open");
     help.setAttribute("aria-expanded", String(open));
-    if (!open) { help.removeAttribute("aria-describedby"); return; }
+    if (!open) {
+      if (helpPositionFrame) cancelAnimationFrame(helpPositionFrame);
+      helpPositionFrame = 0;
+      help.removeAttribute("aria-describedby");
+      return;
+    }
     help.setAttribute("aria-describedby", popover.id);
     positionHelp();
+    scheduleHelpPosition();
   });
-  window.addEventListener("resize", positionHelp, {signal:controller.signal});
+  window.addEventListener("resize", scheduleHelpPosition, {signal:controller.signal});
+  window.visualViewport?.addEventListener("resize", scheduleHelpPosition, {signal:controller.signal});
   window.addEventListener("scroll", positionHelp, {capture:true, passive:true, signal:controller.signal});
   recovery.append(status, help);
   ui.append(recovery, popover);
@@ -308,6 +349,7 @@ function createEditorSession({ host, toolbar, tool, source, read, apply, initial
     changed();
     flush();
     disposed = true;
+    if (helpPositionFrame) cancelAnimationFrame(helpPositionFrame);
     controller.abort();
     ui.remove();
   } };

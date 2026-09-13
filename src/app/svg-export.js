@@ -9,10 +9,24 @@ export function serializeSvgElement(svgElement) {
   if (!svgElement) {
     return "";
   }
-  if (!svgElement.getAttribute("xmlns")) {
-    svgElement.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  const clone = svgElement.cloneNode(true);
+  if (!clone.getAttribute("xmlns")) {
+    clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
   }
-  return new XMLSerializer().serializeToString(svgElement);
+  for (const mark of clone.querySelectorAll("[data-sms3-title-mark]")) {
+    const text = String(mark.getAttribute("data-sms3-title-text") ?? "").trim();
+    const title = [...mark.children].find((child) => child.tagName?.toLowerCase() === "title");
+    if (title && text) title.textContent = text;
+    mark.removeAttribute("data-sms3-title-mark");
+    mark.removeAttribute("data-sms3-title-text");
+    mark.removeAttribute("data-sms3-inspection-active");
+  }
+  const describedBy = String(clone.getAttribute("aria-describedby") ?? "")
+    .split(/\s+/)
+    .filter((token) => token && !/^sms3-visual-inspection-\d+-instructions$/.test(token));
+  if (describedBy.length) clone.setAttribute("aria-describedby", describedBy.join(" "));
+  else clone.removeAttribute("aria-describedby");
+  return new XMLSerializer().serializeToString(clone);
 }
 
 export async function downloadSvgAsPng(svg, filename = "sms3-plot.png") {

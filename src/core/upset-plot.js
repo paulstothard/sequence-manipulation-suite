@@ -119,7 +119,7 @@ export function makeUpsetStyleSvg({
     const size = normalizedSetSizes[index];
     const barHeight = setSizeScale.scale(size);
     const y = setBarBaseline - barHeight;
-    return `<g><rect class="set-size-bar" data-count="${size}" data-scale="${setSizeScale.mode}" x="${x - 5}" y="${y}" width="10" height="${barHeight}" rx="2" fill="#64748b"></rect><text class="set-count" x="${x}" y="${Math.max(12, y - 6)}" text-anchor="middle">${setCountLabels[index]}</text></g>`;
+    return `<g data-sms3-inspection-mark="set-size"><title>${escapeXml(`${label}: ${size.toLocaleString()} distinct item${size === 1 ? "" : "s"}; ${setSizeScale.mode} bar scale`)}</title><rect class="set-size-bar" data-count="${size}" data-scale="${setSizeScale.mode}" x="${x - 5}" y="${y}" width="10" height="${barHeight}" rx="2" fill="#64748b"></rect><text class="set-count" x="${x}" y="${Math.max(12, y - 6)}" text-anchor="middle">${setCountLabels[index]}</text></g>`;
   }).join("");
   const rows = shown.map((row, rowIndex) => {
     const y = matrixTop + rowIndex * rowHeight;
@@ -133,7 +133,8 @@ export function makeUpsetStyleSvg({
       ? `<line x1="${left + presentIndexes[0] * matrixColGap}" y1="${y}" x2="${left + presentIndexes[presentIndexes.length - 1] * matrixColGap}" y2="${y}" stroke="#0f766e" stroke-width="2"></line>`
       : "";
     const bar = countScale.scale(row.count);
-    return `<g>${connectors}${dots}<rect class="intersection-size-bar" data-count="${row.count}" data-scale="${countScale.mode}" x="${barX}" y="${y - 8}" width="${bar}" height="16" rx="2" fill="#2563eb"></rect><text class="count" x="${barX + bar + 8}" y="${y + 5}">${countLabels[rowIndex]}</text></g>`;
+    const members = presentIndexes.map((index) => setLabels[index]).join(" + ") || "No sets";
+    return `<g data-sms3-inspection-mark="intersection"><title>${escapeXml(`${members}: ${Number(row.count).toLocaleString()} distinct item${Number(row.count) === 1 ? "" : "s"}; ${countScale.mode} bar scale`)}</title>${connectors}${dots}<rect class="intersection-size-bar" data-count="${row.count}" data-scale="${countScale.mode}" x="${barX}" y="${y - 8}" width="${bar}" height="16" rx="2" fill="#2563eb"></rect><text class="count" x="${barX + bar + 8}" y="${y + 5}">${countLabels[rowIndex]}</text></g>`;
   }).join("");
   const labels = setLabels.map((label, index) => `<text class="axis" x="${left + index * matrixColGap}" y="${top}" text-anchor="middle">${escapeXml(label)}</text>`).join("");
   const setAxisLabel = setLabels.length > 0

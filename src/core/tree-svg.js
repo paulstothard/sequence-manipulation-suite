@@ -326,15 +326,19 @@ export function renderPhylogramSvg(newick, {
     `<text class="note" x="24" y="49">${escapeXml(note)}</text>`
   ];
 
-  function line(x1, y1, x2, y2) {
-    parts.push(`<line class="branch" x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}"/>`);
+  function line(x1, y1, x2, y2, inspectionText = "") {
+    parts.push(`<line class="branch" x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}">${inspectionText ? `<title>${escapeXml(inspectionText)}</title>` : ""}</line>`);
   }
 
   function draw(node) {
     const parent = positions.get(node);
     for (const child of node.children ?? []) {
       const childPosition = positions.get(child);
-      line(parent.x, childPosition.y, childPosition.x, childPosition.y);
+      const childKind = child.children?.length ? "internal branch" : `tip ${displayLabel(child.label) || "unlabelled"}`;
+      const branchLength = unavailableMetric || child.length === null || child.length === undefined
+        ? "branch length unavailable; cladogram spacing shown"
+        : `branch length ${child.length} ${scaleLabel}`;
+      line(parent.x, childPosition.y, childPosition.x, childPosition.y, `${childKind}; ${branchLength}`);
       line(parent.x, parent.y, parent.x, childPosition.y);
       draw(child);
     }
@@ -346,7 +350,9 @@ export function renderPhylogramSvg(newick, {
     if (showLabelConnectors) {
       parts.push(`<line class="tip-link" x1="${position.x.toFixed(2)}" y1="${position.y.toFixed(2)}" x2="${(labelX - 8).toFixed(2)}" y2="${position.y.toFixed(2)}"/>`);
     }
-    parts.push(`<text class="tip" x="${labelX.toFixed(2)}" y="${position.y.toFixed(2)}">${escapeXml(labelMap.get(leaf))}</text>`);
+    const leafLabel = labelMap.get(leaf);
+    const rootDistance = unavailableMetric ? "root distance unavailable" : `root distance ${depths.get(leaf)} ${scaleLabel}`;
+    parts.push(`<text class="tip" x="${labelX.toFixed(2)}" y="${position.y.toFixed(2)}"><title>${escapeXml(`${leafLabel}; tip; ${rootDistance}`)}</title>${escapeXml(leafLabel)}</text>`);
   }
 
   const rawScaleTarget = maxDepth / 5;

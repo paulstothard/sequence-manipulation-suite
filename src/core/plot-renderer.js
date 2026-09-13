@@ -820,12 +820,13 @@ export function renderLinePlotSvg(spec) {
         : `<polyline class="line" stroke="${item.color}" stroke-width="${item.strokeWidth ?? 2.2}"${item.strokeDasharray ? ` stroke-dasharray="${escapeXml(item.strokeDasharray)}"` : ""} points="${points.join(" ")}"></polyline>`
       );
     }
-    if (shouldShowPointMarkersForSeries(spec, item)) {
-      for (const point of item.points.filter((entry) => entry.y !== null && entry.y !== undefined)) {
-        parts.push(
-          `<circle class="dot" cx="${scaleX(point.x).toFixed(2)}" cy="${scaleY(point.y).toFixed(2)}" r="2.6" fill="${item.color}"><title>${escapeXml(point.title ?? `${item.label}: ${point.y}`)}</title></circle>`
-        );
-      }
+    const showPointMarkers = shouldShowPointMarkersForSeries(spec, item);
+    for (const point of item.points.filter((entry) => entry.y !== null && entry.y !== undefined)) {
+      const inspectionText = point.title ?? `${item.label}; ${spec.xLabel} ${point.x}; ${spec.yLabel} ${point.y}`;
+      parts.push(showPointMarkers
+        ? `<circle class="dot" cx="${scaleX(point.x).toFixed(2)}" cy="${scaleY(point.y).toFixed(2)}" r="2.6" fill="${item.color}"><title>${escapeXml(inspectionText)}</title></circle>`
+        : `<rect class="inspection-dot" x="${(scaleX(point.x) - 5.5).toFixed(2)}" y="${(scaleY(point.y) - 5.5).toFixed(2)}" width="11" height="11" fill="transparent" stroke="none"><title>${escapeXml(inspectionText)}</title></rect>`
+      );
     }
   }
 

@@ -1556,7 +1556,13 @@ export function renderScatterSvg(rows, options = {}) {
       const x = scale(row.x, xMin, xMax, 0, plotWidth);
       const y = scale(row.y, yMin, yMax, plotHeight, 0);
       const color = groupColor(row.group || "Data", groups);
-      return `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="4.5" fill="${color}" fill-opacity="0.78"><title>${escapeXml(`${row.label}: ${row.x}, ${row.y}`)}</title></circle>`;
+      const facts = [
+        String(row.label || "Point"),
+        `${options.xLabel || "x"}: ${row.x}`,
+        `${options.yLabel || "y"}: ${row.y}`
+      ];
+      if (row.group && row.group !== "Data") facts.push(`group: ${row.group}`);
+      return `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="4.5" fill="${color}" fill-opacity="0.78"><title>${escapeXml(facts.join("; "))}</title></circle>`;
     }),
     "</g>"
   ];

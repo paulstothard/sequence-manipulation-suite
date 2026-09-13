@@ -11,6 +11,7 @@ import {
 } from "../core/genome-figure-data.js";
 import { createStackedIntervalLayout } from "../core/viewer-track-layout.js";
 import { createSearchableViewerChoiceCombobox } from "./searchable-viewer-choice-ui.js";
+import { serializeSvgElement } from "./svg-export.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const TAU = Math.PI * 2;
@@ -1662,6 +1663,58 @@ function drawCircularInsideFeatureLabel(svg, text, placement, pathId, options = 
   svg.append(textNode);
 }
 
+function appendInspectionTitle(mark, text) {
+  const title = svgEl("title");
+  title.textContent = String(text ?? "").trim();
+  if (title.textContent) mark.prepend(title);
+  return mark;
+}
+
+function featurePartCoordinates(feature, part) {
+  if (Number.isFinite(Number(part?.sourceStart)) && Number.isFinite(Number(part?.sourceEnd))) {
+    return { start: Number(part.sourceStart), end: Number(part.sourceEnd) };
+  }
+  if (Number.isFinite(Number(feature?.localStart)) && Number.isFinite(Number(feature?.start))) {
+    const offset = Number(feature.localStart) - Number(feature.start);
+    return { start: Number(part.start) + offset, end: Number(part.end) + offset };
+  }
+  return { start: Number(part?.start), end: Number(part?.end) };
+}
+
+export function describeGenomeFigureFeature(feature, part = feature) {
+  const coordinates = featurePartCoordinates(feature, part);
+  const start = Math.min(coordinates.start, coordinates.end);
+  const end = Math.max(coordinates.start, coordinates.end);
+  const identity = String(feature?.label || feature?.type || "Feature").trim();
+  const facts = [identity];
+  if (feature?.type && feature.type !== identity) facts.push(`type ${feature.type}`);
+  if (feature?.contigTitle) facts.push(`sequence ${feature.contigTitle}`);
+  if (Number.isFinite(start) && Number.isFinite(end)) {
+    facts.push(`coordinates ${start.toLocaleString()}-${end.toLocaleString()} bp`);
+    facts.push(`length ${(end - start + 1).toLocaleString()} bp`);
+  }
+  if (feature?.strand === "+") facts.push("forward strand");
+  if (feature?.strand === "-") facts.push("reverse strand");
+  if (feature?.source) facts.push(`source location ${feature.source}`);
+  return facts.join("; ");
+}
+
+export function describeGenomeFigurePlotBin(plot, value, bounds, state = {}) {
+  const label = String(plot?.label || (plot?.id === "gc" ? "GC content" : plot?.id === "gc-skew" ? "GC skew" : "Plot value"));
+  const start = Number(value?.localStart ?? bounds?.start);
+  const end = Number(value?.localEnd ?? bounds?.end);
+  const facts = [`${label}: ${formatPlotValue(value?.value)}`];
+  const contig = state.record?.contigs?.find((item) => item.id === value?.contigId);
+  if (value?.contigId) facts.push(`sequence ${contig?.title || value.contigId}`);
+  if (Number.isFinite(start) && Number.isFinite(end)) {
+    facts.push(`window ${Math.min(start, end).toLocaleString()}-${Math.max(start, end).toLocaleString()} bp`);
+  }
+  const windowSize = plot?.windowSize ?? state.plotWindowSize;
+  if (Number.isFinite(Number(windowSize))) facts.push(`window size ${Number(windowSize).toLocaleString()} bp`);
+  facts.push(plotBaselineDescription(plot, state));
+  return facts.join("; ");
+}
+
 function drawLinearFeatureGlyph(svg, feature, left, y, widthPx, height, color, state, part = feature) {
   const opacity = clamp(Number(state.featureOpacity ?? DEFAULT_FEATURE_OPACITY) / 100, 0.2, 1);
   const common = {
@@ -1677,13 +1730,13 @@ function drawLinearFeatureGlyph(svg, feature, left, y, widthPx, height, color, s
     "data-feature-width-px": widthPx
   };
   if (state.featureGlyph !== "directional" || !["+", "-"].includes(feature.strand) || widthPx < 13) {
-    svg.append(svgEl("rect", {
+    svg.append(appendInspectionTitle(svgEl("rect", {
       x: left,
       y: y - height / 2,
       width: Math.max(1.5, widthPx),
       height,
       ...common
-    }));
+    }), describeGenomeFigureFeature(feature, part)));
     return;
   }
   const right = left + widthPx;
@@ -1694,14 +1747,17 @@ function drawLinearFeatureGlyph(svg, feature, left, y, widthPx, height, color, s
   const points = feature.strand === "+"
     ? [[left, top], [right - head, top], [right, mid], [right - head, bottom], [left, bottom]]
     : [[right, top], [left + head, top], [left, mid], [left + head, bottom], [right, bottom]];
-  svg.append(pathEl(`M ${points.map((point) => `${point[0].toFixed(1)} ${point[1].toFixed(1)}`).join(" L ")} Z`, common));
+  svg.append(appendInspectionTitle(
+    pathEl(`M ${points.map((point) => `${point[0].toFixed(1)} ${point[1].toFixed(1)}`).join(" L ")} Z`, common),
+    describeGenomeFigureFeature(feature, part)
+  ));
 }
 
 function drawCircularFeatureGlyph(svg, feature, cx, cy, radius, slotWidth, startAngle, endAngle, color, state, part = feature) {
   const opacity = clamp(Number(state.featureOpacity ?? DEFAULT_FEATURE_OPACITY) / 100, 0.2, 1);
   let adjustedEnd = endAngle;
   while (adjustedEnd < startAngle) adjustedEnd += TAU;
-  svg.append(pathEl(annularPath(cx, cy, radius + slotWidth / 2, radius - slotWidth / 2, startAngle, endAngle), {
+  svg.append(appendInspectionTitle(pathEl(annularPath(cx, cy, radius + slotWidth / 2, radius - slotWidth / 2, startAngle, endAngle), {
     class: "genome-figure-feature-glyph",
     fill: color,
     stroke: "rgba(15, 23, 42, 0.28)",
@@ -1713,7 +1769,7 @@ function drawCircularFeatureGlyph(svg, feature, cx, cy, radius, slotWidth, start
     "data-feature-part-end": part.end,
     "data-feature-part-span": part.end - part.start + 1,
     "data-feature-angle-span": adjustedEnd - startAngle
-  }));
+  }), describeGenomeFigureFeature(feature, part)));
   if (state.featureGlyph !== "directional" || !["+", "-"].includes(feature.strand)) return;
   const arcWidth = Math.abs(adjustedEnd - startAngle) * radius;
   if (arcWidth < 16) return;
@@ -1876,7 +1932,7 @@ function renderCircularPlotBand(svg, record, plot, radius, bandHalfHeight, state
     const delta = scaledPlotDelta(current.value, scale);
     const amplitude = delta * bandHalfHeight;
     if (Math.abs(amplitude) < 0.5) continue;
-    plotGroup.append(pathEl(circularPlotBandPath(
+    plotGroup.append(appendInspectionTitle(pathEl(circularPlotBandPath(
       state.cx,
       state.cy,
       radius,
@@ -1897,7 +1953,7 @@ function renderCircularPlotBand(svg, record, plot, radius, bandHalfHeight, state
       "data-plot-start-angle": startAngle,
       "data-plot-end-angle": endAngle,
       "data-plot-angle-span": endAngle - startAngle
-    }));
+    }), describeGenomeFigurePlotBin(plot, current, bounds, { ...state, record })));
   }
   svg.append(plotGroup);
 }
@@ -1944,7 +2000,7 @@ function renderLinearPlotBand(svg, row, record, plot, y, height, state) {
     const yValue = baselineY - scaledPlotDelta(value.value, scale) * (height * LINEAR_PLOT_AMPLITUDE_FRACTION);
     const plotHeight = Math.abs(yValue - baselineY);
     if (plotHeight >= 0.5) {
-      svg.append(svgEl("rect", {
+      svg.append(appendInspectionTitle(svgEl("rect", {
         x: Math.min(leftX, rightX),
         y: Math.min(yValue, baselineY),
         width: Math.abs(rightX - leftX),
@@ -1960,7 +2016,7 @@ function renderLinearPlotBand(svg, row, record, plot, y, height, state) {
         "data-plot-value": value.value,
         "data-plot-width-px": Math.abs(rightX - leftX),
         "data-wrapped-row": row.index + 1
-      }));
+      }), describeGenomeFigurePlotBin(plot, value, { start: value.left, end: value.right }, { ...state, record })));
     }
     const contigKey = value.contigId || "record";
     if (!linePointsByContig.has(contigKey)) linePointsByContig.set(contigKey, []);
@@ -2775,9 +2831,7 @@ function renderLinearRecord(record, state) {
 }
 
 function serializeSvg(svg) {
-  const clone = svg.cloneNode(true);
-  clone.setAttribute("xmlns", SVG_NS);
-  return new XMLSerializer().serializeToString(clone);
+  return serializeSvgElement(svg);
 }
 
 function downloadText(text, filename, mimeType) {

@@ -11,6 +11,40 @@ function truncateLabel(value, maxLength = 30) {
   return text.length > maxLength ? `${text.slice(0, maxLength - 1)}...` : text;
 }
 
+function compactInspectionValue(value, maxLength = 180) {
+  const text = String(value ?? "").replace(/\s+/g, " ").trim();
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
+}
+
+function featureInspectionText(feature, recordTitle = "") {
+  const label = compactInspectionValue(feature.inspectionLabel ?? feature.label ?? feature.type ?? "Feature");
+  const type = compactInspectionValue(feature.type ?? feature.className ?? "");
+  const parts = feature.parts?.length ? feature.parts : [feature];
+  const location = parts
+    .map((part) => `${Number(part.start).toLocaleString()}–${Number(part.end).toLocaleString()}`)
+    .join(", ");
+  const facts = [
+    recordTitle ? `${compactInspectionValue(recordTitle)} — ${label}` : label,
+    type && type.toLowerCase() !== label.toLowerCase() ? `type ${type}` : "",
+    `coordinates ${location}`,
+    feature.strand === "+" || feature.strand === "-" ? `strand ${feature.strand}` : ""
+  ];
+  const optionalFacts = [
+    ["source", feature.source],
+    ["match", feature.matchedText ?? feature.matchSequence],
+    ["sequence", feature.sequence ?? feature.guideSequence ?? feature.peptideSequence],
+    ["score", feature.score],
+    ["identity", feature.identityPercent ?? feature.identity],
+    ["status", feature.status ?? feature.classification]
+  ];
+  for (const [name, value] of optionalFacts) {
+    if (value !== undefined && value !== null && value !== "") {
+      facts.push(`${name} ${compactInspectionValue(value)}`);
+    }
+  }
+  return facts.filter(Boolean).join("; ");
+}
+
 function lastInformativeWords(value, maxLength = 28) {
   const stop = new Set([
     "dna",
@@ -183,6 +217,7 @@ function normalizeFeature(feature, sequenceLength) {
     className: feature.className ?? "other",
     slot: Number.isFinite(Number(feature.slot)) ? Number(feature.slot) : null,
     ring: Number.isFinite(Number(feature.ring)) ? Number(feature.ring) : null,
+    inspectionLabel: compactInspectionValue(feature.inspectionLabel ?? feature.label ?? feature.type ?? "feature"),
     label: truncateLabel(feature.label ?? feature.type ?? "feature", 36)
   };
 }
@@ -692,9 +727,11 @@ function renderLinearRecord(record, rowTop, styles, classes, options = {}) {
       const style = styleForFeature(feature, styles);
       const y = axisY + 14 + feature.lane * 18;
       const height = feature.className === "source" ? LINEAR_SOURCE_BAR_HEIGHT : LINEAR_FEATURE_BAR_HEIGHT;
+      parts.push(`<g class="feature-inspection-mark" data-sms3-inspection-mark="feature"><title>${escapeXml(featureInspectionText(feature, record.title))}</title>`);
       for (const part of feature.clippedParts) {
         parts.push(renderLinearFeaturePart(feature, part, rendered.segment, segmentSpan, left, width, y, height, style));
       }
+      parts.push("</g>");
     }
     externalLabelOverlayParts.push(...externalLabelParts);
     for (const label of rendered.inlineLabels) {
@@ -964,11 +1001,13 @@ function renderCircularRecord(record, styles, classes) {
   drawable.forEach((feature) => {
     const style = styleForFeature(feature, styles);
     const radius = featureRadii.get(feature) ?? ringBase;
+    parts.push(`<g class="feature-inspection-mark" data-sms3-inspection-mark="feature"><title>${escapeXml(featureInspectionText(feature, record.title))}</title>`);
     for (const part of feature.parts) {
       const startAngle = ((part.start - 1) / sequenceLength) * 360;
       const endAngle = Math.min(359.9, Math.max(startAngle + 1, (part.end / sequenceLength) * 360));
       parts.push(`<path class="feature feature-${feature.className}" d="${describeArc(centerX, centerY, radius, startAngle, endAngle)}" fill="none" stroke="${style.stroke}" stroke-width="8" stroke-linecap="butt"></path>`);
     }
+    parts.push("</g>");
   });
   const labelLimit = 64;
   const labelableFeatures = drawable.filter((feature) => feature.className !== "variant").length;

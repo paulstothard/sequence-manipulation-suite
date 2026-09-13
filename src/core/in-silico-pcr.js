@@ -529,10 +529,14 @@ export function makePcrProductGelSvg(result) {
     fragments: (result.rows ?? [])
       .filter((row) => row.template === record.title)
       .map((row) => ({
+        ...row,
         length: row.length,
         topology: "linear",
         label: `${row.product}`,
-        product: row.product
+        product: row.product,
+        sourceRecordTitle: record.title,
+        start: row.forward_start,
+        end: row.reverse_end
       })),
     hits: []
   }));

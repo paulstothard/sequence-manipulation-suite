@@ -2,6 +2,7 @@ import { renderTreeSvg } from "../../packages/tree-viewer/src/export/svg.js";
 import { renderPlateSvg } from "../core/plate-layout-svg.js";
 import { renderObservablePlotPreview } from "./plot-preview-ui.js";
 import { renderSequenceExtractorWorkspace } from "./sequence-extractor-workspace-ui.js";
+import { installVisualInspection } from "./visual-inspection.js";
 import { alignmentViewerReferenceExample } from "../examples/alignment-viewer-example.js";
 import { vcfExtractorReferenceExample } from "../examples/vcf-extractor-example.js";
 
@@ -505,27 +506,35 @@ async function renderShowcaseCard(card, item, token, context) {
     if (context.state.showcaseRenderToken !== token) {
       return;
     }
+    preview._sms3InspectionCleanup?.();
+    preview._sms3VisualCleanup?.();
+    preview._sms3VisualCleanup = null;
     preview.textContent = "";
     preview.classList.remove("showcase-preview-viewer");
     const plotPreview = result.visual?.renderer === "observable-plot"
       ? renderObservablePlotPreview(result.visual.plotSpec)
       : null;
     const svg = result.visual?.svg ?? (String(result.output ?? "").trimStart().startsWith("<svg") ? result.output : "");
+    let sharedInspection = false;
     if (result.visual?.plateLayout) {
       preview.insertAdjacentHTML("beforeend", renderPlateSvg(result.visual.plateLayout.layout));
       preview.querySelectorAll("svg").forEach(normalizeShowcaseSvg);
+      sharedInspection = true;
     } else if (result.visual?.treeViewer) {
       const treeDocument = result.visual.treeViewer.document;
       const figure = await renderTreeSvg(treeDocument, treeDocument.trees[0].id);
       if (context.state.showcaseRenderToken !== token) return;
       preview.insertAdjacentHTML("beforeend", figure.svg);
       preview.querySelectorAll("svg").forEach(normalizeShowcaseSvg);
+      sharedInspection = true;
     } else if (plotPreview) {
       preview.append(plotPreview);
       preview.querySelectorAll("svg").forEach(normalizeShowcaseSvg);
+      sharedInspection = true;
     } else if (svg) {
       preview.insertAdjacentHTML("beforeend", svg);
       preview.querySelectorAll("svg").forEach(normalizeShowcaseSvg);
+      sharedInspection = true;
     } else if (result.visual?.sequenceExtractor) {
       preview.classList.add("showcase-preview-viewer");
       renderSequenceExtractorWorkspace(preview, result.visual.sequenceExtractor);
@@ -538,11 +547,13 @@ async function renderShowcaseCard(card, item, token, context) {
     } else if (result.visual?.figure) {
       context.renderGenomeFigure(preview, result.visual.figure);
       preview.querySelectorAll("svg").forEach(normalizeShowcaseSvg);
+      sharedInspection = true;
     } else {
       const pre = document.createElement("pre");
       pre.textContent = String(result.output ?? "").slice(0, 1600);
       preview.append(pre);
     }
+    if (sharedInspection) installVisualInspection(preview);
     const warningCount = result.warnings?.length ?? 0;
     status.textContent = warningCount
       ? `Generated from ${tool.metadata.name}; ${item.outputLabel}; ${warningCount} warning(s).`

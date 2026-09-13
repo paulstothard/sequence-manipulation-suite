@@ -1084,7 +1084,8 @@ export function renderSamRegionSvg(result, options = {}) {
     const x1 = scaleBoundary(segment.start, region, left, width);
     const x2 = scaleBoundary(segment.endExclusive, region, left, width);
     const y = coverageBaseY - barHeight;
-    parts.push(`<rect class="coverage" data-start="${segment.start}" data-end-exclusive="${segment.endExclusive}" data-depth="${segment.depth}" x="${x1.toFixed(2)}" y="${y.toFixed(2)}" width="${Math.max(1, x2 - x1).toFixed(2)}" height="${barHeight.toFixed(2)}"></rect>`);
+    const coverageScope = totalOmitted > 0 ? "; calculated from displayed alignments only" : "";
+    parts.push(`<rect class="coverage" data-start="${segment.start}" data-end-exclusive="${segment.endExclusive}" data-depth="${segment.depth}" x="${x1.toFixed(2)}" y="${y.toFixed(2)}" width="${Math.max(1, x2 - x1).toFixed(2)}" height="${barHeight.toFixed(2)}"><title>${escapeXml(`${region.reference}:${segment.start.toLocaleString()}–${(segment.endExclusive - 1).toLocaleString()}; coverage depth ${segment.depth}×${coverageScope}`)}</title></rect>`);
   });
   if (totalOmitted > 0) {
     parts.push(`<text class="note" x="${left}" y="${coverageTop - 14}">Coverage depth uses displayed alignments only.</text>`);
@@ -1107,7 +1108,8 @@ export function renderSamRegionSvg(result, options = {}) {
     const className = row.strand === "-" ? "read-reverse" : "read-forward";
     const readName = String(row.qname);
     const escapedReadName = escapeXml(readName);
-    parts.push(`<rect class="${className}" data-read-name="${escapedReadName}" x="${x.toFixed(2)}" y="${y}" width="${w.toFixed(2)}" height="${readHeight}" rx="2"></rect>`);
+    const readInspection = `${readName}; ${row.rname}:${Number(row.start).toLocaleString()}–${Number(row.end).toLocaleString()}; strand ${row.strand}; MAPQ ${row.mapq}; CIGAR ${row.cigar}`;
+    parts.push(`<rect class="${className}" data-read-name="${escapedReadName}" x="${x.toFixed(2)}" y="${y}" width="${w.toFixed(2)}" height="${readHeight}" rx="2"><title>${escapeXml(readInspection)}</title></rect>`);
     if (w > 72) {
       const label = readName.length > 34 ? `${readName.slice(0, 31)}...` : readName;
       parts.push(`<text class="read-label" data-read-label="${escapedReadName}" x="${(x + w / 2).toFixed(2)}" y="${(y + readHeight / 2).toFixed(2)}" text-anchor="middle" dominant-baseline="middle">${escapeXml(label)}</text>`);

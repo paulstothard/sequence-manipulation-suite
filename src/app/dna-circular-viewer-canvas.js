@@ -11,21 +11,21 @@ import {
   createViewerInspectorWorkspace,
   createViewerSearchControls,
   createViewerTrackControls,
-  createViewerTooltip,
   getViewerFeatureTypeStyle,
+  getViewerHitTargets,
   getViewerTrackDisplayMode,
   getViewerTrackItems,
+  getViewerTargetClientPosition,
   getVisibleViewerTracks,
   hasHiddenViewerItemTypes,
-  hideViewerTooltip,
   hitTestRegions,
+  makeTooltipText,
   makeViewerItemTargetDetails,
   makeTargetKey,
   makeViewerFeatureSuggestions,
   renderRangePanel,
   renderSelectionPanel,
   searchResultUsesFeatureGlyph,
-  showViewerTooltip,
   updateViewerSearchControls,
   viewerTargetsMatch
 } from "./dna-viewer-interactions.js";
@@ -45,6 +45,7 @@ import {
   shouldStartViewerInertia,
   startViewerInertia
 } from "./viewer-inertia.js";
+import { installCanvasVisualInspection } from "./visual-inspection.js";
 
 const TWO_PI = Math.PI * 2;
 const ICONS = {
@@ -714,7 +715,7 @@ function restrictionSiteCutPosition(site) {
 }
 
 function viewerTargetMatches(state, target) {
-  return viewerTargetsMatch(state.selectedTarget, target);
+  return viewerTargetsMatch(state.selectedTarget, target) || viewerTargetsMatch(state.inspectedTarget, target);
 }
 
 function isQuantitativeTrack(track) {
@@ -2303,7 +2304,9 @@ function drawCircularViewer(ctx, canvas, status, record, state) {
     canvas.dataset.circularFeatureLabelsStraight = String(labels.drawnStraight);
     canvas.dataset.circularFeatureLabelsInsideCandidates = String(labels.insideCandidates);
     canvas.dataset.circularFeatureLabelsFallbackCandidates = String(labels.fallbackCandidates);
+    canvas.dataset.sms3InspectionReady = "true";
   }
+  canvas.setAttribute("aria-busy", "false");
 }
 
 function makeCircularViewerSnapshot(record, state, searchControls) {
@@ -2407,8 +2410,9 @@ function installCircularViewer(panel, record, options = {}) {
 
   const canvas = document.createElement("canvas");
   canvas.className = "dna-viewer-canvas dna-circular-viewer-canvas";
+  canvas.dataset.sms3InspectionReady = "false";
+  canvas.setAttribute("aria-busy", "true");
   const ctx = canvas.getContext("2d");
-  const tooltip = createViewerTooltip(panel);
   const showInspectorPanels = options.showInspectorPanels !== false;
   const selectionPanel = createSelectionPanel();
   const rangePanel = createRangePanel();
@@ -2435,6 +2439,7 @@ function installCircularViewer(panel, record, options = {}) {
     dragStartCenterY: null,
     dragCenterWeight: 1,
     selectedTarget: null,
+    inspectedTarget: null,
     rangeAnchors: Array.isArray(preserved?.rangeAnchors)
       ? preserved.rangeAnchors.filter((anchor) => Number(anchor?.position) >= 1 && Number(anchor?.position) <= record.length).slice(-2)
       : [],
@@ -2948,15 +2953,20 @@ function installCircularViewer(panel, record, options = {}) {
     state.geneticCode = geneticCodeControl.select.value;
     drawCircularViewer(ctx, canvas, status, record, state);
   });
-  canvas.addEventListener("mousemove", (event) => {
-    if (state.dragging) return;
-    const target = hitTestRegions(state, event.clientX, event.clientY, canvas);
-    showViewerTooltip(tooltip, target, event, panel);
-    canvas.style.cursor = target ? "pointer" : "grab";
-  });
-  canvas.addEventListener("mouseleave", () => {
-    hideViewerTooltip(tooltip);
-    canvas.style.cursor = "";
+  const inspection = installCanvasVisualInspection(panel, {
+    canvas,
+    ariaLabel: `${record.title || "DNA sequence"} circular DNA viewer`,
+    getTargets: () => getViewerHitTargets(state),
+    hitTest: (event) => hitTestRegions(state, event.clientX, event.clientY, canvas),
+    getText: makeTooltipText,
+    getKey: (target) => target.key || makeTargetKey(target),
+    getPosition: (target) => getViewerTargetClientPosition(state, target, canvas),
+    onActivate: (target) => selectTarget(target, { keepIfSame: true }),
+    onActiveChange: (target) => {
+      state.inspectedTarget = target;
+      drawCircularViewer(ctx, canvas, status, record, state);
+    },
+    isInteractionSuppressed: () => state.dragging
   });
   canvas.addEventListener("click", (event) => {
     if (state.dragging) return;
@@ -2987,7 +2997,7 @@ function installCircularViewer(panel, record, options = {}) {
   }, { passive: false });
   canvas.addEventListener("mousedown", (event) => {
     cancelInertia();
-    hideViewerTooltip(tooltip);
+    inspection.hide();
     const rect = canvas.getBoundingClientRect();
     const { cx, cy } = computeLayout(rect.width, rect.height, state, record);
     const centerWeight = getDragCenterWeight(state, record);
@@ -3080,6 +3090,7 @@ function installCircularViewer(panel, record, options = {}) {
   return {
     cleanup: () => {
       cancelInertia();
+      inspection.cleanup();
       window.removeEventListener("mousemove", onWindowMouseMove);
       window.removeEventListener("mouseup", onWindowMouseUp);
       window.removeEventListener("resize", scheduleResize);

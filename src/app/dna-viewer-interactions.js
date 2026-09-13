@@ -138,28 +138,47 @@ export function hitTestRegions(state, clientX, clientY, canvas) {
   return null;
 }
 
-export function createViewerTooltip(panel) {
-  const tooltip = document.createElement("div");
-  tooltip.className = "dna-viewer-tooltip";
-  tooltip.hidden = true;
-  panel.append(tooltip);
-  return tooltip;
-}
-
-export function showViewerTooltip(tooltip, target, event, panel) {
-  if (!target) {
-    hideViewerTooltip(tooltip);
-    return;
+export function getViewerHitTargets(state) {
+  const targets = [];
+  const seen = new Set();
+  for (const region of state?.hitRegions ?? []) {
+    const target = region?.target;
+    if (!target) continue;
+    const key = target.key || makeTargetKey(target);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    targets.push(target);
   }
-  tooltip.textContent = makeTooltipText(target);
-  const panelRect = panel.getBoundingClientRect();
-  tooltip.style.left = `${event.clientX - panelRect.left + 12}px`;
-  tooltip.style.top = `${event.clientY - panelRect.top + 12}px`;
-  tooltip.hidden = false;
+  return targets;
 }
 
-export function hideViewerTooltip(tooltip) {
-  tooltip.hidden = true;
+export function getViewerTargetClientPosition(state, target, canvas) {
+  if (!target || !(canvas instanceof HTMLCanvasElement)) return null;
+  const key = target.key || makeTargetKey(target);
+  const region = (state?.hitRegions ?? []).find((candidate) => {
+    const candidateTarget = candidate?.target;
+    return candidateTarget && (candidateTarget.key || makeTargetKey(candidateTarget)) === key;
+  });
+  if (!region) return null;
+  let x;
+  let y;
+  if (region.shape === "rect") {
+    x = (region.x1 + region.x2) / 2;
+    y = (region.y1 + region.y2) / 2;
+  } else if (region.shape === "circle") {
+    x = region.x;
+    y = region.y;
+  } else if (region.shape === "polar") {
+    let angleSpan = region.endAngle - region.startAngle;
+    while (angleSpan < 0) angleSpan += Math.PI * 2;
+    const angle = region.startAngle + angleSpan / 2;
+    const radius = (region.innerRadius + region.outerRadius) / 2;
+    x = region.cx + Math.cos(angle) * radius;
+    y = region.cy + Math.sin(angle) * radius;
+  }
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  const rect = canvas.getBoundingClientRect();
+  return { clientX: rect.left + x, clientY: rect.top + y };
 }
 
 export function getViewerTrackKey(track, index = 0) {

@@ -175,7 +175,7 @@ function makeHistogram(values, observed, title = "Permutation null distribution"
     const x1 = x(bin.start);
     const x2 = x(bin.end);
     const barY = y(bin.count);
-    return `<rect x="${x1.toFixed(2)}" y="${barY.toFixed(2)}" width="${Math.max(1, x2 - x1 - 1).toFixed(2)}" height="${(margin.top + plotHeight - barY).toFixed(2)}" fill="#93c5fd"/>`;
+    return `<rect x="${x1.toFixed(2)}" y="${barY.toFixed(2)}" width="${Math.max(1, x2 - x1 - 1).toFixed(2)}" height="${(margin.top + plotHeight - barY).toFixed(2)}" fill="#93c5fd"><title>${escapeXml(`${round(bin.start, 4)} to ${round(bin.end, 4)}: ${bin.count} permuted statistic${bin.count === 1 ? "" : "s"}`)}</title></rect>`;
   }).join("");
   const ticks = Array.from({ length: 5 }, (_, index) => rawMin + ((rawMax - rawMin) * index) / 4);
   const tickMarks = ticks.map((tick) => {
@@ -194,7 +194,7 @@ function makeHistogram(values, observed, title = "Permutation null distribution"
   <line x1="${margin.left}" y1="${margin.top + plotHeight}" x2="${margin.left + plotWidth}" y2="${margin.top + plotHeight}" stroke="#475569"/>
   <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + plotHeight}" stroke="#475569"/>
   ${bars}
-  <line data-observed-statistic-marker="true" x1="${observedX.toFixed(2)}" y1="${margin.top}" x2="${observedX.toFixed(2)}" y2="${margin.top + plotHeight}" stroke="#dc2626" stroke-width="2"/>
+  <line data-observed-statistic-marker="true" x1="${observedX.toFixed(2)}" y1="${margin.top}" x2="${observedX.toFixed(2)}" y2="${margin.top + plotHeight}" stroke="#dc2626" stroke-width="2"><title>${escapeXml(`Observed statistic: ${round(observed, 6)}`)}</title></line>
   <text x="${observedX.toFixed(2)}" y="${margin.top - 8}" text-anchor="middle" font-size="11" font-family="Arial, sans-serif" fill="#dc2626">observed</text>
   ${tickMarks}
   <text x="${margin.left + plotWidth / 2}" y="${height - 16}" text-anchor="middle" font-size="12" font-family="Arial, sans-serif" fill="#334155">Permuted statistic</text>

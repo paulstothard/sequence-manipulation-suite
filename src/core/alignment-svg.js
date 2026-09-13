@@ -121,9 +121,13 @@ export function makeAlignmentSvg({
       const count = chunk.replace(/-/g, "").length;
       const startCoord = positions[rowIndex];
       const endCoord = count > 0 ? positions[rowIndex] + count - 1 : positions[rowIndex] - 1;
+      const rowLabel = String(row.label || `Sequence ${rowIndex + 1}`);
+      const coordinateSummary = count > 0 ? `${startCoord}–${endCoord}` : "gap-only chunk";
+      parts.push(`<g class="alignment-row" data-alignment-row-label="${escapeXml(rowLabel)}"><title>${escapeXml(`${rowLabel}; alignment columns ${start + 1}–${start + chunkLength}; sequence coordinates ${coordinateSummary}`)}</title>`);
       parts.push(`<text class="label" x="${labelX}" y="${y + 11}">${escapeXml(truncateLabel(row.label, 20))}</text>`);
       parts.push(`<text class="coord coord-start" x="${startCoordinateX}" y="${y + 11}">${count > 0 ? startCoord : ""}</text>`);
       parts.push(`<text class="coord coord-end" x="${left + chunkLength * cell + endCoordinatePadding}" y="${y + 11}">${count > 0 ? endCoord : ""}</text>`);
+      let sequencePosition = startCoord - 1;
       for (let offset = 0; offset < chunkLength; offset += 1) {
         const columnIndex = start + offset;
         const symbol = String(row.aligned ?? "")[columnIndex] ?? "-";
@@ -131,9 +135,12 @@ export function makeAlignmentSvg({
         const hasGap = rows.some((candidate) => String(candidate.aligned ?? "")[columnIndex] === "-");
         const fill = relationFill(relation, consensus[columnIndex], hasGap);
         const x = left + offset * cell;
-        parts.push(`<rect x="${x}" y="${y}" width="${cell - 1}" height="${cell}" fill="${fill}"></rect>`);
-        parts.push(`<text class="cell" x="${x + cell / 2}" y="${y + cell / 2}">${escapeXml(symbol)}</text>`);
+        if (symbol !== "-") sequencePosition += 1;
+        const inspectionRelation = relation || (hasGap ? "gap column" : consensus[columnIndex] === "*" ? "conserved" : "");
+        parts.push(`<rect data-alignment-column="${columnIndex + 1}" data-alignment-symbol="${escapeXml(symbol)}" data-sequence-coordinate="${symbol === "-" ? "gap" : sequencePosition}" data-alignment-relation="${escapeXml(inspectionRelation)}" x="${x}" y="${y}" width="${cell - 1}" height="${cell}" fill="${fill}"></rect>`);
+        parts.push(`<text class="cell" pointer-events="none" x="${x + cell / 2}" y="${y + cell / 2}">${escapeXml(symbol)}</text>`);
       }
+      parts.push("</g>");
       positions[rowIndex] += count;
     });
 
