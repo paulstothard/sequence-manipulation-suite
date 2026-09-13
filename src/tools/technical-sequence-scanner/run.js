@@ -781,6 +781,9 @@ export async function runTechnicalSequenceScanner(input, options = {}, context =
 
   return makeToolResult({
     output,
+    sequenceSearch: outputFormat === "text-map"
+      ? { format: "labelled-blocks", alphabet: "dna-rna" }
+      : undefined,
     download: {
       filename: `technical-sequence-scanner.${outputFormat === "tsv" ? "tsv" : outputFormat === "svg-map" ? "svg" : viewer ? "json" : "txt"}`,
       mimeType: outputFormat === "tsv" ? "text/tab-separated-values" : outputFormat === "svg-map" ? "image/svg+xml;charset=utf-8" : viewer ? "application/json;charset=utf-8" : "text/plain;charset=utf-8"
@@ -791,7 +794,7 @@ export async function runTechnicalSequenceScanner(input, options = {}, context =
     charactersRemoved,
     streams: {
       report: makeTextStream(report, "text/plain"),
-      ...(outputFormat === "text-map" ? { textMap: makeTextStream(textMap, "text/plain") } : {}),
+      ...(outputFormat === "text-map" ? { textMap: makeTextStream(textMap, "text/plain", { format: "labelled-blocks", alphabet: "dna-rna" }) } : {}),
       ...(outputFormat === "svg-map" ? { overview: makeTextStream(svgMap, "image/svg+xml") } : {}),
       ...(viewer ? { viewer: makeDnaViewerStream(viewer) } : {}),
       table: makeTableStream(technicalSequenceTableColumns, rows, "technical-sequence-scanner")

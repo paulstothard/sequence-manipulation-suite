@@ -1538,12 +1538,15 @@ function applyPlotHeaderLayout({ width, height, margin, subtitle = "" }) {
   };
 }
 
-function renderBaseSvg({ title, width = 900, height = 560, xLabel, yLabel, plot, subtitle = "", notes = [] }) {
+function renderBaseSvg({ title, width = 900, height = 560, xLabel, yLabel, plot, subtitle = "", notes = [], inspectionHighlight = "" }) {
   const { subtitleLines } = plotHeaderLayout(width, subtitle);
   const noteLines = notes.flatMap((note) => wrapPlotText(note, width));
   const scope = '[data-plot-renderer="sms3-d3"]';
+  const inspectionHighlightAttribute = inspectionHighlight
+    ? ` data-sms3-inspection-highlight="${escapeXml(inspectionHighlight)}"`
+    : "";
   return [
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="d3" data-plot-renderer="sms3-d3">`,
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="d3" data-plot-renderer="sms3-d3"${inspectionHighlightAttribute}>`,
     "<style>",
     `${scope} .title{font:700 20px system-ui,sans-serif;fill:#263238;stroke:none;stroke-width:0;paint-order:normal}`,
     `${scope} .axis{stroke:#455a64;stroke-width:1.2}`,
@@ -2387,6 +2390,7 @@ export function renderHeatmapSvg(rows, options = {}) {
     height,
     xLabel: options.xLabel,
     yLabel: options.yLabel,
+    inspectionHighlight: "none",
     plot: parts.join("")
   });
 }

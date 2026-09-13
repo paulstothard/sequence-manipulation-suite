@@ -319,6 +319,9 @@ export async function runVectorContaminationScanner(input, options = {}, context
 
   return makeToolResult({
     output,
+    sequenceSearch: outputFormat === "text-map"
+      ? { format: "labelled-blocks", alphabet: "dna-rna" }
+      : undefined,
     download: {
       filename: `vector-contamination-scanner.${outputFormat === "tsv" ? "tsv" : outputFormat === "svg-map" ? "svg" : viewer ? "json" : "txt"}`,
       mimeType: outputFormat === "tsv"
@@ -336,7 +339,7 @@ export async function runVectorContaminationScanner(input, options = {}, context
     streams: {
       report: makeTextStream(report, "text/plain"),
       table: makeTableStream(vectorContaminationTableColumns, rows, "vector-contamination-scanner"),
-      ...(outputFormat === "text-map" ? { textMap: makeTextStream(textMap, "text/plain") } : {}),
+      ...(outputFormat === "text-map" ? { textMap: makeTextStream(textMap, "text/plain", { format: "labelled-blocks", alphabet: "dna-rna" }) } : {}),
       ...(outputFormat === "svg-map" ? { overview: makeTextStream(svgMap, "image/svg+xml") } : {}),
       ...(viewer ? { viewer: makeDnaViewerStream(viewer) } : {})
     },

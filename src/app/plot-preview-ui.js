@@ -420,6 +420,7 @@ export function renderObservablePlotPreview(plotSpec) {
       svg.setAttribute("data-plot-foundation", "observable-plot");
       svg.setAttribute("data-plot-backend", "d3");
       svg.setAttribute("data-plot-renderer", "observable-plot");
+      svg.setAttribute("data-sms3-inspection-highlight", "none");
       svg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
       lockPlotSvgToLightCanvas(svg);
       addObservableHeatmapAnnotations(svg, plotSpec);

@@ -136,6 +136,7 @@ export function createWorkflowBuilderController({
         summary: `Workflow output: ${value.alphabet === "protein" ? "protein" : "DNA/RNA"} sequences (${pluralize(value.records?.length ?? 0, "record")})`,
         outputLabel: "FASTA sequences",
         isTsv: false,
+        sequenceSearch: { format: "fasta", alphabet: value.alphabet ?? "sequence" },
         filename: "sms3-workflow-output.fasta",
         mimeType: "text/x-fasta;charset=utf-8"
       };
@@ -157,6 +158,10 @@ export function createWorkflowBuilderController({
         summary: value.mediaType?.includes("svg") ? "Workflow output: graphic" : "Workflow output: text",
         outputLabel: value.mediaType?.includes("svg") ? "Graphic" : "Text",
         isTsv: false,
+        sequenceSearch: value.sequenceSearch
+          ?? (value.mediaType?.toLowerCase().includes("text/x-fasta")
+            ? { format: "fasta", alphabet: "sequence" }
+            : null),
         svg: value.mediaType?.includes("svg") ? value.text ?? "" : null,
         filename: value.mediaType?.includes("svg") ? "sms3-workflow-output.svg" : "sms3-workflow-output.txt",
         mimeType: value.mediaType ?? "text/plain;charset=utf-8"

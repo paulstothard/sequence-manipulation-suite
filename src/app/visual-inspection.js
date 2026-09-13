@@ -1,6 +1,7 @@
 const TITLE_MARK_ATTRIBUTE = "data-sms3-title-mark";
 const ACTIVE_ATTRIBUTE = "data-sms3-inspection-active";
 const NEARBY_ATTRIBUTE = "data-sms3-inspection-nearby";
+const HIGHLIGHT_POLICY_ATTRIBUTE = "data-sms3-inspection-highlight";
 const EXPLICIT_MARK_SELECTOR = [
   "[data-sms3-inspection-text]",
   "[data-alignment-column]",
@@ -438,11 +439,17 @@ export function installVisualInspection(container, {
     return Boolean(mark?.querySelector(EXPLICIT_MARK_SELECTOR));
   }
 
+  function markAllowsVisualHighlight(mark) {
+    return !mark?.closest(`[${HIGHLIGHT_POLICY_ATTRIBUTE}="none"]`);
+  }
+
   function setActiveMark(mark) {
     if (activeMark === mark) return;
     highlightedMark?.removeAttribute(ACTIVE_ATTRIBUTE);
     activeMark = mark;
-    highlightedMark = mark && !markContainsDetailedInspection(mark) ? mark : null;
+    highlightedMark = mark && !markContainsDetailedInspection(mark) && markAllowsVisualHighlight(mark)
+      ? mark
+      : null;
     highlightedMark?.setAttribute(ACTIVE_ATTRIBUTE, "true");
   }
 

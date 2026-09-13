@@ -79,8 +79,11 @@ function streamsForOutput(outputFormat, selected, report, result) {
     "bed-bundle": ["bedBundle", "text/plain"],
     "record-json": ["recordJson", "application/json"]
   }[outputFormat];
+  const sequenceSearch = ["genbank", "embl", "ddbj", "gff3-bundle", "bed-bundle"].includes(outputFormat)
+    ? { format: "flatfile", alphabet: "dna-rna" }
+    : undefined;
   return {
-    [stream[0]]: makeTextStream(selected, stream[1]),
+    [stream[0]]: makeTextStream(selected, stream[1], sequenceSearch),
     sequenceRecords
   };
 }
@@ -147,6 +150,9 @@ export async function runPseudomoleculeBuilder(input, options = {}, context = {}
   context.reportProgress?.({ phase: "finished", progress: 1 });
   return makeToolResult({
     output: selected,
+    sequenceSearch: ["genbank", "embl", "ddbj", "gff3-bundle", "bed-bundle"].includes(outputFormat)
+      ? { format: "flatfile", alphabet: "dna-rna" }
+      : undefined,
     download: { filename, mimeType },
     warnings: [...parsed.warnings, ...result.warnings, ...warningsForOutputFormat(outputFormat)],
     recordsProcessed: result.mappingRows.length,

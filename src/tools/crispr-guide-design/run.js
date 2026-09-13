@@ -191,6 +191,13 @@ export async function runCrisprGuideDesign(input, options = {}, context = {}) {
   context.reportProgress?.({ phase: "finished", progress: 1 });
   return makeToolResult({
     output,
+    sequenceSearch: outputFormat === "guide-fasta"
+      ? { format: "fasta", alphabet: "dna-rna" }
+      : outputFormat === "context-text"
+        ? { format: "context", alphabet: "dna-rna" }
+        : outputFormat === "text-map"
+          ? { format: "labelled-blocks", alphabet: "dna-rna" }
+          : undefined,
     download: {
       filename: outputFormat === "tsv"
         ? "crispr-guide-candidates.tsv"
@@ -224,8 +231,10 @@ export async function runCrisprGuideDesign(input, options = {}, context = {}) {
         ? { offTargetTable: makeTableStream(crisprReferenceMatchColumns, result.referenceMatchRows ?? [], "crispr-guide-reference-matches") }
         : {}),
       ...(outputFormat === "guide-fasta" ? { guideFasta: makeTextStream(guideFasta, "text/x-fasta") } : {}),
-      ...(outputFormat === "context-text" ? { contextText: makeTextStream(contextText, "text/plain") } : {}),
-      ...(outputFormat === "text-map" ? { textMap: makeTextStream(textMap, "text/plain") } : {}),
+      ...(outputFormat === "context-text" ? {
+        contextText: makeTextStream(contextText, "text/plain", { format: "context", alphabet: "dna-rna" })
+      } : {}),
+      ...(outputFormat === "text-map" ? { textMap: makeTextStream(textMap, "text/plain", { format: "labelled-blocks", alphabet: "dna-rna" }) } : {}),
       ...(outputFormat === "svg-map" ? { overview: makeTextStream(svgMap, "image/svg+xml") } : {}),
       ...(viewer ? { viewer: makeDnaViewerStream(viewer) } : {})
     },

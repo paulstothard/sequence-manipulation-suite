@@ -240,6 +240,9 @@ export function runRestrictionSummary(input, options = {}, context = {}) {
 
   return makeToolResult({
     output,
+    sequenceSearch: normalized.outputFormat === "text-map"
+      ? { format: "labelled-blocks", alphabet: "dna-rna" }
+      : undefined,
     download: {
       filename: `restriction-summary.${normalized.outputFormat === "tsv" ? "tsv" : normalized.outputFormat.startsWith("svg") ? "svg" : isInteractiveViewerFormat(normalized.outputFormat) ? "json" : "txt"}`,
       mimeType:
@@ -257,7 +260,7 @@ export function runRestrictionSummary(input, options = {}, context = {}) {
     charactersRemoved,
     streams: {
       ...(normalized.outputFormat === "report" ? { report: makeTextStream(report, "text/plain") } : {}),
-      ...(normalized.outputFormat === "text-map" ? { textMap: makeTextStream(textMap, "text/plain") } : {}),
+      ...(normalized.outputFormat === "text-map" ? { textMap: makeTextStream(textMap, "text/plain", { format: "labelled-blocks", alphabet: "dna-rna" }) } : {}),
       ...(normalized.outputFormat === "svg-map" ? { overview: makeTextStream(svgMap, "image/svg+xml") } : {}),
       ...(normalized.outputFormat === "svg-line-map" ? { overview: makeTextStream(lineMapSvg, "image/svg+xml") } : {}),
       ...(isInteractiveViewerFormat(normalized.outputFormat) ? { viewer: makeDnaViewerStream(viewer) } : {}),

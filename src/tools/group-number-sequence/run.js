@@ -148,6 +148,11 @@ export function runGroupNumberSequence(input, options = {}, context = {}) {
 
   return makeToolResult({
     output,
+    sequenceSearch: {
+      format: "grouped",
+      alphabet,
+      showComplement: alphabet === "dna-rna" && options.showComplement !== false
+    },
     download: {
       filename: "group-number-sequence.txt",
       mimeType: "text/plain;charset=utf-8"
@@ -157,7 +162,11 @@ export function runGroupNumberSequence(input, options = {}, context = {}) {
     basesProcessed,
     charactersRemoved,
     streams: {
-      groupedText: makeTextStream(output, "text/plain"),
+      groupedText: makeTextStream(output, "text/plain", {
+        format: "grouped",
+        alphabet,
+        showComplement: alphabet === "dna-rna" && options.showComplement !== false
+      }),
       textRecords: {
         kind: "text-records",
         schema: "group-number-sequence",

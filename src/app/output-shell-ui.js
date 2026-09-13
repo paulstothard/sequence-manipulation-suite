@@ -27,11 +27,15 @@ import {
   tableStreamToTsv
 } from "./table-output-format.js";
 import {
-  findLiteralMatches,
+  findOutputMatches,
   getNextSearchIndex,
   getOutputHighlightModel,
   getOutputSearchCountText
 } from "./output-search.js";
+import {
+  buildSequenceSearchDocument,
+  inferSequenceSearchDescriptor
+} from "../core/sequence-text-search.js";
 import {
   getColumnPresetDefinitions,
   formatTableCellValue,
@@ -528,6 +532,8 @@ function getOutputSearchParts(scope) {
         textarea: elements.workflowOutput,
         preview: elements.workflowOutputHighlight,
         input: elements.workflowOutputSearch,
+        mode: elements.workflowOutputSearchMode,
+        modeLabel: elements.workflowOutputSearchModeLabel,
         previous: elements.workflowOutputSearchPrevious,
         next: elements.workflowOutputSearchNext,
         count: elements.workflowOutputSearchCount,
@@ -538,6 +544,8 @@ function getOutputSearchParts(scope) {
         textarea: elements.toolOutput,
         preview: elements.toolOutputHighlight,
         input: elements.outputSearch,
+        mode: elements.outputSearchMode,
+        modeLabel: elements.outputSearchModeLabel,
         previous: elements.outputSearchPrevious,
         next: elements.outputSearchNext,
         count: elements.outputSearchCount,
@@ -625,6 +633,8 @@ function appendOutputHighlightSegments(parent, segments) {
     const mark = document.createElement("mark");
     mark.className = segment.current ? "current-output-match" : "";
     mark.textContent = segment.text;
+    mark.dataset.matchType = segment.matchType ?? "text";
+    if (segment.trackLabel) mark.title = segment.trackLabel;
     parent.append(mark);
   }
 }
@@ -688,6 +698,7 @@ function renderOutputSearch(scope) {
     search.matches = [];
     search.currentIndex = -1;
     parts.count.textContent = getOutputSearchCountText();
+    parts.count.title = "";
     parts.previous.disabled = true;
     parts.next.disabled = true;
     parts.preview.hidden = true;
@@ -699,19 +710,21 @@ function renderOutputSearch(scope) {
     search.matches = [];
     search.currentIndex = -1;
     parts.count.textContent = getOutputSearchCountText();
+    parts.count.title = "";
     parts.previous.disabled = true;
     parts.next.disabled = true;
     renderOutputHighlight(scope);
     return;
   }
 
-  search.matches = findLiteralMatches(parts.textarea.value, query);
+  search.matches = findOutputMatches(parts.textarea.value, query, search.sequenceDocument, parts.mode?.value ?? "smart");
   search.currentIndex = search.matches.length > 0 ? 0 : -1;
   parts.count.textContent = getOutputSearchCountText({
     query,
     matchCount: search.matches.length,
     currentIndex: search.currentIndex
   });
+  parts.count.title = search.matches[search.currentIndex]?.trackLabel ?? "";
   parts.previous.disabled = search.matches.length < 2;
   parts.next.disabled = search.matches.length < 2;
   renderOutputHighlight(scope);
@@ -743,6 +756,7 @@ function moveOutputSearch(scope, direction) {
     matchCount: search.matches.length,
     currentIndex: search.currentIndex
   });
+  parts.count.title = search.matches[search.currentIndex]?.trackLabel ?? "";
   if (isTableViewActive(scope)) {
     selectTableOutputMatch(scope);
     window.scrollTo(scrollX, scrollY);
@@ -802,8 +816,19 @@ function resetToolOutputViewer(message = "Run this tool to generate the selected
   elements.outputSearchCount.textContent = getOutputSearchCountText();
   elements.outputSearchPrevious.disabled = true;
   elements.outputSearchNext.disabled = true;
+  setOutputSequenceSearch("tool", "", null);
   setOutputFormatLabel("tool", null);
   renderOutputSearch("tool");
+}
+
+function setOutputSequenceSearch(scope, text, descriptor) {
+  const search = state.outputSearch[scope];
+  const parts = getOutputSearchParts(scope);
+  search.sequenceDocument = descriptor ? buildSequenceSearchDocument(text, descriptor) : null;
+  parts.row.dataset.sequenceSearch = search.sequenceDocument ? "true" : "false";
+  parts.modeLabel.hidden = !search.sequenceDocument;
+  if (!search.sequenceDocument) parts.mode.value = "smart";
+  parts.input.placeholder = search.sequenceDocument ? "Search text or sequence" : "Search output";
 }
 
 function clearToolOutput() {
@@ -1827,6 +1852,7 @@ function applyToolOutputChoice(choice) {
     elements.toolOutput.dataset.pngOutput = "";
   }
   elements.toolOutput.dataset.visualOutput = hasVisualOutput ? "true" : "false";
+  setOutputSequenceSearch("tool", elements.toolOutput.value, choice.sequenceSearch);
   elements.toolOutputEmpty.textContent = "Run completed with no primary output.";
   elements.toolOutputEmpty.hidden = hasPrimaryOutput;
   elements.toolOutput.hidden = Boolean(choice.tableStream || hasVisualOutput || !choice.text);
@@ -1840,6 +1866,30 @@ function applyToolOutputChoice(choice) {
     elements.downloadPngOutput.hidden = !choice.svg;
   }
   renderOutputSearch("tool");
+}
+
+function inferResultSequenceAlphabet(result, selectedFormat) {
+  const normalizedFormat = String(selectedFormat ?? "").toLowerCase();
+  if (normalizedFormat.includes("protein")) return "protein";
+  const sequenceStreams = Object.values(result.streams ?? {}).filter((stream) => stream?.kind === "sequence-records");
+  if (sequenceStreams.length === 1) return sequenceStreams[0].alphabet ?? "";
+  if (normalizedFormat.includes("nucleotide") || normalizedFormat.includes("dna") || normalizedFormat.includes("rna")) return "dna-rna";
+  return "";
+}
+
+function getResultSequenceSearchDescriptor(result, choice, selectedFormat) {
+  const matchingTextStream = Object.values(result.streams ?? {}).find((stream) =>
+    stream?.kind === "text" && stream.text === choice.text && stream.sequenceSearch
+  );
+  return inferSequenceSearchDescriptor({
+    descriptor: matchingTextStream?.sequenceSearch ?? result.streams?.primary?.sequenceSearch,
+    format: selectedFormat,
+    filename: choice.download.filename,
+    mimeType: choice.download.mimeType,
+    toolId: state.selectedTool?.metadata?.id,
+    alphabet: inferResultSequenceAlphabet(result, selectedFormat),
+    options: getOptions()
+  });
 }
 
 function renderGeneratedToolOutputChoice(result) {
@@ -1886,8 +1936,10 @@ function renderGeneratedToolOutputChoice(result) {
     sequenceEditor,
     sequenceExtractor,
     treeViewer: result.visual?.treeViewer ?? null,
-    plateLayout: result.visual?.plateLayout ?? null
+    plateLayout: result.visual?.plateLayout ?? null,
+    sequenceSearch: null
   };
+  choice.sequenceSearch = getResultSequenceSearchDescriptor(result, choice, selectedFormat);
   state.currentToolOutputChoices = [choice];
   elements.outputFormatSelect.textContent = "";
   elements.outputFormatSelect.closest("label").hidden = true;
@@ -1905,6 +1957,7 @@ function renderGeneratedToolOutputChoice(result) {
     setOutputSearchRowVisible,
     updateOutputActions,
     renderOutputSearch,
+    setOutputSequenceSearch,
     queueOutputSearch,
     moveOutputSearch,
     keepOutputSearchButtonFromScrollingPage,

@@ -156,6 +156,13 @@ async function runMultipleAlignment(input, options = {}, alphabet, context = {})
 
   return makeToolResult({
     output: outputs[outputFormat],
+    sequenceSearch: outputFormat === "clustal"
+      ? { format: "clustal", alphabet }
+      : outputFormat === "aligned-fasta"
+        ? { format: "fasta", alphabet }
+        : outputFormat === "translated-protein-fasta"
+          ? { format: "fasta", alphabet: "protein" }
+          : undefined,
     download: {
       filename: `${alphabet === "protein" ? "protein" : alphabet === "coding-dna" ? "coding-dna" : "dna-rna"}-multiple-alignment.${extensions[outputFormat]}`,
       mimeType: mimeTypes[outputFormat]
@@ -168,7 +175,7 @@ async function runMultipleAlignment(input, options = {}, alphabet, context = {})
       report: makeTextStream(report, "text/plain"),
       fasta: makeTextStream(fasta, "text/x-fasta"),
       ...(alphabet === "coding-dna" ? { proteinFasta: makeTextStream(translatedProteinFasta, "text/x-fasta") } : {}),
-      clustal: makeTextStream(clustal, "text/plain"),
+      clustal: makeTextStream(clustal, "text/plain", { format: "clustal", alphabet }),
       table: makeTableStream(
         alphabet === "coding-dna" ? multipleCodingDnaAlignmentTableColumns : multipleAlignmentTableColumns,
         prepared.alignment.rows,

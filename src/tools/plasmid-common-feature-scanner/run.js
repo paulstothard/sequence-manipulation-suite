@@ -240,6 +240,9 @@ export async function runPlasmidCommonFeatureScanner(input, options = {}, contex
   context.reportProgress?.({ phase: "finished", progress: 1 });
   return makeToolResult({
     output,
+    sequenceSearch: outputFormat === "text-map"
+      ? { format: "labelled-blocks", alphabet: "dna-rna" }
+      : undefined,
     download: {
       filename: `plasmid-common-feature-scanner.${outputFormat === "tsv" ? "tsv" : outputFormat === "svg-map" ? "svg" : viewer ? "json" : "txt"}`,
       mimeType: outputFormat === "tsv"
@@ -255,7 +258,7 @@ export async function runPlasmidCommonFeatureScanner(input, options = {}, contex
     basesProcessed,
     streams: {
       report: makeTextStream(report, "text/plain"),
-      ...(outputFormat === "text-map" ? { textMap: makeTextStream(textMap, "text/plain") } : {}),
+      ...(outputFormat === "text-map" ? { textMap: makeTextStream(textMap, "text/plain", { format: "labelled-blocks", alphabet: "dna-rna" }) } : {}),
       ...(outputFormat === "svg-map" ? { overview: makeTextStream(svgMap, "image/svg+xml") } : {}),
       ...(viewer ? { viewer: makeDnaViewerStream(viewer) } : {}),
       table: makeTableStream(plasmidCommonFeatureMatchColumns, rows, "plasmid-common-feature-scanner")

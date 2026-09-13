@@ -66,6 +66,11 @@ export async function runSirnaDesign(input, options = {}, context = {}) {
 
   return makeToolResult({
     output: outputs[outputFormat],
+    sequenceSearch: outputFormat === "guide-fasta"
+      ? { format: "fasta", alphabet: "dna-rna" }
+      : outputFormat === "context-text"
+        ? { format: "context", alphabet: "dna-rna" }
+        : undefined,
     download: {
       filename: outputFormat === "tsv"
         ? "sirna-design-candidates.tsv"
@@ -93,7 +98,9 @@ export async function runSirnaDesign(input, options = {}, context = {}) {
         ? { offTargetTable: makeTableStream(sirnaReferenceMatchColumns, result.referenceMatchRows ?? [], "sirna-reference-matches") }
         : {}),
       ...(outputFormat === "guide-fasta" ? { guideFasta: makeTextStream(guideFasta, "text/x-fasta") } : {}),
-      ...(outputFormat === "context-text" ? { contextText: makeTextStream(contextText, "text/plain") } : {})
+      ...(outputFormat === "context-text" ? {
+        contextText: makeTextStream(contextText, "text/plain", { format: "context", alphabet: "dna-rna" })
+      } : {})
     }
   });
 }

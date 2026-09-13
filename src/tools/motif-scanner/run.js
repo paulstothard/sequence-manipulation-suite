@@ -455,6 +455,9 @@ function runMotifScanner(input, options = {}, config) {
 
   return makeToolResult({
     output: materialized.output,
+    sequenceSearch: materialized.outputFormat === "text-map"
+      ? { format: "labelled-blocks", alphabet: config.alphabet }
+      : undefined,
     download: {
       filename: `${config.filenameBase}.${materialized.outputFormat === "tsv" ? "tsv" : materialized.outputFormat === "svg-map" ? "svg" : materialized.viewer ? "json" : "txt"}`,
       mimeType:
@@ -473,7 +476,12 @@ function runMotifScanner(input, options = {}, config) {
     charactersRemoved,
     streams: {
       report: makeTextStream(materialized.report, "text/plain"),
-      ...(materialized.outputFormat === "text-map" ? { textMap: makeTextStream(materialized.textMap, "text/plain") } : {}),
+      ...(materialized.outputFormat === "text-map" ? {
+        textMap: makeTextStream(materialized.textMap, "text/plain", {
+          format: "labelled-blocks",
+          alphabet: config.alphabet
+        })
+      } : {}),
       ...(materialized.outputFormat === "svg-map" ? { overview: makeTextStream(materialized.svgMap, "image/svg+xml") } : {}),
       ...(materialized.viewer ? { viewer: config.alphabet === "protein" ? makeProteinViewerStream(materialized.viewer) : makeDnaViewerStream(materialized.viewer) } : {}),
       table: makeTableStream(motifMatchTableColumns, rows, config.schema)
@@ -563,6 +571,9 @@ async function runMotifScannerWorker(input, options = {}, config, context = {}) 
 
   return makeToolResult({
     output: materialized.output,
+    sequenceSearch: materialized.outputFormat === "text-map"
+      ? { format: "labelled-blocks", alphabet: config.alphabet }
+      : undefined,
     download: {
       filename: `${config.filenameBase}.${materialized.outputFormat === "tsv" ? "tsv" : materialized.outputFormat === "svg-map" ? "svg" : materialized.viewer ? "json" : "txt"}`,
       mimeType:
@@ -581,7 +592,12 @@ async function runMotifScannerWorker(input, options = {}, config, context = {}) 
     charactersRemoved,
     streams: {
       report: makeTextStream(materialized.report, "text/plain"),
-      ...(materialized.outputFormat === "text-map" ? { textMap: makeTextStream(materialized.textMap, "text/plain") } : {}),
+      ...(materialized.outputFormat === "text-map" ? {
+        textMap: makeTextStream(materialized.textMap, "text/plain", {
+          format: "labelled-blocks",
+          alphabet: config.alphabet
+        })
+      } : {}),
       ...(materialized.outputFormat === "svg-map" ? { overview: makeTextStream(materialized.svgMap, "image/svg+xml") } : {}),
       ...(materialized.viewer ? { viewer: config.alphabet === "protein" ? makeProteinViewerStream(materialized.viewer) : makeDnaViewerStream(materialized.viewer) } : {}),
       table: makeTableStream(motifMatchTableColumns, rows, config.schema)

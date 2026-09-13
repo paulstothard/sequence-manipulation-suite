@@ -56,6 +56,11 @@ export async function runInSilicoPcr(input, options = {}, context = {}) {
 
   return makeToolResult({
     output: outputs[outputFormat],
+    sequenceSearch: outputFormat === "fasta"
+      ? { format: "fasta", alphabet: "dna-rna" }
+      : outputFormat === "text-map"
+        ? { format: "labelled-blocks", alphabet: "dna-rna" }
+        : undefined,
     download: {
       filename: outputFormat === "tsv"
         ? "in-silico-pcr-products.tsv"
@@ -89,7 +94,7 @@ export async function runInSilicoPcr(input, options = {}, context = {}) {
       table: makeTableStream(pcrProductTableColumns, result.rows, "in-silico-pcr-products"),
       bindingSites: makeTableStream(pcrBindingSiteTableColumns, result.siteRows, "in-silico-pcr-binding-sites"),
       ...(outputFormat === "fasta" ? { fasta: makeTextStream(fasta, "text/x-fasta") } : {}),
-      ...(outputFormat === "text-map" ? { textMap: makeTextStream(textMap, "text/plain") } : {}),
+      ...(outputFormat === "text-map" ? { textMap: makeTextStream(textMap, "text/plain", { format: "labelled-blocks", alphabet: "dna-rna" }) } : {}),
       ...(outputFormat === "svg-gel" ? { gel: makeTextStream(gelSvg, "image/svg+xml") } : {}),
       ...(viewer ? { viewer: makeDnaViewerStream(viewer) } : {})
     },

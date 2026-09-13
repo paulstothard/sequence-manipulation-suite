@@ -94,6 +94,13 @@ async function runPairwiseAlignment(input, options = {}, alphabet, context = {})
 
   return makeToolResult({
     output: outputs[outputFormat],
+    sequenceSearch: outputFormat === "alignment-text"
+      ? { format: "pairwise", alphabet }
+      : outputFormat === "clustal"
+        ? { format: "clustal", alphabet }
+        : outputFormat === "aligned-fasta"
+          ? { format: "fasta", alphabet }
+          : undefined,
     download: {
       filename: `${alphabet === "protein" ? "protein" : "dna-rna"}-pairwise-alignment.${extensions[outputFormat]}`,
       mimeType: mimeTypes[outputFormat]
@@ -104,9 +111,9 @@ async function runPairwiseAlignment(input, options = {}, alphabet, context = {})
     charactersRemoved: prepared.charactersRemoved,
     streams: {
       report: makeTextStream(report, "text/plain"),
-      alignmentText: makeTextStream(alignmentText, "text/plain"),
+      alignmentText: makeTextStream(alignmentText, "text/plain", { format: "pairwise", alphabet }),
       fasta: makeTextStream(fasta, "text/x-fasta"),
-      clustal: makeTextStream(clustal, "text/plain"),
+      clustal: makeTextStream(clustal, "text/plain", { format: "clustal", alphabet }),
       table: makeTableStream(pairwiseAlignmentTableColumns, prepared.alignment.columns, `pairwise-alignment-${alphabet}`),
       ...(outputFormat === "svg-color" ? { coloredSvg: makeTextStream(svg, "image/svg+xml") } : {})
     },
@@ -172,6 +179,13 @@ export async function runPairwiseAlignCodingDna(input, options = {}, context = {
 
   return makeToolResult({
     output: outputs[outputFormat],
+    sequenceSearch: outputFormat === "alignment-text"
+      ? { format: "pairwise", alphabet: "dna-rna" }
+      : outputFormat === "codon-fasta"
+        ? { format: "fasta", alphabet: "dna-rna" }
+        : outputFormat === "protein-fasta"
+          ? { format: "fasta", alphabet: "protein" }
+          : undefined,
     download: {
       filename: `coding-dna-pairwise-alignment.${extensions[outputFormat]}`,
       mimeType: mimeTypes[outputFormat]
@@ -182,7 +196,7 @@ export async function runPairwiseAlignCodingDna(input, options = {}, context = {
     charactersRemoved: prepared.charactersRemoved,
     streams: {
       report: makeTextStream(report, "text/plain"),
-      alignmentText: makeTextStream(alignmentText, "text/plain"),
+      alignmentText: makeTextStream(alignmentText, "text/plain", { format: "pairwise", alphabet: "dna-rna" }),
       codonFasta: makeTextStream(codonFasta, "text/x-fasta"),
       proteinFasta: makeTextStream(proteinFasta, "text/x-fasta"),
       table: makeTableStream(codonAlignmentTableColumns, prepared.alignment.codonColumns, "pairwise-coding-dna-alignment"),

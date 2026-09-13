@@ -131,8 +131,8 @@ const state = {
   activeView: "home",
   activeTags: new Set(),
   outputSearch: {
-    tool: { matches: [], currentIndex: -1, debounceTimer: null },
-    workflow: { matches: [], currentIndex: -1, debounceTimer: null }
+    tool: { matches: [], currentIndex: -1, debounceTimer: null, sequenceDocument: null },
+    workflow: { matches: [], currentIndex: -1, debounceTimer: null, sequenceDocument: null }
   },
   outputTable: {
     tool: { sortColumn: null, sortDirection: "asc", hiddenColumns: new Set(), columnPreset: "all" },
@@ -272,6 +272,8 @@ const elements = {
   workflowOutputSummary: document.querySelector("#workflowOutputSummary"),
   workflowOutput: document.querySelector("#workflowOutput"),
   workflowOutputSearch: document.querySelector("#workflowOutputSearch"),
+  workflowOutputSearchMode: document.querySelector("#workflowOutputSearchMode"),
+  workflowOutputSearchModeLabel: document.querySelector("#workflowOutputSearchModeLabel"),
   workflowOutputSearchPrevious: document.querySelector("#workflowOutputSearchPrevious"),
   workflowOutputSearchNext: document.querySelector("#workflowOutputSearchNext"),
   workflowOutputSearchCount: document.querySelector("#workflowOutputSearchCount"),
@@ -318,6 +320,8 @@ const elements = {
   downloadOutput: document.querySelector("#downloadOutput"),
   downloadPngOutput: document.querySelector("#downloadPngOutput"),
   outputSearch: document.querySelector("#outputSearch"),
+  outputSearchMode: document.querySelector("#outputSearchMode"),
+  outputSearchModeLabel: document.querySelector("#outputSearchModeLabel"),
   outputSearchPrevious: document.querySelector("#outputSearchPrevious"),
   outputSearchNext: document.querySelector("#outputSearchNext"),
   outputSearchCount: document.querySelector("#outputSearchCount"),
@@ -4906,6 +4910,10 @@ function renderOutputSearch(scope) {
   outputShell.renderOutputSearch(scope);
 }
 
+function setOutputSequenceSearch(scope, text, descriptor) {
+  outputShell.setOutputSequenceSearch(scope, text, descriptor);
+}
+
 function queueOutputSearch(scope) {
   outputShell.queueOutputSearch(scope);
 }
@@ -5087,6 +5095,7 @@ function clearWorkflowOutput() {
   setOutputFormatLabel("workflow", null);
   setOutputSearchRowVisible("workflow", false);
   elements.workflowOutputActions.hidden = true;
+  setOutputSequenceSearch("workflow", "", null);
   renderOutputSearch("workflow");
   renderWorkflowView();
 }
@@ -5610,6 +5619,7 @@ async function runSelectedWorkflow() {
     elements.workflowOutput.dataset.filename = formatted.filename ?? "sms3-workflow-output.txt";
     elements.workflowOutput.dataset.mimeType = formatted.mimeType ?? "text/plain";
     elements.workflowOutput.dataset.visualOutput = hasWorkflowVisual ? "true" : "false";
+    setOutputSequenceSearch("workflow", formatted.text, formatted.sequenceSearch);
     elements.workflowOutputSummary.textContent = formatted.summary;
     setOutputFormatLabel("workflow", formatted.outputLabel);
     renderWorkflowTableOutput(formatted.tableStream, Boolean(formatted.tableStream));
@@ -5949,6 +5959,7 @@ elements.workflowDownloadOutput.addEventListener("click", () => {
   );
 });
 elements.workflowOutputSearch.addEventListener("input", () => queueOutputSearch("workflow"));
+elements.workflowOutputSearchMode.addEventListener("change", () => renderOutputSearch("workflow"));
 elements.workflowOutputSearchPrevious.addEventListener("click", () => moveOutputSearch("workflow", -1));
 elements.workflowOutputSearchNext.addEventListener("click", () => moveOutputSearch("workflow", 1));
 keepOutputSearchButtonFromScrollingPage(elements.workflowOutputSearchPrevious);
@@ -6090,6 +6101,7 @@ elements.copyOutput.addEventListener("click", async () => {
   await navigator.clipboard.writeText(elements.toolOutput.dataset.rawOutput || elements.toolOutput.value);
 });
 elements.outputSearch.addEventListener("input", () => queueOutputSearch("tool"));
+elements.outputSearchMode.addEventListener("change", () => renderOutputSearch("tool"));
 elements.outputSearchPrevious.addEventListener("click", () => moveOutputSearch("tool", -1));
 elements.outputSearchNext.addEventListener("click", () => moveOutputSearch("tool", 1));
 keepOutputSearchButtonFromScrollingPage(elements.outputSearchPrevious);

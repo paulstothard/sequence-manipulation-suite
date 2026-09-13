@@ -574,7 +574,7 @@ export function renderHeatmapPlotSvg(spec) {
   const height = spec.height ?? Math.ceil(plotBottom + margin.bottom + noteLines.length * 14);
   const cellMap = new Map((spec.cells ?? []).map((item) => [`${item.x}\t${item.y}`, item]));
   const parts = [
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(spec.title)}" data-plot-foundation="observable-plot" data-plot-backend="d3" data-plot-renderer="sms3">`,
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(spec.title)}" data-plot-foundation="observable-plot" data-plot-backend="d3" data-plot-renderer="sms3" data-sms3-inspection-highlight="none">`,
     "<style>[data-plot-renderer=\"sms3\"] text{font-family:Inter,Arial,sans-serif;font-size:11px;fill:#172026;stroke:none!important;stroke-width:0!important;text-shadow:none!important;paint-order:normal!important;font-weight:400}[data-plot-renderer=\"sms3\"] .title{font-size:18px;font-weight:700}[data-plot-renderer=\"sms3\"] .axis-label{font-size:12px;fill:#334155;font-weight:500}[data-plot-renderer=\"sms3\"] .tick{font-size:11px;fill:#334155;font-weight:500}[data-plot-renderer=\"sms3\"] .heatmap-cell{shape-rendering:crispEdges;stroke:#ffffff;stroke-width:1}[data-plot-renderer=\"sms3\"] .heatmap-cell-highlight-marker{fill:#0f766e;fill-opacity:.88}[data-plot-renderer=\"sms3\"] .value{font-size:10px;text-anchor:middle;dominant-baseline:central;fill:#111827;font-weight:500}[data-plot-renderer=\"sms3\"] .note{font-size:11px;fill:#64748b}</style>",
     `<rect width="${width}" height="${height}" fill="#ffffff"></rect>`,
     `<text class="title" x="${FIGURE_TEXT_X}" y="${FIGURE_TITLE_Y}">${escapeXml(spec.title)}</text>`

@@ -233,6 +233,11 @@ export function runRestrictionDigest(input, options = {}, context = {}) {
 
   return makeToolResult({
     output,
+    sequenceSearch: normalized.outputFormat === "fasta"
+      ? { format: "fasta", alphabet: "dna-rna" }
+      : normalized.outputFormat === "text-map"
+        ? { format: "labelled-blocks", alphabet: "dna-rna" }
+        : undefined,
     download: {
       filename: `restriction-digest.${normalized.outputFormat === "tsv" ? "tsv" : normalized.outputFormat === "fasta" ? "fasta" : normalized.outputFormat.startsWith("svg") ? "svg" : isInteractiveViewerFormat(normalized.outputFormat) ? "json" : "txt"}`,
       mimeType:
@@ -254,8 +259,10 @@ export function runRestrictionDigest(input, options = {}, context = {}) {
       ...(normalized.outputFormat === "report" ? { report: makeTextStream(report, "text/plain") } : {}),
       ...(normalized.outputFormat === "tsv" ? { table: makeTableStream(restrictionFragmentTableColumns, fragmentRows, "restriction-fragments") } : {}),
       fragments: makeTableStream(restrictionFragmentTableColumns, fragmentRows, "restriction-fragments"),
-      ...(normalized.outputFormat === "fasta" ? { fasta: makeTextStream(fasta, "text/plain") } : {}),
-      ...(normalized.outputFormat === "text-map" ? { textMap: makeTextStream(textMap, "text/plain") } : {}),
+      ...(normalized.outputFormat === "fasta" ? {
+        fasta: makeTextStream(fasta, "text/plain", { format: "fasta", alphabet: "dna-rna" })
+      } : {}),
+      ...(normalized.outputFormat === "text-map" ? { textMap: makeTextStream(textMap, "text/plain", { format: "labelled-blocks", alphabet: "dna-rna" }) } : {}),
       ...(normalized.outputFormat === "svg-map" ? { overview: makeTextStream(mapSvg, "image/svg+xml") } : {}),
       ...(normalized.outputFormat === "svg-gel" ? { gel: makeTextStream(gelSvg, "image/svg+xml") } : {}),
       ...(isInteractiveViewerFormat(normalized.outputFormat) ? { viewer: makeDnaViewerStream(viewer) } : {})

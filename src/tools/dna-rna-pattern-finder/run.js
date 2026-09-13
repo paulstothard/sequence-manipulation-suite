@@ -414,6 +414,9 @@ export function runDnaRnaPatternFinder(input, options = {}, context = {}) {
 
   return makeToolResult({
     output,
+    sequenceSearch: outputFormat === "text-map"
+      ? { format: "labelled-blocks", alphabet: "dna-rna" }
+      : undefined,
     download: {
       filename: `dna-rna-pattern-finder.${outputFormat === "tsv" ? "tsv" : outputFormat === "svg-map" ? "svg" : viewer ? "json" : "txt"}`,
       mimeType:
@@ -431,7 +434,7 @@ export function runDnaRnaPatternFinder(input, options = {}, context = {}) {
     charactersRemoved,
     streams: {
       report: makeTextStream(reportOutput, "text/plain"),
-      ...(outputFormat === "text-map" ? { textMap: makeTextStream(textMap, "text/plain") } : {}),
+      ...(outputFormat === "text-map" ? { textMap: makeTextStream(textMap, "text/plain", { format: "labelled-blocks", alphabet: "dna-rna" }) } : {}),
       ...(outputFormat === "svg-map" ? { overview: makeTextStream(svgMap, "image/svg+xml") } : {}),
       ...(viewer ? { viewer: makeDnaViewerStream(viewer) } : {}),
       table: makeTableStream(dnaRnaPatternFinderTableColumns, tableRows, "dna-rna-pattern-finder"),

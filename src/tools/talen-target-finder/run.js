@@ -254,6 +254,13 @@ export async function runTalenTargetFinder(input, options = {}, context = {}) {
   context.reportProgress?.({ phase: "finished", progress: 1 });
   return makeToolResult({
     output,
+    sequenceSearch: outputFormat === "halfsite-fasta"
+      ? { format: "fasta", alphabet: "dna-rna" }
+      : outputFormat === "context-text"
+        ? { format: "context", alphabet: "dna-rna" }
+        : outputFormat === "text-map"
+          ? { format: "labelled-blocks", alphabet: "dna-rna" }
+          : undefined,
     download: {
       filename: outputFormat === "tsv"
         ? "talen-target-pairs.tsv"
@@ -284,8 +291,10 @@ export async function runTalenTargetFinder(input, options = {}, context = {}) {
       report: makeTextStream(report, "text/plain"),
       table: makeTableStream(talenTargetColumns, result.rows, "talen-target-pairs"),
       ...(outputFormat === "rvd-tsv" ? { rvdTable: makeTableStream(talenRvdColumns, result.rvdRows, "talen-rvd-repeats") } : {}),
-      ...(outputFormat === "context-text" ? { contextText: makeTextStream(contextText, "text/plain") } : {}),
-      ...(outputFormat === "text-map" ? { textMap: makeTextStream(textMap, "text/plain") } : {}),
+      ...(outputFormat === "context-text" ? {
+        contextText: makeTextStream(contextText, "text/plain", { format: "context", alphabet: "dna-rna" })
+      } : {}),
+      ...(outputFormat === "text-map" ? { textMap: makeTextStream(textMap, "text/plain", { format: "labelled-blocks", alphabet: "dna-rna" }) } : {}),
       ...(outputFormat === "svg-map" ? { overview: makeTextStream(svgMap, "image/svg+xml") } : {}),
       ...(viewer ? { viewer: makeDnaViewerStream(viewer) } : {})
     },

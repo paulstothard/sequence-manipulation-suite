@@ -54,15 +54,18 @@ export async function runGffGtfFeatureExtractor(input, options = {}, context = {
   const tableText = makeGffGtfFeatureTable(result.featureRows);
   const streams = {
     table: makeTableStream(gffGtfFeatureColumns, result.featureRows, "gff-gtf-features"),
-    transcriptFasta: makeTextStream(result.transcriptFasta, "text/plain"),
-    cdsFasta: makeTextStream(result.cdsFasta, "text/plain"),
-    proteinFasta: makeTextStream(result.proteinFasta, "text/plain"),
+    transcriptFasta: makeTextStream(result.transcriptFasta, "text/plain", { format: "fasta", alphabet: "dna-rna" }),
+    cdsFasta: makeTextStream(result.cdsFasta, "text/plain", { format: "fasta", alphabet: "dna-rna" }),
+    proteinFasta: makeTextStream(result.proteinFasta, "text/plain", { format: "fasta", alphabet: "protein" }),
     gff3: makeTextStream(result.gff3, "text/plain"),
     report: makeTextStream(result.report, "text/plain")
   };
 
   return makeToolResult({
     output: selectedOutput(result, outputFormat),
+    sequenceSearch: ["transcript-fasta", "cds-fasta", "protein-fasta"].includes(outputFormat)
+      ? { format: "fasta", alphabet: outputFormat === "protein-fasta" ? "protein" : "dna-rna" }
+      : undefined,
     download: downloadMetadata(outputFormat),
     warnings: result.warnings,
     recordsProcessed: result.recordsProcessed,

@@ -1,8 +1,9 @@
-export function makeTextStream(text, mediaType = "text/plain") {
+export function makeTextStream(text, mediaType = "text/plain", sequenceSearch = null) {
   return {
     kind: "text",
     mediaType,
-    text: String(text ?? "")
+    text: String(text ?? ""),
+    ...(sequenceSearch ? { sequenceSearch } : {})
   };
 }
 
@@ -35,6 +36,7 @@ export function makeCollectionStream(items, itemKind = "") {
 export function makeToolResult({
   output,
   download,
+  sequenceSearch,
   downloads = [],
   warnings = [],
   recordsProcessed = 0,
@@ -56,7 +58,7 @@ export function makeToolResult({
     charactersRemoved,
     optionsUsed,
     streams: {
-      primary: makeTextStream(output, download?.mimeType ?? "text/plain"),
+      primary: makeTextStream(output, download?.mimeType ?? "text/plain", sequenceSearch),
       warnings: makeWarningsStream(warnings),
       ...streams
     },

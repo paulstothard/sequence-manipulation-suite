@@ -277,6 +277,13 @@ export function runTranslate(input, options = {}) {
 
   return makeToolResult({
     output,
+    sequenceSearch: outputFormat === "fasta"
+      ? { format: "fasta", alphabet: "protein" }
+      : outputFormat === "plain"
+        ? { format: "plain", alphabet: "protein" }
+        : outputFormat === "text-map"
+          ? { format: "labelled-blocks", alphabet: "dna-rna" }
+          : undefined,
     download: {
       filename: outputFormat === "tsv" ? "translate.tsv" : outputFormat === "fasta" ? "translate.fasta" : "translate.txt",
       mimeType: outputFormat === "tsv" ? "text/tab-separated-values;charset=utf-8" : "text/plain;charset=utf-8"
@@ -287,7 +294,7 @@ export function runTranslate(input, options = {}) {
     charactersRemoved,
     streams: {
       fasta: makeTextStream(fastaOutput, "text/x-fasta"),
-      ...(outputFormat === "text-map" ? { textMap: makeTextStream(textMapOutput, "text/plain") } : {}),
+      ...(outputFormat === "text-map" ? { textMap: makeTextStream(textMapOutput, "text/plain", { format: "labelled-blocks", alphabet: "dna-rna" }) } : {}),
       table: makeTableStream(translationTableColumns, translationRows, "translate-dna-rna"),
       translations: makeTableStream(translationTableColumns, translationRows, "translate-dna-rna"),
       proteinRecords: {

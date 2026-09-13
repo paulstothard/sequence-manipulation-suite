@@ -92,10 +92,18 @@ export async function runBiologicalRecordFormatConverter(input, options = {}, co
   const outputFormat = OUTPUT_FORMATS.has(options.outputFormat) ? options.outputFormat : "feature-tsv";
   const result = convertBiologicalRecord(input, options);
   const output = makeBiologicalRecordOutput(result, outputFormat);
+  const recordAlphabets = new Set(result.records.map((record) => record.molecule === "protein" ? "protein" : "dna-rna"));
+  const outputAlphabet = recordAlphabets.size === 1 ? [...recordAlphabets][0] : "sequence";
+  const sequenceSearch = ["whole-fasta", "cds-fasta", "protein-fasta"].includes(outputFormat)
+    ? { format: "fasta", alphabet: outputFormat === "protein-fasta" ? "protein" : "dna-rna" }
+    : ["genbank", "embl", "ddbj", "gff3-bundle", "gff3-fasta", "bed-bundle", "bed-fasta"].includes(outputFormat)
+      ? { format: "flatfile", alphabet: outputAlphabet }
+      : undefined;
 
   context.reportProgress?.({ phase: "finished", progress: 1 });
   return makeToolResult({
     output,
+    sequenceSearch,
     download: {
       filename: `biological-record-converter.${EXTENSIONS[outputFormat]}`,
       mimeType: MIME_TYPES[outputFormat]

@@ -9928,6 +9928,14 @@ legend {
   min-width: 12rem;
 }
 
+.output-search-row .output-search-mode {
+  flex: 0 0 auto;
+}
+
+.output-search-row .output-search-mode select {
+  min-width: 7.25rem;
+}
+
 .output-search-count {
   color: var(--muted-text);
   font-size: 0.82rem;

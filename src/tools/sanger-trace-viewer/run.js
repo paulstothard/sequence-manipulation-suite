@@ -214,7 +214,10 @@ export async function runSangerTraceViewer(input, options = {}, context = {}) {
       streams.consensusFasta = makeTextStream(consensusFasta, "text/x-fasta");
     }
     if (assemblyTextMap) {
-      streams.assemblyTextMap = makeTextStream(assemblyTextMap, "text/plain");
+      streams.assemblyTextMap = makeTextStream(assemblyTextMap, "text/plain", {
+        format: "assembly",
+        alphabet: "dna-rna"
+      });
     }
     if (assemblyTraceMapSvg) {
       streams.assemblyTraceMapSvg = makeTextStream(assemblyTraceMapSvg, "image/svg+xml");
@@ -240,6 +243,11 @@ export async function runSangerTraceViewer(input, options = {}, context = {}) {
   context.reportProgress?.({ phase: "finished", progress: 1 });
   return makeToolResult({
     output,
+    sequenceSearch: outputFormat === "assembly-text-map"
+      ? { format: "assembly", alphabet: "dna-rna" }
+      : ["fasta", "consensus-fasta"].includes(outputFormat)
+        ? { format: "fasta", alphabet: "dna-rna" }
+        : undefined,
     download,
     warnings: session?.warnings ?? collection.warnings,
     recordsProcessed: collection.traces.length,

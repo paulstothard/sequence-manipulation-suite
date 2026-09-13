@@ -685,13 +685,28 @@ function runAnnotatedRecordExtractor(input, options = {}, context = {}, recordCl
 
   return makeToolResult({
     output: selected.output,
+    sequenceSearch: format === "text-map"
+      ? {
+          format: "labelled-blocks",
+          alphabet: recordClass === "protein" ? "protein" : recordClass === "dna" ? "dna-rna" : "sequence"
+        }
+      : ["whole-fasta", "cds-fasta", "selected-feature-fasta", "cds-uppercase-fasta", "gene-uppercase-fasta"].includes(format)
+        ? { format: "fasta", alphabet: "dna-rna" }
+        : format === "protein-fasta"
+          ? { format: "fasta", alphabet: "protein" }
+          : undefined,
     download: selected.download,
     warnings,
     recordsProcessed: recordsForClass.length,
     basesProcessed: recordsForClass.reduce((sum, record) => sum + record.sequence.length, 0),
     streams: {
       ...(format === "report" ? { report: makeTextStream(report, "text/plain") } : {}),
-      ...(format === "text-map" ? { textMap: makeTextStream(textMap, "text/plain") } : {}),
+      ...(format === "text-map" ? {
+        textMap: makeTextStream(textMap, "text/plain", {
+          format: "labelled-blocks",
+          alphabet: recordClass === "protein" ? "protein" : recordClass === "dna" ? "dna-rna" : "sequence"
+        })
+      } : {}),
       ...(isSvgMapFormat(format) ? { overview: makeTextStream(svgMap, "image/svg+xml") } : {}),
       ...(viewer ? { viewer: recordClass === "protein" ? makeProteinViewerStream(viewer) : makeDnaViewerStream(viewer) } : {}),
       ...(genomeFigure ? { figure: makeGenomeFigureStream(genomeFigure.figure) } : {}),

@@ -47,12 +47,13 @@ export async function runLightweightSequenceAssembly(input, options = {}, contex
     streams.fasta = makeTextStream(output, "text/x-fasta");
   }
   if (outputFormat === "text-map") {
-    streams.textMap = makeTextStream(output, "text/plain");
+    streams.textMap = makeTextStream(output, "text/plain", { format: "assembly", alphabet: "dna-rna" });
   }
 
   context.reportProgress?.({ phase: "finished", progress: 1 });
   return makeToolResult({
     output,
+    sequenceSearch: outputFormat === "text-map" ? { format: "assembly", alphabet: "dna-rna" } : undefined,
     download: {
       filename: outputFormat === "fasta"
         ? "lightweight-assembly.fasta"
