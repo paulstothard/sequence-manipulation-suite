@@ -503,12 +503,8 @@ export function installVisualInspection(container, {
   }
 
   function inspectFromPointer(event) {
-    if (activeSource === "keyboard") return;
+    if (activeSource === "keyboard" || pinnedMark) return;
     const mark = resolveMark(event.target, event);
-    if (pinnedMark) {
-      if (!mark || mark === pinnedMark) return;
-      unpin({ hideTooltip: false });
-    }
     if (mark) {
       show(mark, event);
     } else {

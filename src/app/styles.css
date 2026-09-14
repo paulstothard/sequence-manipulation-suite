@@ -6642,7 +6642,11 @@ legend {
 }
 
 :is(.visual-output, .showcase-preview) :is([data-sms3-title-mark], [data-sms3-inspection-text], [data-alignment-column]) {
-  cursor: help;
+  cursor: default;
+}
+
+:is(.visual-output, .showcase-preview) [data-sms3-nearest-point="true"] {
+  cursor: crosshair;
 }
 
 :is(.visual-output, .showcase-preview) [data-sms3-inspection-active="true"] {
