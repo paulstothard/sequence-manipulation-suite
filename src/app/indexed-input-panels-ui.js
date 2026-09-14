@@ -1012,6 +1012,11 @@ function selectedToolUsesSplitFastaSource() {
   return Boolean(getSelectedTool()?.metadata?.splitInput);
 }
 
+function selectedToolUsesStreamedLoadedFastaSource() {
+  return flattenOptions(getSelectedTool()?.metadata?.options ?? [])
+    .some((option) => option.id === "loadedFastaFile" && option.type === "file");
+}
+
 function setPrimaryFastaEditorVisible(visible) {
   if (selectedToolUsesSplitFastaSource()) {
     const section = getPrimarySplitInputSection();
@@ -1058,6 +1063,19 @@ function updateGenericFastaBundleStatus(panel = document.querySelector("#fastaSo
   }
   status.hidden = badges.length === 0;
   status.replaceChildren(...badges);
+}
+
+function updateGenericLoadedFastaStatus(panel = document.querySelector("#fastaSourceInputPanel")) {
+  const input = panel?.querySelector("#loadedFastaFile");
+  const status = panel?.querySelector("#loadedFastaFileStatus");
+  const remove = panel?.querySelector('[data-remove-loaded-fasta="true"]');
+  if (!input || !status) return;
+  const file = input.files?.[0] ?? null;
+  status.hidden = !file;
+  status.textContent = file
+    ? `Selected ${file.name} (${file.size.toLocaleString()} bytes). Run will scan this file instead of the editor text.`
+    : "";
+  if (remove) remove.hidden = !file;
 }
 
 function setGenericFastaSourceMode(mode, panel = document.querySelector("#fastaSourceInputPanel")) {
@@ -1108,6 +1126,7 @@ function setGenericFastaSourceMode(mode, panel = document.querySelector("#fastaS
     gziSlot.hidden = mode !== "bgzf";
   }
   updateGenericFastaBundleStatus(sourcePanel);
+  updateGenericLoadedFastaStatus(sourcePanel);
 }
 
 function assignGenericFastaBundleFiles(files) {
@@ -1202,6 +1221,14 @@ function appendGenericFastaFileSlot(parent, { id, label, accept, dropLabel }) {
 }
 
 function appendGenericLoadedFastaSlot(parent) {
+  if (selectedToolUsesStreamedLoadedFastaSource()) {
+    appendFastaRegionLoadedFileSlot(parent, {
+      inputId: "loadedFastaFile",
+      retainFile: true,
+      statusText: (file) => `Selected ${file.name} (${file.size.toLocaleString()} bytes). Run will scan this file instead of the editor text.`
+    });
+    return;
+  }
   if (selectedToolUsesSplitFastaSource()) {
     appendFastaRegionLoadedFileSlot(parent, {
       loadFile: async (file) => {
@@ -1224,6 +1251,7 @@ function appendGenericLoadedFastaSlot(parent) {
 function renderGenericFastaSourcePanel(panel) {
   panel.textContent = "";
   panel.dataset.rendered = "true";
+  panel.dataset.streamedLoadedFile = String(selectedToolUsesStreamedLoadedFastaSource());
   const sourceTabs = createSourceModeTabs({
     modes: FASTA_SOURCE_TAB_MODES,
     selectedMode: "loaded",
@@ -1292,6 +1320,7 @@ function updateFastaSourceInputUi() {
   const panel = getGenericFastaSourcePanel();
   const needsRender =
     panel.dataset.rendered !== "true" ||
+    panel.dataset.streamedLoadedFile !== String(selectedToolUsesStreamedLoadedFastaSource()) ||
     !panel.querySelector(".file-source-tabs") ||
     !panel.querySelector("#fastaSourceIndexedFiles") ||
     !panel.querySelector("#fastaFile") ||
@@ -1523,7 +1552,12 @@ function appendFastaRegionFileSlot(parent, { id, label, accept, dropLabel }) {
   parent.append(slot);
 }
 
-function appendFastaRegionLoadedFileSlot(parent, { loadFile: customLoadFile, statusText } = {}) {
+function appendFastaRegionLoadedFileSlot(parent, {
+  inputId = "loadedFastaSourceFile",
+  loadFile: customLoadFile,
+  retainFile = false,
+  statusText
+} = {}) {
   const slot = document.createElement("div");
   slot.id = "fastaRegionLoadedFileSlot";
   slot.className = "indexed-fasta-file-slot";
@@ -1534,7 +1568,7 @@ function appendFastaRegionLoadedFileSlot(parent, { loadFile: customLoadFile, sta
   const browse = document.createElement("label");
   browse.className = "file-button file-option-browse";
   const input = document.createElement("input");
-  input.id = "loadedFastaSourceFile";
+  input.id = inputId;
   input.type = "file";
   input.accept = ".fa,.fasta,.fna,.faa,.txt,.fa.gz,.fasta.gz,.fna.gz,.faa.gz,.gz";
   input.setAttribute("aria-label", "Paste/upload FASTA source file");
@@ -1547,14 +1581,30 @@ function appendFastaRegionLoadedFileSlot(parent, { loadFile: customLoadFile, sta
   dropZone.tabIndex = 0;
   dropZone.textContent = "Drop FASTA or FASTA.GZ here";
   const status = document.createElement("div");
-  status.id = "loadedFastaSourceFileStatus";
+  status.id = `${inputId}Status`;
   status.className = "indexed-fasta-status-row";
   status.hidden = true;
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "secondary";
+  remove.dataset.removeLoadedFasta = "true";
+  remove.textContent = "Remove file";
+  remove.hidden = true;
+  remove.addEventListener("click", () => {
+    input.value = "";
+    status.textContent = "";
+    status.hidden = true;
+    remove.hidden = true;
+    clearToolOutput();
+  });
+  if (retainFile) heading.append(remove);
   const loadFile = async (file) => {
     if (!file) {
       return;
     }
-    if (customLoadFile) {
+    if (retainFile) {
+      clearToolOutput();
+    } else if (customLoadFile) {
       await customLoadFile(file);
     } else {
       await loadInputFile(file);
@@ -1562,11 +1612,14 @@ function appendFastaRegionLoadedFileSlot(parent, { loadFile: customLoadFile, sta
     status.hidden = false;
     status.textContent = typeof statusText === "function"
       ? statusText(file)
-      : `Loaded ${file.name} into the FASTA text editor`;
+      : retainFile
+        ? `Selected ${file.name} for incremental worker scanning`
+        : `Loaded ${file.name} into the FASTA text editor`;
+    if (retainFile) remove.hidden = false;
   };
   input.addEventListener("change", async () => {
     await loadFile(input.files?.[0]);
-    input.value = "";
+    if (!retainFile) input.value = "";
   });
   dropZone.addEventListener("dragover", (event) => {
     event.preventDefault();
@@ -1576,7 +1629,11 @@ function appendFastaRegionLoadedFileSlot(parent, { loadFile: customLoadFile, sta
   dropZone.addEventListener("drop", async (event) => {
     event.preventDefault();
     dropZone.classList.remove("drag-over");
-    await loadFile(event.dataTransfer?.files?.[0]);
+    if (retainFile) {
+      setFileOptionFiles(input, event.dataTransfer?.files, false);
+    } else {
+      await loadFile(event.dataTransfer?.files?.[0]);
+    }
   });
   dropZone.addEventListener("keydown", (event) => {
     if (event.key !== "Enter" && event.key !== " ") {

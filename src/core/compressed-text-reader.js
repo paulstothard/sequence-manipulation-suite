@@ -169,6 +169,60 @@ export async function* streamTextLines(chunks, options = {}) {
   }
 }
 
+export async function* streamTextLineSegments(chunks, options = {}) {
+  const maxSegmentCharacters = options.maxSegmentCharacters ?? 1024 * 1024;
+  if (!Number.isSafeInteger(maxSegmentCharacters) || maxSegmentCharacters < 1) {
+    throw new Error("Text line segment size must be a positive safe integer.");
+  }
+  let buffer = "";
+  let lineOpen = false;
+  let skipLeadingLf = false;
+
+  function* appendText(text) {
+    let offset = 0;
+    while (offset < text.length) {
+      const count = Math.min(maxSegmentCharacters - buffer.length, text.length - offset);
+      buffer += text.slice(offset, offset + count);
+      offset += count;
+      lineOpen = true;
+      if (buffer.length === maxSegmentCharacters) {
+        yield { text: buffer, endOfLine: false };
+        buffer = "";
+      }
+    }
+  }
+
+  for await (const rawChunk of chunks) {
+    throwIfAborted(options.signal);
+    let text = String(rawChunk ?? "");
+    if (!text) continue;
+    if (skipLeadingLf) {
+      if (text.startsWith("\n")) text = text.slice(1);
+      skipLeadingLf = false;
+    }
+    let start = 0;
+    for (let index = 0; index < text.length; index += 1) {
+      const character = text[index];
+      if (character !== "\n" && character !== "\r") continue;
+      yield* appendText(text.slice(start, index));
+      yield { text: buffer, endOfLine: true };
+      buffer = "";
+      lineOpen = false;
+      if (character === "\r") {
+        if (text[index + 1] === "\n") index += 1;
+        else if (index === text.length - 1) skipLeadingLf = true;
+      }
+      start = index + 1;
+      throwIfAborted(options.signal);
+    }
+    yield* appendText(text.slice(start));
+  }
+
+  if (lineOpen || buffer) {
+    yield { text: buffer, endOfLine: true };
+  }
+}
+
 export function streamTextFileLines(file, options = {}) {
   return streamTextLines(streamTextFileChunks(file, options), options);
 }

@@ -1,5 +1,5 @@
 import { fastaLengthFilterTableColumns } from "../../core/fasta-length-filter.js";
-import { WHOLE_FASTA_SCAN_NOTE } from "../fasta-input-policy.js";
+import { STREAMED_FASTA_SCAN_NOTE } from "../fasta-input-policy.js";
 import { makeFastaSourceInputOptions } from "../fasta-source-options.js";
 
 export const fastaLengthFilterMetadata = {
@@ -29,7 +29,7 @@ export const fastaLengthFilterMetadata = {
   workerModule: "../tools/fasta-length-filter/run.js",
   workerExport: "runFastaLengthFilter",
   options: [
-    ...makeFastaSourceInputOptions(),
+    ...makeFastaSourceInputOptions({ includeStreamedFile: true }),
     {
       id: "minLength",
       type: "number",
@@ -168,7 +168,20 @@ export const fastaLengthFilterMetadata = {
     {
       id: "compressedInputNote",
       type: "note",
-      text: WHOLE_FASTA_SCAN_NOTE
+      text: STREAMED_FASTA_SCAN_NOTE
+    },
+    {
+      type: "group",
+      label: "Limits",
+      collapsible: true,
+      collapsed: true,
+      options: [
+        {
+          id: "streamingLimitsNote",
+          type: "note",
+          text: "Runs accept source files up to 512 MiB, 150 MiB of decoded text, 10,000 records, 100 million accepted sequence characters, 10,000 characters per header, and 5 million header characters in total. FAI and GZI sidecars are limited to 16 MiB each, sequence filter text to 10,000 characters, and materialized selected output to 26,214,400 characters. Report and table runs do not retain every sequence."
+        }
+      ]
     }
   ]
 };

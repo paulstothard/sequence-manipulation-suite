@@ -1,8 +1,10 @@
 import {
   fastaLengthFilterTableColumns,
-  filterFastaByLength
+  FASTA_LENGTH_FILTER_LIMITS,
+  filterFastaRecordSource
 } from "../../core/fasta-length-filter.js";
-import { resolveFastaSourceInput } from "../fasta-source-runner.js";
+import { makeBoundedTsv } from "../../core/bounded-text-builder.js";
+import { openFastaRecordSource } from "../../core/fasta-record-source.js";
 import { makeTableStream, makeTextStream, makeToolResult } from "../../core/workflow.js";
 
 const OUTPUT_FORMATS = new Set(["filtered-fasta", "removed-fasta", "report", "tsv"]);
@@ -11,16 +13,11 @@ function normalizeOutputFormat(value) {
   return OUTPUT_FORMATS.has(value) ? value : "filtered-fasta";
 }
 
-function escapeTsv(value) {
-  return String(value ?? "").replace(/\t/g, " ").replace(/\r?\n/g, " ");
-}
-
-function makeTsv(rows) {
-  const headers = fastaLengthFilterTableColumns.map((column) => column.id);
-  return [
-    headers.join("\t"),
-    ...rows.map((row) => headers.map((header) => escapeTsv(row[header])).join("\t"))
-  ].join("\n");
+function selectedOutputLimit(value) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isSafeInteger(parsed) && parsed > 0
+    ? parsed
+    : FASTA_LENGTH_FILTER_LIMITS.maxMaterializedOutputCharacters;
 }
 
 export async function runFastaLengthFilter(input, options = {}, context = {}) {
@@ -28,18 +25,18 @@ export async function runFastaLengthFilter(input, options = {}, context = {}) {
   context.throwIfCancelled?.();
   await context.yieldIfNeeded?.();
 
-  const resolvedInput = await resolveFastaSourceInput(input, options, context);
-  const result = filterFastaByLength(resolvedInput.input, options);
-  if (resolvedInput.warnings.length) {
-    result.warnings.unshift(...resolvedInput.warnings);
-  }
+  const source = await openFastaRecordSource(input, { ...options, allowRawSequence: true }, context);
+  const result = await filterFastaRecordSource(source, options, context);
 
   context.reportProgress?.({ phase: "building-output", progress: 0.75 });
   context.throwIfCancelled?.();
   await context.yieldIfNeeded?.();
 
   const outputFormat = normalizeOutputFormat(options.outputFormat);
-  const tsv = makeTsv(result.tableRows);
+  const maxOutputCharacters = selectedOutputLimit(options.maxMaterializedOutputCharacters);
+  const tsv = outputFormat === "tsv"
+    ? makeBoundedTsv(fastaLengthFilterTableColumns, result.tableRows, maxOutputCharacters, "FASTA decision table output")
+    : "";
   const outputs = {
     "filtered-fasta": result.keptFasta,
     "removed-fasta": result.removedFasta,
@@ -58,6 +55,9 @@ export async function runFastaLengthFilter(input, options = {}, context = {}) {
     report: "text/plain;charset=utf-8",
     tsv: "text/tab-separated-values;charset=utf-8"
   };
+  if (outputs[outputFormat].length > maxOutputCharacters) {
+    throw new Error(`Selected output contains ${outputs[outputFormat].length.toLocaleString()} characters, above the current materialized-output limit of ${maxOutputCharacters.toLocaleString()}.`);
+  }
 
   context.reportProgress?.({ phase: "finished", progress: 1 });
 
@@ -70,17 +70,20 @@ export async function runFastaLengthFilter(input, options = {}, context = {}) {
     warnings: result.warnings,
     recordsProcessed: result.records.length,
     basesProcessed: result.basesProcessed,
-    charactersRemoved: 0,
-    streams: {
-      filteredFasta: makeTextStream(result.keptFasta, "text/x-fasta"),
-      removedFasta: makeTextStream(result.removedFasta, "text/x-fasta"),
-      report: makeTextStream(result.report, "text/plain"),
-      table: makeTableStream(fastaLengthFilterTableColumns, result.tableRows, "fasta-length-filter"),
-      sequenceRecords: {
-        kind: "sequence-records",
-        schema: "fasta-length-filter-records",
-        records: result.keptRecords
+    charactersRemoved: source.stats.ignoredSequenceWhitespace,
+    streams: outputFormat === "filtered-fasta"
+      ? {
+        filteredFasta: makeTextStream(result.keptFasta, "text/x-fasta"),
+        sequenceRecords: {
+          kind: "sequence-records",
+          schema: "fasta-length-filter-records",
+          records: result.keptRecords
+        }
       }
-    }
+      : outputFormat === "removed-fasta"
+        ? { removedFasta: makeTextStream(result.removedFasta, "text/x-fasta") }
+        : outputFormat === "tsv"
+          ? { table: makeTableStream(fastaLengthFilterTableColumns, result.tableRows, "fasta-length-filter") }
+          : { report: makeTextStream(result.report, "text/plain") }
   });
 }

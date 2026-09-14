@@ -1,5 +1,5 @@
 import { fastaValidationTableColumns } from "../../core/fasta-validator.js";
-import { WHOLE_FASTA_SCAN_NOTE } from "../fasta-input-policy.js";
+import { STREAMED_FASTA_SCAN_NOTE } from "../fasta-input-policy.js";
 import { makeFastaSourceInputOptions } from "../fasta-source-options.js";
 
 export const fastaValidatorNormalizerMetadata = {
@@ -29,7 +29,7 @@ export const fastaValidatorNormalizerMetadata = {
   workerModule: "../tools/fasta-validator-normalizer/run.js",
   workerExport: "runFastaValidatorNormalizer",
   options: [
-    ...makeFastaSourceInputOptions(),
+    ...makeFastaSourceInputOptions({ includeStreamedFile: true }),
     {
       id: "checkReverseComplement",
       type: "checkbox",
@@ -57,7 +57,20 @@ export const fastaValidatorNormalizerMetadata = {
     {
       id: "scopeNote",
       type: "note",
-      text: `This tool summarizes FASTA structure and duplicates. ${WHOLE_FASTA_SCAN_NOTE}`
+      text: `This tool summarizes FASTA structure and duplicates. ${STREAMED_FASTA_SCAN_NOTE}`
+    },
+    {
+      type: "group",
+      label: "Limits",
+      collapsible: true,
+      collapsed: true,
+      options: [
+        {
+          id: "streamingLimitsNote",
+          type: "note",
+          text: "Runs accept source files up to 512 MiB, 150 MiB of decoded text, 10,000 records, 100 million accepted sequence characters, 10,000 characters per header, and 5 million header characters in total. FAI and GZI sidecars are limited to 16 MiB each. Materialized output is limited to 26,214,400 characters. Reverse-complement duplicate checking retains sequence text and is limited to 25 million bases."
+        }
+      ]
     }
   ]
 };

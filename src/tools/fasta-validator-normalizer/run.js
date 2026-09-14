@@ -1,22 +1,19 @@
 import {
   fastaValidationTableColumns,
-  validateFasta
+  FASTA_SUMMARIZER_LIMITS,
+  summarizeFastaSource
 } from "../../core/fasta-validator.js";
-import { resolveFastaSourceInput } from "../fasta-source-runner.js";
+import { openFastaRecordSource } from "../../core/fasta-record-source.js";
+import { makeBoundedTsv } from "../../core/bounded-text-builder.js";
 import { makeTableStream, makeTextStream, makeToolResult } from "../../core/workflow.js";
 
 const TABLE_COLUMNS = fastaValidationTableColumns;
 
-function escapeTsv(value) {
-  return String(value ?? "").replace(/\t/g, " ").replace(/\r?\n/g, " ");
-}
-
-function makeTsv(rows) {
-  const headers = TABLE_COLUMNS.map((column) => column.id);
-  return [
-    headers.join("\t"),
-    ...rows.map((row) => headers.map((header) => escapeTsv(row[header])).join("\t"))
-  ].join("\n");
+function selectedOutputLimit(value) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isSafeInteger(parsed) && parsed > 0
+    ? parsed
+    : FASTA_SUMMARIZER_LIMITS.maxMaterializedOutputCharacters;
 }
 
 export async function runFastaValidatorNormalizer(input, options = {}, context = {}) {
@@ -24,17 +21,17 @@ export async function runFastaValidatorNormalizer(input, options = {}, context =
   context.throwIfCancelled?.();
   await context.yieldIfNeeded?.();
 
-  const resolvedInput = await resolveFastaSourceInput(input, options, context);
-  const result = validateFasta(resolvedInput.input, options);
-  if (resolvedInput.warnings.length) {
-    result.warnings.unshift(...resolvedInput.warnings);
-  }
+  const source = await openFastaRecordSource(input, options, context);
+  const result = await summarizeFastaSource(source, options, context);
   context.reportProgress?.({ phase: "building-output", progress: 0.75 });
   context.throwIfCancelled?.();
   await context.yieldIfNeeded?.();
 
   const outputFormat = options.outputFormat ?? "report";
-  const tsv = makeTsv(result.tableRows);
+  const maxOutputCharacters = selectedOutputLimit(options.maxMaterializedOutputCharacters);
+  const tsv = outputFormat === "tsv"
+    ? makeBoundedTsv(TABLE_COLUMNS, result.tableRows, maxOutputCharacters, "FASTA summary table output")
+    : "";
   let output = result.report;
   let filename = "fasta-summary-report.txt";
   let mimeType = "text/plain;charset=utf-8";
@@ -49,6 +46,10 @@ export async function runFastaValidatorNormalizer(input, options = {}, context =
     mimeType = "text/tab-separated-values;charset=utf-8";
   }
 
+  if (output.length > maxOutputCharacters) {
+    throw new Error(`Selected output contains ${output.length.toLocaleString()} characters, above the current materialized-output limit of ${maxOutputCharacters.toLocaleString()}.`);
+  }
+
   context.reportProgress?.({ phase: "finished", progress: 1 });
 
   return makeToolResult({
@@ -57,11 +58,11 @@ export async function runFastaValidatorNormalizer(input, options = {}, context =
     warnings: result.warnings,
     recordsProcessed: result.records.length,
     basesProcessed: result.basesProcessed,
-    charactersRemoved: 0,
-    streams: {
-      report: makeTextStream(result.report, "text/plain"),
-      fasta: makeTextStream(result.normalizedFasta, "text/x-fasta"),
-      table: makeTableStream(TABLE_COLUMNS, result.tableRows, "fasta-validation")
-    }
+    charactersRemoved: source.stats.ignoredSequenceWhitespace,
+    streams: outputFormat === "fasta"
+      ? { fasta: makeTextStream(result.normalizedFasta, "text/x-fasta") }
+      : outputFormat === "tsv"
+        ? { table: makeTableStream(TABLE_COLUMNS, result.tableRows, "fasta-validation") }
+        : { report: makeTextStream(result.report, "text/plain") }
   });
 }

@@ -334,17 +334,19 @@ function makeBioWasmIndexedFastaReader(indexedInput) {
   };
 }
 
-export function makeIndexedFastaReader(indexedInput) {
+export function makeIndexedFastaReader(indexedInput, options = {}) {
   const parsed = parseFaiIndex(indexedInput.faiText);
   if (parsed.warnings.length) throw new Error(parsed.warnings.join(" "));
-  if (canRunBioWasmHtsTools()) {
+  if (options.preferJs !== true && canRunBioWasmHtsTools()) {
     return makeBioWasmIndexedFastaReader(indexedInput);
   }
   const reader = makeIndexedFastaJsReader(indexedInput);
-  reader.warnings.push(makeBioWasmFallbackWarning({
-    toolLabel: "BioWasm samtools faidx",
-    fallbackLabel: "the JS indexed FASTA reader"
-  }));
+  if (options.suppressFallbackWarning !== true) {
+    reader.warnings.push(makeBioWasmFallbackWarning({
+      toolLabel: "BioWasm samtools faidx",
+      fallbackLabel: "the JS indexed FASTA reader"
+    }));
+  }
   return reader;
 }
 

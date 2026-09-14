@@ -1,6 +1,9 @@
 export const WHOLE_FASTA_SCAN_NOTE =
   "Paste/upload mode loads plain FASTA or ordinary FASTA.GZ and scans records locally. Indexed FASTA modes can read prepared FASTA+FAI or BGZF FASTA+FAI+GZI bundles, but whole-record tools still materialize and inspect every record.";
 
+export const STREAMED_FASTA_SCAN_NOTE =
+  "Pasted FASTA is processed from the editor. Chosen FASTA/FASTA.GZ files and prepared FASTA+FAI or BGZF FASTA+FAI+GZI bundles are scanned incrementally in the worker without reconstructing the complete source as one FASTA string. FAI-backed scans use indexed sequence names and cannot recover full original header descriptions or line-format details.";
+
 export const FASTA_TABLE_CONVERTER_SCAN_NOTE =
   "FASTA To Table loads plain FASTA or ordinary FASTA.GZ in paste/upload mode. Indexed FASTA modes can materialize records from FASTA+FAI or BGZF FASTA+FAI+GZI bundles before building table rows; this is whole-record conversion, not targeted ID or coordinate retrieval.";
 

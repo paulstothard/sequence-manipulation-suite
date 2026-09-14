@@ -1,6 +1,5 @@
 import { renderVariantConsensusInput } from './variant-consensus-input-ui.js';
 import { EDITOR_TOOLS, parseEditorDocument, readEditorDocumentFile, readEditorRecovery, createEditorSession } from './editor-session.js';
-import { readTreeDocumentStream } from "../core/tree-document-stream.js";
 import { tools } from "../tools/registry.js";
 import { sequenceExtractorExamples } from "../examples/sequence-extractor-examples.js";
 import { compareToolCategories } from "../tools/categories.js";
@@ -4865,13 +4864,7 @@ const outputShell = createOutputShellController({
   flattenOptions,
   getOptions,
   pluralize,
-  loadAlignmentViewerRegion,
-  openTreeDocument: async stream => {
-    readTreeDocumentStream(stream);
-    selectTool(getToolById("tree-viewer"));
-    elements.sequenceInput.value = stream.items[0].text;
-    await runSelectedTool();
-  }
+  loadAlignmentViewerRegion
 });
 
 function renderMessages(result) {

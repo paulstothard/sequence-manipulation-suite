@@ -1,6 +1,6 @@
 import { INDEXED_FASTA_BUNDLE_NOTE } from "./fasta-input-policy.js";
 
-export function makeFastaSourceInputOptions({ includeIndexed = true } = {}) {
+export function makeFastaSourceInputOptions({ includeIndexed = true, includeStreamedFile = false } = {}) {
   if (!includeIndexed) {
     return [];
   }
@@ -18,6 +18,15 @@ export function makeFastaSourceInputOptions({ includeIndexed = true } = {}) {
       ],
       help: "Choose pasted/uploaded FASTA or FASTA.GZ, uncompressed FASTA+FAI, or BGZF FASTA+FAI+GZI in the input panel."
     },
+    ...(includeStreamedFile ? [{
+      id: "loadedFastaFile",
+      type: "file",
+      placement: "input",
+      label: "FASTA/FASTA.GZ file",
+      accept: ".fa,.fasta,.fna,.faa,.txt,.fa.gz,.fasta.gz,.fna.gz,.faa.gz,.gz",
+      dropLabel: "Drop FASTA or FASTA.GZ here",
+      help: "Scanned incrementally in the worker without copying the complete file into the text editor."
+    }] : []),
     {
       id: "fastaFile",
       type: "file",

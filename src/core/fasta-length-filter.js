@@ -1,5 +1,10 @@
 import { formatFastaRecord, parseSequenceInput } from "./fasta.js";
 
+export const FASTA_LENGTH_FILTER_LIMITS = Object.freeze({
+  maxMaterializedOutputCharacters: 25 * 1024 * 1024,
+  maxSequenceQueryCharacters: 10_000
+});
+
 export const fastaLengthFilterTableColumns = [
   { id: "title", label: "Title", type: "string" },
   { id: "length", label: "Length", type: "number" },
@@ -24,7 +29,7 @@ const SORT_MODES = new Set([
   "ambiguous-desc"
 ]);
 
-function normalizeOptions(options = {}) {
+export function normalizeFastaLengthFilterOptions(options = {}) {
   const minLength = Math.max(0, Number.parseInt(options.minLength, 10) || 0);
   const rawMax = Number.parseInt(options.maxLength, 10);
   const maxLength = Number.isFinite(rawMax) && rawMax > 0 ? rawMax : Number.POSITIVE_INFINITY;
@@ -176,7 +181,7 @@ function recordReasons(record, normalized, stats) {
 }
 
 export function filterFastaByLength(input, options = {}) {
-  const normalized = normalizeOptions(options);
+  const normalized = normalizeFastaLengthFilterOptions(options);
   const records = parseSequenceInput(input, "sequence");
   const warnings = [];
 
@@ -277,5 +282,261 @@ export function filterFastaByLength(input, options = {}) {
     warnings,
     basesProcessed,
     options: normalized
+  };
+}
+
+function countSequenceStats(state, text) {
+  const upper = text.toUpperCase();
+  for (const character of upper) {
+    if (character === "G" || character === "C") state.gc += 1;
+    if (character === "A" || character === "C" || character === "G" || character === "T" || character === "U") {
+      state.atgc += 1;
+    } else {
+      state.ambiguous += 1;
+    }
+    if (state.leadingOpen) {
+      if (character === "T" || character === "U") state.leadingTu += 1;
+      else state.leadingOpen = false;
+    }
+    state.trailingA = character === "A" ? state.trailingA + 1 : 0;
+  }
+  if (state.sequenceContains && !state.sequenceContainsFound) {
+    const combined = state.sequenceCarry + upper;
+    state.sequenceContainsFound = combined.includes(state.sequenceContains);
+    const overlap = Math.max(0, state.sequenceContains.length - 1);
+    state.sequenceCarry = overlap > 0 ? combined.slice(-overlap) : "";
+  }
+}
+
+function makeStreamingReasons(record, normalized) {
+  const reasons = [];
+  if (record.length < normalized.minLength) {
+    reasons.push(`length ${record.length} is shorter than minimum ${normalized.minLength}`);
+  }
+  if (record.length > normalized.maxLength) {
+    reasons.push(`length ${record.length} is longer than maximum ${normalized.maxLength}`);
+  }
+  if (normalized.titleContains && !record.title.toLowerCase().includes(normalized.titleContains.toLowerCase())) {
+    reasons.push(`title does not contain "${normalized.titleContains}"`);
+  }
+  if (normalized.sequenceContains && !record.sequenceContainsFound) {
+    reasons.push(`sequence does not contain "${normalized.sequenceContains}"`);
+  }
+  if (normalized.minGcPercent !== null && (record.gcPercent === null || record.gcPercent < normalized.minGcPercent)) {
+    reasons.push(`GC percent is below ${normalized.minGcPercent}`);
+  }
+  if (normalized.maxGcPercent !== null && (record.gcPercent === null || record.gcPercent > normalized.maxGcPercent)) {
+    reasons.push(`GC percent is above ${normalized.maxGcPercent}`);
+  }
+  if (normalized.maxAmbiguousCount !== null && record.ambiguousCount > normalized.maxAmbiguousCount) {
+    reasons.push(`ambiguous character count ${record.ambiguousCount} is above ${normalized.maxAmbiguousCount}`);
+  }
+  return reasons;
+}
+
+function makeFilterReport(analysis, normalized) {
+  const maxLabel = Number.isFinite(normalized.maxLength) ? normalized.maxLength : "no maximum";
+  return [
+    "FASTA filter / select",
+    "",
+    `Records processed: ${analysis.records.length}`,
+    `Bases processed: ${analysis.basesProcessed}`,
+    `Length range: ${normalized.minLength} to ${maxLabel}`,
+    `Title contains: ${normalized.titleContains || "not used"}`,
+    `Sequence contains: ${normalized.sequenceContains || "not used"}`,
+    `GC percent range: ${normalized.minGcPercent ?? "no minimum"} to ${normalized.maxGcPercent ?? "no maximum"}`,
+    `Maximum ambiguous characters: ${normalized.maxAmbiguousCount ?? "not used"}`,
+    `Action for matching records: ${normalized.selectionAction === "keep" ? "Keep matching records" : "Remove matching records"}`,
+    `Output sort: ${normalized.sortMode}`,
+    `Terminal poly-A/T trimming: ${normalized.trimTerminalPolyAt ? `on, minimum run ${normalized.polyAtMinLength}` : "off"}`,
+    `Join selected records: ${normalized.joinSelectedRecords ? `yes, title "${normalized.joinedTitle}"` : "no"}`,
+    `Records selected: ${analysis.keptCount}`,
+    `Records not selected: ${analysis.removedCount}`,
+    `Output FASTA records: ${normalized.joinSelectedRecords && analysis.keptCount > 0 ? 1 : analysis.keptCount}`
+  ].join("\n");
+}
+
+function formattedFastaLength(title, sequenceLength, lineWidth) {
+  return title.length + 2 + sequenceLength + (sequenceLength > 0 ? Math.ceil(sequenceLength / lineWidth) : 0);
+}
+
+function compareStreamingRecords(left, right, sortMode) {
+  const compareStrings = (first, second) => String(first).localeCompare(String(second), undefined, { numeric: true, sensitivity: "base" });
+  if (sortMode === "length-asc") return left.sortLength - right.sortLength || compareStrings(left.title, right.title);
+  if (sortMode === "length-desc") return right.sortLength - left.sortLength || compareStrings(left.title, right.title);
+  if (sortMode === "title-asc") return compareStrings(left.title, right.title);
+  if (sortMode === "title-desc") return compareStrings(right.title, left.title);
+  if (sortMode === "gc-asc") return (left.sortGcPercent ?? -1) - (right.sortGcPercent ?? -1) || compareStrings(left.title, right.title);
+  if (sortMode === "gc-desc") return (right.sortGcPercent ?? -1) - (left.sortGcPercent ?? -1) || compareStrings(left.title, right.title);
+  if (sortMode === "ambiguous-asc") return left.sortAmbiguousCount - right.sortAmbiguousCount || compareStrings(left.title, right.title);
+  if (sortMode === "ambiguous-desc") return right.sortAmbiguousCount - left.sortAmbiguousCount || compareStrings(left.title, right.title);
+  return left.index - right.index;
+}
+
+async function materializeSelectedRecords(source, records, normalized, outputFormat, options, context) {
+  const includeKept = outputFormat === "filtered-fasta";
+  const targets = records.filter((record) => includeKept ? record.keep : !record.keep);
+  const lineWidth = normalized.lineWidth;
+  const maxOutputCharacters = normalizePositiveLimit(
+    options.maxMaterializedOutputCharacters,
+    FASTA_LENGTH_FILTER_LIMITS.maxMaterializedOutputCharacters
+  );
+  const predictedLength = includeKept && normalized.joinSelectedRecords && targets.length > 0
+    ? formattedFastaLength(normalized.joinedTitle, targets.reduce((sum, record) => sum + record.outputLength, 0), lineWidth)
+    : targets.reduce((sum, record) => sum + formattedFastaLength(
+      record.title,
+      includeKept ? record.outputLength : record.length,
+      lineWidth
+    ), 0);
+  if (predictedLength > maxOutputCharacters) {
+    throw new Error(`Selected FASTA output would contain ${predictedLength.toLocaleString()} characters, above the current materialized-output limit of ${maxOutputCharacters.toLocaleString()}. Choose a summary/table output or narrow the selection.`);
+  }
+
+  const byIndex = new Map(targets.map((record) => [record.index, { ...record, parts: [] }]));
+  for await (const event of source.events({ recordIndexes: byIndex.keys(), trackStats: false })) {
+    context.throwIfCancelled?.();
+    if (event.type === "sequence-chunk") byIndex.get(event.record)?.parts.push(event.text);
+  }
+  let materialized = targets.map((record) => {
+    const value = byIndex.get(record.index);
+    const originalSequence = value?.parts.join("") ?? "";
+    const end = Math.max(record.trimmedFivePrime, originalSequence.length - record.trimmedThreePrime);
+    const sequence = includeKept
+      ? originalSequence.slice(record.trimmedFivePrime, end)
+      : originalSequence;
+    const stats = sequenceStats(sequence);
+    return {
+      ...record,
+      sequence,
+      sortLength: sequence.length,
+      sortGcPercent: stats.gcPercent,
+      sortAmbiguousCount: stats.ambiguousCount
+    };
+  });
+  if (includeKept) materialized.sort((left, right) => compareStreamingRecords(left, right, normalized.sortMode));
+  if (includeKept && normalized.joinSelectedRecords && materialized.length > 0) {
+    materialized = [{
+      title: normalized.joinedTitle,
+      sequence: materialized.map((record) => record.sequence).join("")
+    }];
+  }
+  return {
+    records: materialized,
+    fasta: materialized.map((record) => formatFastaRecord(record.title, record.sequence, lineWidth)).join("")
+  };
+}
+
+function normalizePositiveLimit(value, fallback) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+export async function filterFastaRecordSource(source, options = {}, context = {}) {
+  const normalized = normalizeFastaLengthFilterOptions(options);
+  if (normalized.sequenceContains.length > FASTA_LENGTH_FILTER_LIMITS.maxSequenceQueryCharacters) {
+    throw new Error(`Sequence filter text contains ${normalized.sequenceContains.length.toLocaleString()} characters, above the current limit of ${FASTA_LENGTH_FILTER_LIMITS.maxSequenceQueryCharacters.toLocaleString()}.`);
+  }
+  const outputFormat = ["filtered-fasta", "removed-fasta", "report", "tsv"].includes(options.outputFormat)
+    ? options.outputFormat
+    : "filtered-fasta";
+  const records = [];
+  let current = null;
+  let basesProcessed = 0;
+
+  for await (const event of source.events()) {
+    context.throwIfCancelled?.();
+    if (event.type === "record-start") {
+      current = {
+        index: event.record,
+        title: event.title,
+        length: 0,
+        gc: 0,
+        atgc: 0,
+        ambiguous: 0,
+        leadingOpen: true,
+        leadingTu: 0,
+        trailingA: 0,
+        sequenceContains: normalized.sequenceContains,
+        sequenceContainsFound: !normalized.sequenceContains,
+        sequenceCarry: ""
+      };
+      continue;
+    }
+    if (event.type === "sequence-chunk" && current) {
+      current.length += event.text.length;
+      basesProcessed += event.text.length;
+      countSequenceStats(current, event.text);
+      continue;
+    }
+    if (event.type === "record-end" && current) {
+      current.length = event.length;
+      current.gcPercent = current.atgc > 0 ? Number(((current.gc / current.atgc) * 100).toFixed(2)) : null;
+      current.ambiguousCount = current.ambiguous;
+      current.trimmedFivePrime = normalized.trimTerminalPolyAt && current.leadingTu >= normalized.polyAtMinLength ? current.leadingTu : 0;
+      current.trimmedThreePrime = normalized.trimTerminalPolyAt && current.trailingA >= normalized.polyAtMinLength ? current.trailingA : 0;
+      const outputEnd = Math.max(current.trimmedFivePrime, current.length - current.trimmedThreePrime);
+      current.outputLength = outputEnd - current.trimmedFivePrime;
+      current.reasons = makeStreamingReasons(current, normalized);
+      const matches = current.reasons.length === 0;
+      current.keep = normalized.selectionAction === "keep" ? matches : !matches;
+      records.push({
+        index: current.index,
+        title: current.title,
+        length: current.length,
+        gcPercent: current.gcPercent,
+        ambiguousCount: current.ambiguousCount,
+        trimmedFivePrime: current.trimmedFivePrime,
+        trimmedThreePrime: current.trimmedThreePrime,
+        outputLength: current.outputLength,
+        reasons: current.reasons,
+        keep: current.keep
+      });
+      current = null;
+    }
+  }
+
+  const warnings = [...source.warnings];
+  if (records.length === 0) warnings.push("No sequence input was provided.");
+  if (source.stats.usedRawSequence) warnings.push("Input did not start with a FASTA header; treated it as one raw sequence record.");
+  if (normalized.maxLength < normalized.minLength) {
+    warnings.push("Maximum length is shorter than minimum length; no records can be within the selected range.");
+  }
+  if (normalized.minGcPercent !== null || normalized.maxGcPercent !== null) {
+    warnings.push("GC percent filters count A/C/G/T/U characters only; other symbols are ignored for the percentage denominator.");
+  }
+  const keptCount = records.filter((record) => record.keep).length;
+  const removedCount = records.length - keptCount;
+  const analysis = { records, basesProcessed, keptCount, removedCount };
+  const tableRows = outputFormat === "tsv"
+    ? records.map((record) => ({
+      title: record.title,
+      length: record.length,
+      output_length: record.keep ? record.outputLength : "",
+      gc_percent: record.gcPercent,
+      ambiguous_count: record.ambiguousCount,
+      trimmed_5_prime: record.keep ? record.trimmedFivePrime : 0,
+      trimmed_3_prime: record.keep ? record.trimmedThreePrime : 0,
+      status: record.keep ? "kept" : "removed",
+      reason: record.reasons.length > 0 ? record.reasons.join("; ") : "matched all selected criteria"
+    }))
+    : [];
+  const report = outputFormat === "report" ? makeFilterReport(analysis, normalized) : "";
+  const selected = ["filtered-fasta", "removed-fasta"].includes(outputFormat)
+    ? await materializeSelectedRecords(source, records, normalized, outputFormat, options, context)
+    : { records: [], fasta: "" };
+
+  return {
+    records,
+    keptRecords: outputFormat === "filtered-fasta" ? selected.records : [],
+    removedRecords: outputFormat === "removed-fasta" ? selected.records : [],
+    tableRows,
+    report,
+    keptFasta: outputFormat === "filtered-fasta" ? selected.fasta : "",
+    removedFasta: outputFormat === "removed-fasta" ? selected.fasta : "",
+    warnings,
+    basesProcessed,
+    options: normalized,
+    keptCount,
+    removedCount
   };
 }

@@ -95,8 +95,7 @@ export function createOutputShellController({
   flattenOptions,
   getOptions,
   pluralize,
-  loadAlignmentViewerRegion,
-  openTreeDocument
+  loadAlignmentViewerRegion
 }) {
   const alignmentViewerRegionHistory = createAlignmentViewerRegionHistory();
 
@@ -122,11 +121,6 @@ function renderMessages(result) {
   appendOutputDetails(elements.messages, getToolOutputDetails(result));
   appendToolDescriptionActions(elements.messages);
   appendAdditionalDownloadActions(elements.messages, result);
-  if (state.selectedTool?.metadata.id === "phylogeny-builder" && result.streams?.treeDocument && openTreeDocument) {
-    const button = document.createElement("button"); button.type = "button"; button.textContent = "Open in Tree Viewer";
-    button.addEventListener("click", () => openTreeDocument(result.streams.treeDocument));
-    elements.messages.append(button);
-  }
   appendWorkspacePromotionActions(elements.messages, result);
   appendWorkspaceFeatureLayerPromotionActions(elements.messages, result);
   appendWarningSummary(elements.messages, result.warnings);

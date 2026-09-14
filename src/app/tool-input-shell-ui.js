@@ -783,7 +783,7 @@ export function createToolInputShellController({
     }
     if (isFastaSourceTabbedTool()) {
       elements.inputPanel
-        .querySelectorAll("#loadedFastaSourceFile, #fastaFile, #faiFile, #gziFile")
+        .querySelectorAll("#loadedFastaSourceFile, #loadedFastaFile, #fastaFile, #faiFile, #gziFile")
         .forEach((input) => {
           input.value = "";
         });
@@ -791,7 +791,7 @@ export function createToolInputShellController({
     }
     if (isFastaRegionExtractorTool()) {
       elements.inputPanel
-        .querySelectorAll("#loadedFastaSourceFile, #fastaFile, #faiFile, #gziFile")
+        .querySelectorAll("#loadedFastaSourceFile, #loadedFastaFile, #fastaFile, #faiFile, #gziFile")
         .forEach((input) => {
           input.value = "";
         });
@@ -859,11 +859,16 @@ export function createToolInputShellController({
       updateAlignmentViewerInputUi();
     }
     if (isFastaSourceTabbedTool()) {
+      elements.inputPanel
+        .querySelectorAll("#loadedFastaSourceFile, #loadedFastaFile, #fastaFile, #faiFile, #gziFile")
+        .forEach((input) => {
+          input.value = "";
+        });
       updateFastaSourceInputUi();
     }
     if (isFastaRegionExtractorTool()) {
       elements.inputPanel
-        .querySelectorAll("#loadedFastaSourceFile, #fastaFile, #faiFile, #gziFile")
+        .querySelectorAll("#loadedFastaSourceFile, #loadedFastaFile, #fastaFile, #faiFile, #gziFile")
         .forEach((input) => {
           input.value = "";
         });
