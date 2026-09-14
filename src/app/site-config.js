@@ -3,7 +3,7 @@ export const siteConfig = {
   feedbackEmail: "paul.stothard@gmail.com",
   analytics: {
     provider: "Plausible",
-    status: "planned",
-    note: "Use only if it remains compatible with SMS3 privacy and local-processing messaging."
+    status: "enabled on the public site",
+    note: "Self-hosted, cookieless aggregate analytics with no persistent identifiers or cross-site tracking."
   }
 };

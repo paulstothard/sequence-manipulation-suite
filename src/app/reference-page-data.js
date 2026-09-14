@@ -700,10 +700,18 @@ export function makeReferenceTopics(sortedTools) {
     notes: [
       "Sequence text is processed by the app's loaded JavaScript in your browser, and downloads are generated in the browser.",
       "SMS3 does not use cookies.",
+      "The public site uses self-hosted Plausible Analytics to count aggregate page visits, tool-page visits, successful tool runs, and basic device and approximate-location statistics.",
+      "Plausible does not use persistent identifiers or track visitors across websites. It does not store raw IP addresses or full user-agent strings.",
+      "SMS3 analytics never includes sequences, uploaded files or filenames, input or result content, searches, option values, Workspace or workflow content, or error messages.",
       "The app uses browser storage for UI preferences and for Workspace records, saved workflows, and Markdown Notebook content that you choose to save.",
       "Ordinary tool input, workflow input, and output text are not saved to browser storage unless you explicitly save them through Workspace, Workflows, or Markdown Notebook features."
     ],
-    citations: []
+    citations: [
+      {
+        label: "Plausible Analytics data policy",
+        url: "https://plausible.io/data-policy"
+      }
+    ]
   },
   {
     id: "sms3-showcase",

@@ -95,6 +95,10 @@ import { createMarkdownWorkspaceController } from "./markdown-notebook-workspace
 import { parseFlatfileRecords } from "../core/flatfile-records.js";
 import { runWorkflow, validateWorkflowDefinition } from "../core/workflow-engine.js";
 import { shouldShowPointMarkersForSeries } from "../core/plot-renderer.js";
+import {
+  trackPlausiblePageview,
+  trackPlausibleToolRun
+} from "./plausible-analytics.js";
 import { siteConfig } from "./site-config.js";
 import { loadWorkflowPresetExample, workflowPresets } from "./workflow-presets.js";
 import { summarizeProteinStructure } from "../core/protein-structure.js";
@@ -755,7 +759,8 @@ function renderHomeView() {
 
   const note = document.createElement("p");
   note.className = "home-note";
-  note.textContent = "Inputs and results stay in this browser unless you copy, download, or intentionally send feedback.";
+  note.textContent =
+    "Sequences, files, inputs, and results stay in this browser. The public site uses self-hosted, cookieless Plausible Analytics for aggregate usage statistics without persistent identifiers or cross-site tracking.";
   elements.homeBody.append(summary, start, note);
 }
 
@@ -804,6 +809,7 @@ function selectHome({ updateHash = true } = {}) {
 
   if (updateHash && window.location.hash) {
     window.history.pushState(null, "", `${window.location.pathname}${window.location.search}`);
+    trackPlausiblePageview();
   }
 }
 
@@ -938,6 +944,7 @@ function setRouteHash(key, value) {
   const hash = `#${key}=${encodeURIComponent(value)}`;
   if (window.location.hash !== hash) {
     window.history.pushState(null, "", hash);
+    trackPlausiblePageview();
   }
 }
 
@@ -4723,7 +4730,7 @@ function renderFeedbackTemplates() {
   const note = document.createElement("p");
   note.className = "summary feedback-config-note";
   note.textContent =
-    `Feedback is addressed to ${siteConfig.feedbackEmail}. You can open an email app or copy the prepared message. Planned public URL: ${siteConfig.publicUrl}. ` +
+    `Feedback is addressed to ${siteConfig.feedbackEmail}. You can open an email app or copy the prepared message. Public URL: ${siteConfig.publicUrl}. ` +
     `${siteConfig.analytics.provider} analytics is ${siteConfig.analytics.status}; ${siteConfig.analytics.note}`;
   elements.feedbackTemplates.append(note);
 
@@ -5731,6 +5738,9 @@ async function runSelectedTool() {
       options,
       isCurrent
     );
+    if (isCurrent()) {
+      trackPlausibleToolRun(tool.metadata, appVersion);
+    }
   } catch (error) {
     if (!isCurrent()) return;
     resetToolOutputViewer("Run did not produce output.");
