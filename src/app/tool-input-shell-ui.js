@@ -1,4 +1,5 @@
 import { wrapFastaText } from "../core/fasta.js";
+import { applyFixedToolLimits } from "../core/tool-limit-options.js";
 import { EDITOR_TOOLS } from "./editor-session.js";
 import { createTableInputPreview } from "./table-input-preview-ui.js";
 
@@ -727,13 +728,13 @@ export function createToolInputShellController({
     }
 
     if (isSangerTraceViewerTool()) {
-      return {
+      return applyFixedToolLimits(state.selectedTool.metadata, {
         ...values,
         traceSettings: sangerTraceWorkspace.getSettings(values.traceSettings)
-      };
+      });
     }
 
-    return values;
+    return applyFixedToolLimits(state.selectedTool.metadata, values);
   }
 
   function clearToolInputOutput() {

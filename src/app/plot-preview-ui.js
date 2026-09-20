@@ -178,8 +178,8 @@ function addObservableHeatmapAnnotations(svg, plotSpec) {
     const fallback = ["#30123b", "#4664d7", "#35c4aa", "#f5e642", "#e73f0c"];
     return fallback[Math.max(0, Math.min(fallback.length - 1, Math.round(fraction * (fallback.length - 1))))];
   });
-  for (let index = 0; index <= 12; index += 1) {
-    const fraction = index / 12;
+  for (let index = 0; index <= 64; index += 1) {
+    const fraction = index / 64;
     const stop = document.createElementNS(namespace, "stop");
     stop.setAttribute("offset", `${fraction * 100}%`);
     stop.setAttribute("stop-color", colorRamp(1 - fraction));
@@ -405,6 +405,7 @@ export function renderObservablePlotPreview(plotSpec) {
       svg.setAttribute("data-plot-foundation", "observable-plot");
       svg.setAttribute("data-plot-backend", "d3");
       svg.setAttribute("data-plot-renderer", "observable-plot");
+      svg.setAttribute("data-sms3-plot-kind", "heatmap");
       svg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
       lockPlotSvgToLightCanvas(svg);
       addObservableHeatmapAnnotations(svg, plotSpec);
@@ -471,6 +472,8 @@ export function renderObservablePlotPreview(plotSpec) {
       svg.setAttribute("data-plot-foundation", "observable-plot");
       svg.setAttribute("data-plot-backend", "d3");
       svg.setAttribute("data-plot-renderer", "observable-plot");
+      svg.setAttribute("data-sms3-plot-kind", "categorical-bar-plot");
+      svg.setAttribute("data-sms3-plot-width-mode", plotSpec.barWidthMode ?? "compact");
       svg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
       lockPlotSvgToLightCanvas(svg);
       addObservablePlotLegend(svg, plotSpec, topMargin);

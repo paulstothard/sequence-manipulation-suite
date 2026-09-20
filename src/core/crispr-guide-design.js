@@ -755,7 +755,7 @@ async function collectIndexedReferenceSites(options, warnings, context) {
   const indexedSequences = [...fai.records.values()].map(({ name, length }) => ({ name, length }));
   const totalIndexedBases = indexedSequences.reduce((sum, record) => sum + record.length, 0);
   if (totalIndexedBases > options.maxIndexedReferenceBases) {
-    warnings.push(`Indexed reference hit counting was skipped because the indexed FASTA contains ${totalIndexedBases.toLocaleString()} bp, above the current limit of ${options.maxIndexedReferenceBases.toLocaleString()} bp. Raise the indexed reference limit only after confirming the run is appropriate.`);
+    warnings.push(`Indexed reference hit counting was skipped because the indexed FASTA contains ${totalIndexedBases.toLocaleString()} bp, above the ${options.maxIndexedReferenceBases.toLocaleString()} bp limit. Use a smaller reference region for hit counting.`);
     return {
       sites: [],
       basesProcessed: 0,

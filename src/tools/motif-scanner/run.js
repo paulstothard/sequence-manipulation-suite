@@ -14,6 +14,7 @@ import { makeTableStream, makeTextStream, makeToolResult } from "../../core/work
 import dnaRnaMotifs from "../../reference-data/motifs/dna-rna-motifs.js";
 import proteinMotifs from "../../reference-data/motifs/protein-motifs.js";
 import motifProvenance from "../../reference-data/motifs/provenance.js";
+import { MAX_PASTED_FASTA_CHARACTERS_FOR_RICH_OUTPUTS } from "../fasta-input-policy.js";
 
 const DETAILED_REPORT_MATCH_THRESHOLD = 2000;
 const MAX_STREAMED_MOTIF_BASES = 50_000_000;
@@ -610,7 +611,7 @@ async function runStreamedDnaRnaMotifScanner(input, options, config, context) {
 
 async function runMotifScannerWorker(input, options = {}, config, context = {}) {
   const largeSource = config.alphabet === "dna-rna" && Boolean(
-    options.loadedFastaFile?.stream || ["indexed", "bgzf"].includes(options.sourceMode) || String(input ?? "").length > 1_000_000
+    options.loadedFastaFile?.stream || ["indexed", "bgzf"].includes(options.sourceMode) || String(input ?? "").length > MAX_PASTED_FASTA_CHARACTERS_FOR_RICH_OUTPUTS
   );
   if (largeSource) return runStreamedDnaRnaMotifScanner(input, options, config, context);
   context.reportProgress?.({ phase: "parsing-input", progress: 0.05 });

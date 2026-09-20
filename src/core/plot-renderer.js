@@ -27,6 +27,24 @@ const FIGURE_TEXT_LINE_HEIGHT = 16;
 const FIGURE_HEADER_GAP = 36;
 export const HEATMAP_LEGEND_LABEL_GAP = 12;
 
+export function renderHeatmapLegendRamp({ x, y, width, height, colorAt }) {
+  const intervals = 64;
+  const colors = Array.from({ length: intervals + 1 }, (_, index) => String(colorAt(index / intervals)));
+  let hash = 2166136261;
+  for (const color of colors) {
+    for (let index = 0; index < color.length; index += 1) {
+      hash = Math.imul(hash ^ color.charCodeAt(index), 16777619);
+    }
+    hash = Math.imul(hash ^ 124, 16777619);
+  }
+  const gradientId = `sms3-heatmap-ramp-${(hash >>> 0).toString(36)}`;
+  const stops = colors.map((color, index) =>
+    `<stop offset="${(index / intervals).toFixed(5)}" stop-color="${escapeXml(color)}"/>`
+  ).join("");
+  return `<defs><linearGradient id="${gradientId}" data-heatmap-legend-gradient="true" x1="0" y1="0" x2="0" y2="1">${stops}</linearGradient></defs>` +
+    `<rect data-heatmap-legend-bar="true" x="${x}" y="${y}" width="${width}" height="${height}" fill="url(#${gradientId})"/>`;
+}
+
 function getD3() {
   return globalThis.d3 ?? null;
 }
@@ -352,7 +370,7 @@ export function renderCategoricalBarPlotSvg(spec) {
     ? yScale.ticks(4)
     : [0, yMax * 0.25, yMax * 0.5, yMax * 0.75, yMax];
   const parts = [
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(spec.title)}" data-plot-foundation="observable-plot" data-plot-backend="d3" data-plot-renderer="sms3">`,
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(spec.title)}" data-plot-foundation="observable-plot" data-plot-backend="d3" data-plot-renderer="sms3" data-sms3-plot-kind="categorical-bar-plot" data-sms3-plot-width-mode="${wideBars ? "histogram" : "compact"}">`,
     "<style>text{font-family:Inter,Arial,sans-serif;font-size:12px;fill:#172026}.title{font-size:18px;font-weight:700}.axis{stroke:#5c6b75;stroke-width:1}.grid{stroke:#dfe7ec;stroke-width:1}.bar{shape-rendering:crispEdges}.histogram-bar{shape-rendering:auto;stroke:#ffffff;stroke-width:1}.codon-label{font-size:10px;text-anchor:middle}.x-tick{font-size:11px;text-anchor:middle;fill:#334155}.aa-label{font-size:10px;text-anchor:middle;fill:#64748b}.legend-label{font-size:11px}.note{font-size:11px;fill:#64748b}</style>",
     `<rect width="${width}" height="${height}" fill="#ffffff"></rect>`,
     `<text class="title" x="${FIGURE_TEXT_X}" y="${FIGURE_TITLE_Y}">${escapeXml(spec.title)}</text>`,
@@ -569,7 +587,7 @@ export function renderHeatmapPlotSvg(spec) {
   const height = spec.height ?? Math.ceil(plotBottom + margin.bottom + noteLines.length * 14);
   const cellMap = new Map((spec.cells ?? []).map((item) => [`${item.x}\t${item.y}`, item]));
   const parts = [
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(spec.title)}" data-plot-foundation="observable-plot" data-plot-backend="d3" data-plot-renderer="sms3">`,
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(spec.title)}" data-plot-foundation="observable-plot" data-plot-backend="d3" data-plot-renderer="sms3" data-sms3-plot-kind="heatmap">`,
     "<style>[data-plot-renderer=\"sms3\"] text{font-family:Inter,Arial,sans-serif;font-size:11px;fill:#172026;stroke:none!important;stroke-width:0!important;text-shadow:none!important;paint-order:normal!important;font-weight:400}[data-plot-renderer=\"sms3\"] .title{font-size:18px;font-weight:700}[data-plot-renderer=\"sms3\"] .axis-label{font-size:12px;fill:#334155;font-weight:500}[data-plot-renderer=\"sms3\"] .tick{font-size:11px;fill:#334155;font-weight:500}[data-plot-renderer=\"sms3\"] .heatmap-cell{shape-rendering:crispEdges;stroke:#ffffff;stroke-width:1}[data-plot-renderer=\"sms3\"] .heatmap-cell-highlight-marker{fill:#0f766e;fill-opacity:.88}[data-plot-renderer=\"sms3\"] .value{font-size:10px;text-anchor:middle;dominant-baseline:central;fill:#111827;font-weight:500}[data-plot-renderer=\"sms3\"] .note{font-size:11px;fill:#64748b}</style>",
     `<rect width="${width}" height="${height}" fill="#ffffff"></rect>`,
     `<text class="title" x="${FIGURE_TEXT_X}" y="${FIGURE_TITLE_Y}">${escapeXml(spec.title)}</text>`
@@ -618,10 +636,17 @@ export function renderHeatmapPlotSvg(spec) {
   const legendX = margin.left + plotWidth + legendGutter;
   const legendY = margin.top + 8;
   const legendHeight = Math.max(80, Math.min(180, plotHeight));
-  for (let step = 0; step < legendHeight; step += 1) {
-    const value = spec.valueDomain[1] - (step / Math.max(1, legendHeight - 1)) * (spec.valueDomain[1] - spec.valueDomain[0]);
-    parts.push(`<rect data-heatmap-legend-bar="true" x="${legendX}" y="${legendY + step}" width="${legendBarWidth}" height="1" fill="${interpolateColor(value, spec.valueDomain, spec.colorScheme)}"></rect>`);
-  }
+  parts.push(renderHeatmapLegendRamp({
+    x: legendX,
+    y: legendY,
+    width: legendBarWidth,
+    height: legendHeight,
+    colorAt: (fraction) => interpolateColor(
+      spec.valueDomain[1] - fraction * (spec.valueDomain[1] - spec.valueDomain[0]),
+      spec.valueDomain,
+      spec.colorScheme
+    )
+  }));
   parts.push(`<text class="axis-label" data-heatmap-legend-title="true" x="${legendX}" y="${legendY - 18}" text-anchor="start">${escapeXml(legendTitle)}</text>`);
   for (const [kind, value, y] of [
     ["max", spec.valueDomain[1], legendY],

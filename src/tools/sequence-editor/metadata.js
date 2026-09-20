@@ -1,5 +1,5 @@
 import { geneticCodes } from "../../core/genetic-code.js";
-import { sequenceEditorSummaryColumns } from "../../core/sequence-editor.js";
+import { DEFAULT_EDITOR_RESTRICTION_SCAN_LIMIT, sequenceEditorSummaryColumns } from "../../core/sequence-editor.js";
 
 const sequenceEditorSplitInput = {
   separator: "##FASTA",
@@ -110,6 +110,25 @@ export const sequenceEditorMetadata = {
             { value: "editor", label: "Sequence editor" },
             { value: "report", label: "Summary report" }
           ]
+        }
+      ]
+    },
+    {
+      id: "advancedLimits",
+      type: "group",
+      label: "Limits",
+      collapsible: true,
+      collapsed: true,
+      options: [
+        {
+          type: "limit-value",
+          label: "Live restriction-site scan (bases)",
+          value: DEFAULT_EDITOR_RESTRICTION_SCAN_LIMIT,
+          detail: "Live restriction-site feedback stops above this length."
+        },
+        {
+          type: "note",
+          text: "Longer sequences can still be edited, but live restriction-site feedback is unavailable above this length."
         }
       ]
     }

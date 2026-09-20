@@ -1,7 +1,7 @@
 import { makeDnaViewerData } from "./dna-viewer-data.js";
 import { readOptionalReferenceGenomeRegion } from "./optional-reference-genome.js";
 
-const MAX_VIEWER_REGION_SPAN = 1000000;
+export const MAX_VIEWER_REGION_SPAN = 1000000;
 
 function makeRegionNavigation(samResult, options, region = {}) {
   return {

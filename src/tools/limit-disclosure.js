@@ -1,24 +1,7 @@
-const TECHNICAL_LIMIT_GROUP_IDS = new Set(["advancedLimits", "referenceMatchLimitsGroup"]);
+import { getApplicableSharedToolLimits, getToolLimitGroups } from "../core/tool-limit-options.js";
+
+export { getToolLimitGroups };
 const MAX_INLINE_LIMITS = 4;
-
-function flattenOptionNodes(options = []) {
-  const flattened = [];
-  for (const option of options) {
-    flattened.push(option);
-    if (option.type === "group" && Array.isArray(option.options)) {
-      flattened.push(...flattenOptionNodes(option.options));
-    }
-  }
-  return flattened;
-}
-
-function isTechnicalLimitGroup(option) {
-  const label = String(option.label ?? "");
-  return option.type === "group" && (
-    TECHNICAL_LIMIT_GROUP_IDS.has(option.id) ||
-    /^limits$/i.test(label)
-  );
-}
 
 function isReferenceMatchLimitGroup(option) {
   return option.id === "referenceMatchLimitsGroup";
@@ -33,75 +16,53 @@ function formatNumber(value) {
   return decimal ? `${groupedInteger}.${decimal}` : groupedInteger;
 }
 
-function formatLimitRange(option) {
-  const hasMin = option.min !== undefined;
-  const hasMax = option.max !== undefined;
-  if (hasMin && hasMax) {
-    return `${formatNumber(option.min)}-${formatNumber(option.max)}`;
-  }
-  if (hasMin) {
-    return `minimum ${formatNumber(option.min)}`;
-  }
-  if (hasMax) {
-    return `maximum ${formatNumber(option.max)}`;
-  }
-  return "";
-}
-
 function formatLimitOption(option) {
   if (option.type === "note") {
     return String(option.text ?? option.label ?? option.id ?? "Limit").trim();
   }
   const label = String(option.label ?? option.id ?? "Limit").trim();
-  const defaultText = option.defaultValue === undefined ? "" : `default ${formatNumber(option.defaultValue)}`;
-  const rangeText = formatLimitRange(option);
-  if (defaultText && rangeText) {
-    return `${label}: ${defaultText} (${rangeText})`;
+  if (option.type === "limit-value") {
+    return `${label}: ${formatNumber(option.value)}`;
   }
-  if (defaultText) {
-    return `${label}: ${defaultText}`;
-  }
-  if (rangeText) {
-    return `${label}: ${rangeText}`;
-  }
-  return label;
-}
-
-export function getToolLimitGroups(metadata) {
-  return flattenOptionNodes(metadata.options ?? []).filter(isTechnicalLimitGroup);
+  return option.defaultValue === undefined
+    ? label
+    : `${label}: ${formatNumber(option.defaultValue)}`;
 }
 
 export function classifyToolLimitDisclosure(metadata) {
   const groups = getToolLimitGroups(metadata);
+  const sharedLimits = getApplicableSharedToolLimits(metadata);
+  const sharedSummary = sharedLimits.length
+    ? ` File and display limits: ${sharedLimits.map(formatLimitOption).join("; ")}.`
+    : "";
   if (groups.length === 0) {
     return {
       profile: "general",
-      label: "No tool-specific editable limits",
+      label: "Applicable limits",
       controls: [],
-      summary: "This tool has no adjustable processing limit. File and output limits depend on the input and output format; any limit reached is reported when you run the tool."
+      summary: sharedLimits.length
+        ? `Applicable limits: ${sharedLimits.map(formatLimitOption).join("; ")}.`
+        : "Large runs depend on available browser memory."
     };
   }
 
   const controls = groups.flatMap((group) => group.options ?? []);
   const hasReferenceMatchLimits = groups.some(isReferenceMatchLimitGroup);
   const hasTechnicalLimits = groups.some((group) => !isReferenceMatchLimitGroup(group));
-  const hasEditableControls = controls.some((control) => control.type !== "note");
   const label = hasTechnicalLimits && hasReferenceMatchLimits
-    ? "Editable input, processing, and reference-hit limits"
+    ? "Input, processing, and reference-hit limits"
     : hasReferenceMatchLimits
-      ? "Editable reference-hit limits"
-      : hasEditableControls
-        ? "Editable input and processing limits"
-        : "Input and processing limits";
+      ? "Reference-hit limits"
+      : "Input and processing limits";
   const inlineControls = controls.slice(0, MAX_INLINE_LIMITS).map(formatLimitOption);
   const omittedCount = Math.max(0, controls.length - inlineControls.length);
   const suffix = omittedCount > 0 ? `; and ${omittedCount} more` : "";
 
   return {
-    profile: hasReferenceMatchLimits && !hasTechnicalLimits ? "editable-reference-match" : "editable-technical",
+    profile: hasReferenceMatchLimits && !hasTechnicalLimits ? "reference-match" : "technical",
     label,
     controls,
-    summary: `${label}: ${inlineControls.join("; ")}${suffix}.`
+    summary: `${label}: ${inlineControls.join("; ")}${suffix}.${sharedSummary}`
   };
 }
 

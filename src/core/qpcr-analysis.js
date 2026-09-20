@@ -9,7 +9,7 @@ import { twoTailedPValue } from "./hypothesis-tests.js";
 // Efficiency mode averages reaction quantities; conventional ddcq averages Cq.
 // Reference quantities and biological calibrators use geometric means. Supplied
 // efficiencies are fixed: Welch intervals do not propagate efficiency error.
-export const QPCR_LIMITS = Object.freeze({ characters: 5_000_000, reactions: 25_000, cells: 500_000, columns: 32, samples: 2000, targets: 64, conditions: 24, sampleResults: 50_000, plotPoints: 1000, plotTargets: 12, plotConditions: 12 });
+export const QPCR_LIMITS = Object.freeze({ characters: 5_000_000, reactions: 25_000, cells: 500_000, columns: 32, samples: 2000, targets: 64, conditions: 24, sampleResults: 50_000, plotPoints: 1000, plotTargets: 12, plotConditions: 12, plotGroups: 72 });
 const missing = new Set(["", "na", "n/a", "nan", "undetermined", "undetected", "no cq", "no ct", "no cp"]);
 const decimal = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i;
 const mean = xs => xs.reduce((a, b) => a + b, 0) / xs.length;

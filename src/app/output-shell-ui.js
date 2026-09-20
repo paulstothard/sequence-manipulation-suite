@@ -82,8 +82,7 @@ import {
   supportsPortableViewerExport
 } from "./portable-viewer-export.js";
 
-const XLSX_EXPORT_ROW_LIMIT = 50000;
-const XLSX_EXPORT_CELL_LIMIT = 250000;
+import { XLSX_EXPORT_CELL_LIMIT, XLSX_EXPORT_ROW_LIMIT } from "../core/tool-limit-options.js";
 export function createOutputShellController({
   elements,
   state,

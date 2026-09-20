@@ -25,7 +25,7 @@ function countRecords(records) {
 const featureTypeCounts = countRecords(plasmidCommonFeatureRecords);
 
 const featureChoices = [
-  { value: "all", label: "All selected feature records", always: true },
+  { value: "all", label: "All signatures in selected type", always: true },
   ...plasmidCommonFeatureRecords.map((record) => ({
     value: record.id,
     label: `${record.name} (${featureTypeLabel(record.type)})`,
@@ -94,7 +94,7 @@ export const plasmidCommonFeatureScannerMetadata = {
           id: "featureId",
           type: "select",
           label: "Feature",
-          help: "Choose one bundled feature signature, or leave as All selected feature records to scan the selected type.",
+          help: "Choose one bundled signature to look for in your input DNA, or use All signatures in selected type to search for every signature in the selected feature type.",
           defaultValue: "all",
           dependsOn: "featureType",
           choices: featureChoices
@@ -123,8 +123,9 @@ export const plasmidCommonFeatureScannerMetadata = {
     {
       id: "referencePreviewGroup",
       type: "group",
-      label: `Bundled feature records (${plasmidCommonFeatureRecords.length})`,
-      help: "Shows the exact bundled signatures used by this tool. Use the Feature selector above to scan one record.",
+      layout: "reference",
+      label: `Bundled signatures (${plasmidCommonFeatureRecords.length})`,
+      help: "These are the bundled signatures searched in your input DNA. Choose one under Feature to search for only that signature; otherwise all signatures in the selected type are used.",
       collapsible: true,
       collapsed: true,
       options: [

@@ -1,4 +1,5 @@
 import {
+  MAX_VIEWER_ALIGNED_READ_BASES,
   readMappingAlignmentColumns,
   readMappingCoverageColumns
 } from "../../core/read-mapping-coverage.js";
@@ -175,6 +176,8 @@ export const readMappingCoverageMetadata = {
       collapsible: true,
       collapsed: true,
       options: [
+        { type: "limit-value", label: "Aligned read bases in the interactive viewer", value: MAX_VIEWER_ALIGNED_READ_BASES,
+          help: "The viewer shows a bounded set of read bases to remain responsive; summary and table outputs retain their own stated limits." },
         {
           id: "maxReferenceBases",
           type: "number",

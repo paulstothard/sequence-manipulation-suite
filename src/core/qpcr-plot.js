@@ -14,7 +14,7 @@ export function renderQpcrPlot(analysis) {
   const points = sampleRows.filter(r => targets.includes(r.target) && r.fold_change !== null);
   const conditions = [settings.calibrator, ...analysis.conditions.filter(c => c !== settings.calibrator)];
   if (!points.length) throw new Error("No relative expression is available to plot. Run the Sample expression table to review missing references, target measurements and calibrators.");
-  if (points.length > QPCR_LIMITS.plotPoints || targets.length > QPCR_LIMITS.plotTargets || conditions.length > QPCR_LIMITS.plotConditions || groups.length > 72) throw new Error("Expression plot exceeds 1,000 points, 12 targets, 12 conditions or 72 groups. Choose one Plot target, reduce the input, or select a table output; no samples were hidden automatically.");
+  if (points.length > QPCR_LIMITS.plotPoints || targets.length > QPCR_LIMITS.plotTargets || conditions.length > QPCR_LIMITS.plotConditions || groups.length > QPCR_LIMITS.plotGroups) throw new Error("Expression plot exceeds 1,000 points, 12 targets, 12 conditions or 72 groups. Choose one Plot target, reduce the input, or select a table output; no samples were hidden automatically.");
   const log = settings.plotScale === "log2", value = log ? "log2_fold_change" : "fold_change";
   const low = log ? "ci_low_log2" : "ci_low_fold", high = log ? "ci_high_log2" : "ci_high_fold";
   if (!log && groups.some(r => r.ci_low_log2 !== null && (r.ci_low_fold === null || r.ci_high_fold === null))) throw new Error("A confidence bound is outside the numeric range for a fold-scale plot. Choose Log2 fold change or a table output.");

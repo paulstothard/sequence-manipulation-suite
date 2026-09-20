@@ -58,7 +58,7 @@ function makeReport({ rows, references, recordsProcessed, basesProcessed }) {
     "Plasmid common feature scanner",
     `Records scanned: ${recordsProcessed}`,
     `Bases scanned: ${basesProcessed}`,
-    `Bundled reference records scanned: ${references.length}`,
+    `Bundled signatures searched: ${references.length}`,
     `Reference dataset: ${plasmidCommonFeatureProvenance.dataset} ${plasmidCommonFeatureProvenance.version}`,
     `Dataset status: ${plasmidCommonFeatureProvenance.status}`,
     `Hits: ${rows.length}`,

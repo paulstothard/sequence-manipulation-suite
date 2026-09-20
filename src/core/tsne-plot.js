@@ -132,7 +132,7 @@ export function prepareTsneInput(input, options = {}) {
   const maxRows = clampInteger(options.maxRows, MAX_ROWS_DEFAULT, 4, MAX_ROWS_MAX);
   const limitedRows = completeRows.slice(0, maxRows);
   if (completeRows.length > limitedRows.length) {
-    warnings.push(`Using the first ${limitedRows.length.toLocaleString()} complete row(s); increase Maximum rows to include more.`);
+    warnings.push(`Using only the first ${limitedRows.length.toLocaleString()} complete row(s). Filter the input table if you need a different subset.`);
   }
   if (columns.length < 2 || limitedRows.length < 4) {
     warnings.push("t-SNE requires at least two numeric columns and four complete rows.");

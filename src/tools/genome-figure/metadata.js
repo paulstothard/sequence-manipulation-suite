@@ -1,4 +1,4 @@
-import { genomeFigureFeatureColumns } from "../../core/genome-figure-data.js";
+import { GENOME_FIGURE_PREPLOT_POINT_LIMIT, genomeFigureFeatureColumns } from "../../core/genome-figure-data.js";
 
 const genomeFigureTags = ["DNA", "FASTA", "BED", "GFF", "GTF", "GenBank", "EMBL", "DDBJ", "annotation", "coordinates", "map", "plot"];
 
@@ -107,7 +107,18 @@ function makeGenomeFigureMetadata({
     hiddenFromToolList,
     options: [
       inputOptionsGroup,
-      makeOutputFormatOption(defaultOutputFormat, outputLabel, includeBothLayouts)
+      makeOutputFormatOption(defaultOutputFormat, outputLabel, includeBothLayouts),
+      {
+        id: "advancedLimits",
+        type: "group",
+        label: "Limits",
+        collapsible: true,
+        collapsed: true,
+        options: [{
+          type: "note",
+          text: `Prepared GC plot tracks target at most ${GENOME_FIGURE_PREPLOT_POINT_LIMIT.toLocaleString()} points per sequence by increasing the window size on longer records. Feature coordinates and the underlying sequence are retained.`
+        }]
+      }
     ]
   };
 }

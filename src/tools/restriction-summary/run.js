@@ -16,6 +16,7 @@ import { exportDelimitedTable } from "../../core/table.js";
 import { renderTextAnnotationMapFromItems } from "../../core/text-annotation-map.js";
 import { makeTableStream, makeTextStream, makeToolResult } from "../../core/workflow.js";
 import { restrictionEnzymeRecords } from "../../reference-data/restriction-enzymes/records.js";
+import { MAX_PASTED_FASTA_CHARACTERS_FOR_RICH_OUTPUTS } from "../fasta-input-policy.js";
 
 const MAX_STREAMED_RESTRICTION_BASES = 50_000_000;
 const MAX_RESTRICTION_WORK = 1_000_000_000;
@@ -298,7 +299,7 @@ function finishRestrictionSummary({ analyzedRecords, enzymes, normalized, warnin
 export const restrictionSummaryRunner = runRestrictionSummary;
 
 export async function runRestrictionSummaryWorker(input, options = {}, context = {}) {
-  const largeSource = Boolean(options.loadedFastaFile?.stream || ["indexed", "bgzf"].includes(options.sourceMode) || (String(input ?? "").length > 1_000_000 && !/^\s*(LOCUS|ID\s)/i.test(String(input ?? ""))));
+  const largeSource = Boolean(options.loadedFastaFile?.stream || ["indexed", "bgzf"].includes(options.sourceMode) || (String(input ?? "").length > MAX_PASTED_FASTA_CHARACTERS_FOR_RICH_OUTPUTS && !/^\s*(LOCUS|ID\s)/i.test(String(input ?? ""))));
   if (!largeSource) return runRestrictionSummary(input, options, context);
   const normalized = normalizeOptions(options);
   if (!["report", "tsv", "svg-line-map"].includes(normalized.outputFormat)) {

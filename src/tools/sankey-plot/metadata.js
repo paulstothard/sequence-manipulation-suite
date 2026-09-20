@@ -70,7 +70,7 @@ export const sankeyPlotMetadata = {
           min: 1,
           max: 150,
           step: 1,
-          help: "Only the largest positive flows are drawn and returned when this cap is reached; increase it only when labels remain readable."
+          help: "Only the largest positive flows are drawn and returned when this cap is reached."
         }
       ]
     }

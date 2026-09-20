@@ -1,5 +1,6 @@
 import { geneticCodes, getStartCodons, makeCodonMap } from "../core/genetic-code.js";
 import { complementDnaRnaSequence } from "../core/sequence.js";
+import { DNA_VIEWER_SEARCH_RESULT_LIMIT } from "../core/viewer-limits.js";
 import { featureArrowHeadLength, featureArrowTerminalVisible, linearFeaturePolygon } from "../core/directional-feature-geometry.js";
 import { traceTranslationArrow } from "../core/translation-arrow-geometry.js";
 import {
@@ -53,6 +54,7 @@ import {
   startViewerInertia
 } from "./viewer-inertia.js";
 import { installCanvasVisualInspection } from "./visual-inspection.js";
+import { installCanvasPinchZoom } from "./viewer-pinch-zoom.js";
 
 const PLOT_LEFT = 118;
 const PLOT_RIGHT_GUTTER = 34;
@@ -327,6 +329,14 @@ function drawAlignedReadBases(ctx, item, state, layout, rect, theme) {
   return true;
 }
 
+function alignedReadArrowHeadLength(widthPx, heightPx, item, strand, terminalVisible, pxPerBp, compactTrack) {
+  const head = featureArrowHeadLength(widthPx, heightPx, strand, terminalVisible);
+  if (!head || compactTrack || !Array.isArray(item?.alignedReadBases) || !item.alignedReadBases.length ||
+      pxPerBp < ALIGNED_READ_BASE_PX_PER_BP) return head;
+  // Keep a pointed tip, with the slope confined to the end of the terminal base.
+  return Math.min(head, 6, Math.max(4, pxPerBp * 0.25));
+}
+
 function drawAlignedReadGapMarker(ctx, x, rect, layout, theme) {
   const dashWidth = Math.max(5, Math.min(layout.pxPerBp * 0.62, 9));
   ctx.save();
@@ -409,7 +419,7 @@ function drawLinearSelectedBaseMarker(ctx, { x, y, pxPerBp, theme }) {
   ctx.restore();
 }
 
-function drawLinearSelectedCodonMarker(ctx, { x1, x2, y, strand, arrowCap, theme }) {
+function drawLinearSelectedCodonMarker(ctx, { x1, x2, y, strand, theme }) {
   const left = x1 + 1;
   const width = Math.max(1, x2 - x1 - 2);
   const height = 24;
@@ -421,23 +431,18 @@ function drawLinearSelectedCodonMarker(ctx, { x1, x2, y, strand, arrowCap, theme
   ctx.lineJoin = "round";
   ctx.shadowColor = theme.selectedStroke;
   ctx.shadowBlur = theme.dark ? 6 : 3;
-  if (arrowCap) {
-    traceTranslationArrow(ctx, left, top, width, height, strand);
-  } else {
-    ctx.beginPath();
-    ctx.roundRect(left, top, width, height, 3);
-  }
+  traceTranslationArrow(ctx, left, top, width, height, strand);
   ctx.fill();
   ctx.stroke();
   ctx.restore();
 }
 
-function drawLinearSelectedIntervalOutline(ctx, { x1, x2, y, height, plotLeft, plotRight, theme }) {
-  const padding = 1.5;
+function drawLinearSelectedIntervalOutline(ctx, { x1, x2, y, height, strand, headLength = 0, matchFeatureBounds = false, plotLeft, plotRight, theme }) {
+  const padding = matchFeatureBounds ? 0 : 1.5;
   const strokeWidth = 1.5;
   // Inset ends at the viewport edge so a cropped interval still has a complete,
-  // rounded outline without losing its side stroke to the plot clip.
-  const edgeInset = 2;
+  // visible outline without losing its side stroke to the plot clip.
+  const edgeInset = matchFeatureBounds ? strokeWidth / 2 : 2;
   const left = Math.max(plotLeft + edgeInset, x1 - padding);
   const right = Math.min(plotRight - edgeInset, x2 + padding);
   const top = y - height / 2 - padding;
@@ -450,7 +455,15 @@ function drawLinearSelectedIntervalOutline(ctx, { x1, x2, y, height, plotLeft, p
   ctx.shadowColor = theme.selectedStroke;
   ctx.shadowBlur = theme.dark ? 2.5 : 2;
   ctx.beginPath();
-  if (typeof ctx.roundRect === "function") {
+  if (headLength > 0) {
+    const outlineHead = Math.min(headLength + padding, (right - left) / 2.5);
+    const points = linearFeaturePolygon(left, top, right - left, outlineHeight, strand, outlineHead);
+    ctx.moveTo(...points[0]);
+    for (const point of points.slice(1)) ctx.lineTo(...point);
+    ctx.closePath();
+  } else if (matchFeatureBounds) {
+    ctx.rect(left, top, right - left, outlineHeight);
+  } else if (typeof ctx.roundRect === "function") {
     ctx.roundRect(left, top, right - left, outlineHeight, radius);
   } else {
     ctx.moveTo(left + radius, top);
@@ -940,18 +953,12 @@ function drawTranslationRow(ctx, record, state, y, frameLabel, frameOffset, stra
     ctx.strokeStyle = aa === "*" ? theme.stopStroke : isStart ? theme.startStroke : theme.aminoAcidStroke;
     ctx.fillStyle = aa === "*" ? theme.stopFill : isStart ? theme.startFill : theme.aminoAcidFill;
     ctx.lineWidth = searchActive ? 2 : 1;
-    const arrowCap = index === visibleCodons[0] || index === visibleCodons.at(-1);
     ctx.lineJoin = "round";
-    ctx.beginPath();
-    if (arrowCap) {
-      traceTranslationArrow(ctx, x1 + 1, y - 11, Math.max(1, x2 - x1 - 2), 22, strand);
-    } else {
-      ctx.roundRect(x1 + 1, y - 11, Math.max(1, x2 - x1 - 2), 22, 2);
-    }
+    traceTranslationArrow(ctx, x1 + 1, y - 11, Math.max(1, x2 - x1 - 2), 22, strand);
     ctx.fill();
     ctx.stroke();
     if (selected) {
-      drawLinearSelectedCodonMarker(ctx, { x1, x2, y, strand, arrowCap, theme });
+      drawLinearSelectedCodonMarker(ctx, { x1, x2, y, strand, theme });
     }
     ctx.font = "13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
     ctx.fillStyle = aa === "*" ? theme.stopText : isStart ? theme.startText : theme.aminoAcidText;
@@ -1085,12 +1092,15 @@ function drawViewer(ctx, canvas, status, record, state) {
     } else if (stacked) {
       const placements = trackSlotLayout?.placements ?? [];
       const rowSlotHeight = slotHeight || FEATURE_SLOT_HEIGHT;
-      const rectHeight = compactTrack ? 7 : 12;
+      const defaultRectHeight = compactTrack ? 7 : 12;
       const hitHalfHeight = compactTrack ? 5 : 7;
       const slotBaseY = topY + (compactTrack ? 10 : 13);
       for (const placement of placements) {
         const item = placement.item;
         const itemIndex = placement.itemIndex;
+        const showsReadBases = !compactTrack && Array.isArray(item.alignedReadBases) && item.alignedReadBases.length > 0 &&
+          pxPerBp >= ALIGNED_READ_BASE_PX_PER_BP;
+        const rectHeight = showsReadBases ? 14 : defaultRectHeight;
         const x1 = Math.max(plotLeft, bpToX(placement.start, plotLeft, plotRight, state.viewStart, state.viewEnd));
         const x2 = Math.min(plotRight, bpToX(placement.end, plotLeft, plotRight, state.viewStart, state.viewEnd));
         const widthPx = Math.max(1, x2 - x1);
@@ -1124,11 +1134,14 @@ function drawViewer(ctx, canvas, status, record, state) {
         const terminalVisible = featureArrowTerminalVisible({ ...placement, partCount: item.parts?.length ?? 1 }, item.strand);
         const headLength = track.type === "digest-fragments" || item.type === "source"
           ? 0
-          : featureArrowHeadLength(widthPx, rectHeight, item.strand, terminalVisible);
+          : alignedReadArrowHeadLength(widthPx, rectHeight, item, item.strand, terminalVisible, pxPerBp, compactTrack);
         drawLinearIntervalShape(ctx, x1, laneY - rectHeight / 2, widthPx, rectHeight, item.strand, headLength, !highlighted);
         ctx.globalAlpha = previousAlpha;
         if (highlighted) {
-          selectedIntervalOutlines.push({ x1, x2, y: laneY, height: rectHeight });
+          selectedIntervalOutlines.push({
+            x1, x2, y: laneY, height: rectHeight, strand: item.strand, headLength,
+            matchFeatureBounds: true
+          });
         }
         const readBasesDrawn = !compactTrack && drawAlignedReadBases(ctx, item, state, layout, {
           x: x1,
@@ -1199,10 +1212,13 @@ function drawViewer(ctx, canvas, status, record, state) {
             : part.start === start && part.start - 1 >= state.viewStart;
           const headLength = track.type === "digest-fragments" || item.type === "source"
             ? 0
-            : featureArrowHeadLength(widthPx, rectHeight, item.strand, terminalVisible);
+            : alignedReadArrowHeadLength(widthPx, rectHeight, item, item.strand, terminalVisible, pxPerBp, compactTrack);
           drawLinearIntervalShape(ctx, x1, trackY - rectHeight / 2, widthPx, rectHeight, item.strand, headLength, !highlighted);
           if (highlighted) {
-            selectedIntervalOutlines.push({ x1, x2, y: trackY, height: rectHeight });
+            selectedIntervalOutlines.push({
+              x1, x2, y: trackY, height: rectHeight, strand: item.strand, headLength,
+              matchFeatureBounds: true
+            });
           }
           const readBasesDrawn = !compactTrack && drawAlignedReadBases(ctx, item, state, layout, {
             x: x1,
@@ -1478,7 +1494,7 @@ function translateRange(sequence, frame, geneticCode) {
   return parts.join("");
 }
 
-function addSearchResult(results, result, limit = 1000) {
+function addSearchResult(results, result, limit = DNA_VIEWER_SEARCH_RESULT_LIMIT) {
   if (results.length >= limit) {
     results.omitted = true;
     results.limit = limit;
@@ -2205,6 +2221,24 @@ function installViewer(panel, record, options = {}) {
     event.preventDefault();
     zoomAt(event.clientX, event.deltaY < 0 ? 1.35 : 1 / 1.35);
   }, { passive: false });
+  const cleanupPinch = installCanvasPinchZoom(canvas, {
+    onStart: () => {
+      cancelInertia();
+      inspection.hide();
+    },
+    onChange: ({ previous, current, factor }) => {
+      const rect = canvas.getBoundingClientRect();
+      const { plotLeft, plotRight } = getLinearPlotBounds(rect.width);
+      const plotWidth = Math.max(1, plotRight - plotLeft);
+      const fraction = Math.max(0, Math.min(1, (previous.x - rect.left - plotLeft) / plotWidth));
+      const next = computeLinearZoomState(state, record.length, fraction, factor);
+      const shift = (current.x - previous.x) / plotWidth * (next.viewEnd - next.viewStart);
+      state.viewStart = next.viewStart - shift;
+      state.viewEnd = next.viewEnd - shift;
+      clampView(state, record.length);
+      drawViewer(ctx, canvas, status, record, state);
+    }
+  });
   canvas.addEventListener("mousedown", (event) => {
     cancelInertia();
     inspection.hide();
@@ -2273,6 +2307,7 @@ function installViewer(panel, record, options = {}) {
   return {
     cleanup: () => {
       cancelInertia();
+      cleanupPinch();
       inspection.cleanup();
       window.removeEventListener("mousemove", onWindowMouseMove);
       window.removeEventListener("mouseup", onWindowMouseUp);

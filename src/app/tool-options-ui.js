@@ -1,8 +1,5 @@
 import { readToolInputFileText } from "./input-file-readers.js";
-import {
-  getStoredLimitOptionValues,
-  persistLimitOptionValue
-} from "./limit-option-storage.js";
+import { STANDARD_BROWSER_FILE_BYTES } from "../core/tool-limit-options.js";
 import { prepareToolOptionsForDisplay } from "./tool-option-layout.js";
 
 export function createToolOptionsController({
@@ -17,7 +14,7 @@ export function createToolOptionsController({
   } = callbacks;
 
   function renderToolOptions(options) {
-    const displayOptions = prepareToolOptionsForDisplay(options);
+    const displayOptions = prepareToolOptionsForDisplay(options, state.selectedTool?.metadata);
     const visibleOptions = displayOptions.filter(shouldRenderToolOption);
     if (visibleOptions.length === 0) {
       elements.toolOptions.textContent = "";
@@ -25,10 +22,7 @@ export function createToolOptionsController({
     }
 
     const fragment = document.createDocumentFragment();
-    const defaultValues = {
-      ...getDefaultOptionValues(options),
-      ...getStoredLimitOptionValues(state.selectedTool?.metadata?.id, options)
-    };
+    const defaultValues = getDefaultOptionValues(options);
 
     for (const option of visibleOptions) {
       appendToolOptionControl(fragment, option, defaultValues);
@@ -343,6 +337,9 @@ export function createToolOptionsController({
       if (option.layout) {
         group.classList.add(`option-group-${option.layout}`);
       }
+      if (option.label === "Limits" && option.collapsible) {
+        group.classList.add("option-group-limits");
+      }
       if (option.id) {
         group.dataset.optionId = option.id;
       }
@@ -384,6 +381,30 @@ export function createToolOptionsController({
 
     if (option.type === "reference-table") {
       appendOptionReferenceTable(parent, option);
+      return;
+    }
+
+    if (option.type === "limit-value") {
+      const row = document.createElement("div");
+      row.className = "option-limit-value";
+      row.dataset.optionId = option.displayId ?? option.id;
+      const main = document.createElement("div");
+      main.className = "option-limit-value-main";
+      const label = document.createElement("span");
+      label.textContent = option.label ?? option.id;
+      const value = document.createElement("strong");
+      value.textContent = typeof option.value === "number"
+        ? option.value.toLocaleString("en-US")
+        : String(option.value ?? "");
+      main.append(label, value);
+      row.append(main);
+      if (option.detail) {
+        const detail = document.createElement("p");
+        detail.className = "option-limit-detail";
+        detail.textContent = option.detail;
+        row.append(detail);
+      }
+      parent.append(row);
       return;
     }
 
@@ -577,8 +598,8 @@ export function createToolOptionsController({
           if (!file) {
             return;
           }
-          if (file.size > 25 * 1024 * 1024) {
-            addMessage(`${file.name}: file is larger than 25 MB.`, "warning");
+          if (file.size > STANDARD_BROWSER_FILE_BYTES) {
+            addMessage(`${file.name}: file is larger than 25 MiB.`, "warning");
             return;
           }
           input.value = await readToolInputFileText(file, { onMessage: addMessage });
@@ -716,7 +737,7 @@ export function createToolOptionsController({
     const note = document.createElement("div");
     note.className = "option-note";
     if (option.id) {
-      note.dataset.optionId = option.id;
+      note.dataset.optionId = option.displayId ?? option.id;
     }
     const paragraphs = String(option.text ?? "")
       .split(/\n\s*\n/)
@@ -928,23 +949,6 @@ export function createToolOptionsController({
     );
   }
 
-  function persistLimitOptionControlValue(target) {
-    const optionId = target?.name || target?.id;
-    if (!optionId) {
-      return;
-    }
-    const option = flattenOptions(state.selectedTool?.metadata.options ?? [])
-      .find((candidate) => candidate.id === optionId);
-    if (!option) {
-      return;
-    }
-    persistLimitOptionValue(
-      state.selectedTool,
-      optionId,
-      getOptionControlValue(elements.toolOptions, option)
-    );
-  }
-
   function getOptionControlValueFromRoots(roots, option, fallback = option.defaultValue) {
     const searchRoots = Array.isArray(roots) ? roots : [roots];
     for (const root of searchRoots) {
@@ -1093,7 +1097,6 @@ export function createToolOptionsController({
     getOptionDefaultValue,
     getOptionControlValue,
     getOptionControlValueFromRoots,
-    persistLimitOptionControlValue,
     getCurrentOptionValues,
     getFilteredChoices,
     populateDependentSelect,

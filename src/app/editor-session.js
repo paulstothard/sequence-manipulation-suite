@@ -1,13 +1,14 @@
 import { downloadText } from "./file-download.js";
 import { validatePlateLayout } from "../core/plate-layout.js";
+import { STANDARD_BROWSER_FILE_BYTES } from "../core/tool-limit-options.js";
 const EDITOR_DOCUMENT_FORMAT = "sms3-editor-document";
 const EDITOR_TOOLS = ["workflow", "tree-viewer", "plate-layout-planner", "sequence-editor", "markdown-notebook", "linear-genome-figure", "circular-genome-figure", "sequence-extractor", "sanger-trace-viewer", "sanger-trace-assembly", "sanger-trace-reference-comparison"];
-const MAX_BYTES = 25 * 1024 * 1024;
+const MAX_BYTES = STANDARD_BROWSER_FILE_BYTES;
 const copy = (value) => structuredClone(value);
 const recoveryWrites = new Map();
 let recoveryHelpId = 0;
 function parseEditorDocument(text) {
-  if (new TextEncoder().encode(text).length > MAX_BYTES) throw new Error("Document exceeds 25 MB.");
+  if (new TextEncoder().encode(text).length > MAX_BYTES) throw new Error("Document exceeds 25 MiB.");
   const doc = JSON.parse(text);
   if (doc?.format !== EDITOR_DOCUMENT_FORMAT || doc.version !== 1 || !EDITOR_TOOLS.includes(doc.tool)) throw new Error("Unsupported SMS3 document format or version.");
   if (!doc.source || typeof doc.source !== "object" || !doc.state || typeof doc.state !== "object" || Array.isArray(doc.state)) throw new Error("The document is missing its source or editable state.");
@@ -55,7 +56,7 @@ async function readEditorDocumentFile(file) {
   if (!file) return null;
   const explicitDocument = /\.sms3\.json$/i.test(file.name ?? "");
   if (!/\.json$/i.test(file.name ?? "") && !/^application\/json(?:;|$)/i.test(file.type ?? "")) return null;
-  if (file.size > MAX_BYTES) throw new Error("JSON input exceeds 25 MB.");
+  if (file.size > MAX_BYTES) throw new Error("JSON input exceeds 25 MiB.");
   const text = await file.text();
   let doc;
   try {

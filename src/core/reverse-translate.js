@@ -418,8 +418,16 @@ export function renderReverseTranslateProbabilitySvg(records, options = {}) {
           }
           const segmentHeight = Math.max(0.5, probabilityScale ? probabilityScale(probability) : probability * barHeight);
           currentY -= segmentHeight;
+          const inspectionText = [
+            `Residue ${row.position} (${row.residue})`,
+            `Base: ${base}`,
+            `Probability: ${formatProbability(probability)} (${formatPercent(probability)})`,
+            `Codon position: ${positionIndex + 1} of 3`,
+            `Output codon: ${row.codon}`,
+            record.title
+          ].join("; ");
           parts.push(
-            `<rect class="bar" x="${barX.toFixed(2)}" y="${currentY.toFixed(2)}" width="${barWidth.toFixed(2)}" height="${segmentHeight.toFixed(2)}" fill="${BASE_COLORS[base]}"><title>${escapeXml(`${record.title} residue ${row.position} ${row.residue}, codon base ${positionIndex + 1}: ${base} ${formatProbability(probability)}`)}</title></rect>`
+            `<rect class="bar" x="${barX.toFixed(2)}" y="${currentY.toFixed(2)}" width="${barWidth.toFixed(2)}" height="${segmentHeight.toFixed(2)}" fill="${BASE_COLORS[base]}"><title>${escapeXml(inspectionText)}</title></rect>`
           );
         }
         parts.push(`<rect class="bar-outline" x="${barX.toFixed(2)}" y="${barTop}" width="${barWidth.toFixed(2)}" height="${barHeight}"></rect>`);

@@ -171,7 +171,7 @@ function makeRowsFromPairs(pairs) {
 function maybeWarnOutputSize(text, maxOutputBytes, warnings, label) {
   const bytes = new TextEncoder().encode(text).byteLength;
   if (bytes > maxOutputBytes) {
-    throw new Error(`${label} is ${bytes.toLocaleString()} byte(s), which exceeds the current ${maxOutputBytes.toLocaleString()} byte browser-local output limit. Reduce the sample size or raise the limit.`);
+    throw new Error(`${label} is ${bytes.toLocaleString()} byte(s), which exceeds the ${maxOutputBytes.toLocaleString()} byte browser-local output limit. Reduce the sample size.`);
   }
   if (bytes > Math.floor(maxOutputBytes * 0.8)) {
     warnings.push(`${label} uses ${bytes.toLocaleString()} byte(s), close to the current ${maxOutputBytes.toLocaleString()} byte output limit.`);

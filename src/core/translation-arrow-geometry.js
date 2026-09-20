@@ -1,5 +1,5 @@
-// Chevron caps sit on both visible ends of a translation track. Keep them
-// inside the terminal codons so residue positions and hit regions stay exact.
+// Draw each amino acid as a small directional chevron. Keep its tip and notch
+// inside the codon bounds so residue positions and hit regions stay exact.
 export function translationArrowPoints(left, top, width, height, strand) {
   const right = left + Math.max(1, width);
   const bottom = top + height;

@@ -3,6 +3,7 @@ import {
   sangerTaskSummaries,
   serializeSangerTraceWorkspaceInput
 } from "./sanger-trace-workspace-model.js";
+import { STANDARD_BROWSER_FILE_BYTES } from "../core/tool-limit-options.js";
 
 const SANGER_TRACE_TASKS = [
   { value: "review", label: "Review one trace" },
@@ -11,7 +12,7 @@ const SANGER_TRACE_TASKS = [
   { value: "compare", label: "Compare to reference" }
 ];
 
-const MAX_SANGER_TRACE_FILE_BYTES = 25 * 1024 * 1024;
+const MAX_SANGER_TRACE_FILE_BYTES = STANDARD_BROWSER_FILE_BYTES;
 const MAX_VISIBLE_TRACE_SETTING_CONTROLS = 6;
 
 function noop() {}
@@ -204,7 +205,7 @@ export function createSangerTraceWorkspaceController({
     }
     for (const [index, file] of selectedFiles.entries()) {
       if (file.size > MAX_SANGER_TRACE_FILE_BYTES) {
-        addMessage(`${file.name}: file is larger than 25 MB.`, "warning");
+        addMessage(`${file.name}: file is larger than 25 MiB.`, "warning");
         continue;
       }
       try {
@@ -337,7 +338,7 @@ export function createSangerTraceWorkspaceController({
         return;
       }
       if (file.size > MAX_SANGER_TRACE_FILE_BYTES) {
-        addMessage(`${file.name}: file is larger than 25 MB.`, "warning");
+        addMessage(`${file.name}: file is larger than 25 MiB.`, "warning");
         return;
       }
       referenceTextarea.value = await readToolInputFileText(file, { onMessage: addMessage });

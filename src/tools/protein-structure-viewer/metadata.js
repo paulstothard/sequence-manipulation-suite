@@ -123,7 +123,7 @@ export const proteinStructureViewerMetadata = {
           min: 1000,
           max: 500000,
           step: 1000,
-          help: "If the selected model, chains, and assembly exceed this many atoms, SMS3 returns the report instead of opening the 3D viewer. Lower it for slower browsers; raise it only if your browser can handle the structure."
+          help: "If the selected model, chains, and assembly exceed this many atoms, SMS3 returns the report instead of opening the 3D viewer."
         }
       ]
     }

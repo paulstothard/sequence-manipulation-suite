@@ -107,6 +107,13 @@ export const restrictionDigestMetadata = {
       ]
     },
     {
+      id: "advancedLimits", type: "group", label: "Limits", collapsible: true, collapsed: true,
+      options: [
+        { type: "limit-value", label: "Digest enzymes", value: "3 per run" },
+        { type: "note", text: "The digest has three enzyme selectors. To compare additional enzymes, run another digest." }
+      ]
+    },
+    {
       id: "sourceNote",
       type: "note",
       text:

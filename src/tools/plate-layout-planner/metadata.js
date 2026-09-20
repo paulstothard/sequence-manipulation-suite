@@ -31,8 +31,8 @@ export const plateLayoutMetadata = {
     { type: "group", label: "Plate layout", options: [
       { id: "title", type: "text", label: "Layout title", defaultValue: "Plate layout" },
       { id: "plateSize", type: "radio", label: "Plate size", defaultValue: "96", choices: [{ value: "96", label: "96 wells" }, { value: "384", label: "384 wells" }] },
-      { id: "maxPlates", type: "number", label: "Maximum plates", defaultValue: 20, min: 1, max: 20, step: 1,
-        help: "Allocation stops if the requested wells need more plates. Choose a lower value when the plan must fit within a fixed plate count." },
+      { id: "maxPlates", type: "number", label: "Plates available for this plan", defaultValue: 20, min: 1, max: 20, step: 1,
+        help: "Allocation stops if the requested wells need more plates than are available for this plan." },
       { id: "replicates", type: "number", label: "Replicates per sample", defaultValue: 3, min: 1, max: 384, step: 1,
         help: "Number of repeated wells for each input row when its replicates cell is blank. Three wells of the same sample are technical repeats, not three independent biological samples. Enter separate rows for distinct biological samples. Each repeat gets its own assignment ID." },
       { id: "fillOrder", type: "select", label: "Fill order", defaultValue: "row", choices: [{ value: "row", label: "By row" }, { value: "column", label: "By column" }, { value: "random", label: "Randomized" }],

@@ -86,8 +86,7 @@ export const PCR_PRIMER_CONSTRAINT_DETAIL_IDS = [
   "primerLength",
   "tmAndGc",
   "threePrimeAndClamp",
-  "secondaryStructure",
-  "advancedLimits"
+  "secondaryStructure"
 ];
 
 export function formatPcrPrimerDesignSummary(values = {}) {

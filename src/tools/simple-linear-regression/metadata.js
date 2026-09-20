@@ -70,6 +70,13 @@ export const simpleLinearRegressionMetadata = {
           { value: "report", label: "Summary report" }
         ] }
       ]
+    },
+    {
+      id: "advancedLimits", type: "group", label: "Limits", collapsible: true, collapsed: true,
+      options: [
+        { type: "limit-value", label: "Regression plot legend", value: "first 16 groups", detail: "The plot draws all fitted points; additional groups are omitted from the legend." },
+        { type: "note", text: "The plot still draws all fitted points; additional groups are omitted only from its legend." }
+      ]
     }
   ],
   citations: [

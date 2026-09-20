@@ -1,4 +1,4 @@
-import { proteinHydropathyTableColumns } from "./run.js";
+import { SVG_PLOT_WINDOW_THRESHOLD, proteinHydropathyTableColumns } from "./run.js";
 
 export const proteinHydropathyMetadata = {
   id: "protein-hydropathy",
@@ -45,6 +45,13 @@ export const proteinHydropathyMetadata = {
         { value: "report", label: "Summary report" },
         { value: "tsv", label: "Table" },
         { value: "svg-plot", label: "Protein hydropathy plot" }
+      ]
+    },
+    {
+      id: "advancedLimits", type: "group", label: "Limits", collapsible: true, collapsed: true,
+      options: [
+        { type: "limit-value", label: "Hydropathy plot", value: `${SVG_PLOT_WINDOW_THRESHOLD.toLocaleString("en-US")} sliding windows`, detail: "The plot is withheld above this size; the table retains every calculated window." },
+        { type: "note", text: "The plot is replaced with an explanation above this size to keep drawing responsive. Table output retains every calculated window." }
       ]
     },
     {

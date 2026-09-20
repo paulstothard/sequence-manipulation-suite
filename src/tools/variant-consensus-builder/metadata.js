@@ -1,4 +1,5 @@
-import { consensusAuditColumns, consensusCoordinateColumns } from '../../core/variant-consensus-output.js';
+import { CONSENSUS_LIMITS } from '../../core/variant-consensus.js';
+import { CONSENSUS_TABLE_CHARACTERS, CONSENSUS_VIEWER_MAX_RECORDS, consensusAuditColumns, consensusCoordinateColumns } from '../../core/variant-consensus-output.js';
 const file=(id,label,accept)=>({id,type:'file',placement:'input',label,accept,dropLabel:`Drop ${label} here`,defaultValue:null});
 export const variantConsensusMetadata={
   id:'variant-consensus-builder',name:'Variant Consensus Builder',category:'High-Throughput Sequencing',
@@ -36,7 +37,20 @@ export const variantConsensusMetadata={
       {id:'unsupportedPolicy',type:'radio',label:'Unsupported selected alleles',defaultValue:'error',choices:[{value:'error',label:'Stop with an explanation'},{value:'skip',label:'Skip and retain reference'}],help:'Symbolic structural alleles, breakends and spanning-deletion * alleles cannot be applied. Skipping is reported. Supported sequence alleles must still match REF and be nonconflicting.'}
     ]},
     {type:'group',label:'Output',options:[{id:'outputFormat',type:'select',label:'Output format',defaultValue:'fasta',choices:[{value:'fasta',label:'Consensus FASTA'},{value:'viewer',label:'Linear DNA sequence viewer'},{value:'audit',label:'Variant audit table'},{value:'coordinates',label:'Coordinate map table'},{value:'map',label:'Variant overview map'},{value:'report',label:'Summary report'}],help:'The linear viewer shows the constructed consensus/haplotype sequence and places variant sites on its output coordinates, including indels. FASTA exports the selected sequence interpretation. Audit positions are 1-based VCF coordinates. Coordinate-map intervals are 0-based, end-exclusive: an insertion has an empty reference interval and a deletion an empty output interval. The overview map shows smaller call sets on reference coordinates; it is not an alignment.'}]},
-    {type:'group',label:'Limits',id:'advancedLimits',collapsible:true,collapsed:true,options:[{id:'maxVariants',type:'number',label:'Maximum variants in scope',defaultValue:50000,min:1,max:50000,step:1,help:'Maximum 20 million input characters per source, 5 million loaded or indexed reference bases, 10 million output bases, 2,000 samples and 2,000 reference contigs (IDs up to 200 characters), 200 phase blocks per contig and 4,000 output sequences. Tables allow 20 million output characters. The linear viewer accepts up to 12 output sequences and retains all variant sites; the static overview map accepts 12 output sequences and 240 audit rows. Exceeding a limit stops; no consensus is silently truncated.'}]},
+    {type:'group',label:'Limits',id:'advancedLimits',collapsible:true,collapsed:true,options:[
+      {id:'maxVariants',type:'number',label:'Variants in selected scope',defaultValue:CONSENSUS_LIMITS.variants,min:1,max:CONSENSUS_LIMITS.variants,step:1},
+      {type:'limit-value',label:'Loaded FASTA or VCF input',value:`${CONSENSUS_LIMITS.characters.toLocaleString('en-US')} characters per source`},
+      {type:'limit-value',label:'Loaded reference or indexed region',value:`${CONSENSUS_LIMITS.bases.toLocaleString('en-US')} bases`},
+      {type:'limit-value',label:'Constructed consensus',value:`${CONSENSUS_LIMITS.outputBases.toLocaleString('en-US')} bases`},
+      {type:'limit-value',label:'VCF samples / reference contigs',value:`${CONSENSUS_LIMITS.samples.toLocaleString('en-US')} / ${CONSENSUS_LIMITS.contigs.toLocaleString('en-US')}`},
+      {type:'limit-value',label:'Sample or contig ID',value:`${CONSENSUS_LIMITS.idLength} characters`},
+      {type:'limit-value',label:'Phase blocks per contig',value:CONSENSUS_LIMITS.phaseBlocks},
+      {type:'limit-value',label:'Output sequences',value:CONSENSUS_LIMITS.outputRecords},
+      {type:'limit-value',label:'Audit / coordinate table',value:`${CONSENSUS_TABLE_CHARACTERS.toLocaleString('en-US')} output characters`},
+      {type:'limit-value',label:'Linear viewer',value:`${CONSENSUS_VIEWER_MAX_RECORDS} output sequences`},
+      {type:'limit-value',label:'Static overview map',value:'12 output sequences and 240 audit rows'},
+      {type:'note',text:'Exceeding these processing or output bounds stops the selected run. No consensus sequence is silently truncated. Use a narrower region or another output format when an output-specific bound is reached.'}
+    ]},
     {id:'methodNote',type:'note',text:'Uses existing sample GT calls and GT/PS phasing. Reference IDs and REF alleles must match. The example contains simulated calls. No phase inference, structural-variant reconstruction or variant calling is performed.'},
     {id:'citationNote',type:'note',text:'References:\n\nGenotypes and phase sets: VCF specification.\n\nReference calculations: BCFtools consensus documentation.'}
   ]

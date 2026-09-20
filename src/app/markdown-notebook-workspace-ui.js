@@ -1,4 +1,5 @@
 import { createEditorSession, readEditorDocumentFile } from './editor-session.js';
+import { STANDARD_BROWSER_FILE_BYTES } from '../core/tool-limit-options.js';
 import {
   buildMarkdownNotebook,
   formatMarkdownTableBlock,
@@ -634,6 +635,16 @@ export function createMarkdownWorkspaceController({
       createField("Download filename", filenameInput),
       frontMatterLabel
     );
+    const limitsDisclosure = document.createElement("details");
+    limitsDisclosure.className = "option-group option-group-collapsible";
+    limitsDisclosure.dataset.optionId = "limitsDisclosure";
+    const limitsSummary = document.createElement("summary");
+    limitsSummary.textContent = "Limits";
+    const limitsText = document.createElement("p");
+    limitsText.className = "option-note";
+    limitsText.textContent = `Notebook file or saved-document imports: 25 MiB (${STANDARD_BROWSER_FILE_BYTES.toLocaleString("en-US")} bytes) per file; larger files are rejected. Insert table: 1–10 columns and 1–20 rows; larger requests are reduced to those bounds. Available browser memory may impose a lower practical limit.`;
+    limitsDisclosure.append(limitsSummary, limitsText);
+    settingsPanel.append(limitsDisclosure);
 
     const sidePanel = document.createElement("aside");
     sidePanel.className = "markdown-workspace-drawer";
@@ -882,8 +893,8 @@ export function createMarkdownWorkspaceController({
       if (!file) {
         return;
       }
-      if (file.size > 25 * 1024 * 1024) {
-        updateStatus(`${file.name} is larger than 25 MB.`);
+      if (file.size > STANDARD_BROWSER_FILE_BYTES) {
+        updateStatus(`${file.name} is larger than 25 MiB.`);
         return;
       }
       try {

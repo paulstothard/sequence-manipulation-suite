@@ -1,5 +1,6 @@
 import { geneticCodes, getStartCodons, makeCodonMap } from "../core/genetic-code.js";
 import { complementDnaRnaSequence } from "../core/sequence.js";
+import { DNA_VIEWER_SEARCH_RESULT_LIMIT } from "../core/viewer-limits.js";
 import { featureArrowHeadLength, featureArrowTerminalVisible } from "../core/directional-feature-geometry.js";
 import { createStackedIntervalLayout, isStackedIntervalTrack } from "../core/viewer-track-layout.js";
 import { downloadCanvasPng, downloadCanvasSvg, makeSafeFileStem } from "./canvas-export.js";
@@ -47,6 +48,7 @@ import {
   startViewerInertia
 } from "./viewer-inertia.js";
 import { installCanvasVisualInspection } from "./visual-inspection.js";
+import { installCanvasPinchZoom } from "./viewer-pinch-zoom.js";
 
 const TWO_PI = Math.PI * 2;
 const ICONS = {
@@ -294,7 +296,7 @@ function translateRange(sequence, frame, geneticCode) {
   return parts.join("");
 }
 
-function addSearchResult(results, result, limit = 1000) {
+function addSearchResult(results, result, limit = DNA_VIEWER_SEARCH_RESULT_LIMIT) {
   if (results.length >= limit) {
     results.omitted = true;
     results.limit = limit;
@@ -873,14 +875,16 @@ function drawDirectionalAnnularArc(ctx, cx, cy, outerRadius, innerRadius, startA
   ctx.stroke();
 }
 
-function traceAnnularTranslationArrow(ctx, cx, cy, outerRadius, innerRadius, startAngle, endAngle, strand, chevronCap) {
+function traceAnnularTranslationArrow(ctx, cx, cy, outerRadius, innerRadius, startAngle, endAngle, strand) {
   if (!Number.isFinite(outerRadius) || !Number.isFinite(innerRadius) || innerRadius <= 0 || outerRadius <= innerRadius) {
     ctx.beginPath();
     return;
   }
   const span = endAngle - startAngle;
-  const tipAngle = chevronCap ? Math.min(span * 0.18, 8 / Math.max(1, (outerRadius + innerRadius) / 2)) : 0;
   const middleRadius = (outerRadius + innerRadius) / 2;
+  const tipAngle = span * middleRadius >= 15
+    ? Math.min(span * 0.18, 8 / middleRadius)
+    : 0;
   ctx.beginPath();
   if (strand === "-" && tipAngle > 0) {
     const bodyStart = startAngle + tipAngle;
@@ -2099,7 +2103,7 @@ export function getCircularTranslationCodon(sequence, codonStart, length, strand
   return strand === "-" ? reverseComplement(genomicCodon) : genomicCodon;
 }
 
-function drawTranslationFrame(ctx, cx, cy, radius, label, frameOffset, strand, state, record, arc, revealDetail, theme, viewport) {
+function drawTranslationFrame(ctx, cx, cy, radius, label, frameOffset, strand, state, record, arc, revealDetail, theme) {
   if (!revealDetail || radius <= 10) {
     return;
   }
@@ -2110,28 +2114,6 @@ function drawTranslationFrame(ctx, cx, cy, radius, label, frameOffset, strand, s
   const highlightedOutlines = [];
   const selectedOutlines = [];
   const allSegments = getVisibleTranslationCodonSegments(frameOffset, viewStart, viewEnd, record.length);
-  // At high zoom the circular arc can extend beyond the canvas. Place the two
-  // chevrons on on-screen codons while retaining every visible codon segment.
-  const insideCanvas = (point) => point.x >= 12 && point.x <= viewport.width - 12 &&
-    point.y >= 12 && point.y <= viewport.height - 12;
-  const completeSegments = allSegments.filter((segment) => {
-    const startAngle = relToAngle(segment.visibleStart - viewStart, state, arc);
-    const endAngle = relToAngle(segment.visibleEnd - viewStart, state, arc);
-    return [startAngle, endAngle].every((angle) =>
-      insideCanvas(pointOnCircle(cx, cy, radius + 11, angle)) &&
-      insideCanvas(pointOnCircle(cx, cy, radius - 11, angle)));
-  });
-  const partialSegments = allSegments.filter((segment) => {
-    const angles = [segment.visibleStart, segment.codonMidpoint, segment.visibleEnd]
-      .map((position) => relToAngle(position - viewStart, state, arc));
-    return angles.some((angle) => {
-      const point = pointOnCircle(cx, cy, radius, angle);
-      return point.x >= 0 && point.x <= viewport.width && point.y >= 0 && point.y <= viewport.height;
-    });
-  });
-  const capSegments = completeSegments.length >= 2
-    ? completeSegments
-    : partialSegments.length > 0 ? partialSegments : allSegments;
   for (const segment of allSegments) {
     const absBp = segment.codonStart;
     const codon = getCircularTranslationCodon(record.sequence, absBp, record.length, strand);
@@ -2152,8 +2134,7 @@ function drawTranslationFrame(ctx, cx, cy, radius, label, frameOffset, strand, s
     };
     const selected = viewerTargetMatches(state, target);
     addPolarHit(state, { cx, cy, innerRadius: radius - 11, outerRadius: radius + 11, startAngle, endAngle }, target);
-    const chevronCap = segment === capSegments[0] || segment === capSegments.at(-1);
-    traceAnnularTranslationArrow(ctx, cx, cy, radius + 10, radius - 10, startAngle, endAngle, strand, chevronCap);
+    traceAnnularTranslationArrow(ctx, cx, cy, radius + 10, radius - 10, startAngle, endAngle, strand);
     ctx.fillStyle = aa === "*" ? theme.stopFill : isStart ? theme.startFill : theme.aminoAcidFill;
     ctx.strokeStyle = theme.aminoAcidStroke;
     ctx.lineWidth = 1;
@@ -2162,12 +2143,12 @@ function drawTranslationFrame(ctx, cx, cy, radius, label, frameOffset, strand, s
     ctx.stroke();
     if (aa === "*" || isStart) {
       highlightedOutlines.push({
-        startAngle, endAngle, chevronCap,
+        startAngle, endAngle,
         stroke: aa === "*" ? theme.stopStroke : theme.startStroke
       });
     }
     if (selected) {
-      selectedOutlines.push({ startAngle, endAngle, outerRadius: radius + 10, innerRadius: radius - 10, chevronCap });
+      selectedOutlines.push({ startAngle, endAngle, outerRadius: radius + 10, innerRadius: radius - 10 });
     }
     if (!segment.labelVisible) continue;
     const midAngle = relToAngle(segment.codonMidpoint - viewStart, state, arc);
@@ -2188,7 +2169,7 @@ function drawTranslationFrame(ctx, cx, cy, radius, label, frameOffset, strand, s
   for (const outline of highlightedOutlines) {
     ctx.save();
     traceAnnularTranslationArrow(ctx, cx, cy, radius + 10, radius - 10,
-      outline.startAngle, outline.endAngle, strand, outline.chevronCap);
+      outline.startAngle, outline.endAngle, strand);
     // Keep each border inside its own tile, including when two highlighted
     // codons touch, so neither color covers the other's shared edge.
     ctx.clip();
@@ -2199,7 +2180,7 @@ function drawTranslationFrame(ctx, cx, cy, radius, label, frameOffset, strand, s
   }
   for (const outline of selectedOutlines) {
     traceAnnularTranslationArrow(ctx, cx, cy, outline.outerRadius + 0.5, outline.innerRadius - 0.5,
-      outline.startAngle, outline.endAngle, strand, outline.chevronCap);
+      outline.startAngle, outline.endAngle, strand);
     ctx.strokeStyle = theme.selectedStroke;
     ctx.lineWidth = 2.6;
     ctx.stroke();
@@ -2415,9 +2396,9 @@ function drawCircularViewer(ctx, canvas, status, record, state) {
   }
 
   if (state.showForwardTranslations) {
-    drawTranslationFrame(ctx, cx, cy, baseRadius + 8, "+1", 0, "+", state, record, arc, revealDetail, theme, { width, height });
-    drawTranslationFrame(ctx, cx, cy, baseRadius - 18, "+2", 1, "+", state, record, arc, revealDetail, theme, { width, height });
-    drawTranslationFrame(ctx, cx, cy, baseRadius - 44, "+3", 2, "+", state, record, arc, revealDetail, theme, { width, height });
+    drawTranslationFrame(ctx, cx, cy, baseRadius + 8, "+1", 0, "+", state, record, arc, revealDetail, theme);
+    drawTranslationFrame(ctx, cx, cy, baseRadius - 18, "+2", 1, "+", state, record, arc, revealDetail, theme);
+    drawTranslationFrame(ctx, cx, cy, baseRadius - 44, "+3", 2, "+", state, record, arc, revealDetail, theme);
   }
 
   const dnaPlusRadius = state.showForwardTranslations ? baseRadius - 76 : baseRadius - 28;
@@ -2428,9 +2409,9 @@ function drawCircularViewer(ctx, canvas, status, record, state) {
 
   if (state.showReverseTranslations) {
     const reverseStart = state.showSecondStrand ? dnaPlusRadius - 58 : dnaPlusRadius - 34;
-    drawTranslationFrame(ctx, cx, cy, reverseStart, "-1", 0, "-", state, record, arc, revealDetail, theme, { width, height });
-    drawTranslationFrame(ctx, cx, cy, reverseStart - 26, "-2", 1, "-", state, record, arc, revealDetail, theme, { width, height });
-    drawTranslationFrame(ctx, cx, cy, reverseStart - 52, "-3", 2, "-", state, record, arc, revealDetail, theme, { width, height });
+    drawTranslationFrame(ctx, cx, cy, reverseStart, "-1", 0, "-", state, record, arc, revealDetail, theme);
+    drawTranslationFrame(ctx, cx, cy, reverseStart - 26, "-2", 1, "-", state, record, arc, revealDetail, theme);
+    drawTranslationFrame(ctx, cx, cy, reverseStart - 52, "-3", 2, "-", state, record, arc, revealDetail, theme);
   }
 
   updateStatus(status, state, record, pxPerBp);
@@ -3134,6 +3115,15 @@ function installCircularViewer(panel, record, options = {}) {
       state.wheelAnchorTimer = null;
     }, 320);
   }, { passive: false });
+  const cleanupPinch = installCanvasPinchZoom(canvas, {
+    onStart: () => {
+      cancelInertia();
+      inspection.hide();
+    },
+    onChange: ({ current, factor }) => {
+      zoomAt(current.x, current.y, factor);
+    }
+  });
   canvas.addEventListener("mousedown", (event) => {
     cancelInertia();
     inspection.hide();
@@ -3229,6 +3219,7 @@ function installCircularViewer(panel, record, options = {}) {
   return {
     cleanup: () => {
       cancelInertia();
+      cleanupPinch();
       inspection.cleanup();
       window.removeEventListener("mousemove", onWindowMouseMove);
       window.removeEventListener("mouseup", onWindowMouseUp);

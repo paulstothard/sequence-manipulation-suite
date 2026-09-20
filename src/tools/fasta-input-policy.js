@@ -1,3 +1,5 @@
+export const MAX_PASTED_FASTA_CHARACTERS_FOR_RICH_OUTPUTS = 1_000_000;
+
 export const WHOLE_FASTA_SCAN_NOTE =
   "Paste/upload mode loads plain FASTA or ordinary FASTA.GZ and scans records locally. Indexed FASTA modes can read prepared FASTA+FAI or BGZF FASTA+FAI+GZI bundles, but whole-record tools still materialize and inspect every record.";
 

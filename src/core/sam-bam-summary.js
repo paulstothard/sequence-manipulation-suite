@@ -66,7 +66,7 @@ const FLAG_DEFINITIONS = [
   [0x800, "supplementary alignment"]
 ];
 
-const OUTPUT_ROW_LIMIT = 10000;
+export const OUTPUT_ROW_LIMIT = 10000;
 const ZERO_COVERAGE_EXAMPLE_LIMIT = 8;
 
 function escapeXml(value) {

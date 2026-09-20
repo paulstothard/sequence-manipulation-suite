@@ -8,7 +8,7 @@ import { alignPairwiseAffine } from "./pairwise-alignment.js";
 import { cleanDnaRnaSequence, complementDnaRnaSequence } from "./sequence.js";
 import { getGeneticCode } from "./genetic-code.js";
 import { makeSixFrameTranslations } from "./translation.js";
-import { translationArrowSvgPath } from "./translation-arrow-geometry.js";
+import { sangerTranslationArrowSvgPath } from "./sanger-translation-arrow-geometry.js";
 
 export const SANGER_TRACE_CHANNELS = ["A", "C", "G", "T"];
 export const SANGER_SESSION_SEPARATOR = "---SMS3-SANGER-SESSION-PART---";
@@ -55,6 +55,10 @@ const SANGER_SVG_TEXT_STYLE = `<style>
 .sanger-svg .sanger-align-title,.sanger-svg .sanger-align-section{font-family:Inter,"Segoe UI",Arial,sans-serif;font-weight:650}
 .sanger-svg .sanger-align-label,.sanger-svg .sanger-align-subtitle,.sanger-svg .sanger-align-footer{font-family:Inter,"Segoe UI",Arial,sans-serif;font-weight:400}
 </style>`;
+
+function sangerInspectionShadeSvg(x, y, width, height) {
+  return `<rect class="sanger-inspection-shade" x="${Number(x).toFixed(2)}" y="${Number(y).toFixed(2)}" width="${Number(width).toFixed(2)}" height="${Number(height).toFixed(2)}" fill="#2563eb" fill-opacity="0" pointer-events="none" aria-hidden="true"/>`;
+}
 
 const DNA_IUPAC_BASES = new Set(["A", "C", "G", "T", "U", "R", "Y", "S", "W", "K", "M", "B", "D", "H", "V", "N"]);
 const IUPAC_AMBIGUITY_BY_BASE_SET = new Map([
@@ -1628,7 +1632,8 @@ export function makeSangerReferenceAlignmentSvg(session, options = {}) {
         const referenceCoordinate = referenceBase === "-" ? "gap" : referenceCellPosition;
         const queryCoordinate = queryBase === "-" ? "gap" : queryCellPosition;
         const inspectionText = `${alignment.query_name}; alignment column ${offset + index + 1}; reference ${referenceBase} at ${referenceCoordinate}; query ${queryBase} at ${queryCoordinate}; ${relation}; ${alignment.orientation}`;
-        parts.push(`<rect x="${x}" y="${rowTop}" width="${cell - 1}" height="${rowHeight * 3 - 1}" fill="${fill}" stroke="${stroke}" stroke-width="0.5"><title>${escapeXml(inspectionText)}</title></rect>`);
+        parts.push(`<rect class="sanger-align-inspection-target" data-sanger-inspection-target="" data-sms3-inspection-highlight="fill" x="${x}" y="${rowTop}" width="${cell - 1}" height="${rowHeight * 3 - 1}" fill="${fill}" stroke="${stroke}" stroke-width="0.5"><title>${escapeXml(inspectionText)}</title></rect>`);
+        parts.push(sangerInspectionShadeSvg(x, rowTop, cell - 1, rowHeight * 3 - 1));
         parts.push(`<text class="sanger-align-cell" pointer-events="none" x="${x + cell / 2}" y="${referenceY}">${escapeXml(referenceBase)}</text>`);
         parts.push(`<text class="sanger-align-marker" pointer-events="none" x="${x + cell / 2}" y="${markerY}">${escapeXml(marker)}</text>`);
         parts.push(`<text class="sanger-align-cell" pointer-events="none" x="${x + cell / 2}" y="${queryY}">${escapeXml(queryBase)}</text>`);
@@ -1987,17 +1992,19 @@ function makeAssemblyConsensusInspectionTargetsSvg({ contig, chunk, sequenceLeft
   const parts = [];
   for (let position = chunk.start; position <= chunk.end; position += 1) {
     const x = sequenceLeft + (position - chunk.start) * cellWidth;
-    parts.push(`<rect class="sanger-assembly-consensus-inspection-target" data-sanger-contig="${escapeXml(contig.id)}" data-sanger-assembly-position="${position}" x="${x.toFixed(2)}" y="${(rowTop + 1).toFixed(2)}" width="${cellWidth.toFixed(2)}" height="22" fill="transparent"><title>${escapeXml(assemblyConsensusInspectionText(contig, position))}</title></rect>`);
+    parts.push(`<rect class="sanger-assembly-consensus-inspection-target" data-sanger-inspection-target="" data-sms3-inspection-highlight="fill" data-sanger-contig="${escapeXml(contig.id)}" data-sanger-assembly-position="${position}" x="${x.toFixed(2)}" y="${(rowTop + 1).toFixed(2)}" width="${cellWidth.toFixed(2)}" height="22" fill="transparent"><title>${escapeXml(assemblyConsensusInspectionText(contig, position))}</title></rect>`);
+    parts.push(sangerInspectionShadeSvg(x, rowTop + 1, cellWidth, 22));
   }
   return parts.join("");
 }
 
-function makeAssemblyReadInspectionTargetsSvg({ traceResult, read, contig, segment, chunk, sequenceLeft, cellWidth, rowTop, rowHeight }) {
+function makeAssemblyReadInspectionTargetsSvg({ traceResult, read, contig, segment, chunk, sequenceLeft, cellWidth, columnTop, rowTop, rowHeight }) {
   const parts = [];
   for (let position = segment.segmentStart; position <= segment.segmentEnd; position += 1) {
     const readPosition = position - read.start + 1;
     const x = sequenceLeft + (position - chunk.start) * cellWidth;
-    parts.push(`<rect class="sanger-assembly-base-inspection-target" data-sanger-read="${escapeXml(read.title)}" data-sanger-assembly-position="${position}" data-sanger-read-position="${readPosition}" x="${x.toFixed(2)}" y="${(rowTop + 2).toFixed(2)}" width="${cellWidth.toFixed(2)}" height="${(rowHeight - 8).toFixed(2)}" fill="transparent"><title>${escapeXml(assemblyReadInspectionText({ traceResult, read, contig, position, readPosition }))}</title></rect>`);
+    parts.push(`<rect class="sanger-assembly-base-inspection-target" data-sanger-inspection-target="" data-sms3-inspection-highlight="fill" data-sanger-read="${escapeXml(read.title)}" data-sanger-assembly-position="${position}" data-sanger-read-position="${readPosition}" x="${x.toFixed(2)}" y="${(rowTop + 2).toFixed(2)}" width="${cellWidth.toFixed(2)}" height="${(rowHeight - 8).toFixed(2)}" fill="transparent"><title>${escapeXml(assemblyReadInspectionText({ traceResult, read, contig, position, readPosition }))}</title></rect>`);
+    parts.push(sangerInspectionShadeSvg(x, columnTop, cellWidth, rowTop + rowHeight - 6 - columnTop));
   }
   return parts.join("");
 }
@@ -2158,10 +2165,10 @@ function referenceReadInspectionText({ traceResult, placement, reference, item }
   return `${placement.title}; reference ${reference.title} position ${item.referencePosition}: ${referenceBase}; query position ${item.queryPosition}; called base ${item.base}${sourceCall}; ${relation}; ${orientation}; ${traceCallEvidenceText(traceResult, placement, call)}`;
 }
 
-function makeReferenceReadInspectionTargetsSvg({ traceResult, placement, reference, segment, chunk, sequenceLeft, cellWidth, rowTop, rowHeight }) {
+function makeReferenceReadInspectionTargetsSvg({ traceResult, placement, reference, segment, chunk, sequenceLeft, cellWidth, columnTop, rowTop, rowHeight }) {
   return segment.mapped.map((item) => {
     const x = sequenceLeft + (item.referencePosition - chunk.start) * cellWidth;
-    return `<rect class="sanger-reference-read-inspection-target" data-sanger-read="${escapeXml(placement.title)}" data-sanger-reference-position="${item.referencePosition}" data-sanger-query-position="${item.queryPosition}" x="${x.toFixed(2)}" y="${(rowTop + 2).toFixed(2)}" width="${cellWidth.toFixed(2)}" height="${(rowHeight - 8).toFixed(2)}" fill="transparent"><title>${escapeXml(referenceReadInspectionText({ traceResult, placement, reference, item }))}</title></rect>`;
+    return `<rect class="sanger-reference-read-inspection-target" data-sanger-inspection-target="" data-sms3-inspection-highlight="fill" data-sanger-read="${escapeXml(placement.title)}" data-sanger-reference-position="${item.referencePosition}" data-sanger-query-position="${item.queryPosition}" x="${x.toFixed(2)}" y="${(rowTop + 2).toFixed(2)}" width="${cellWidth.toFixed(2)}" height="${(rowHeight - 8).toFixed(2)}" fill="transparent"><title>${escapeXml(referenceReadInspectionText({ traceResult, placement, reference, item }))}</title></rect>${sangerInspectionShadeSvg(x, columnTop, cellWidth, rowTop + rowHeight - 6 - columnTop)}`;
   }).join("");
 }
 
@@ -2424,6 +2431,7 @@ export function makeSangerReferenceTraceMapSvg(session, options = {}) {
     parts.push(`<text x="${left}" y="${y}" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#172026">${escapeXml(reference.title)} (${reference.sequence.length} bp)</text>`);
     parts.push(`<text x="${left}" y="${y + 16}" font-family="system-ui, sans-serif" font-size="11" fill="#64748b">bases ${chunk.start}-${chunk.end}</text>`);
     y += 24;
+    const referenceColumnTop = y + 1;
     parts.push(`<text x="${left}" y="${y + 15}" font-family="system-ui, sans-serif" font-size="11" fill="#64748b">reference</text>`);
     for (let position = chunk.start; position <= chunk.end; position += 1) {
       const base = reference.sequence[position - 1] ?? "N";
@@ -2433,12 +2441,14 @@ export function makeSangerReferenceTraceMapSvg(session, options = {}) {
     for (let position = chunk.start; position <= chunk.end; position += 1) {
       const base = reference.sequence[position - 1] ?? "N";
       const x = sequenceLeft + (position - chunk.start) * cellWidth;
-      parts.push(`<rect class="sanger-reference-base-inspection-target" data-sanger-reference-position="${position}" x="${x.toFixed(2)}" y="${(y + 1).toFixed(2)}" width="${cellWidth.toFixed(2)}" height="22" fill="transparent"><title>${escapeXml(`Reference ${reference.title} position ${position}: ${base}`)}</title></rect>`);
+      parts.push(`<rect class="sanger-reference-base-inspection-target" data-sanger-inspection-target="" data-sms3-inspection-highlight="fill" data-sanger-reference-position="${position}" x="${x.toFixed(2)}" y="${(y + 1).toFixed(2)}" width="${cellWidth.toFixed(2)}" height="22" fill="transparent"><title>${escapeXml(`Reference ${reference.title} position ${position}: ${base}`)}</title></rect>`);
+      parts.push(sangerInspectionShadeSvg(x, referenceColumnTop, cellWidth, 22));
     }
     y += referenceRowHeight;
     if (translationFrames.length > 0) {
       parts.push(`<g class="sanger-reference-translation-tracks" data-translation-source="reference">${makeSangerTranslationTracksSvg({
         frames: translationFrames,
+        sequenceLength: reference.sequence.length,
         visibleStart: chunk.start,
         visibleEnd: chunk.end,
         xForIndex: (position) => sequenceLeft + (position - chunk.start + 0.5) * cellWidth,
@@ -2484,6 +2494,7 @@ export function makeSangerReferenceTraceMapSvg(session, options = {}) {
         chunk,
         sequenceLeft,
         cellWidth,
+        columnTop: referenceColumnTop,
         rowTop,
         rowHeight: readRowHeight
       }));
@@ -2557,6 +2568,7 @@ export function makeSangerAssemblyTraceMapSvg(session, options = {}) {
     parts.push(`<text x="${left}" y="${y}" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#172026">${escapeXml(chunk.contig.title)} (${chunk.contig.sequence.length} bp; ${chunk.contig.reads.length} read${chunk.contig.reads.length === 1 ? "" : "s"})</text>`);
     parts.push(`<text x="${left}" y="${y + 16}" font-family="system-ui, sans-serif" font-size="11" fill="#64748b">bases ${chunk.start}-${chunk.end}</text>`);
     y += 24;
+    const consensusColumnTop = y + 1;
     parts.push(`<text x="${left}" y="${y + 15}" font-family="system-ui, sans-serif" font-size="11" fill="#64748b">consensus</text>`);
     for (let position = chunk.start; position <= chunk.end; position += 1) {
       const base = chunk.contig.sequence[position - 1] ?? "N";
@@ -2575,6 +2587,7 @@ export function makeSangerAssemblyTraceMapSvg(session, options = {}) {
     if (translationFrames.length > 0) {
       parts.push(`<g class="sanger-assembly-translation-tracks" data-translation-source="consensus">${makeSangerTranslationTracksSvg({
         frames: translationFrames,
+        sequenceLength: chunk.contig.sequence.length,
         visibleStart: chunk.start,
         visibleEnd: chunk.end,
         xForIndex: (position) => sequenceLeft + (position - chunk.start + 0.5) * cellWidth,
@@ -2619,6 +2632,7 @@ export function makeSangerAssemblyTraceMapSvg(session, options = {}) {
         chunk,
         sequenceLeft,
         cellWidth,
+        columnTop: consensusColumnTop,
         rowTop,
         rowHeight: readRowHeight
       }));
@@ -2714,7 +2728,8 @@ function makePath(values, maxIntensity, geometry) {
   }).join(" ");
 }
 
-const SANGER_TRANSLATION_ROW_HEIGHT = 18;
+// The 16 px tiles use a 20 px row step, matching the 4 px arrow-to-arrow gap.
+const SANGER_TRANSLATION_ROW_HEIGHT = 20;
 
 function selectedSangerTranslationFrames(sequence, options = {}) {
   if (!options.showForwardTranslations && !options.showReverseTranslations) {
@@ -2740,6 +2755,7 @@ function sangerTranslationText(frame, aminoAcid) {
 
 function makeSangerTranslationTracksSvg({
   frames,
+  sequenceLength,
   visibleStart,
   visibleEnd,
   xForIndex,
@@ -2754,10 +2770,10 @@ function makeSangerTranslationTracksSvg({
   }
   const boundaryForIndex = (position, side) => {
     const x = xForIndex(position);
-    if (side === "left") {
-      return position > visibleStart ? (xForIndex(position - 1) + x) / 2 : left;
-    }
-    return position < visibleEnd ? (x + xForIndex(position + 1)) / 2 : right;
+    const neighbor = position + (side === "left" ? -1 : 1);
+    if (neighbor >= 1 && neighbor <= sequenceLength) return (x + xForIndex(neighbor)) / 2;
+    const inboard = position + (side === "left" ? 1 : -1);
+    return x + (x - xForIndex(inboard)) / 2;
   };
   const parts = [];
   frames.forEach((frame, frameIndex) => {
@@ -2765,26 +2781,39 @@ function makeSangerTranslationTracksSvg({
     parts.push(`<text class="sanger-translation-label" x="${(left - 8).toFixed(1)}" y="${(y + 12).toFixed(1)}" text-anchor="end" font-size="9" font-weight="700" fill="${frame.strand === "+" ? "#1d4ed8" : "#6d28d9"}">${escapeXml(frame.label)}</text>`);
     const visibleCodons = frame.codons.filter((codon) =>
       Math.max(visibleStart, codon.directStart) <= Math.min(visibleEnd, codon.directEnd));
+    const terminalCodon = visibleCodons.reduce((terminal, codon) => {
+      if (!terminal) return codon;
+      return frame.strand === "+"
+        ? (codon.directEnd > terminal.directEnd ? codon : terminal)
+        : (codon.directStart < terminal.directStart ? codon : terminal);
+    }, null);
+    const tailCodon = visibleCodons.reduce((tail, codon) => {
+      if (!tail) return codon;
+      return frame.strand === "+"
+        ? (codon.directStart < tail.directStart ? codon : tail)
+        : (codon.directEnd > tail.directEnd ? codon : tail);
+    }, null);
     for (const codon of visibleCodons) {
       const segmentStart = Math.max(visibleStart, codon.directStart);
       const segmentEnd = Math.min(visibleEnd, codon.directEnd);
       if (segmentStart > segmentEnd) {
         continue;
       }
-      const x1 = boundaryForIndex(segmentStart, "left");
-      const x2 = boundaryForIndex(segmentEnd, "right");
+      const x1 = boundaryForIndex(codon.directStart, "left");
+      const x2 = boundaryForIndex(codon.directEnd, "right");
+      const terminal = codon === terminalCodon && (frame.strand === "+"
+        ? codon.directEnd <= visibleEnd
+        : codon.directStart >= visibleStart);
+      const exposedTail = codon === tailCodon && (frame.strand === "+"
+        ? codon.directStart >= visibleStart
+        : codon.directEnd <= visibleEnd);
       const clipped = clipStart !== null && clipEnd !== null &&
         (codon.directStart < clipStart || codon.directEnd > clipEnd);
       const label = codon.centerPosition >= visibleStart && codon.centerPosition <= visibleEnd
         ? codon.aminoAcid
         : "";
       parts.push(`<g class="sanger-translation-codon" data-frame="${escapeXml(frame.frame)}" data-codon="${escapeXml(codon.codon)}" data-amino-acid="${escapeXml(codon.aminoAcid)}" data-start="${codon.directStart}" data-end="${codon.directEnd}" opacity="${clipped ? "0.42" : "1"}">`);
-      const chevronCap = codon === visibleCodons[0] || codon === visibleCodons.at(-1);
-      if (chevronCap) {
-        parts.push(`<path d="${translationArrowSvgPath(x1, y, Math.max(0.5, x2 - x1), 16, frame.strand)}" fill="${sangerTranslationFill(frame, codon.aminoAcid)}" stroke="#cbd5e1" stroke-width="0.6" stroke-linejoin="round"/>`);
-      } else {
-        parts.push(`<rect x="${x1.toFixed(2)}" y="${y.toFixed(1)}" width="${Math.max(0.5, x2 - x1).toFixed(2)}" height="16" rx="2" fill="${sangerTranslationFill(frame, codon.aminoAcid)}" stroke="#cbd5e1" stroke-width="0.6"/>`);
-      }
+      parts.push(`<path d="${sangerTranslationArrowSvgPath(x1, x2, y, 16, frame.strand, left, right, terminal, exposedTail)}" fill="${sangerTranslationFill(frame, codon.aminoAcid)}" stroke="#cbd5e1" stroke-width="0.6" stroke-linejoin="round"/>`);
       if (label) {
         parts.push(`<text x="${xForIndex(codon.centerPosition).toFixed(2)}" y="${(y + 11.5).toFixed(1)}" text-anchor="middle" font-size="9" font-weight="700" fill="${sangerTranslationText(frame, codon.aminoAcid)}">${escapeXml(label)}</text>`);
       }
@@ -2895,10 +2924,13 @@ function makeWrappedSangerTraceSvg(result, options = {}) {
       const nextX = callIndex < rowCalls.length - 1 ? xForPosition(rowCalls[callIndex + 1].tracePosition) : plot.left + plot.width;
       const targetLeft = callIndex > 0 ? (previousX + x) / 2 : plot.left;
       const targetRight = callIndex < rowCalls.length - 1 ? (x + nextX) / 2 : plot.left + plot.width;
-      return `<rect class="sanger-base-inspection-target" data-sanger-base="${call.displayIndex}" x="${targetLeft.toFixed(2)}" y="${rowTop + 16}" width="${Math.max(2, targetRight - targetLeft).toFixed(2)}" height="${Math.max(1, qualityBottom - rowTop - 16).toFixed(2)}" fill="transparent"><title>${escapeXml(sangerCallInspectionText(call))}</title></rect>`;
+      const targetWidth = Math.max(2, targetRight - targetLeft);
+      const targetHeight = Math.max(1, qualityBottom - rowTop - 16);
+      return `<rect class="sanger-base-inspection-target" data-sanger-inspection-target="" data-sms3-inspection-highlight="fill" data-sanger-base="${call.displayIndex}" x="${targetLeft.toFixed(2)}" y="${rowTop + 16}" width="${targetWidth.toFixed(2)}" height="${targetHeight.toFixed(2)}" fill="transparent"><title>${escapeXml(sangerCallInspectionText(call))}</title></rect>${sangerInspectionShadeSvg(targetLeft, rowTop + 16, targetWidth, targetHeight)}`;
     }).join("\n");
     const translationTracks = makeSangerTranslationTracksSvg({
       frames: translationFrames,
+      sequenceLength: view.baseCalls.length,
       visibleStart: rowCalls[0].displayIndex,
       visibleEnd: rowCalls[rowCalls.length - 1].displayIndex,
       xForIndex,
@@ -2985,6 +3017,7 @@ export function makeSangerTraceSvg(result, options = {}) {
 
   const translationTracks = makeSangerTranslationTracksSvg({
     frames: translationFrames,
+    sequenceLength: view.baseCalls.length,
     visibleStart: 1,
     visibleEnd: view.baseCalls.length,
     xForIndex,
@@ -3013,7 +3046,9 @@ export function makeSangerTraceSvg(result, options = {}) {
     const nextX = callIndex < view.baseCalls.length - 1 ? xForPosition(view.baseCalls[callIndex + 1].tracePosition) : plot.left + plot.width;
     const targetLeft = callIndex > 0 ? (previousX + x) / 2 : plot.left;
     const targetRight = callIndex < view.baseCalls.length - 1 ? (x + nextX) / 2 : plot.left + plot.width;
-    return `<rect class="sanger-base-inspection-target" data-sanger-base="${call.displayIndex}" x="${targetLeft.toFixed(2)}" y="55" width="${Math.max(2, targetRight - targetLeft).toFixed(2)}" height="${Math.max(1, qualityTop + qualityHeight - 55).toFixed(2)}" fill="transparent"><title>${escapeXml(sangerCallInspectionText(call))}</title></rect>`;
+    const targetWidth = Math.max(2, targetRight - targetLeft);
+    const targetHeight = Math.max(1, qualityTop + qualityHeight - 55);
+    return `<rect class="sanger-base-inspection-target" data-sanger-inspection-target="" data-sms3-inspection-highlight="fill" data-sanger-base="${call.displayIndex}" x="${targetLeft.toFixed(2)}" y="55" width="${targetWidth.toFixed(2)}" height="${targetHeight.toFixed(2)}" fill="transparent"><title>${escapeXml(sangerCallInspectionText(call))}</title></rect>${sangerInspectionShadeSvg(targetLeft, 55, targetWidth, targetHeight)}`;
   }).join("\n");
 
   return `<svg class="sanger-svg" xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(view.record)} Sanger trace">

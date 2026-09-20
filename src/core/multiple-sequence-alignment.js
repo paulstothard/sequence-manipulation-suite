@@ -46,10 +46,9 @@ export const multipleAlignmentIdentityTableColumns = [
 ];
 
 export const multipleAlignmentDefaultLimits = Object.freeze({
-  maxSequences: 100,
   maxTotalSymbols: 250000
 });
-const MAX_MSA_SEQUENCES_OPTION = 1000;
+export const MAX_MSA_SEQUENCES = 1000;
 const MAX_MSA_TOTAL_SYMBOLS_OPTION = 1000000;
 export const MULTIPLE_ALIGNMENT_ENGINES = {
   muscle: "muscle",
@@ -87,13 +86,6 @@ function normalizeOptions(options = {}) {
     mismatchScore: score(options.mismatchScore, -4),
     similarScore: score(options.similarScore, 1),
     lineWidth: Math.max(20, Math.min(120, Number.parseInt(options.lineWidth, 10) || 60)),
-    limitRecords: options.limitRecords === true,
-    maxSequences: normalizeLimitInteger(
-      options.maxSequences,
-      multipleAlignmentDefaultLimits.maxSequences,
-      2,
-      MAX_MSA_SEQUENCES_OPTION
-    ),
     maxTotalSymbols: normalizeLimitInteger(
       options.maxTotalSymbols,
       multipleAlignmentDefaultLimits.maxTotalSymbols,
@@ -180,18 +172,14 @@ function prepareRecords(input, alphabet, options = {}) {
   if (records.length < 2) {
     warnings.push("Provide at least two FASTA records for multiple sequence alignment.");
   }
-  if (!options.limitRecords && records.length > MAX_MSA_SEQUENCES_OPTION) {
-    throw new Error(`Multiple alignment has ${records.length.toLocaleString()} records, above the supported maximum of ${MAX_MSA_SEQUENCES_OPTION.toLocaleString()}. Reduce the input or enable the record limit in Limits to align the first records only.`);
+  if (records.length > MAX_MSA_SEQUENCES) {
+    throw new Error(`Multiple alignment has ${records.length.toLocaleString()} records, above the supported maximum of ${MAX_MSA_SEQUENCES.toLocaleString()}. Reduce the input to run the alignment.`);
   }
-  if (options.limitRecords && records.length > options.maxSequences) {
-    warnings.push(`Only the first ${options.maxSequences.toLocaleString()} records were aligned.`);
-  }
-  const limitedRecords = options.limitRecords ? records.slice(0, options.maxSequences) : records;
-  const totalSymbols = limitedRecords.reduce((sum, record) => sum + record.sequence.length, 0);
+  const totalSymbols = records.reduce((sum, record) => sum + record.sequence.length, 0);
   if (totalSymbols > options.maxTotalSymbols) {
-    throw new Error(`Multiple alignment input has ${totalSymbols.toLocaleString()} symbols, which exceeds the current ${options.maxTotalSymbols.toLocaleString()}-symbol browser-local alignment limit. Reduce the number or length of sequences, or raise the limit if the browser can handle the run.`);
+    throw new Error(`Multiple alignment input has ${totalSymbols.toLocaleString()} symbols, which exceeds the ${options.maxTotalSymbols.toLocaleString()}-symbol browser-local alignment limit. Reduce the number or length of sequences.`);
   }
-  return { records: limitedRecords, warnings, charactersRemoved, totalSymbols };
+  return { records, warnings, charactersRemoved, totalSymbols };
 }
 
 function uniquePreparedTitle(title, seenTitles, reservedTitles) {
@@ -526,19 +514,15 @@ function prepareCodingDnaRecords(input, rawOptions = {}) {
   if (records.length < 2) {
     warnings.push("Provide at least two coding DNA/RNA FASTA records with at least one complete codon each.");
   }
-  if (!options.limitRecords && records.length > MAX_MSA_SEQUENCES_OPTION) {
-    throw new Error(`Multiple coding DNA alignment has ${records.length.toLocaleString()} records, above the supported maximum of ${MAX_MSA_SEQUENCES_OPTION.toLocaleString()}. Reduce the input or enable the record limit in Limits to align the first records only.`);
+  if (records.length > MAX_MSA_SEQUENCES) {
+    throw new Error(`Multiple coding DNA alignment has ${records.length.toLocaleString()} records, above the supported maximum of ${MAX_MSA_SEQUENCES.toLocaleString()}. Reduce the input to run the alignment.`);
   }
-  if (options.limitRecords && records.length > options.maxSequences) {
-    warnings.push(`Only the first ${options.maxSequences.toLocaleString()} records were aligned.`);
-  }
-  const limitedRecords = options.limitRecords ? records.slice(0, options.maxSequences) : records;
-  const totalCodons = limitedRecords.reduce((sum, record) => sum + record.codons.length, 0);
+  const totalCodons = records.reduce((sum, record) => sum + record.codons.length, 0);
   const totalSymbols = totalCodons * 3;
   if (totalSymbols > options.maxTotalSymbols) {
-    throw new Error(`Multiple coding DNA alignment input has ${totalSymbols.toLocaleString()} bases in complete codons, which exceeds the current ${options.maxTotalSymbols.toLocaleString()}-symbol browser-local alignment limit. Reduce the number or length of sequences, or raise the limit if the browser can handle the run.`);
+    throw new Error(`Multiple coding DNA alignment input has ${totalSymbols.toLocaleString()} bases in complete codons, which exceeds the ${options.maxTotalSymbols.toLocaleString()}-symbol browser-local alignment limit. Reduce the number or length of sequences.`);
   }
-  return { records: limitedRecords, warnings, charactersRemoved, totalSymbols, geneticCode: code };
+  return { records, warnings, charactersRemoved, totalSymbols, geneticCode: code };
 }
 
 function projectProteinMsaToCodons(prepared, proteinAlignment, options) {

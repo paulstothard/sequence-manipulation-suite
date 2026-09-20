@@ -115,18 +115,22 @@ const pairwiseLimitsGroup = {
   label: "Limits",
   collapsible: true,
   collapsed: true,
-  visibleWhen: { option: "alignmentEngine", value: PAIRWISE_ALIGNMENT_ENGINES.sms3 },
   options: [
+    { type: "limit-value", label: "Input sequences per alignment", value: 2,
+      help: "When more records or raw sequence blocks are supplied, only the first two are aligned and a warning is shown." },
     {
       id: "maxAlignmentCells",
       type: "number",
-      label: "Maximum SMS3 alignment cells",
+      label: "Maximum SMS3 affine alignment cells",
       defaultValue: pairwiseAlignmentDefaultLimits.maxAlignmentCells,
       min: 1000,
       max: pairwiseAlignmentDefaultLimits.maxAlignmentCells * 10,
       step: 100000,
-      visibleWhen: { option: "alignmentEngine", value: PAIRWISE_ALIGNMENT_ENGINES.sms3 },
       help: "Caps the SMS3 affine dynamic-programming matrix."
+    },
+    {
+      type: "note",
+      text: "The seq-align engine has no fixed SMS3 matrix-cell ceiling."
     }
   ]
 };

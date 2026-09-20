@@ -1,5 +1,5 @@
-import { proteinStructureConservationColumns } from "../../core/protein-structure-conservation.js";
-import { MULTIPLE_ALIGNMENT_ENGINES, multipleAlignmentDefaultLimits } from "../../core/multiple-sequence-alignment.js";
+import { FULL_PAIRWISE_ALIGNMENT_CELL_LIMIT, proteinStructureConservationColumns } from "../../core/protein-structure-conservation.js";
+import { MAX_MSA_SEQUENCES, MULTIPLE_ALIGNMENT_ENGINES, multipleAlignmentDefaultLimits } from "../../core/multiple-sequence-alignment.js";
 import { pairwiseAlignmentDefaultLimits } from "../../core/pairwise-alignment.js";
 
 export const proteinConservationStructureViewerMetadata = {
@@ -179,24 +179,7 @@ export const proteinConservationStructureViewerMetadata = {
       collapsed: true,
       visibleWhen: { option: "alignmentInputMode", value: "unaligned" },
       options: [
-        {
-          id: "limitRecords",
-          type: "checkbox",
-          label: "Align only the first records",
-          defaultValue: false,
-          help: "Off by default: use the structure chain and every comparison record up to the supported 1,000-record ceiling. Turn on to intentionally limit the alignment."
-        },
-        {
-          id: "maxSequences",
-          type: "number",
-          label: "Maximum sequences to align",
-          defaultValue: multipleAlignmentDefaultLimits.maxSequences,
-          min: 2,
-          max: 1000,
-          step: 1,
-          visibleWhen: { option: "limitRecords", value: true },
-          help: "Includes the extracted structure-chain sequence plus the comparison FASTA records."
-        },
+        { id: "maxAlignmentRecords", type: "limit-value", label: "Maximum alignment rows (including the structure chain)", value: MAX_MSA_SEQUENCES },
         {
           id: "maxTotalSymbols",
           type: "number",
@@ -221,6 +204,16 @@ export const proteinConservationStructureViewerMetadata = {
           ],
           help: "SMS3 progressive mode uses pairwise dynamic-programming alignments internally; this cap applies to each pairwise matrix."
         }
+      ]
+    },
+    {
+      type: "group",
+      label: "Limits",
+      collapsible: true,
+      collapsed: true,
+      options: [
+        { type: "limit-value", label: "Full structure-chain pairwise mapping", value: `${FULL_PAIRWISE_ALIGNMENT_CELL_LIMIT.toLocaleString("en-US")} cells`,
+          help: "Above this product of sequence lengths, the structure mapping uses a less exhaustive greedy mapping." }
       ]
     }
   ],

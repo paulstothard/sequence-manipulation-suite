@@ -21,7 +21,7 @@ export const sequenceEditorSummaryColumns = [
   { id: "characters_removed", label: "Characters removed" }
 ];
 
-const DEFAULT_EDITOR_RESTRICTION_SCAN_LIMIT = 250000;
+export const DEFAULT_EDITOR_RESTRICTION_SCAN_LIMIT = 250000;
 
 function getRestrictionScanLimit(options = {}) {
   const value = Number.parseInt(options.maxRestrictionScanBases, 10);

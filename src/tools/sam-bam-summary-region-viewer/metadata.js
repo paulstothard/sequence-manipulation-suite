@@ -2,7 +2,8 @@ import {
   samAlignmentColumns,
   samCoverageColumns,
   samFlagColumns,
-  samReferenceColumns
+  samReferenceColumns,
+  OUTPUT_ROW_LIMIT
 } from "../../core/sam-bam-summary.js";
 import { makeOptionalReferenceGenomeOptionGroup } from "../reference-genome-options.js";
 
@@ -155,6 +156,16 @@ export const samBamSummaryRegionViewerMetadata = {
           step: 25,
           help: "Caps materialized region rows and region-map read glyphs. SAM text summaries still scan all supplied alignments; indexed BAM mode reads only the requested region."
         }
+      ]
+    },
+    {
+      type: "group",
+      label: "Limits",
+      collapsible: true,
+      collapsed: true,
+      options: [
+        { type: "limit-value", label: "Alignment table rows retained from a scan", value: OUTPUT_ROW_LIMIT,
+          help: "The full source is summarized, but only this many alignment rows are materialized for table output; a warning reports omitted rows." }
       ]
     },
     {

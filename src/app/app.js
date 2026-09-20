@@ -42,6 +42,8 @@ import { createSangerTraceWorkspaceController } from "./sanger-trace-workspace-u
 import { downloadBlob, downloadText } from "./file-download.js";
 import { readToolInputFileText } from "./input-file-readers.js";
 import { makeWarningsStream } from "../core/workflow.js";
+import { STANDARD_BROWSER_FILE_BYTES } from "../core/tool-limit-options.js";
+import { PROTEIN_STRUCTURE_SUGGESTION_CHAR_LIMIT } from "../core/viewer-limits.js";
 import { downloadSvgAsPng, getPngFilename, serializeSvgElement } from "./svg-export.js";
 import {
   alignTsv,
@@ -158,9 +160,6 @@ const sortedTools = [...tools].sort((left, right) =>
 );
 const visibleSortedTools = sortedTools.filter((tool) => tool.metadata.hiddenFromToolList !== true);
 
-const XLSX_EXPORT_ROW_LIMIT = 50000;
-const XLSX_EXPORT_CELL_LIMIT = 250000;
-const PROTEIN_STRUCTURE_SUGGESTION_CHAR_LIMIT = 1_500_000;
 const PCR_PRIMER_DESIGN_TOOL_ID = "pcr-primer-design";
 const IN_SILICO_PCR_TOOL_ID = "in-silico-pcr";
 const SAM_BAM_SUMMARY_REGION_VIEWER_TOOL_ID = "sam-bam-summary-region-viewer";
@@ -1241,9 +1240,9 @@ function renderSplitInputPanel(tool) {
       if (!panel.multipleFiles && files.length > 1) {
         files.splice(1);
       }
-      const oversized = files.find((file) => file.size > 25 * 1024 * 1024);
+      const oversized = files.find((file) => file.size > STANDARD_BROWSER_FILE_BYTES);
       if (oversized) {
-        addMessage(`${oversized.name}: file is larger than 25 MB.`, "warning");
+        addMessage(`${oversized.name}: file is larger than 25 MiB.`, "warning");
         return;
       }
       const texts = [];
@@ -1786,8 +1785,8 @@ function createAlignmentViewerReferenceTextSection({ inputKey, label, dropLabel,
     if (!file) {
       return;
     }
-    if (file.size > 25 * 1024 * 1024) {
-      addMessage(`${file.name}: file is larger than 25 MB.`, "warning");
+    if (file.size > STANDARD_BROWSER_FILE_BYTES) {
+      addMessage(`${file.name}: file is larger than 25 MiB.`, "warning");
       return;
     }
     textarea.value = await readToolInputFileText(file, { onMessage: addMessage });
@@ -2405,8 +2404,8 @@ function createReadMappingInputSlot({
 
   const loadFile = async (file) => {
     if (!file) return;
-    if (file.size > 25 * 1024 * 1024) {
-      addMessage(`${file.name}: file is larger than 25 MB.`, "warning");
+    if (file.size > STANDARD_BROWSER_FILE_BYTES) {
+      addMessage(`${file.name}: file is larger than 25 MiB.`, "warning");
       return;
     }
     textarea.value = await readToolInputFileText(file, { onMessage: addMessage });
@@ -3197,8 +3196,8 @@ function createBiologicalRecordInputSection({ key, panel, index, value }) {
       return;
     }
     if (key === "annotation" && await tryOpenEditorDocumentFile(file)) return;
-    if (file.size > 25 * 1024 * 1024) {
-      addMessage(`${file.name}: file is larger than 25 MB.`, "warning");
+    if (file.size > STANDARD_BROWSER_FILE_BYTES) {
+      addMessage(`${file.name}: file is larger than 25 MiB.`, "warning");
       return;
     }
     textarea.value = await readToolInputFileText(file, { onMessage: addMessage });
@@ -3415,8 +3414,8 @@ function createInSilicoPcrTextPane({
     if (!file) {
       return;
     }
-    if (file.size > 25 * 1024 * 1024) {
-      addMessage(`${file.name}: file is larger than 25 MB.`, "warning");
+    if (file.size > STANDARD_BROWSER_FILE_BYTES) {
+      addMessage(`${file.name}: file is larger than 25 MiB.`, "warning");
       return;
     }
     textarea.value = await readToolInputFileText(file, { onMessage: addMessage });
@@ -4604,10 +4603,6 @@ function getOptionControlValue(...args) {
   return toolOptionsUi.getOptionControlValue(...args);
 }
 
-function persistLimitOptionControlValue(...args) {
-  return toolOptionsUi.persistLimitOptionControlValue(...args);
-}
-
 function getCurrentOptionValues(...args) {
   return toolOptionsUi.getCurrentOptionValues(...args);
 }
@@ -5311,7 +5306,7 @@ async function loadWorkflowFile(file) {
   editorRecoveryEpoch++;
   elements.workflowMessages.textContent = "";
   try {
-    if (file.size > 25 * 1024 * 1024) throw new Error("Workflow file exceeds 25 MB.");
+    if (file.size > STANDARD_BROWSER_FILE_BYTES) throw new Error("Workflow file exceeds 25 MiB.");
     const doc = await readEditorDocumentFile(file);
     if (doc) {
       await openEditorDocument(doc);
@@ -5755,8 +5750,8 @@ async function loadInputFile(file) {
     return;
   }
 
-  if (file.size > 25 * 1024 * 1024) {
-    addMessage(`${file.name}: file is larger than 25 MB.`, "warning");
+  if (file.size > STANDARD_BROWSER_FILE_BYTES) {
+    addMessage(`${file.name}: file is larger than 25 MiB.`, "warning");
     return;
   }
 
@@ -5975,7 +5970,6 @@ elements.toolOptions.addEventListener("input", (event) => {
   if (event.target?.dataset?.autofilledColumn === "true") {
     event.target.dataset.autofilledColumn = "false";
   }
-  persistLimitOptionControlValue(event.target);
   updateToolOptionSuggestions();
   updateSamBamInputModeUi();
   updateVcfInputModeUi();
@@ -5996,7 +5990,6 @@ elements.toolOptions.addEventListener("input", (event) => {
 });
 elements.toolOptions.addEventListener("change", (event) => {
   handleProteinStructureChainControlChange(event.target);
-  persistLimitOptionControlValue(event.target);
   refreshSplitTableInputPreviews();
   updateToolOptionSuggestions();
   updateSamBamInputModeUi();

@@ -10,6 +10,7 @@ import {
   vectorContaminationTableColumns
 } from "../../core/vector-contamination-scanner.js";
 import { makeTableStream, makeTextStream, makeToolResult } from "../../core/workflow.js";
+import { MAX_PASTED_FASTA_CHARACTERS_FOR_RICH_OUTPUTS } from "../fasta-input-policy.js";
 
 export const VECTOR_CONTAMINATION_SVG_MAP_HIT_THRESHOLD = 5000;
 const MAX_STREAMED_VECTOR_BASES = 10_000_000;
@@ -301,7 +302,7 @@ export async function runVectorContaminationScanner(input, options = {}, context
   context.reportProgress?.({ phase: "loading-reference-data", progress: 0.05 });
   const { index, summary, provenance } = await loadVectorReferenceData();
   context.throwIfCancelled?.();
-  if (options.loadedFastaFile?.stream || ["indexed", "bgzf"].includes(options.sourceMode) || String(input ?? "").length > 1_000_000) {
+  if (options.loadedFastaFile?.stream || ["indexed", "bgzf"].includes(options.sourceMode) || String(input ?? "").length > MAX_PASTED_FASTA_CHARACTERS_FOR_RICH_OUTPUTS) {
     return runStreamedVectorContaminationScanner(input, options, context, index, summary, provenance);
   }
   const records = parseSequenceInput(input, "dna-rna");

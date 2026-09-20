@@ -15,6 +15,8 @@ import {
 } from "./plot-renderer.js";
 import { appVersion } from "../app-version.js";
 
+export const MAX_VIEWER_ALIGNED_READ_BASES = 100_000;
+
 const MINIMAP2_VERSION = "2.22";
 const SPLIT_SEPARATOR = "---";
 const MINIMAP2_PRESETS = new Set(["none", "sr", "map-ont", "map-pb"]);

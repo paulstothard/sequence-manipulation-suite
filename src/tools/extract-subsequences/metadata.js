@@ -76,8 +76,10 @@ const outputLimitsGroup = {
   options: [
     {
       id: "outputRecordLimitNote",
-      type: "note",
-      text: `Separate-segment output is capped at ${EXTRACT_SUBSEQUENCES_MAX_OUTPUT_RECORDS.toLocaleString()} FASTA records/table rows. Joined output avoids this segment-row cap.`
+      type: "limit-value",
+      label: "Separate-segment output",
+      value: `${EXTRACT_SUBSEQUENCES_MAX_OUTPUT_RECORDS.toLocaleString()} FASTA records or table rows`,
+      detail: "Applies when each resulting segment is a separate record or row."
     }
   ]
 };

@@ -93,6 +93,14 @@ export const multipleLinearRegressionMetadata = {
           { value: "report", label: "Summary report" }
         ] }
       ]
+    },
+    {
+      id: "advancedLimits", type: "group", label: "Limits", collapsible: true, collapsed: true,
+      options: [
+        { type: "limit-value", label: "Predictors selected automatically", value: "first 6 numeric columns other than the response" },
+        { type: "limit-value", label: "Predictors selected by name", value: "12 columns", detail: "More than 12 predictors prevents a fitted model." },
+        { type: "note", text: "Leave Predictor columns blank to use the first six eligible numeric columns. A request for more than 12 predictors produces a warning and no fitted model." }
+      ]
     }
   ],
   citations: [

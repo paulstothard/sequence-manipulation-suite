@@ -27,7 +27,27 @@ const columns = fields=>fields.map(([id,label,type='string'])=>({id,label,type})
 export const consensusAuditColumns=columns([['sample','Sample'],['sequence_id','Sequence ID'],['chrom','Reference'],['pos','VCF position','number'],['ref','REF'],['alt','ALT'],['gt','GT'],['phase_set','Phase set'],['path','Allele path'],['status','Action'],['reason','Reason']]);
 export const consensusCoordinateColumns=columns([['sample','Sample'],['sequence_id','Sequence ID'],['chrom','Reference'],['path','Allele path'],['phase_set','Phase set'],['reference_start0','Reference start (0-based)','number'],['reference_end0','Reference end (exclusive)','number'],['output_start0','Output start (0-based)','number'],['output_end0','Output end (exclusive)','number'],['kind','Mapping'],['vcf_line','VCF line','number']]);
 const escape=text=>String(text).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
-const siteColor=status=>({applied:'#0072b2',ambiguous:'#cc79a7',masked:'#d55e00',reference:'#758595','retained-reference':'#d55e00',skipped:'#758595'})[status]??'#0072b2';
+const SITE_STYLES = {
+  applied: { color: '#0072b2', label: 'Applied ALT' },
+  ambiguous: { color: '#cc79a7', label: 'Ambiguous IUPAC' },
+  masked: { color: '#d55e00', label: 'Missing call: masked with N' },
+  'retained-reference': { color: '#b57c00', label: 'Missing call: reference kept' },
+  reference: { color: '#758595', label: 'Reference allele' },
+  skipped: { color: '#485464', label: 'Skipped call' }
+};
+const siteColor=status=>SITE_STYLES[status]?.color??SITE_STYLES.applied.color;
+function legendLabelWidth(label) {
+  return [...label].reduce((width, char) => width + 12 * (
+    /[MW@#%&]/u.test(char) ? 0.9 : /[ilI.,:;!'| ]/u.test(char) ? 0.35 : 0.65
+  ), 0);
+}
+function consensusDisplayLabel(sample, output) {
+  const pathLabel = output.path === 'consensus' ? 'consensus' : `haplotype ${output.path}`;
+  const phaseLabel = !output.phaseSet || output.phaseSet === 'none'
+    ? ''
+    : output.phaseSet === 'implicit' ? ' · phase set not supplied' : ` · phase set ${output.phaseSet}`;
+  return `${sample} · ${output.chrom}:${output.start}–${output.end} · ${pathLabel}${phaseLabel}`;
+}
 function variantType(site) {
   if(site.status==='skipped') return 'skipped';
   if(site.status==='masked') return 'masked';
@@ -99,24 +119,42 @@ export function makeConsensusViewerData(a) {
         }
       };
     }).sort((left,right)=>left.start-right.start||left.end-right.end);
-    const pathLabel=output.path==='consensus'?'consensus':`haplotype ${output.path}`;
-    return {id:`consensus-${index+1}`,title:`${a.sample} · ${output.chrom}:${output.start}-${output.end} · ${pathLabel} · PS ${output.phaseSet}`,sequence:output.sequence,topology:'linear',showSecondStrandDefault:true,tracks:[{id:'variant-sites',type:'features',label:'Variant sites',axisLabel:'Sites on consensus',layout:'stacked-intervals',featureOpacity:0.82,items}]};
+    return {id:`consensus-${index+1}`,title:consensusDisplayLabel(a.sample,output),sequence:output.sequence,topology:'linear',showSecondStrandDefault:true,tracks:[{id:'variant-sites',type:'features',label:'Variant sites',axisLabel:'Sites on consensus',layout:'stacked-intervals',featureOpacity:0.82,items}]};
   });
   return makeDnaViewerData(records,{title:'Variant consensus sequence viewer',layout:'linear'});
 }
 export function renderConsensusMap(a) {
   if(a.outputs.length>12||a.audit.length>240) throw new Error('Variant map supports up to 12 sequences and 240 audit rows. Narrow the region or choose a table/FASTA output.');
-  const height=150+a.outputs.length*105;
+  const rowsByOutput=a.outputs.map(o=>a.audit.filter(r=>r.sequence_id===o.title || (r.status==='skipped'&&r.chrom===o.chrom&&r.pos>=o.start&&r.pos<=o.end)));
+  const shownStatuses=new Set(rowsByOutput.flat().map(row=>row.status));
+  const legend=Object.entries(SITE_STYLES).filter(([status])=>shownStatuses.has(status));
+  const legendRows=Math.max(1,Math.ceil(legend.length/3));
+  const height=150+a.outputs.length*105+(legendRows-1)*25;
   const p=[`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 ${height}" role="img" aria-label="Variant consensus map" data-plot-foundation="d3"><rect width="100%" height="100%" fill="white"/><g font-family="Arial,sans-serif" fill="#172b3a"><text x="30" y="32" font-size="21" font-weight="bold">Variant consensus map</text><text x="30" y="58" font-size="13">Reference positions (1-based); marks show calls, not output sequence spacing.</text>`];
   for(const [i,o] of a.outputs.entries()) {
     const y=100+i*105, x=globalThis.d3.scaleLinear().domain([o.start,o.end===o.start?o.end+1:o.end]).range([40,910]);
-    const label=`${a.sample} · ${o.chrom}:${o.start}–${o.end} · ${o.path==='consensus'?'consensus':`haplotype ${o.path}`} · PS ${o.phaseSet}`;
-    p.push(`<text x="30" y="${y}" font-size="14"><title>${escape(label)}</title>${escape([...label].length>60?[...label].slice(0,57).join('')+'…':label)}</text><line x1="40" x2="910" y1="${y+26}" y2="${y+26}" stroke="#718096" stroke-width="3"/>`);
+    const label=consensusDisplayLabel(a.sample,o);
+    const clipped=[...label].length>60;
+    const displayLabel=clipped?[...label].slice(0,57).join('')+'…':label;
+    p.push(`<text class="variant-consensus-row-label" x="30" y="${y}" font-size="14" aria-label="${escape(label)}" data-sms3-inspection-highlight="none">${clipped?`<title>${escape(label)}</title>`:''}${escape(displayLabel)}</text><line x1="40" x2="910" y1="${y+26}" y2="${y+26}" stroke="#718096" stroke-width="3"/>`);
     for(const tick of x.ticks(6).filter(t=>Number.isInteger(t)&&t<=o.end)) p.push(`<text x="${x(tick)}" y="${y+55}" font-size="11" text-anchor="middle">${tick}</text>`);
-    for(const r of a.audit.filter(r=>r.sequence_id===o.title || (r.status==='skipped'&&r.chrom===o.chrom&&r.pos>=o.start&&r.pos<=o.end))) {
-      const color=({applied:'#0072b2',ambiguous:'#cc79a7',masked:'#d55e00',reference:'#758595','retained-reference':'#d55e00',skipped:'#758595'})[r.status];
-      p.push(`<circle data-sms3-nearest-point="true" cx="${x(Math.max(o.start,r.pos))}" cy="${y+26}" r="5" fill="${color}" stroke="white"><title>${escape(`${r.chrom}:${r.pos} ${r.ref}>${r.alt}; GT ${r.gt}; ${r.status}${r.reason?'; '+r.reason:''}`)}</title></circle>`);
+    for(const r of rowsByOutput[i]) {
+      const status=SITE_STYLES[r.status]??SITE_STYLES.applied;
+      p.push(`<circle data-sms3-nearest-point="true" cx="${x(Math.max(o.start,r.pos))}" cy="${y+26}" r="5" fill="${status.color}" stroke="white"><title>${escape(`${r.chrom}:${r.pos} ${r.ref}→${r.alt}; genotype ${r.gt}; ${status.label}${r.reason?'; '+r.reason:''}`)}</title></circle>`);
     }
   }
-  p.push(`<text x="30" y="${height-25}" font-size="13">Blue: applied · Purple: ambiguity · Orange: missing call · Grey: reference or skipped</text></g></svg>`);return p.join('');
+  const legendTitleY=height-(legendRows===1?70:95);
+  if(!legend.length) {
+    p.push(`<text x="30" y="${legendTitleY+27}" font-size="12" fill="#526171">No variant calls in this region</text></g></svg>`);
+    return p.join('');
+  }
+  p.push(`<g class="variant-consensus-legend" aria-label="Call status"><text x="30" y="${legendTitleY}" font-size="12" font-weight="bold" fill="#526171">Call status</text>`);
+  let legendX=30;
+  for(const [index,[status,style]] of legend.entries()) {
+    if(index%3===0) legendX=30;
+    const x=legendX, y=legendTitleY+27+Math.floor(index/3)*28;
+    p.push(`<rect class="variant-consensus-legend-swatch" data-status="${status}" x="${x}" y="${y-10}" width="12" height="12" rx="2" fill="${style.color}"/><text x="${x+20}" y="${y}" font-size="12">${escape(style.label)}</text>`);
+    legendX+=20+Math.ceil(legendLabelWidth(style.label))+14;
+  }
+  p.push('</g></g></svg>');return p.join('');
 }

@@ -382,7 +382,7 @@ async function scanRecord(record, recordIndex, options, context, warnings) {
   );
   const selected = candidates.slice(0, options.maxPairsPerRecord);
   if (stoppedByLimit) {
-    warnings.push(`${record.title}: TALEN scan stopped after ${options.maxCandidateWindows.toLocaleString()} candidate windows; increase the limit to scan more combinations.`);
+    warnings.push(`${record.title}: TALEN scan stopped after ${options.maxCandidateWindows.toLocaleString()} candidate windows. Narrow the target region to scan every combination.`);
   }
   if (candidates.length > selected.length) {
     warnings.push(`${record.title}: ${candidates.length.toLocaleString()} TALEN target pair(s) matched filters; reporting top ${selected.length.toLocaleString()}.`);

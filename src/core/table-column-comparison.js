@@ -448,9 +448,9 @@ function histogram(values, domain, binCount = 12) {
   return bins;
 }
 
-function renderBaseSvg({ title, width = 980, height = 640, plot, xLabel, yLabel, subtitle = "" }) {
+function renderBaseSvg({ title, width = 980, height = 640, plot, xLabel, yLabel, subtitle = "", plotKind = "", plotVariant = "" }) {
   return [
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="d3" data-plot-renderer="sms3-d3">`,
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="d3" data-plot-renderer="sms3-d3"${plotKind ? ` data-sms3-plot-kind="${escapeXml(plotKind)}"` : ""}${plotVariant ? ` data-sms3-plot-variant="${escapeXml(plotVariant)}"` : ""}>`,
     "<style>",
     ".title{font:700 21px system-ui,sans-serif;fill:#263238}",
     ".subtitle,.legend{font:12px system-ui,sans-serif;fill:#455a64}",
@@ -501,18 +501,19 @@ function renderNumericNumericPlot(points, columnA, columnB, options = {}) {
   })), { getX: (point) => point.plotX, getY: (point) => point.plotY });
   const sampleFact = pointSamplingFact({ displayed: pointGeometry.length, total: points.length });
   const parts = [
+    `<defs><filter id="sms3-marginal-histogram-top-glow" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"><feComponentTransfer in="SourceAlpha" result="opaque"><feFuncA type="linear" slope="3"/></feComponentTransfer><feGaussianBlur in="opaque" stdDeviation="3" result="blur"/><feFlood flood-color="#60a5fa" flood-opacity="0.7" result="color"/><feComposite in="color" in2="blur" operator="in" result="halo"/><feMerge><feMergeNode in="halo"/><feMergeNode in="SourceGraphic"/></feMerge></filter><filter id="sms3-marginal-histogram-right-glow" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"><feComponentTransfer in="SourceAlpha" result="opaque"><feFuncA type="linear" slope="3"/></feComponentTransfer><feGaussianBlur in="opaque" stdDeviation="3" result="blur"/><feFlood flood-color="#2dd4bf" flood-opacity="0.7" result="color"/><feComposite in="color" in2="blur" operator="in" result="halo"/><feMerge><feMergeNode in="halo"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>`,
     `<g>`,
     ...xBins.map((bin) => {
       const x1 = scale(bin.start, xDomain[0], xDomain[1], plotX, plotX + plotWidth);
       const x2 = scale(bin.end, xDomain[0], xDomain[1], plotX, plotX + plotWidth);
       const h = scale(bin.count, 0, maxXBin, 0, histSize);
-      return `<rect x="${x1.toFixed(2)}" y="${(histTopY + histSize - h).toFixed(2)}" width="${Math.max(1, x2 - x1 - 1).toFixed(2)}" height="${h.toFixed(2)}" fill="#2563eb" fill-opacity="0.36"><title>${escapeXml(`${niceNumber(bin.start)} to ${niceNumber(bin.end)}: ${bin.count}`)}</title></rect>`;
+      return `<rect class="marginal-histogram-bar marginal-histogram-bar-top" data-sms3-inspection-highlight="glow" x="${x1.toFixed(2)}" y="${(histTopY + histSize - h).toFixed(2)}" width="${Math.max(1, x2 - x1 - 1).toFixed(2)}" height="${h.toFixed(2)}" fill="#2563eb" fill-opacity="0.36"><title>${escapeXml(`${niceNumber(bin.start)} to ${niceNumber(bin.end)}: ${bin.count}`)}</title></rect>`;
     }),
     ...yBins.map((bin) => {
       const y1 = scale(bin.start, yDomain[0], yDomain[1], plotY + plotHeight, plotY);
       const y2 = scale(bin.end, yDomain[0], yDomain[1], plotY + plotHeight, plotY);
       const w = scale(bin.count, 0, maxYBin, 0, histSize);
-      return `<rect x="${histRightX}" y="${Math.min(y1, y2).toFixed(2)}" width="${w.toFixed(2)}" height="${Math.max(1, Math.abs(y2 - y1) - 1).toFixed(2)}" fill="#0f766e" fill-opacity="0.36"><title>${escapeXml(`${niceNumber(bin.start)} to ${niceNumber(bin.end)}: ${bin.count}`)}</title></rect>`;
+      return `<rect class="marginal-histogram-bar marginal-histogram-bar-right" data-sms3-inspection-highlight="glow" x="${histRightX}" y="${Math.min(y1, y2).toFixed(2)}" width="${w.toFixed(2)}" height="${Math.max(1, Math.abs(y2 - y1) - 1).toFixed(2)}" fill="#0f766e" fill-opacity="0.36"><title>${escapeXml(`${niceNumber(bin.start)} to ${niceNumber(bin.end)}: ${bin.count}`)}</title></rect>`;
     }),
     `<g transform="translate(${plotX} ${plotY})">`,
     ...xTicks.map((tick) => {
@@ -544,6 +545,7 @@ function renderNumericNumericPlot(points, columnA, columnB, options = {}) {
     height,
     xLabel: columnA.label,
     yLabel: columnB.label,
+    plotVariant: "marginal-column-comparison",
     plot: parts.join("")
   });
 }
@@ -767,7 +769,7 @@ function renderCompactMatrixSvg({ title, subtitle, xLabel, yLabel, xLabels, yLab
     `<g transform="translate(${margin.left} ${margin.top})">`,
     ...yLabels.flatMap((yLabelValue, rowIndex) => xLabels.map((xLabelValue, columnIndex) => {
       const count = counts[rowIndex]?.[columnIndex] ?? 0;
-      return `<rect x="${(columnIndex * cellWidth).toFixed(2)}" y="${(rowIndex * cellHeight).toFixed(2)}" width="${Math.max(1, cellWidth).toFixed(2)}" height="${Math.max(1, cellHeight).toFixed(2)}" fill="${compactColor(count, maxCount)}" stroke="#ffffff" stroke-width="1"><title>${escapeXml(`${xLabelValue} / ${yLabelValue}: ${count}`)}</title></rect>`;
+      return `<rect class="compact-heatmap-cell" data-sms3-inspection-highlight="shade" x="${(columnIndex * cellWidth).toFixed(2)}" y="${(rowIndex * cellHeight).toFixed(2)}" width="${Math.max(1, cellWidth).toFixed(2)}" height="${Math.max(1, cellHeight).toFixed(2)}" fill="${compactColor(count, maxCount)}" stroke="#ffffff" stroke-width="1"><title>${escapeXml(`${xLabelValue} / ${yLabelValue}: ${count}`)}</title></rect>`;
     })),
     ...xLabels.map((label, index) => {
       const x = index * cellWidth + cellWidth / 2;
@@ -796,6 +798,8 @@ function renderCompactMatrixSvg({ title, subtitle, xLabel, yLabel, xLabels, yLab
     height,
     xLabel,
     yLabel,
+    plotKind: "heatmap",
+    plotVariant: "compact-column-comparison",
     plot: parts.join("")
   });
 }

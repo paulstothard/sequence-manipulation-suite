@@ -66,6 +66,13 @@ export const tableCorrelationMatrixMetadata = {
           { value: "report", label: "Summary report" }
         ] }
       ]
+    },
+    {
+      id: "advancedLimits", type: "group", label: "Limits", collapsible: true, collapsed: true,
+      options: [
+        { type: "limit-value", label: "Summary report examples", value: "first 12 non-diagonal column pairs", detail: "The matrix table contains all calculated pairs." },
+        { type: "note", text: "The matrix table includes all calculated pairs. The report lists examples only after its method and count summary." }
+      ]
     }
   ],
   citations: [

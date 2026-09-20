@@ -1,4 +1,4 @@
-import { heatmapColumns } from "../../core/plot-tools.js";
+import { HEATMAP_VISUAL_CELL_LIMIT, heatmapColumns } from "../../core/plot-tools.js";
 
 export const heatmapMetadata = {
   id: "heatmap",
@@ -80,6 +80,13 @@ export const heatmapMetadata = {
           { value: "svg", label: "Heatmap plot" },
           { value: "cell-tsv", label: "Cell table" }
         ] }
+      ]
+    },
+    {
+      id: "advancedLimits", type: "group", label: "Limits", collapsible: true, collapsed: true,
+      options: [
+        { type: "limit-value", label: "Heatmap preview cells", value: HEATMAP_VISUAL_CELL_LIMIT, detail: "The plot is withheld above this cell count; the table retains analyzed values." },
+        { type: "note", text: "If X categories × Y categories exceeds this value, the plot is not drawn; the cell table still contains the analyzed values." }
       ]
     }
   ]

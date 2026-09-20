@@ -13,7 +13,7 @@ import {
 } from "../../core/plot-renderer.js";
 import { makeTableStream, makeTextStream, makeToolResult } from "../../core/workflow.js";
 
-const SVG_PLOT_WINDOW_THRESHOLD = 5000;
+export const SVG_PLOT_WINDOW_THRESHOLD = 5000;
 const DEFAULT_WINDOW_SIZE = 19;
 
 export const proteinHydropathyTableColumns = [

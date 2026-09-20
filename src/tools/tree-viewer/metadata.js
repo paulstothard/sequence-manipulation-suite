@@ -2,6 +2,7 @@ import {
   treeDocumentContract,
   TREE_DOCUMENT_MEDIA_TYPE,
 } from "../../core/tree-document-stream.js";
+import { LIMITS } from "../../../packages/tree-viewer/src/core/limits.js";
 export const treeViewerMetadata = {
   id: "tree-viewer",
   name: "Tree Viewer",
@@ -56,8 +57,26 @@ export const treeViewerMetadata = {
       text: "Paste or upload one or more trees; the format is detected automatically. Optional CSV/TSV/Excel sample metadata can be added under Style → Metadata tracks.",
     },
     {
+      id: "advancedLimits",
+      type: "group",
+      label: "Limits",
+      collapsible: true,
+      collapsed: true,
+      options: [
+        { type: "limit-value", label: "Tree source file (MiB)", value: LIMITS.inputBytes / 1048576 },
+        { type: "limit-value", label: "Saved tree document (MiB)", value: LIMITS.documentBytes / 1048576 },
+        { type: "limit-value", label: "Nodes per tree collection", value: LIMITS.nodes },
+        { type: "limit-value", label: "Trees per collection", value: LIMITS.trees },
+        { type: "limit-value", label: "Visible tips in a full figure", value: LIMITS.visibleTips },
+        { type: "limit-value", label: "Visible nodes in a full figure", value: LIMITS.visibleNodes },
+        { type: "limit-value", label: "Metadata columns", value: LIMITS.metadataColumns },
+        { type: "limit-value", label: "Metadata cells", value: LIMITS.metadataCells },
+        { type: "limit-value", label: "Raster export pixels", value: LIMITS.rasterPixels }
+      ]
+    },
+    {
       type: "note",
-      text: "Style and export after Run. Rectangular and circular layouts use the input tree's top-level node as the initial root; an unrooted layout changes only the drawing. Under Style → Tree layout, root at the branch leading to a selected outgroup or use midpoint rooting. Original labels, branch lengths and topology remain intact. Interpret numeric internal labels here or under Style → Branch support after Run. Figures support up to 1,000 visible tips and 4,001 visible nodes; larger documents can be inspected in the table and focused or collapsed explicitly.",
+      text: "Style and export after Run. Rectangular and circular layouts use the input tree's top-level node as the initial root; an unrooted layout changes only the drawing. Under Style → Tree layout, root at the branch leading to a selected outgroup or use midpoint rooting. Original labels, branch lengths and topology remain intact. Interpret numeric internal labels here or under Style → Branch support after Run. Larger documents can be inspected in the table and focused or collapsed explicitly.",
     },
   ],
 };

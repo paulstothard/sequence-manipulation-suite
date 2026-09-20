@@ -1,10 +1,16 @@
 import { buildTableFromRows, detectDelimiter, parseDelimitedRows } from "../core/table.js";
 import { parseJsonTableInput } from "../core/table-data-format-converter.js";
+import {
+  TABLE_PREVIEW_MAX_CHARACTERS,
+  TABLE_PREVIEW_MAX_CELLS,
+  TABLE_PREVIEW_VISIBLE_COLUMNS,
+  TABLE_PREVIEW_VISIBLE_ROWS
+} from "../core/tool-limit-options.js";
 
-const DEFAULT_MAX_CHARACTERS = 1_000_000;
-const MAX_PREVIEW_CELLS = 250_000;
-const MAX_PREVIEW_ROWS = 50;
-const MAX_PREVIEW_COLUMNS = 12;
+const DEFAULT_MAX_CHARACTERS = TABLE_PREVIEW_MAX_CHARACTERS;
+const MAX_PREVIEW_CELLS = TABLE_PREVIEW_MAX_CELLS;
+const MAX_PREVIEW_ROWS = TABLE_PREVIEW_VISIBLE_ROWS;
+const MAX_PREVIEW_COLUMNS = TABLE_PREVIEW_VISIBLE_COLUMNS;
 
 function normalizeVisibleWhenConditions(visibleWhen) {
   if (!visibleWhen) return [];

@@ -1,6 +1,7 @@
 import {
   dnaRnaSequenceSetReciprocalBestMatchColumns,
   dnaRnaSequenceSetUnmatchedColumns,
+  MAX_HEATMAP_RECORDS,
   proteomeReciprocalBestMatchColumns,
   proteomeUnmatchedColumns
 } from "../../core/proteome-reciprocal-best-match.js";
@@ -146,7 +147,8 @@ function makeOptions({ alphabet, kmerLabel, kmerDefault, kmerMin, kmerMax, seque
       options: [
         { id: "maxProteinsPerProteome", type: "number", label: sequenceCountLimitLabel, defaultValue: 500, min: 1, max: 5000, step: 10 },
         { id: "maxSequenceLength", type: "number", label: sequenceLimitLabel, defaultValue: sequenceLimitDefault, min: 10, max: 20000, step: 100 },
-        { id: "maxPairwiseAlignments", type: "number", label: "Maximum pairwise alignments", defaultValue: 500, min: 1, max: 10000, step: 10 }
+        { id: "maxPairwiseAlignments", type: "number", label: "Maximum pairwise alignments", defaultValue: 500, min: 1, max: 10000, step: 10 },
+        { id: "heatmapRecordLimit", type: "limit-value", label: "Identity heatmap", value: `${MAX_HEATMAP_RECORDS} records from each set`, help: `When either set has more records, the heatmap shows only its first ${MAX_HEATMAP_RECORDS}. The verified-pair table still includes all processed pairs.` }
       ]
     }
   ];

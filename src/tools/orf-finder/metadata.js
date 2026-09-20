@@ -1,5 +1,5 @@
 import { geneticCodes } from "../../core/genetic-code.js";
-import { orfTableColumns } from "./run.js";
+import { LARGE_TEXT_ORF_THRESHOLD, SVG_OVERVIEW_BASE_THRESHOLD, SVG_OVERVIEW_ORF_THRESHOLD, orfTableColumns } from "./run.js";
 
 export const orfFinderMetadata = {
   id: "orf-finder",
@@ -111,6 +111,14 @@ export const orfFinderMetadata = {
         { value: "svg-overview", label: "ORF overview plot" },
         { value: "interactive-viewer", label: "Linear DNA sequence viewer" },
         { value: "interactive-circular-viewer", label: "Circular DNA sequence viewer" }
+      ]
+    },
+    {
+      id: "advancedLimits", type: "group", label: "Limits", collapsible: true, collapsed: true,
+      options: [
+        { type: "limit-value", label: "Detailed text report", value: `${LARGE_TEXT_ORF_THRESHOLD.toLocaleString("en-US")} ORFs`, detail: "Larger results switch to a summary; the table retains all found ORFs." },
+        { type: "limit-value", label: "ORF overview plot", value: `${SVG_OVERVIEW_ORF_THRESHOLD.toLocaleString("en-US")} ORFs and ${SVG_OVERVIEW_BASE_THRESHOLD.toLocaleString("en-US")} input bases`, detail: "The plot is withheld above either bound." },
+        { type: "note", text: `Above ${LARGE_TEXT_ORF_THRESHOLD.toLocaleString("en-US")} ORFs, the text report switches to a summary; the ORF table retains all found ORFs. Above either overview bound, the plot is replaced with an explanation; choose the table or narrow the input to see all results.` }
       ]
     },
     {

@@ -4,9 +4,9 @@ import { makeDnaViewerData, makeDnaViewerStream } from "../../core/dna-viewer-da
 import { cleanDnaRnaSequence, complementDnaRnaSequence } from "../../core/sequence.js";
 import { makeTableStream, makeTextStream, makeToolResult } from "../../core/workflow.js";
 
-const LARGE_TEXT_ORF_THRESHOLD = 2000;
-const SVG_OVERVIEW_ORF_THRESHOLD = 1500;
-const SVG_OVERVIEW_BASE_THRESHOLD = 500000;
+export const LARGE_TEXT_ORF_THRESHOLD = 2000;
+export const SVG_OVERVIEW_ORF_THRESHOLD = 1500;
+export const SVG_OVERVIEW_BASE_THRESHOLD = 500000;
 const ORF_OVERVIEW_PLOT_ATTRIBUTE = `data-sms3-plot="orf-overview" data-plot-renderer="sms3-orf-overview"`;
 const ORF_OVERVIEW_STYLE = [
   `[data-sms3-plot="orf-overview"] text{font-family:Inter,Arial,sans-serif;font-size:12px;fill:#172026;stroke:none;text-shadow:none;paint-order:normal}`,

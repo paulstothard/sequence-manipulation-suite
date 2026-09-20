@@ -475,7 +475,7 @@ export async function alignPairwiseAffine(sequenceA, sequenceB, rawOptions = {},
     throw new Error("Both sequences must contain at least one valid symbol.");
   }
   if (cells > options.maxAlignmentCells) {
-    throw new Error(`Alignment matrix would require ${cells.toLocaleString()} cells, which exceeds the current ${options.maxAlignmentCells.toLocaleString()}-cell SMS3 affine alignment limit. Reduce sequence length, use a smaller region, or raise the limit if the browser can handle the run.`);
+    throw new Error(`Alignment matrix would require ${cells.toLocaleString()} cells, which exceeds the ${options.maxAlignmentCells.toLocaleString()}-cell SMS3 affine alignment limit. Reduce sequence length or use a smaller region.`);
   }
 
   const M = new Float64Array(cells);

@@ -65,7 +65,7 @@ export function makeAlignmentSvg({
   const displayedCells = alignmentLength * rows.length;
   const cellLimit = normalizeCellLimit(maxCells);
   if (displayedCells > cellLimit) {
-    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 150" role="img" aria-label="${escapeXml(ariaLabel)} not drawn"><style>.title{font:600 18px system-ui,sans-serif;fill:#111827}.note{font:13px system-ui,sans-serif;fill:#475569}</style><rect width="100%" height="100%" fill="white"/><text class="title" x="32" y="48">Colored alignment not drawn</text><text class="note" x="32" y="82">The alignment has ${displayedCells.toLocaleString()} displayed cells, exceeding the current ${cellLimit.toLocaleString()}-cell colored alignment limit.</text><text class="note" x="32" y="106">Use text, CLUSTAL, FASTA, or TSV output for the complete alignment, or raise the alignment input limit if the browser can handle the SVG.</text></svg>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 150" role="img" aria-label="${escapeXml(ariaLabel)} not drawn"><style>.title{font:600 18px system-ui,sans-serif;fill:#111827}.note{font:13px system-ui,sans-serif;fill:#475569}</style><rect width="100%" height="100%" fill="white"/><text class="title" x="32" y="48">Colored alignment not drawn</text><text class="note" x="32" y="82">The alignment has ${displayedCells.toLocaleString()} displayed cells, exceeding the ${cellLimit.toLocaleString()}-cell colored alignment limit.</text><text class="note" x="32" y="106">Use text, CLUSTAL, FASTA, or TSV output for the complete alignment.</text></svg>`;
   }
 
   const blockWidth = normalizeLineWidth(lineWidth);

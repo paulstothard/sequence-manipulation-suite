@@ -101,7 +101,7 @@ export async function parseConsensusVcf(text, settings, context = {}) {
     if(ps!=='implicit'&&(!/^\d+$/.test(ps)||Number(ps)>2147483647)) throw new Error(`${f[0]}:${pos}: invalid PS phase-set identifier.`);
     if(settings.mode!=='consensus'&&['PSL','PSO','PGT','PID','HP'].some(k=>fields[k]&&fields[k]!=='.')) throw new Error(`${f[0]}:${pos}: this phased output supports GT/PS; ${keys.filter(k=>['PSL','PSO','PGT','PID','HP'].includes(k)).join(', ')} phase fields need conversion to supported GT/PS first.`);
     records.push({ chrom:f[0],pos,id:f[2],ref,alts,filter:f[6],gt:fields.GT,...gt,ps,line:i+1 });
-    if(records.length>settings.maxVariants) throw new Error(`More than ${settings.maxVariants.toLocaleString()} variants in the requested scope. Narrow the region or raise the limit.`);
+    if(records.length>settings.maxVariants) throw new Error(`More than ${settings.maxVariants.toLocaleString()} variants in the requested scope. Narrow the region to run the analysis.`);
   }
   if(!samples||!version) throw new Error('Provide VCF with ##fileformat and #CHROM/sample headers.');
   return { records,samples,sample:selected };
@@ -184,7 +184,8 @@ export async function buildConsensus(references, parsed, s, context = {}) {
       if(s.mode!=='consensus'&&!ploidies.size) throw new Error(`${reference.id}: no called genotypes establish ploidy for haplotype output. Use Single consensus.`);
       const paths=s.mode==='consensus'?['consensus']:s.mode==='both'?(haploid?['1']:['1','2']):[s.mode==='haplotype1'?'1':'2'];
       for(const path of paths) {
-        const title=`${encodeURIComponent(parsed.sample)}|${encodeURIComponent(reference.id)}:${segment.start}-${segment.end}|${path==='consensus'?'consensus':`haplotype-${path}`}|PS=${segment.block}`;
+        const pathId=path==='consensus'?'consensus':`haplotype-${path}|PS=${segment.block}`;
+        const title=`${encodeURIComponent(parsed.sample)}|${encodeURIComponent(reference.id)}:${segment.start}-${segment.end}|${pathId}`;
         const parts=[]; const insertions=new Set(); let cursor=segment.start-1, out=0, edits=0;
         const append=(a,b,seq,kind,line=null)=>{
           const length=seq===null?b-a:seq.length;

@@ -290,6 +290,8 @@ export const genomeComparisonPosterMetadata = {
       collapsible: true,
       collapsed: true,
       options: [
+        { type: "limit-value", label: "Comparison genomes per run", value: MAX_GENOME_COMPARISON_POSTER_COMPARISONS,
+          help: "Extra comparison sections are rejected; split them into separate figures." },
         {
           id: "maxBlocks",
           type: "number",

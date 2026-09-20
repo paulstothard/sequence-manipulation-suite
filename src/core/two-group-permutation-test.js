@@ -175,7 +175,7 @@ function makeHistogram(values, observed, title = "Permutation null distribution"
     const x1 = x(bin.start);
     const x2 = x(bin.end);
     const barY = y(bin.count);
-    return `<rect x="${x1.toFixed(2)}" y="${barY.toFixed(2)}" width="${Math.max(1, x2 - x1 - 1).toFixed(2)}" height="${(margin.top + plotHeight - barY).toFixed(2)}" fill="#93c5fd"><title>${escapeXml(`${round(bin.start, 4)} to ${round(bin.end, 4)}: ${bin.count} permuted statistic${bin.count === 1 ? "" : "s"}`)}</title></rect>`;
+    return `<rect class="permutation-histogram-bar" data-sms3-inspection-highlight="shade" x="${x1.toFixed(2)}" y="${barY.toFixed(2)}" width="${Math.max(1, x2 - x1 - 1).toFixed(2)}" height="${(margin.top + plotHeight - barY).toFixed(2)}" fill="#93c5fd"><title>${escapeXml(`${round(bin.start, 4)} to ${round(bin.end, 4)}: ${bin.count} permuted statistic${bin.count === 1 ? "" : "s"}`)}</title></rect>`;
   }).join("");
   const ticks = Array.from({ length: 5 }, (_, index) => rawMin + ((rawMax - rawMin) * index) / 4);
   const tickMarks = ticks.map((tick) => {
@@ -186,7 +186,7 @@ function makeHistogram(values, observed, title = "Permutation null distribution"
     const tickY = y(tick);
     return `<line x1="${margin.left}" y1="${tickY.toFixed(2)}" x2="${margin.left + plotWidth}" y2="${tickY.toFixed(2)}" stroke="#e2e8f0"/><line x1="${margin.left - 6}" y1="${tickY.toFixed(2)}" x2="${margin.left}" y2="${tickY.toFixed(2)}" stroke="#475569"/><text data-y-axis-tick="true" x="${margin.left - 12}" y="${(tickY + 4).toFixed(2)}" text-anchor="end" font-size="11" font-family="Arial, sans-serif" fill="#334155">${tick}</text>`;
   }).join("");
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}">
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-renderer="sms3" data-sms3-plot-kind="permutation-histogram">
   <rect width="${width}" height="${height}" fill="#ffffff"/>
   <text x="24" y="32" font-size="18" font-family="Arial, sans-serif" font-weight="700" fill="#0f172a">${escapeXml(title)}</text>
   <text x="24" y="52" font-size="12" font-family="Arial, sans-serif" fill="#475569">Bars show permuted statistics; the red marker shows the observed statistic.</text>

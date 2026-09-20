@@ -3977,6 +3977,10 @@ legend {
   list-style: none;
 }
 
+.option-group-reference > summary {
+  font-weight: 400;
+}
+
 .option-group-collapsible summary::-webkit-details-marker {
   display: none;
 }
@@ -4042,6 +4046,57 @@ legend {
 
 .option-note p {
   margin: 0;
+}
+
+.option-limit-value {
+  padding: 0.55rem 0;
+  color: var(--muted);
+  line-height: 1.3;
+}
+
+.option-limit-value-main {
+  display: grid;
+  gap: 0.12rem;
+}
+
+.option-limit-value-main > * {
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+.option-limit-value-main > span {
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.option-limit-value + .option-limit-value {
+  border-top: 1px solid var(--border);
+}
+
+.option-limit-value-main > strong {
+  color: var(--text);
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.option-limit-detail {
+  margin: 0.2rem 0 0;
+  font-size: 0.77rem;
+  line-height: 1.35;
+}
+
+.option-group-limits {
+  gap: 0;
+}
+
+.option-group-limits[open] summary {
+  margin-bottom: 0;
+}
+
+.option-group-limits .option-note {
+  margin-top: 0.65rem;
+  font-size: 0.8rem;
 }
 
 .option-summary-card {
@@ -6467,6 +6522,8 @@ legend {
 }
 
 .showcase-preview {
+  /* Keep resized SVGs from turning this grid item into a hidden vertical scroller. */
+  align-self: start;
   min-height: 20rem;
   overflow-x: auto;
   overflow-y: auto;
@@ -6649,6 +6706,19 @@ legend {
   filter: drop-shadow(0 0 1.5px var(--sms3-inspection-contrast, #0f172a));
 }
 
+:is(.visual-output, .showcase-preview) svg.sanger-svg [data-sanger-inspection-target][data-sms3-inspection-active="true"],
+:is(.visual-output, .showcase-preview) svg.sanger-svg .sanger-difference-card[data-sms3-inspection-active="true"] {
+  filter: none !important;
+}
+
+:is(.visual-output, .showcase-preview) svg.sanger-svg [data-sanger-inspection-target][data-sms3-inspection-active="true"] + .sanger-inspection-shade {
+  fill-opacity: 0.22;
+}
+
+:is(.visual-output, .showcase-preview) svg.sanger-svg .sanger-difference-card[data-sms3-inspection-active="true"] > rect:first-of-type {
+  fill: #eef5ff;
+}
+
 :is(.visual-output, .showcase-preview) svg [data-sms3-inspection-mark="intersection"][data-sms3-inspection-active="true"] {
   filter: none;
 }
@@ -6657,7 +6727,7 @@ legend {
   filter: drop-shadow(0 0 1.5px var(--sms3-inspection-contrast, #0f172a));
 }
 
-:is(.visual-output, .showcase-preview) svg :is(line, polyline, polygon)[data-sms3-inspection-active="true"],
+:is(.visual-output, .showcase-preview) svg polygon[data-sms3-inspection-active="true"],
 :is(.visual-output, .showcase-preview) svg:not(:is([data-plot-foundation], [data-plot-backend], [data-plot-renderer])) rect[data-sms3-inspection-active="true"]:where(:not([data-sms3-inspection-highlight="fill"])) {
   filter: none !important;
   stroke: var(--sms3-inspection-contrast, #2563eb) !important;
@@ -6665,17 +6735,13 @@ legend {
   vector-effect: non-scaling-stroke !important;
 }
 
-:is(.visual-output, .showcase-preview) svg:is([data-plot-foundation], [data-plot-backend], [data-plot-renderer]) :is(line, polyline, polygon)[data-sms3-inspection-active="true"] {
-  stroke-width: 1.25px !important;
+:is(.visual-output, .showcase-preview) svg:is([data-plot-foundation], [data-plot-backend], [data-plot-renderer]) polygon[data-sms3-inspection-active="true"] {
+  stroke-width: var(--sms3-inspection-plot-stroke-width, 1.25px) !important;
   stroke-linejoin: round;
 }
 
-:is(.visual-output, .showcase-preview) svg:is([data-plot-foundation], [data-plot-backend], [data-plot-renderer]) :is(line, polyline)[data-sms3-inspection-active="true"] {
-  stroke: #0f172a !important;
-}
-
 :is(.visual-output, .showcase-preview) svg:is([data-plot-foundation], [data-plot-backend], [data-plot-renderer]) :is(circle, ellipse, path)[data-sms3-inspection-active="true"] {
-  filter: drop-shadow(0 0 1.5px var(--sms3-inspection-contrast, #0f172a));
+  filter: drop-shadow(0 0 var(--sms3-inspection-plot-halo-width, 1.5px) var(--sms3-inspection-contrast, #0f172a));
 }
 
 :is(.visual-output, .showcase-preview) svg:is([data-plot-foundation], [data-plot-backend], [data-plot-renderer]) rect[data-sms3-inspection-active="true"] {
@@ -6686,11 +6752,9 @@ legend {
   filter: none !important;
 }
 
-:is(.visual-output, .showcase-preview) svg:is([data-plot-foundation], [data-plot-backend], [data-plot-renderer]) text[data-sms3-inspection-active="true"] {
-  text-decoration: underline;
-  text-decoration-color: var(--sms3-inspection-contrast, #0f172a);
-  text-decoration-thickness: 2px;
-  text-underline-offset: 3px;
+:is(.visual-output, .showcase-preview) svg text[data-sms3-inspection-active="true"] {
+  text-decoration: none !important;
+  filter: brightness(0.86) saturate(1.06) !important;
 }
 
 :is(.visual-output, .showcase-preview) svg[data-plot-foundation="sms3-sankey-svg"] path.sankey-link[data-sms3-inspection-active="true"] {
@@ -6698,13 +6762,24 @@ legend {
   filter: none !important;
 }
 
+:is(.visual-output, .showcase-preview) svg[data-plot-foundation="sms3-sankey-svg"] rect.sankey-node[data-sms3-inspection-active="true"] {
+  filter: brightness(0.76) saturate(1.1) !important;
+}
+
 :is(.visual-output, .showcase-preview) svg path.violin-density[data-sms3-inspection-active="true"] {
   fill-opacity: 0.46 !important;
   filter: none !important;
 }
 
-:is(.visual-output, .showcase-preview) svg.sms3-genome-comparison-poster :is(rect, path, polygon)[data-sms3-inspection-active="true"] {
-  filter: none !important;
+:is(.visual-output, .showcase-preview) svg.sms3-genome-comparison-poster :is(rect, path, polygon, circle)[data-sms3-inspection-active="true"] {
+  filter: brightness(1.16) !important;
+}
+
+:is(.visual-output, .showcase-preview) svg.sms3-genome-comparison-poster[data-layout="loom"] :is(rect, path, polygon, circle)[data-sms3-inspection-active="true"] {
+  filter: brightness(0.76) !important;
+}
+
+:is(.visual-output, .showcase-preview) svg.sms3-genome-comparison-poster polygon[data-sms3-inspection-active="true"] {
   stroke: none !important;
 }
 
@@ -6721,9 +6796,64 @@ legend {
 }
 
 :is(.visual-output, .showcase-preview) svg rect[data-alignment-column][data-sms3-inspection-active="true"] {
-  stroke-width: 1px !important;
-  rx: 2px;
-  ry: 2px;
+  stroke: none !important;
+  filter: brightness(0.78) saturate(1.25) !important;
+  rx: 0;
+  ry: 0;
+}
+
+:is(.visual-output, .showcase-preview) svg[data-sms3-plot-kind="categorical-bar-plot"] rect[data-sms3-inspection-active="true"] {
+  filter: brightness(1.27) saturate(1.18) !important;
+}
+
+:is(.visual-output, .showcase-preview) svg[data-sms3-plot-kind="categorical-bar-plot"][data-sms3-plot-width-mode="histogram"] rect[data-sms3-inspection-active="true"] {
+  filter: brightness(0.78) saturate(1.12) !important;
+}
+
+:is(.visual-output, .showcase-preview) svg[data-sms3-plot-kind="heatmap"] rect[data-sms3-inspection-active="true"] {
+  filter: brightness(0.82) saturate(1.18) !important;
+}
+
+:is(.visual-output, .showcase-preview) svg[data-sms3-plot-variant="marginal-column-comparison"] rect.marginal-histogram-bar-top[data-sms3-inspection-active="true"] {
+  filter: url(#sms3-marginal-histogram-top-glow) !important;
+}
+
+:is(.visual-output, .showcase-preview) svg[data-sms3-plot-variant="marginal-column-comparison"] rect.marginal-histogram-bar-right[data-sms3-inspection-active="true"] {
+  filter: url(#sms3-marginal-histogram-right-glow) !important;
+}
+
+:is(.visual-output, .showcase-preview) svg[data-plot-renderer="sms3-d3"] rect.histogram-bin[data-sms3-inspection-active="true"] {
+  filter: brightness(0.78) saturate(1.15) !important;
+}
+
+:is(.visual-output, .showcase-preview) svg[data-sms3-plot-kind="permutation-histogram"] rect.permutation-histogram-bar[data-sms3-inspection-active="true"] {
+  filter: brightness(0.78) saturate(1.12) !important;
+}
+
+:is(.visual-output, .showcase-preview) svg[data-plot-renderer="sms3-d3"] rect.category-value-bar[data-sms3-inspection-active="true"] {
+  filter: brightness(0.76) saturate(1.12) !important;
+}
+
+:is(.visual-output, .showcase-preview) svg[data-plot-renderer="sms3-d3"] rect.box-summary[data-sms3-inspection-active="true"] {
+  fill-opacity: 0.42;
+  filter: none !important;
+}
+
+:is(.visual-output, .showcase-preview) svg[data-plot-renderer="sms3-d3"] circle.box-measurement[data-sms3-inspection-active="true"] {
+  fill-opacity: 1;
+  filter: none !important;
+}
+
+:is(.visual-output, .showcase-preview) svg[data-sms3-plot="orf-overview"] rect:is(.complete, .partial)[data-sms3-inspection-active="true"] {
+  filter: brightness(1.18) saturate(1.16) drop-shadow(0 0 3px rgba(183, 121, 31, 0.5)) !important;
+}
+
+:is(.visual-output, .showcase-preview) svg.genome-figure-svg :is(.genome-figure-feature-glyph, [data-plot-bin])[data-sms3-inspection-active="true"] {
+  filter: brightness(var(--genome-figure-inspection-brightness, 0.78)) !important;
+  stroke: none !important;
+  stroke-width: 0 !important;
+  rx: 0;
+  ry: 0;
 }
 
 .visual-inspection-tooltip {
@@ -7894,6 +8024,7 @@ legend {
   display: block;
   height: 100% !important;
   max-width: 100%;
+  touch-action: none;
   width: 100% !important;
 }
 
@@ -9483,6 +9614,7 @@ legend {
   display: block;
   height: 520px;
   min-width: 42rem;
+  touch-action: pan-y;
   width: 100%;
 }
 
@@ -9908,7 +10040,7 @@ legend {
   cursor: grab;
   display: block;
   height: 370px;
-  touch-action: none;
+  touch-action: pan-y;
   width: 100%;
 }
 

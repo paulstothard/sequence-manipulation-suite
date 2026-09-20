@@ -1,6 +1,6 @@
 import "../vendor/d3/d3.min.js";
 import { parseSequenceInput } from "./fasta.js";
-import { annotatePointCrowding, pointCrowdingFact } from "./point-plot-inspection.js";
+import { annotatePointCrowding } from "./point-plot-inspection.js";
 
 export const alignmentDotPlotColumns = [
   { id: "orientation", label: "Orientation", type: "string" },
@@ -193,6 +193,10 @@ function matchPoint(match) {
   return {
     x: (match.sequence_a_start + match.sequence_a_end) / 2,
     y: (match.sequence_b_start + match.sequence_b_end) / 2,
+    sequence_a_start: match.sequence_a_start,
+    sequence_a_end: match.sequence_a_end,
+    sequence_b_start: match.sequence_b_start,
+    sequence_b_end: match.sequence_b_end,
     orientation: match.orientation,
     word: match.word
   };
@@ -229,11 +233,17 @@ export function renderAlignmentDotPlotSvg({ records, matches, omittedMatches, wo
   const opacity = points.length > 8000 ? 0.38 : points.length > 2000 ? 0.55 : 0.78;
   const xTicks = axisTicks(sequenceA.sequence.length, 6);
   const yTicks = axisTicks(sequenceB.sequence.length, 6);
+  const coordinateUnit = alphabet === "protein" ? "aa" : "bp";
 
   const pointElements = (items, color) => items.map((point) => {
-    const details = [`${point.orientation}: ${point.word} at ${Math.round(point.x)}, ${Math.round(point.y)}`];
-    const crowdingFact = pointCrowdingFact(point, { noun: "displayed matches" });
-    if (crowdingFact) details.push(crowdingFact);
+    const details = [
+      point.orientation === "reverse-complement" ? "Reverse-complement match" : "Direct match",
+      `Matched word: ${point.word}`,
+      `Sequence A (x): ${point.sequence_a_start.toLocaleString()}–${point.sequence_a_end.toLocaleString()} ${coordinateUnit}`,
+      `Sequence B (y): ${point.sequence_b_start.toLocaleString()}–${point.sequence_b_end.toLocaleString()} ${coordinateUnit}`
+    ];
+    const nearbyCount = point.inspectionCrowding?.count ?? 1;
+    if (nearbyCount > 1) details.push(`Nearby matches: ${nearbyCount.toLocaleString()} shown here`);
     return `<circle data-sms3-nearest-point="true" cx="${point.plotX.toFixed(2)}" cy="${point.plotY.toFixed(2)}" r="${pointRadius}" fill="${color}" fill-opacity="${opacity}"><title>${escapeXml(details.join("; "))}</title></circle>`;
   }).join("\n");
 

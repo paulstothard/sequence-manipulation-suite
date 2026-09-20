@@ -4,6 +4,7 @@ import { exportDelimitedTable } from "./table.js";
 import { formatFastaRecord, parseSequenceInput } from "./fasta.js";
 import { isWorkflowStreamCompatible } from "./workflow-contracts.js";
 import { makeCollectionStream, makeTableStream, makeTextStream } from "./workflow.js";
+import { applyFixedToolLimits } from "./tool-limit-options.js";
 
 const STEP_TYPES = new Set([
   ...Object.keys(labWorkflowOperations),
@@ -107,7 +108,7 @@ function inferOutputFormatForStream(tool, streamName = "primary") {
 }
 
 function makeToolOptionsForSelectedStream(tool, step) {
-  const options = { ...(step.options ?? {}) };
+  const options = applyFixedToolLimits(tool?.metadata, step.options ?? {});
   if (!Object.hasOwn(options, "outputFormat")) {
     const inferred = inferOutputFormatForStream(tool, step.selectStream ?? "primary");
     if (inferred) {

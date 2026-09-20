@@ -1,4 +1,4 @@
-import { histogramColumns } from "../../core/plot-tools.js";
+import { HISTOGRAM_BIN_LIMIT, histogramColumns } from "../../core/plot-tools.js";
 import { makeAxisLimitsGroup } from "../plot-axis-options.js";
 
 export const histogramMetadata = {
@@ -74,6 +74,13 @@ export const histogramMetadata = {
           { value: "svg", label: "Histogram plot" },
           { value: "bin-tsv", label: "Bin table" }
         ] }
+      ]
+    },
+    {
+      id: "advancedLimits", type: "group", label: "Limits", collapsible: true, collapsed: true,
+      options: [
+        { type: "limit-value", label: "Histogram bins", value: HISTOGRAM_BIN_LIMIT, detail: "Applies to automatic and manual bin counts." },
+        { type: "note", text: "Automatic and manual bin counts are capped at this value." }
       ]
     }
   ]

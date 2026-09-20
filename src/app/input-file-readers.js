@@ -1,7 +1,7 @@
 import { readTextFile } from "../core/compressed-text-reader.js";
+import { WORKBOOK_IMPORT_CELL_LIMIT, WORKBOOK_IMPORT_ROW_LIMIT } from "../core/tool-limit-options.js";
 
-export const WORKBOOK_IMPORT_ROW_LIMIT = 50000;
-export const WORKBOOK_IMPORT_CELL_LIMIT = 250000;
+export { WORKBOOK_IMPORT_CELL_LIMIT, WORKBOOK_IMPORT_ROW_LIMIT };
 
 export function arrayBufferToBase64(buffer, encodeBase64 = globalThis.btoa?.bind(globalThis)) {
   if (typeof encodeBase64 !== "function") {

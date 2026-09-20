@@ -7,6 +7,7 @@ import { cleanDnaRnaSequence, complementDnaRnaSequence, makeSequenceContext } fr
 import { renderSequenceMap } from "../../core/sequence-map-renderer.js";
 import { renderTextAnnotationMapFromItems } from "../../core/text-annotation-map.js";
 import { makeTableStream, makeTextStream, makeToolResult } from "../../core/workflow.js";
+import { MAX_PASTED_FASTA_CHARACTERS_FOR_RICH_OUTPUTS } from "../fasta-input-policy.js";
 
 export const dnaRnaPatternFinderTableColumns = [
   { id: "record", label: "Record", type: "string" },
@@ -263,6 +264,9 @@ function makeSvgMap(records, pattern, maxMatches = DNA_RNA_PATTERN_SVG_MAP_MATCH
         end: match.end,
         strand: match.strand,
         label: "match",
+        inspectionLabel: makePatternLegendLabel(pattern),
+        type: "pattern match",
+        matchedText: match.matchedText,
         className: "variant"
       });
     }
@@ -463,7 +467,7 @@ export function runDnaRnaPatternFinder(input, options = {}, context = {}) {
 export async function runDnaRnaPatternFinderWorker(input, options = {}, context = {}) {
   context.reportProgress?.({ phase: "started", progress: 0 });
   await context.yieldIfNeeded?.();
-  const largeSource = Boolean(options.loadedFastaFile?.stream || ["indexed", "bgzf"].includes(options.sourceMode) || String(input ?? "").length > 1_000_000);
+  const largeSource = Boolean(options.loadedFastaFile?.stream || ["indexed", "bgzf"].includes(options.sourceMode) || String(input ?? "").length > MAX_PASTED_FASTA_CHARACTERS_FOR_RICH_OUTPUTS);
   const result = largeSource
     ? await runStreamedDnaRnaPatternFinder(input, options, context)
     : runDnaRnaPatternFinder(input, options, context);

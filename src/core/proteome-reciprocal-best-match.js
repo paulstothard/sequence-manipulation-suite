@@ -11,7 +11,7 @@ import { exportDelimitedTable } from "./table.js";
 const DEFAULT_SEPARATOR = "---";
 const STANDARD_AA_PATTERN = /^[ACDEFGHIKLMNPQRSTVWY]+$/;
 const STANDARD_DNA_RNA_PATTERN = /^[ACGT]+$/;
-const MAX_HEATMAP_RECORDS = 30;
+export const MAX_HEATMAP_RECORDS = 30;
 
 export const proteomeReciprocalBestMatchColumns = [
   { id: "a_record", label: "Protein set A record", type: "string" },

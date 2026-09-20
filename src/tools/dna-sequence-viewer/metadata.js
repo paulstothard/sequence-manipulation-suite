@@ -1,3 +1,5 @@
+import { DNA_VIEWER_SEARCH_RESULT_LIMIT } from "../../core/viewer-limits.js";
+
 const viewerSplitInput = {
   separator: "##FASTA",
   panels: [
@@ -95,7 +97,16 @@ function makeViewerMetadata({
         { id: "warnings", kind: "warnings" }
       ]
     },
-    options: [inputFormatOption, makeOutputFormatOption(viewerLabel)]
+    options: [
+      inputFormatOption,
+      makeOutputFormatOption(viewerLabel),
+      {
+        type: "group", label: "Limits", collapsible: true, collapsed: true, options: [
+          { type: "limit-value", label: "Interactive sequence search results", value: DNA_VIEWER_SEARCH_RESULT_LIMIT,
+            help: "Search stops collecting matches at this count and reports that further matches were omitted; the underlying sequence and feature tracks are unchanged." }
+        ]
+      }
+    ]
   };
 }
 

@@ -8,6 +8,8 @@ const PLOT_SVG_SELECTOR = "svg:is([data-plot-foundation], [data-plot-backend], [
 const GENOME_POSTER_SELECTOR = "svg.sms3-genome-comparison-poster";
 const PLOT_OUTLINE_ATTRIBUTE = "data-sms3-inspection-outline";
 const CONTRAST_PROPERTY = "--sms3-inspection-contrast";
+const PLOT_STROKE_PROPERTY = "--sms3-inspection-plot-stroke-width";
+const PLOT_HALO_PROPERTY = "--sms3-inspection-plot-halo-width";
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const EXPLICIT_MARK_SELECTOR = [
   "[data-sms3-inspection-text]",
@@ -23,6 +25,10 @@ const NEAREST_POINT_SELECTOR = '[data-sms3-nearest-point="true"]';
 const NEAREST_POINT_HIT_RADIUS = 11;
 const NEAREST_POINT_HYSTERESIS = 2;
 const NEAREST_POINT_GRID_SIZE = 16;
+const SHADED_MARK_SELECTOR = [
+  `${PLOT_SVG_SELECTOR}:is([data-sms3-plot-kind="categorical-bar-plot"], [data-sms3-plot-kind="heatmap"]) rect[${TITLE_MARK_ATTRIBUTE}]`,
+  'svg[data-sms3-plot="orf-overview"] rect:is(.complete, .partial)'
+].join(",");
 
 function normalizedText(value) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
@@ -205,6 +211,11 @@ export function installVisualInspection(container, {
   const listenerOptions = { signal: controller.signal };
   const titleStates = new Map();
   const svgStates = new Map();
+  const resizeObserver = typeof ResizeObserver === "function"
+    ? new ResizeObserver(() => {
+        if (highlightedMark?.isConnected) showPlotOutline(highlightedMark);
+      })
+    : null;
   const id = `sms3-visual-inspection-${++inspectionId}`;
   const tooltip = document.createElement("div");
   tooltip.id = `${id}-tooltip`;
@@ -270,6 +281,7 @@ export function installVisualInspection(container, {
       outlines: new Map()
     };
     svgStates.set(svg, state);
+    if (svg.matches(PLOT_SVG_SELECTOR)) resizeObserver?.observe(svg);
     const hasFocusableMarks = Boolean(svg.querySelector("[tabindex],a,button,[role='button'],[role='link']"));
     if (!svg.hasAttribute("tabindex") && !hasFocusableMarks) svg.setAttribute("tabindex", "0");
     svg.setAttribute("aria-describedby", joinTokens(state.describedBy, instructions.id));
@@ -278,9 +290,8 @@ export function installVisualInspection(container, {
         ? "ArrowLeft ArrowRight Home End Enter Escape"
         : "ArrowLeft ArrowRight Home End Escape");
     }
-    if (svg.matches(PLOT_SVG_SELECTOR) && svg.getAttribute(HIGHLIGHT_POLICY_ATTRIBUTE) !== "none") {
-      const tags = svg.matches(GENOME_POSTER_SELECTOR) ? ["rect", "path", "polygon", "circle"] : ["rect", "circle"];
-      for (const tag of tags) {
+    if (svg.matches(PLOT_SVG_SELECTOR) && !svg.matches(GENOME_POSTER_SELECTOR) && svg.getAttribute(HIGHLIGHT_POLICY_ATTRIBUTE) !== "none") {
+      for (const tag of ["rect", "circle"]) {
         const outline = document.createElementNS(SVG_NAMESPACE, tag);
         outline.setAttribute(PLOT_OUTLINE_ATTRIBUTE, "");
         outline.setAttribute("aria-hidden", "true");
@@ -297,8 +308,21 @@ export function installVisualInspection(container, {
     }
   }
 
+  function inspectionScreenScale(matrix) {
+    return Math.max(0.001, Math.min(
+      Math.hypot(matrix.a, matrix.b),
+      Math.hypot(matrix.c, matrix.d)
+    ));
+  }
+
   function showPlotOutline(mark) {
     const svg = mark.closest(PLOT_SVG_SELECTOR);
+    if (!svg || svg.matches(GENOME_POSTER_SELECTOR)) return;
+    const highlightPolicy = mark.getAttribute(HIGHLIGHT_POLICY_ATTRIBUTE);
+    if (highlightPolicy === "glow" || highlightPolicy === "shade") return;
+    // Dense bars and cells read more clearly when their own paint changes.
+    // A second outlined shape can cover neighboring marks.
+    if (mark.matches(SHADED_MARK_SELECTOR)) return;
     const state = svgStates.get(svg);
     const tag = mark.tagName?.toLowerCase();
     let geometryMark = mark;
@@ -315,11 +339,17 @@ export function installVisualInspection(container, {
     }
     const pointHit = tag === "rect" && mark.hasAttribute("data-sms3-point-x") && mark.hasAttribute("data-sms3-point-y");
     const outlineTag = pointHit || geometryMark.tagName?.toLowerCase() === "circle" ? "circle" : tag;
+    const markMatrix = geometryMark.getScreenCTM?.();
+    if (!markMatrix) return;
+    const scale = inspectionScreenScale(markMatrix);
+    mark.style.setProperty(PLOT_STROKE_PROPERTY, `${Math.max(1, 1.25 * scale)}px`);
+    mark.style.setProperty(PLOT_HALO_PROPERTY, `${Math.max(0.8, 1.5 * scale)}px`);
     const outline = state?.outlines.get(outlineTag);
     if (!outline) return;
     const svgMatrix = svg.getScreenCTM?.();
-    const markMatrix = geometryMark.getScreenCTM?.();
-    if (!svgMatrix || !markMatrix) return;
+    if (!svgMatrix) return;
+    const strokeWidth = Math.max(1, (outlineTag === "circle" ? 1.5 : 1.25) * scale);
+    outline.setAttribute("stroke-width", String(strokeWidth));
     let box;
     try {
       box = geometryMark.getBBox();
@@ -329,17 +359,18 @@ export function installVisualInspection(container, {
     const transform = svgMatrix.inverse().multiply(markMatrix);
     outline.setAttribute("transform", `matrix(${transform.a} ${transform.b} ${transform.c} ${transform.d} ${transform.e} ${transform.f})`);
     if (outlineTag === "circle") {
-      const scale = Math.max(0.001, Math.min(
-        Math.hypot(markMatrix.a, markMatrix.b),
-        Math.hypot(markMatrix.c, markMatrix.d)
-      ));
       const cx = pointHit ? Number(mark.dataset.sms3PointX) : Number(geometryMark.getAttribute("cx"));
       const cy = pointHit ? Number(mark.dataset.sms3PointY) : Number(geometryMark.getAttribute("cy"));
       const radius = pointHit ? 0 : Number(geometryMark.getAttribute("r"));
       if (![cx, cy, radius].every(Number.isFinite)) return;
       outline.setAttribute("cx", String(cx));
       outline.setAttribute("cy", String(cy));
-      outline.setAttribute("r", String(Math.max(radius + 2.5 / scale, 5 / scale)));
+      const visibleRadius = radius * scale;
+      // Match the rendered point; only tiny or invisible marks need a screen-pixel floor.
+      const ringRadius = pointHit
+        ? Math.max(4.5, Math.min(box.width, box.height) * scale * 0.45)
+        : Math.max(2.5, visibleRadius + Math.max(0.85, visibleRadius * 0.3));
+      outline.setAttribute("r", String(ringRadius / scale));
       outline.setAttribute("stroke", inspectionLuminance(inspectionSurfaceRgb(geometryMark)) < 0.18 ? "#ffffff" : "#0f172a");
       outline.setAttribute("visibility", "visible");
       return;
@@ -349,8 +380,9 @@ export function installVisualInspection(container, {
       const scaleY = Math.hypot(markMatrix.c, markMatrix.d);
       if (!scaleX || !scaleY || box.width * scaleX < 3 || box.height * scaleY < 3) return;
       // Inset the complete non-scaling stroke inside bars that meet a plot edge.
-      const insetX = 0.9 / scaleX;
-      const insetY = 0.9 / scaleY;
+      const inset = Math.max(0.7, strokeWidth / 2 + 0.25);
+      const insetX = inset / scaleX;
+      const insetY = inset / scaleY;
       const width = box.width - 2 * insetX;
       const height = box.height - 2 * insetY;
       if (width <= 0 || height <= 0) return;
@@ -410,7 +442,10 @@ export function installVisualInspection(container, {
       if (!container.contains(title)) titleStates.delete(title);
     }
     for (const svg of svgStates.keys()) {
-      if (!container.contains(svg)) svgStates.delete(svg);
+      if (!container.contains(svg)) {
+        resizeObserver?.unobserve(svg);
+        svgStates.delete(svg);
+      }
     }
     if (activeMark && !container.contains(activeMark)) {
       activeMark = null;
@@ -650,7 +685,12 @@ export function installVisualInspection(container, {
   }
 
   function markAllowsVisualHighlight(mark) {
-    return !mark?.closest(`[${HIGHLIGHT_POLICY_ATTRIBUTE}="none"]`);
+    if (!mark || mark.closest(`[${HIGHLIGHT_POLICY_ATTRIBUTE}="none"]`)) return false;
+    const tag = mark.tagName?.toLowerCase();
+    // A stroke or its dash pattern must not change when its tooltip opens.
+    if (tag === "line" || tag === "polyline") return false;
+    if ((tag === "path" || tag === "polygon") && getComputedStyle(mark).fill === "none") return false;
+    return true;
   }
 
   function setActiveMark(mark) {
@@ -660,6 +700,8 @@ export function installVisualInspection(container, {
       outline.setAttribute("visibility", "hidden");
     }
     highlightedMark?.style.removeProperty(CONTRAST_PROPERTY);
+    highlightedMark?.style.removeProperty(PLOT_STROKE_PROPERTY);
+    highlightedMark?.style.removeProperty(PLOT_HALO_PROPERTY);
     highlightedMark?.removeAttribute(ACTIVE_ATTRIBUTE);
     activeMark = mark;
     highlightedMark = mark && !markContainsDetailedInspection(mark) && markAllowsVisualHighlight(mark)
@@ -845,6 +887,7 @@ export function installVisualInspection(container, {
   const cleanup = () => {
     controller.abort();
     observer.disconnect();
+    resizeObserver?.disconnect();
     cancelPendingPointerInspection();
     setActiveMark(null);
     for (const [title, text] of titleStates) {

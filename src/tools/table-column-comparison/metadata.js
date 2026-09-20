@@ -181,7 +181,8 @@ export const tableColumnComparisonMetadata = {
           max: 1000000,
           step: 1000,
           help: "Caps the optional row-level comparison table for display and download."
-        }
+        },
+        { type: "limit-value", label: "Summary report comparison rows", value: 20, help: "The comparison table retains all summarized rows; the text report includes only its first 20." }
       ]
     }
   ],

@@ -1238,6 +1238,11 @@ export function createReferencePageController({
   function renderSelectedReference() {
     const topic =
       referenceTopics.find((item) => item.id === state.selectedReference) ?? referenceTopics[0];
+    state.showcaseRenderToken = null;
+    for (const preview of elements.selectedReferenceBody.querySelectorAll(".showcase-preview")) {
+      preview._sms3InspectionCleanup?.();
+      preview._sms3VisualCleanup?.();
+    }
     elements.selectedReferenceTitle.textContent = topic.title;
     elements.selectedReferenceBody.textContent = "";
 

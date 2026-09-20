@@ -6,7 +6,6 @@ import {
 } from "./run.js";
 import technicalSequenceSummary from "../../reference-data/technical-sequences/summary.js";
 import { makeFastaSourceInputOptions } from "../fasta-source-options.js";
-import { STREAMED_FASTA_SCAN_NOTE } from "../fasta-input-policy.js";
 
 function makeClassChoices(records) {
   return [
@@ -184,11 +183,58 @@ export const technicalSequenceScannerMetadata = {
       collapsible: true,
       collapsed: true,
       options: [
-        { id: "technicalLargeSourceLimitNote", type: "note", text: "Large FASTA scans are capped at 50 million bases; 500 million full-match, 200 million mismatch, or 20 million terminal pattern-symbol comparisons; 50,000 candidate hits; and 25 MiB of materialized output. Report, table, and linear map outputs are available; text maps and viewers require bounded pasted input. Select a sequence class or specific sequence for large scans." },
+        {
+          id: "technicalLargeSourceLimitNote",
+          type: "limit-value",
+          label: "Large FASTA scan source",
+          value: "50 million bases",
+          detail: "Applies to streamed FASTA scans."
+        },
+        {
+          id: "technicalComparisonLimits",
+          type: "limit-value",
+          label: "Large FASTA scan work",
+          value: "500M full-match · 200M mismatch · 20M terminal comparisons",
+          detail: "The matching mode determines which comparison budget applies."
+        },
+        {
+          id: "technicalCandidateHitLimit",
+          type: "limit-value",
+          label: "Large FASTA candidate hits",
+          value: "50,000 hits"
+        },
+        {
+          id: "technicalOutputLimit",
+          type: "limit-value",
+          label: "Large FASTA materialized output",
+          value: "26,214,400 characters (25 MiB)"
+        },
+        {
+          id: "technicalPatternLimit",
+          type: "limit-value",
+          label: "Selected pattern in large FASTA scans",
+          value: "32,000 bases"
+        },
+        {
+          id: "technicalTextMapViewerSource",
+          type: "limit-value",
+          label: "Text maps and sequence viewers",
+          value: "Bounded pasted input",
+          detail: "Large FASTA file scans offer report, table, and linear map output."
+        },
         {
           id: "technicalSequenceMapLimitNote",
-          type: "note",
-          text: `Linear technical-sequence maps show up to ${TECHNICAL_SEQUENCE_SVG_MAX_RECORDS.toLocaleString()} records, ${TECHNICAL_SEQUENCE_SVG_MAX_TOTAL_HITS.toLocaleString()} hits total, and ${TECHNICAL_SEQUENCE_SVG_MAX_HITS_PER_RECORD.toLocaleString()} hits per record. Table output contains all hit coordinates. ${STREAMED_FASTA_SCAN_NOTE}`
+          type: "limit-value",
+          label: "Linear technical-sequence map",
+          value: `${TECHNICAL_SEQUENCE_SVG_MAX_RECORDS.toLocaleString()} records · ${TECHNICAL_SEQUENCE_SVG_MAX_TOTAL_HITS.toLocaleString()} hits total · ${TECHNICAL_SEQUENCE_SVG_MAX_HITS_PER_RECORD.toLocaleString()} hits per record`,
+          detail: "The map shows a subset when any bound is reached; the table contains all hit coordinates."
+        },
+        {
+          id: "technicalIndexedHeaderLimit",
+          type: "limit-value",
+          label: "FAI-backed source metadata",
+          value: "Indexed sequence names",
+          detail: "Full FASTA header descriptions and line formatting are unavailable."
         }
       ]
     },

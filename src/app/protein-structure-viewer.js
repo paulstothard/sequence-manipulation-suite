@@ -1,5 +1,6 @@
 import { addTimestampToFilename, makeSafeFileStem } from "./canvas-export.js";
 import { installCanvasVisualInspection } from "./visual-inspection.js";
+import { PROTEIN_STRUCTURE_KEYBOARD_INSPECTION_LIMIT, PROTEIN_STRUCTURE_NEAREST_ATOM_PICK_LIMIT, PROTEIN_STRUCTURE_SEARCH_SUGGESTION_LIMIT } from "../core/viewer-limits.js";
 
 const BACKGROUND_COLORS = {
   white: "#ffffff",
@@ -13,7 +14,7 @@ const DEFAULT_WATER_OPACITY = 0.85;
 const DEFAULT_SURFACE_OPACITY = 0.55;
 const RESIDUE_SPHERE_SCALE = 1.18;
 const WHEEL_ZOOM_FACTOR = 1.14;
-const MAX_STRUCTURE_SEARCH_OPTIONS = 80;
+const MAX_STRUCTURE_SEARCH_OPTIONS = PROTEIN_STRUCTURE_SEARCH_SUGGESTION_LIMIT;
 const DEFAULT_STRUCTURE_SELECTION_COLOR = "#14b8a6";
 const STRUCTURE_SELECTION_COLORS = [
   ["#14b8a6", "Teal"],
@@ -1053,7 +1054,7 @@ function findNearestAtomFromEvent(viewer, settings, event, maxPixelDistance = 18
   } catch {
     atoms = [];
   }
-  if (atoms.length === 0 || atoms.length > 12000) {
+  if (atoms.length === 0 || atoms.length > PROTEIN_STRUCTURE_NEAREST_ATOM_PICK_LIMIT) {
     return null;
   }
   const positions = viewer.modelToScreen(atoms);
@@ -1420,13 +1421,13 @@ export function renderProteinStructureViewer(container, payload = {}) {
     const inspectionTargets = () => {
       const entries = structureSearchIndex.entries
         .filter((entry) => entry.type !== "chain" && entry.representativeAtom);
-      if (conservationDetails.size === 0) return entries.slice(0, 2000);
+      if (conservationDetails.size === 0) return entries.slice(0, PROTEIN_STRUCTURE_KEYBOARD_INSPECTION_LIMIT);
       const mapped = [];
       const unmapped = [];
       for (const entry of entries) {
         (conservationDetails.has(atomResidueKey(entry.representativeAtom)) ? mapped : unmapped).push(entry);
       }
-      return [...mapped, ...unmapped].slice(0, 2000);
+      return [...mapped, ...unmapped].slice(0, PROTEIN_STRUCTURE_KEYBOARD_INSPECTION_LIMIT);
     };
     const inspectionText = (entry) => describeProteinStructureInspectionTarget(
       entry?.representativeAtom,

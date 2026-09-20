@@ -1,4 +1,5 @@
 import { samAlignmentColumns } from "../../core/sam-bam-summary.js";
+import { MAX_VIEWER_REGION_SPAN } from "../../core/alignment-viewer-data.js";
 import { makeOptionalReferenceGenomeOptionGroup } from "../reference-genome-options.js";
 
 function makeAlignmentViewerReferenceGenomeOptionGroup() {
@@ -250,6 +251,8 @@ export const alignmentViewerMetadata = {
       collapsible: true,
       collapsed: true,
       options: [
+        { type: "limit-value", label: "Interactive viewer region", value: `${MAX_VIEWER_REGION_SPAN.toLocaleString("en-US")} bp`,
+          help: "A larger selected span skips the alignment viewer; choose a narrower region." },
         {
           id: "maxAlignments",
           type: "number",

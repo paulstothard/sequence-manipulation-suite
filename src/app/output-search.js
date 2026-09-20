@@ -1,7 +1,8 @@
 import { findSequenceTextMatches } from "../core/sequence-text-search.js";
+import { OUTPUT_SEARCH_HIGHLIGHT_LIMIT, OUTPUT_SEARCH_HIGHLIGHT_WINDOW } from "../core/tool-limit-options.js";
 
-export const DEFAULT_OUTPUT_HIGHLIGHT_LIMIT = 300_000;
-export const DEFAULT_OUTPUT_HIGHLIGHT_WINDOW = 8_000;
+export const DEFAULT_OUTPUT_HIGHLIGHT_LIMIT = OUTPUT_SEARCH_HIGHLIGHT_LIMIT;
+export const DEFAULT_OUTPUT_HIGHLIGHT_WINDOW = OUTPUT_SEARCH_HIGHLIGHT_WINDOW;
 
 export function findLiteralMatches(text = "", query = "") {
   const needle = String(query ?? "").toLowerCase();

@@ -113,7 +113,7 @@ export async function runProteinStructureViewer(input, options = {}, context = {
   }
   const viewerWithinLimit = summary.atomCount <= normalized.maxViewerAtoms;
   if (normalized.outputFormat === "interactive-viewer" && !viewerWithinLimit) {
-    warnings.push(`Protein structure viewer was not opened because the selected structure has ${summary.atomCount.toLocaleString()} atom(s), above the current limit of ${normalized.maxViewerAtoms.toLocaleString()}. Select a model/chain subset, avoid generated assemblies, or raise the limit if your browser can handle it.`);
+    warnings.push(`Protein structure viewer was not opened because the selected structure has ${summary.atomCount.toLocaleString()} atom(s), above the ${normalized.maxViewerAtoms.toLocaleString()}-atom limit. Select a model or chain subset, or avoid generated assemblies.`);
   }
   if (summary.format === "mmcif") {
     warnings.push("mmCIF atom-site parsing supports common PDBx/mmCIF coordinate loops; unusual multiline values may be summarized less completely.");

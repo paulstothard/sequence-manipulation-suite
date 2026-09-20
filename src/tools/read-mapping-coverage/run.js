@@ -1,5 +1,6 @@
 import {
   calculateReadMappingCoverage,
+  MAX_VIEWER_ALIGNED_READ_BASES,
   readMappingAlignmentColumns,
   readMappingCoverageColumns
 } from "../../core/read-mapping-coverage.js";
@@ -9,7 +10,6 @@ import { makeTableStream, makeTextStream, makeToolResult } from "../../core/work
 
 const OUTPUT_FORMATS = new Set(["coverage-plot", "alignment-table", "coverage-table", "interactive-viewer", "summary-report"]);
 const READ_SEQUENCE_DETAIL_LIMIT = 180;
-const MAX_VIEWER_ALIGNED_READ_BASES = 100000;
 const MISMATCH_BASES = ["A", "C", "G", "T"];
 
 function normalizeOutputFormat(value) {

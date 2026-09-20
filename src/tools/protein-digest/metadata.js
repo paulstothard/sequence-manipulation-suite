@@ -1,4 +1,4 @@
-import { proteases } from "../../core/protein-digest.js";
+import { PROTEIN_DIGEST_LIMITS, proteases } from "../../core/protein-digest.js";
 import { proteinDigestTableColumns } from "./run.js";
 
 export const proteinDigestMetadata = {
@@ -59,7 +59,19 @@ export const proteinDigestMetadata = {
       type: "group", label: "Output", options: [
         { id: "outputFormat", type: "radio", label: "Output format", defaultValue: "table",
           choices: [{ value: "table", label: "Peptide table" }, { value: "fasta", label: "Peptide FASTA" }, { value: "svg-map", label: "Peptide map" }],
-          help: "Table and FASTA retain every peptide occurrence. Maps show peptide spans and coordinates; when missed cleavages are allowed, colors count predicted cut sites left uncut inside each peptide. Overlapping bars are alternative products. Runs support up to 200,000 residues and 50,000 peptides; maps support up to 12 proteins, 300 peptides, and 10,000 input residues. Use table or FASTA for larger digests." }
+          help: "Table and FASTA retain every peptide occurrence. Maps show peptide spans and coordinates; when missed cleavages are allowed, colors count predicted cut sites left uncut inside each peptide. Overlapping bars are alternative products. Use table or FASTA for larger digests." }
+      ]
+    },
+    {
+      id: "advancedLimits", type: "group", label: "Limits", collapsible: true, collapsed: true,
+      options: [
+        { type: "limit-value", label: "Input characters", value: PROTEIN_DIGEST_LIMITS.inputCharacters },
+        { type: "limit-value", label: "Protein records", value: PROTEIN_DIGEST_LIMITS.records },
+        { type: "limit-value", label: "Input residues", value: PROTEIN_DIGEST_LIMITS.residues },
+        { type: "limit-value", label: "Peptides", value: PROTEIN_DIGEST_LIMITS.peptides },
+        { type: "limit-value", label: "Exported peptide residues", value: PROTEIN_DIGEST_LIMITS.exportedResidues },
+        { type: "limit-value", label: "FASTA header characters", value: 500 },
+        { type: "note", text: `Peptide maps support up to ${PROTEIN_DIGEST_LIMITS.mapRecords} proteins, ${PROTEIN_DIGEST_LIMITS.mapPeptides} peptides, and ${PROTEIN_DIGEST_LIMITS.mapResidues.toLocaleString()} input residues.` }
       ]
     },
     {

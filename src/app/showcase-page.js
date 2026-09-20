@@ -1,8 +1,8 @@
-import { renderTreeSvg } from "../../packages/tree-viewer/src/export/svg.js";
 import { renderPlateSvg } from "../core/plate-layout-svg.js";
 import { renderObservablePlotPreview } from "./plot-preview-ui.js";
 import { renderSequenceExtractorWorkspace } from "./sequence-extractor-workspace-ui.js";
 import { installVisualInspection } from "./visual-inspection.js";
+import { renderTreeViewer } from "./tree-viewer-ui.js";
 import { alignmentViewerReferenceExample } from "../examples/alignment-viewer-example.js";
 import { vcfExtractorReferenceExample } from "../examples/vcf-extractor-example.js";
 
@@ -521,12 +521,8 @@ async function renderShowcaseCard(card, item, token, context) {
       preview.querySelectorAll("svg").forEach(normalizeShowcaseSvg);
       sharedInspection = true;
     } else if (result.visual?.treeViewer) {
-      const treeDocument = result.visual.treeViewer.document;
-      const figure = await renderTreeSvg(treeDocument, treeDocument.trees[0].id);
-      if (context.state.showcaseRenderToken !== token) return;
-      preview.insertAdjacentHTML("beforeend", figure.svg);
-      preview.querySelectorAll("svg").forEach(normalizeShowcaseSvg);
-      sharedInspection = true;
+      preview.classList.add("showcase-preview-viewer");
+      renderTreeViewer(preview, result.visual.treeViewer);
     } else if (plotPreview) {
       preview.append(plotPreview);
       preview.querySelectorAll("svg").forEach(normalizeShowcaseSvg);

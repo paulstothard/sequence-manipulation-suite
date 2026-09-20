@@ -10,6 +10,7 @@ import {
   startViewerInertia
 } from "./viewer-inertia.js";
 import { installCanvasVisualInspection } from "./visual-inspection.js";
+import { installCanvasPinchZoom } from "./viewer-pinch-zoom.js";
 
 const CHANNELS = ["A", "C", "G", "T"];
 const CHANNEL_COLORS = {
@@ -461,13 +462,7 @@ function drawTranslationTracks(context, state, calls, plot, xForPosition, layout
       context.strokeStyle = theme.border;
       context.lineWidth = 0.7;
       context.lineJoin = "round";
-      const chevronCap = codon === visibleCodons[0] || codon === visibleCodons.at(-1);
-      if (chevronCap) {
-        traceTranslationArrow(context, left, top, Math.max(1, right - left), 16, frame.strand);
-      } else {
-        context.beginPath();
-        context.roundRect(left, top, Math.max(1, right - left), 16, 2);
-      }
+      traceTranslationArrow(context, left, top, Math.max(1, right - left), 16, frame.strand);
       context.fill();
       context.stroke();
       if (codon.centerPosition >= firstVisible && codon.centerPosition <= lastVisible) {
@@ -1117,6 +1112,28 @@ function renderSingleSangerTraceViewer(container, data) {
     stopActiveInertia();
     zoomBy(event.deltaY < 0 ? 1.25 : 1 / 1.25);
   }, passiveWheelOptions);
+  const cleanupPinch = installCanvasPinchZoom(canvas, {
+    onStart: () => {
+      stopActiveInertia();
+      inspection.hide();
+      if (dragState) canvas.releasePointerCapture?.(dragState.pointerId);
+      dragState = null;
+      canvas.classList.remove("dragging", "clipping");
+    },
+    onChange: ({ previous, current, factor }) => {
+      const rect = canvas.getBoundingClientRect();
+      const oldWidth = basesPerVisibleWidth(state);
+      const anchor = state.visibleStart + (previous.x - rect.left) / Math.max(1, rect.width) * oldWidth;
+      state.zoom = clamp(state.zoom * factor, 1, 18);
+      const newWidth = basesPerVisibleWidth(state);
+      state.visibleStart = clamp(
+        anchor - (current.x - rect.left) / Math.max(1, rect.width) * newWidth,
+        1,
+        Math.max(1, state.calls.length - newWidth + 1)
+      );
+      render();
+    }
+  });
   canvas.addEventListener("mousemove", (event) => {
     if (dragState) {
       if (!dragState.pointerMoveSeen && event.buttons === 1) {
@@ -1307,6 +1324,7 @@ function renderSingleSangerTraceViewer(container, data) {
 
   container._sms3VisualCleanup = () => {
     stopActiveInertia();
+    cleanupPinch();
     cleanupController.abort();
   };
   container._sms3TraceState = {

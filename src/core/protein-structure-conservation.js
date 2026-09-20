@@ -41,7 +41,7 @@ const AMBIGUOUS_OR_UNKNOWN = new Set(["B", "J", "O", "U", "X", "Z", "*"]);
 const EQUIVALENT_CHAIN_MIN_IDENTITY = 0.98;
 const EQUIVALENT_CHAIN_MIN_COVERAGE = 0.95;
 const EQUIVALENT_CHAIN_MISSING_RESIDUE_TOLERANCE = 3;
-const FULL_PAIRWISE_ALIGNMENT_CELL_LIMIT = 4_000_000;
+export const FULL_PAIRWISE_ALIGNMENT_CELL_LIMIT = 4_000_000;
 
 function splitStructureAndAlignment(input, separator = "---") {
   const text = String(input ?? "").replace(/\r\n?/g, "\n");
@@ -689,8 +689,6 @@ export async function prepareProteinConservationStructureForRun(input, options =
     gapOpen: options.gapOpen,
     gapExtend: options.gapExtend,
     similarScore: options.similarScore,
-    limitRecords: options.limitRecords,
-    maxSequences: options.maxSequences,
     maxTotalSymbols: options.maxTotalSymbols,
     maxAlignmentCells: options.maxAlignmentCells
   }, context);

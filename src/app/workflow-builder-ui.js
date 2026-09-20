@@ -1,4 +1,5 @@
 import { labWorkflowOperations } from "../core/workflow-lab-operations.js";
+import { applyFixedToolLimits, getFixedLimitOptionDefaults } from "../core/tool-limit-options.js";
 import { parseEditorDocument } from "./editor-session.js";
 import { readTreeDocumentStream, TREE_DOCUMENT_MEDIA_TYPE } from "../core/tree-document-stream.js";
 import {
@@ -1731,6 +1732,7 @@ export function createWorkflowBuilderController({
     }
 
     const tool = getToolById(step.toolId);
+    const fixedLimitIds = new Set(Object.keys(getFixedLimitOptionDefaults(tool?.metadata)));
     let editableOptions = flattenOptions(tool?.metadata.options ?? []).filter((option) =>
       (
         option.type === "radio" ||
@@ -1742,15 +1744,16 @@ export function createWorkflowBuilderController({
         option.type === "rule-list" ||
         option.type === "value-list"
       ) &&
-      shouldShowWorkflowOption(workflow, step, option)
+      shouldShowWorkflowOption(workflow, step, option) &&
+      !fixedLimitIds.has(option.id)
     );
 
     const grid = document.createElement("div");
     grid.className = "workflow-option-grid";
-    step.options = normalizeDependentOptionValues(editableOptions, {
+    step.options = normalizeDependentOptionValues(editableOptions, applyFixedToolLimits(tool?.metadata, {
       ...makeDefaultOptions(tool),
       ...(step.options ?? {})
-    });
+    }));
     editableOptions = editableOptions.filter((option) => {
       if (!option.visibleWhen) {
         return true;

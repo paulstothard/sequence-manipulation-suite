@@ -84,6 +84,17 @@ export const reverseTranslateMetadata = {
           step: 10,
           visibleWhen: { option: "outputFormat", value: "plot" },
           help: "Wraps each protein record across multiple plot rows so longer sequences remain readable."
+        },
+        {
+          id: "plotMaxResidues",
+          type: "number",
+          label: "Residues shown per protein record",
+          defaultValue: 1000,
+          min: 10,
+          max: 5000,
+          step: 10,
+          visibleWhen: { option: "outputFormat", value: "plot" },
+          help: "Show the first N residues in the probability plot; longer records are reported as truncated."
         }
       ]
     },
@@ -108,19 +119,11 @@ export const reverseTranslateMetadata = {
       visibleWhen: { option: "outputFormat", value: "plot" },
       options: [
         {
-          id: "plotMaxResidues",
-          type: "number",
-          label: "Maximum plotted residues per record",
-          defaultValue: 1000,
-          min: 10,
-          max: 5000,
-          step: 50,
-          help: "Controls how much of each protein is included in the probability plot. Longer records are reported as truncated."
-        },
-        {
           id: "probabilityPlotLimitNote",
-          type: "note",
-          text: "Codon base probability plots support up to 5,000 residues per protein record. Longer sequence input remains available to the FASTA, table, and report outputs."
+          type: "limit-value",
+          label: "Codon base probability plot",
+          value: "5,000 residues per protein record",
+          detail: "This is the maximum for the plot setting."
         }
       ]
     },

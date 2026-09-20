@@ -1,6 +1,7 @@
 import { treeDocumentContract } from "../../core/tree-document-stream.js";
 import {
   MULTIPLE_ALIGNMENT_ENGINES,
+  MAX_MSA_SEQUENCES,
   multipleAlignmentDefaultLimits,
   multipleCodingDnaAlignmentTableColumns,
   multipleAlignmentDistanceTableColumns,
@@ -118,24 +119,7 @@ function buildMetadata(alphabet) {
         collapsible: true,
         collapsed: true,
         options: [
-          {
-            id: "limitRecords",
-            type: "checkbox",
-            label: "Align only the first records",
-            defaultValue: false,
-            help: "Off by default: use every input record up to the supported 1,000-record ceiling. Turn on to intentionally align only the first N records."
-          },
-          {
-            id: "maxSequences",
-            type: "number",
-            label: "Maximum records to align",
-            defaultValue: multipleAlignmentDefaultLimits.maxSequences,
-            min: 2,
-            max: 1000,
-            step: 1,
-            visibleWhen: { option: "limitRecords", value: true },
-            help: "Used only when Align only the first records is on."
-          },
+          { id: "maxAlignmentRecords", type: "limit-value", label: "Maximum input records", value: MAX_MSA_SEQUENCES },
           {
             id: "maxTotalSymbols",
             type: "number",

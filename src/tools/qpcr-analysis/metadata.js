@@ -1,4 +1,5 @@
 import { qpcrGroupColumns, qpcrSampleColumns, qpcrTechnicalColumns, qpcrReactionColumns } from "../../core/qpcr-columns.js";
+import { QPCR_LIMITS } from "../../core/qpcr-analysis.js";
 export const qpcrAnalysisMetadata = {
   id: "qpcr-analysis", name: "qPCR Data Analysis", category: "Statistics",
   tags: ["table", "CSV", "TSV", "Excel", "plot", "statistics"],
@@ -52,7 +53,13 @@ export const qpcrAnalysisMetadata = {
       { id: "plotTarget", type: "text", label: "Plot target", defaultValue: "", visibleWhen: { option: "outputFormat", value: "plot" }, help: "Leave blank to plot all target genes, or enter one exact target name. This changes only the figure; all targets remain in the analysis and multiple-testing correction." }
     ] },
     { type: "group", label: "Limits", collapsible: true, collapsed: true, options: [
-      { id: "maxReactions", type: "number", label: "Maximum reactions", defaultValue: 25000, min: 1, max: 25000, step: 1, help: "Up to 5 million input characters, 32 columns, 500,000 cells, 2,000 biological samples, 64 assays, 24 conditions and 50,000 sample/target results. Figures allow 1,000 points, 12 targets, 12 conditions and 72 groups; larger figures stop with guidance rather than hiding data." }
+      { id: "maxReactions", type: "number", label: "Input reactions", defaultValue: QPCR_LIMITS.reactions, min: 1, max: QPCR_LIMITS.reactions, step: 1 },
+      { type: "limit-value", label: "Input text", value: `${QPCR_LIMITS.characters.toLocaleString("en-US")} characters` },
+      { type: "limit-value", label: "Input table", value: `${QPCR_LIMITS.columns} columns and ${QPCR_LIMITS.cells.toLocaleString("en-US")} cells` },
+      { type: "limit-value", label: "Analysis dimensions", value: `${QPCR_LIMITS.samples.toLocaleString("en-US")} biological samples, ${QPCR_LIMITS.targets} assays, ${QPCR_LIMITS.conditions} conditions` },
+      { type: "limit-value", label: "Sample/target results", value: QPCR_LIMITS.sampleResults },
+      { type: "limit-value", label: "Expression plot", value: `${QPCR_LIMITS.plotPoints.toLocaleString("en-US")} points, ${QPCR_LIMITS.plotTargets} targets, ${QPCR_LIMITS.plotConditions} conditions, ${QPCR_LIMITS.plotGroups} groups`, detail: "For larger analyses, choose a table output or fewer targets." },
+      { type: "note", text: "Runs above an input or analysis bound stop with an error. For larger plots, choose a table output or fewer targets." }
     ] },
     { id: "methodNote", type: "note", text: "Relative expression from Cq tables. Use validated assay efficiencies and reference genes. Raw amplification curves, absolute quantification and inter-run calibration are not analyzed here." },
     { id: "citations", type: "note", text: "References:\n\nAnalysis and reporting (MIQE 2.0): Bustin et al. 2025.\n\nNormalization: Pfaffl 2001; Hellemans et al. 2007.\n\nΔΔCq: Livak and Schmittgen 2001." }

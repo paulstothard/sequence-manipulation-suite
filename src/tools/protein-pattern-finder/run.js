@@ -155,6 +155,9 @@ function makeSvgMap(records, pattern, maxMatches = PROTEIN_PATTERN_SVG_MAP_MATCH
         start: match.start,
         end: match.end,
         label: "match",
+        inspectionLabel: makePatternLegendLabel(pattern),
+        type: "pattern match",
+        matchedText: match.matchedText,
         className: "variant"
       });
     }

@@ -493,6 +493,34 @@ function makeTextMap(scannedRecords) {
   });
 }
 
+function mapMatchTypeLabel(matchType) {
+  switch (matchType) {
+    case "full": return "Full sequence match";
+    case "mismatch_tolerant_full": return "Full sequence match with mismatch tolerance";
+    case "5_prime_partial": return "5′ end partial match";
+    case "3_prime_partial": return "3′ end partial match";
+    default: return String(matchType ?? "match").replaceAll("_", " ");
+  }
+}
+
+function makeMapInspectionText(row, index, recordTitle) {
+  const featureClass = String(row.motif_class ?? "technical sequence")
+    .replaceAll("-", " ")
+    .replace(/\brna\b/giu, "RNA")
+    .replace(/\bdna\b/giu, "DNA");
+  return [
+    `${row.motif_name} (t${index + 1})`,
+    `Class: ${featureClass}`,
+    `Match type: ${mapMatchTypeLabel(row.match_type)}`,
+    `Coordinates: ${row.start.toLocaleString()}–${row.end.toLocaleString()}`,
+    `Strand: ${row.strand === "-" ? "reverse (−)" : "forward (+)"}`,
+    row.match_type === "mismatch_tolerant_full" ? `Mismatches: ${row.mismatches}` : "",
+    row.match_type === "mismatch_tolerant_full" ? `Identity: ${formatPercent(row.identity_percent)}%` : "",
+    row.matched_text ? `Matched bases — ${row.matched_text}` : "",
+    `Input: ${recordTitle}`
+  ].filter(Boolean).join("; ");
+}
+
 function summarizeSvgRecords(scannedRecords) {
   const drawableRecords = scannedRecords.slice(0, TECHNICAL_SEQUENCE_SVG_MAX_RECORDS);
   const omittedRecords = Math.max(0, scannedRecords.length - drawableRecords.length);
@@ -513,10 +541,10 @@ function summarizeSvgRecords(scannedRecords) {
           start: row.start,
           end: row.end,
           strand: row.strand,
-          className: row.mismatches > 0 ? "variant" : row.match_type === "full" ? "regulatory" : "other",
+          className: row.match_type === "mismatch_tolerant_full" ? "variant" : row.match_type === "full" ? "regulatory" : "other",
           label: `t${index + 1}`,
           showLabel: true,
-          type: "technical-sequence"
+          inspectionText: makeMapInspectionText(row, index, record.title)
         })),
         notes: [
           `Technical sequence hits: ${record.rows.length}; shown: ${shownRows.length}; omitted: ${omitted}.`,

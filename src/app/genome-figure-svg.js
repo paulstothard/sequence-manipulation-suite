@@ -421,6 +421,8 @@ function appendFigureStyles(svg, palette) {
   svg.style.setProperty("--genome-figure-ink", palette.ink);
   svg.style.setProperty("--genome-figure-muted", palette.muted);
   svg.style.setProperty("--genome-figure-halo", halo);
+  const darkPaper = relativeLuminance(parseColor(palette.paper)) < 0.18;
+  svg.style.setProperty("--genome-figure-inspection-brightness", darkPaper ? "1.22" : "0.78");
   const style = svgEl("style");
   style.textContent = `
     .genome-figure-title {
@@ -2561,7 +2563,8 @@ function renderCircularRecord(record, state) {
     height,
     role: "img",
     "aria-label": `${record.title} genome figure`,
-    class: "genome-figure-svg"
+    class: "genome-figure-svg",
+    "data-genome-figure-layout": "circular"
   });
   appendFigureStyles(svg, palette);
   svg.append(svgEl("rect", { class: "genome-figure-paper", width, height, fill: palette.paper }));

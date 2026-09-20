@@ -1,5 +1,5 @@
 import "../vendor/d3/d3.min.js";
-import { HEATMAP_LEGEND_LABEL_GAP, escapeXml, makeHeatmapPlotSpec, renderHeatmapPlotSvg } from "./plot-renderer.js";
+import { HEATMAP_LEGEND_LABEL_GAP, escapeXml, makeHeatmapPlotSpec, renderHeatmapLegendRamp, renderHeatmapPlotSvg } from "./plot-renderer.js";
 import {
   annotatePointCrowding,
   pointCrowdingFact,
@@ -101,7 +101,7 @@ export const qqPlotColumns = [
 ];
 
 const COLORS = ["#2563eb", "#0f766e", "#a33a3a", "#7c3aed", "#d97706", "#0369a1", "#be123c", "#4b5563"];
-const HEATMAP_VISUAL_CELL_LIMIT = 900;
+export const HEATMAP_VISUAL_CELL_LIMIT = 900;
 const HEATMAP_CATEGORY_LIMIT = 80;
 const MAX_DENSE_SVG_POINTS = 20000;
 const DEFAULT_SCATTER_POINT_LIMIT = 5000;
@@ -271,8 +271,9 @@ function makeCountAxisTicks(max) {
   return makeAxisTicks(0, max);
 }
 
+export const HISTOGRAM_BIN_LIMIT = 80;
 function clampBinCount(value) {
-  return Math.max(1, Math.min(80, Math.round(value) || 1));
+  return Math.max(1, Math.min(HISTOGRAM_BIN_LIMIT, Math.round(value) || 1));
 }
 
 function autoHistogramBinCount(values, min, max) {
@@ -1538,15 +1539,16 @@ function applyPlotHeaderLayout({ width, height, margin, subtitle = "" }) {
   };
 }
 
-function renderBaseSvg({ title, width = 900, height = 560, xLabel, yLabel, plot, subtitle = "", notes = [], inspectionHighlight = "" }) {
+function renderBaseSvg({ title, width = 900, height = 560, xLabel, yLabel, plot, subtitle = "", notes = [], inspectionHighlight = "", plotKind = "" }) {
   const { subtitleLines } = plotHeaderLayout(width, subtitle);
   const noteLines = notes.flatMap((note) => wrapPlotText(note, width));
   const scope = '[data-plot-renderer="sms3-d3"]';
   const inspectionHighlightAttribute = inspectionHighlight
     ? ` data-sms3-inspection-highlight="${escapeXml(inspectionHighlight)}"`
     : "";
+  const plotKindAttribute = plotKind ? ` data-sms3-plot-kind="${escapeXml(plotKind)}"` : "";
   return [
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="d3" data-plot-renderer="sms3-d3"${inspectionHighlightAttribute}>`,
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="d3" data-plot-renderer="sms3-d3"${inspectionHighlightAttribute}${plotKindAttribute}>`,
     "<style>",
     `${scope} .title{font:700 20px system-ui,sans-serif;fill:#263238;stroke:none;stroke-width:0;paint-order:normal}`,
     `${scope} .axis{stroke:#455a64;stroke-width:1.2}`,
@@ -1940,7 +1942,7 @@ export function renderHistogramSvg(rows, options = {}) {
       const y = scale(row.count, yMin, yMax, plotHeight, 0);
       const zeroY = scale(0, yMin, yMax, plotHeight, 0);
       const barWidth = Math.max(1, x2 - x1 - barGap);
-      return `<rect x="${(x1 + barGap / 2).toFixed(2)}" y="${Math.min(y, zeroY).toFixed(2)}" width="${barWidth.toFixed(2)}" height="${Math.abs(zeroY - y).toFixed(2)}" fill="#2563eb" fill-opacity="0.78"><title>${escapeXml(`${niceNumber(row.bin_start)} to ${niceNumber(row.bin_end)}: ${row.count}`)}</title></rect>`;
+      return `<rect class="histogram-bin" data-sms3-inspection-highlight="shade" x="${(x1 + barGap / 2).toFixed(2)}" y="${Math.min(y, zeroY).toFixed(2)}" width="${barWidth.toFixed(2)}" height="${Math.abs(zeroY - y).toFixed(2)}" fill="#2563eb" fill-opacity="0.78"><title>${escapeXml(`${niceNumber(row.bin_start)} to ${niceNumber(row.bin_end)}: ${row.count}`)}</title></rect>`;
     }),
     "</g>"
   ];
@@ -2073,7 +2075,7 @@ export function renderBarSvg(rows, options = {}) {
       const x = categoryIndex * categoryWidth + (categoryWidth - groupWidth) / 2 + groupIndex * barWidth;
       const y = scale(row.value, yMin, yMax, plotHeight, 0);
       const color = groupColor(row.group || "Data", groups);
-      return `<rect x="${x.toFixed(2)}" y="${Math.min(y, zeroY).toFixed(2)}" width="${Math.max(1, barWidth - 2).toFixed(2)}" height="${Math.max(1, Math.abs(zeroY - y)).toFixed(2)}" fill="${color}" fill-opacity="0.82"><title>${escapeXml(`${row.category}${row.group ? ` / ${row.group}` : ""}: ${row.value}`)}</title></rect>`;
+      return `<rect class="category-value-bar" data-sms3-inspection-highlight="shade" x="${x.toFixed(2)}" y="${Math.min(y, zeroY).toFixed(2)}" width="${Math.max(1, barWidth - 2).toFixed(2)}" height="${Math.max(1, Math.abs(zeroY - y)).toFixed(2)}" fill="${color}" fill-opacity="0.82"><title>${escapeXml(`${row.category}${row.group ? ` / ${row.group}` : ""}: ${row.value}`)}</title></rect>`;
     }),
     "</g>"
   ];
@@ -2158,7 +2160,7 @@ export function renderBoxSvg(rows, outliers = [], options = {}) {
         `<line x1="${x}" x2="${x}" y1="${whiskerHigh}" y2="${whiskerLow}" stroke="#455a64" stroke-width="1.4"/>`,
         `<line x1="${x - boxWidth / 3}" x2="${x + boxWidth / 3}" y1="${whiskerHigh}" y2="${whiskerHigh}" stroke="#455a64" stroke-width="1.4"/>`,
         `<line x1="${x - boxWidth / 3}" x2="${x + boxWidth / 3}" y1="${whiskerLow}" y2="${whiskerLow}" stroke="#455a64" stroke-width="1.4"/>`,
-        `<rect x="${x - boxWidth / 2}" y="${Math.min(q1, q3)}" width="${boxWidth}" height="${Math.max(1, Math.abs(q3 - q1))}" fill="#2563eb" fill-opacity="0.22" stroke="#2563eb" stroke-width="1.6"><title>${escapeXml(`${row.group}: n=${row.count}, median=${row.median}`)}</title></rect>`,
+        `<rect class="box-summary" data-sms3-inspection-highlight="shade" x="${x - boxWidth / 2}" y="${Math.min(q1, q3)}" width="${boxWidth}" height="${Math.max(1, Math.abs(q3 - q1))}" fill="#2563eb" fill-opacity="0.22" stroke="#2563eb" stroke-width="1.6"><title>${escapeXml(`${row.group}: n=${row.count}, median=${row.median}`)}</title></rect>`,
         `<line x1="${x - boxWidth / 2}" x2="${x + boxWidth / 2}" y1="${median}" y2="${median}" stroke="#1d4ed8" stroke-width="2.2"/>`,
         renderAngledCategoryTick({ x, plotHeight, label, title: row.group })
       ].join("");
@@ -2168,7 +2170,7 @@ export function renderBoxSvg(rows, outliers = [], options = {}) {
       const crowdingFact = pointCrowdingFact(point, { noun: "displayed measurement dots" });
       if (crowdingFact) details.push(crowdingFact);
       if (sampleFact) details.push(sampleFact);
-      return `<circle data-sms3-nearest-point="true" cx="${point.plotX.toFixed(2)}" cy="${point.plotY.toFixed(2)}" r="2.5" fill="#0f172a" fill-opacity="0.42" stroke="#ffffff" stroke-opacity="0.75" stroke-width="0.8"><title>${escapeXml(details.join("; "))}</title></circle>`;
+      return `<circle class="box-measurement" data-sms3-inspection-highlight="shade" data-sms3-nearest-point="true" cx="${point.plotX.toFixed(2)}" cy="${point.plotY.toFixed(2)}" r="2.5" fill="#0f172a" fill-opacity="0.42" stroke="#ffffff" stroke-opacity="0.75" stroke-width="0.8"><title>${escapeXml(details.join("; "))}</title></circle>`;
     }),
     ...outliers.map((outlier) => {
       const index = rows.findIndex((row) => row.group === outlier.group);
@@ -2359,7 +2361,7 @@ export function renderHeatmapSvg(rows, options = {}) {
       const y = yIndex * cellHeight;
       const color = row ? colorForValue(row.value, min, max, { colorScale }) : "#f1f5f9";
       const title = row ? `${row.x} / ${row.y}: ${niceNumber(row.value)}` : `${xValue} / ${yValue}: missing`;
-      return `<rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${Math.max(1, cellWidth).toFixed(2)}" height="${Math.max(1, cellHeight).toFixed(2)}" fill="${color}" stroke="#ffffff" stroke-width="1"><title>${escapeXml(title)}</title></rect>`;
+      return `<rect data-sms3-inspection-highlight="shade" x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${Math.max(1, cellWidth).toFixed(2)}" height="${Math.max(1, cellHeight).toFixed(2)}" fill="${color}" stroke="#ffffff" stroke-width="1"><title>${escapeXml(title)}</title></rect>`;
     })),
     ...xValues.map((value, index) => {
       const x = index * cellWidth + cellWidth / 2;
@@ -2375,9 +2377,12 @@ export function renderHeatmapSvg(rows, options = {}) {
     `<line class="axis" x1="0" x2="0" y1="0" y2="${plotHeight}"/>`,
     "</g>",
     `<g data-heatmap-legend="true" transform="translate(${legendX.toFixed(2)} ${margin.top + 18})">`,
-    ...Array.from({ length: legendHeight }, (_, index) => {
-      const value = max - ((max - min) * index) / Math.max(1, legendHeight - 1);
-      return `<rect data-heatmap-legend-bar="true" x="0" y="${index}" width="${legendBarWidth}" height="1" fill="${colorForValue(value, min, max, { colorScale })}"/>`;
+    renderHeatmapLegendRamp({
+      x: 0,
+      y: 0,
+      width: legendBarWidth,
+      height: legendHeight,
+      colorAt: (fraction) => colorForValue(max - fraction * (max - min), min, max, { colorScale })
     }),
     `<text class="legend" data-heatmap-legend-title="true" x="0" y="-18" text-anchor="start">${escapeXml(legendTitle)}</text>`,
     `<text class="tick" data-heatmap-legend-label="max" x="${legendBarWidth + legendLabelGap}" y="0" dominant-baseline="middle">${escapeXml(niceNumber(max))}</text>`,
@@ -2390,6 +2395,7 @@ export function renderHeatmapSvg(rows, options = {}) {
     height,
     xLabel: options.xLabel,
     yLabel: options.yLabel,
+    plotKind: "heatmap",
     plot: parts.join("")
   });
 }

@@ -101,8 +101,8 @@ function nodeInspectionText(node, rows, presentation) {
 function linkInspectionText(row, source, target, presentation) {
   return [
     `${row.source} → ${row.target}: ${presentation.detail(row.value)}`,
-    `${flowPercent(row.value, source.outgoing)} of shown outgoing flow from ${row.source}`,
-    `${flowPercent(row.value, target.incoming)} of shown incoming flow to ${row.target}`
+    `From ${row.source}: ${flowPercent(row.value, source.outgoing)} of displayed output`,
+    `To ${row.target}: ${flowPercent(row.value, target.incoming)} of displayed input`
   ].join("; ");
 }
 
@@ -351,7 +351,7 @@ export function renderSankeySvg(rows, warnings = [], options = {}) {
   const stateById = makeOffsets(placedNodes);
 
   const nodeRects = placedNodes.map((node) =>
-    `<rect class="sankey-node" data-node="${escapeXml(node.id)}" data-value="${niceNumber(node.total)}" x="${node.x.toFixed(2)}" y="${node.y.toFixed(2)}" width="${nodeWidth}" height="${node.height.toFixed(2)}" rx="3" fill="${node.color}" fill-opacity="0.9"><title>${escapeXml(nodeInspectionText(node, rows, presentation))}</title></rect>`
+    `<rect class="sankey-node" data-sms3-inspection-highlight="shade" data-node="${escapeXml(node.id)}" data-value="${niceNumber(node.total)}" x="${node.x.toFixed(2)}" y="${node.y.toFixed(2)}" width="${nodeWidth}" height="${node.height.toFixed(2)}" rx="3" fill="${node.color}" fill-opacity="0.9"><title>${escapeXml(nodeInspectionText(node, rows, presentation))}</title></rect>`
   ).join("");
 
   const labelCandidates = placedNodes
