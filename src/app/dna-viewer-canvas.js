@@ -1,5 +1,7 @@
 import { geneticCodes, getStartCodons, makeCodonMap } from "../core/genetic-code.js";
 import { complementDnaRnaSequence } from "../core/sequence.js";
+import { featureArrowHeadLength, featureArrowTerminalVisible, linearFeaturePolygon } from "../core/directional-feature-geometry.js";
+import { traceTranslationArrow } from "../core/translation-arrow-geometry.js";
 import {
   clipStackedIntervalLayout,
   createStackedIntervalLayout,
@@ -407,7 +409,7 @@ function drawLinearSelectedBaseMarker(ctx, { x, y, pxPerBp, theme }) {
   ctx.restore();
 }
 
-function drawLinearSelectedCodonMarker(ctx, { x1, x2, y, theme }) {
+function drawLinearSelectedCodonMarker(ctx, { x1, x2, y, strand, arrowCap, theme }) {
   const left = x1 + 1;
   const width = Math.max(1, x2 - x1 - 2);
   const height = 24;
@@ -416,18 +418,75 @@ function drawLinearSelectedCodonMarker(ctx, { x1, x2, y, theme }) {
   ctx.fillStyle = theme.selectedFill;
   ctx.strokeStyle = theme.selectedStroke;
   ctx.lineWidth = 2;
+  ctx.lineJoin = "round";
   ctx.shadowColor = theme.selectedStroke;
   ctx.shadowBlur = theme.dark ? 6 : 3;
-  if (typeof ctx.roundRect === "function") {
-    ctx.beginPath();
-    ctx.roundRect(left, top, width, height, 4);
-    ctx.fill();
-    ctx.stroke();
+  if (arrowCap) {
+    traceTranslationArrow(ctx, left, top, width, height, strand);
   } else {
-    ctx.fillRect(left, top, width, height);
-    ctx.strokeRect(left, top, width, height);
+    ctx.beginPath();
+    ctx.roundRect(left, top, width, height, 3);
   }
+  ctx.fill();
+  ctx.stroke();
   ctx.restore();
+}
+
+function drawLinearSelectedIntervalOutline(ctx, { x1, x2, y, height, plotLeft, plotRight, theme }) {
+  const padding = 1.5;
+  const strokeWidth = 1.5;
+  // Inset ends at the viewport edge so a cropped interval still has a complete,
+  // rounded outline without losing its side stroke to the plot clip.
+  const edgeInset = 2;
+  const left = Math.max(plotLeft + edgeInset, x1 - padding);
+  const right = Math.min(plotRight - edgeInset, x2 + padding);
+  const top = y - height / 2 - padding;
+  const outlineHeight = height + padding * 2;
+  if (right - left < strokeWidth * 2 || outlineHeight <= 0) return;
+  const radius = Math.min(3, (right - left) / 2, outlineHeight / 2);
+  ctx.save();
+  ctx.strokeStyle = theme.selectedStroke;
+  ctx.lineWidth = strokeWidth;
+  ctx.shadowColor = theme.selectedStroke;
+  ctx.shadowBlur = theme.dark ? 2.5 : 2;
+  ctx.beginPath();
+  if (typeof ctx.roundRect === "function") {
+    ctx.roundRect(left, top, right - left, outlineHeight, radius);
+  } else {
+    ctx.moveTo(left + radius, top);
+    ctx.lineTo(right - radius, top);
+    ctx.quadraticCurveTo(right, top, right, top + radius);
+    ctx.lineTo(right, top + outlineHeight - radius);
+    ctx.quadraticCurveTo(right, top + outlineHeight, right - radius, top + outlineHeight);
+    ctx.lineTo(left + radius, top + outlineHeight);
+    ctx.quadraticCurveTo(left, top + outlineHeight, left, top + outlineHeight - radius);
+    ctx.lineTo(left, top + radius);
+    ctx.quadraticCurveTo(left, top, left + radius, top);
+    ctx.closePath();
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawLinearIntervalShape(ctx, left, top, width, height, strand, headLength, outlined = true) {
+  if (!headLength) {
+    ctx.fillRect(left, top, width, height);
+    if (outlined) ctx.strokeRect(left, top, width, height);
+    return;
+  }
+  const points = linearFeaturePolygon(left, top, width, height, strand, headLength);
+  ctx.beginPath();
+  ctx.moveTo(...points[0]);
+  for (const point of points.slice(1)) ctx.lineTo(...point);
+  ctx.closePath();
+  ctx.fill();
+  if (outlined) ctx.stroke();
+}
+
+function linearIntervalLabelCenter(left, width, strand, headLength) {
+  if (strand === "+") return left + (width - headLength) / 2;
+  if (strand === "-") return left + (width + headLength) / 2;
+  return left + width / 2;
 }
 
 function isQuantitativeTrack(track) {
@@ -829,9 +888,23 @@ function drawTranslationRow(ctx, record, state, y, frameLabel, frameOffset, stra
     ctx.strokeStyle = theme.grid;
     ctx.lineWidth = 4;
     ctx.beginPath();
-    ctx.moveTo(plotLeft, y);
-    ctx.lineTo(plotRight, y);
+    const arrowSize = 7;
+    ctx.moveTo(strand === "+" ? plotLeft : plotLeft + arrowSize, y);
+    ctx.lineTo(strand === "+" ? plotRight - arrowSize : plotRight, y);
     ctx.stroke();
+    ctx.fillStyle = theme.grid;
+    ctx.beginPath();
+    if (strand === "+") {
+      ctx.moveTo(plotRight - arrowSize, y - 5);
+      ctx.lineTo(plotRight, y);
+      ctx.lineTo(plotRight - arrowSize, y + 5);
+    } else {
+      ctx.moveTo(plotLeft + arrowSize, y - 5);
+      ctx.lineTo(plotLeft, y);
+      ctx.lineTo(plotLeft + arrowSize, y + 5);
+    }
+    ctx.closePath();
+    ctx.fill();
     return;
   }
   const sequence = record.sequence;
@@ -839,8 +912,11 @@ function drawTranslationRow(ctx, record, state, y, frameLabel, frameOffset, stra
   const startCodons = getStartCodons(getViewerGeneticCode(record, state));
   const firstCodonStart = Math.max(frameOffset, frameOffset + Math.floor((state.viewStart - frameOffset) / 3) * 3);
   const start = firstCodonStart < state.viewStart ? firstCodonStart + 3 : firstCodonStart;
+  const visibleCodons = [];
   for (let index = start; index + 2 < record.length && index <= state.viewEnd; index += 3) {
-    if (index + 2 < state.viewStart) continue;
+    if (index + 2 >= state.viewStart) visibleCodons.push(index);
+  }
+  for (const index of visibleCodons) {
     const genomicCodon = sequence.slice(index, index + 3);
     const codon = strand === "+" ? genomicCodon : reverseComplement(genomicCodon);
     const normalizedCodon = codon.toUpperCase().replaceAll("U", "T");
@@ -864,12 +940,18 @@ function drawTranslationRow(ctx, record, state, y, frameLabel, frameOffset, stra
     ctx.strokeStyle = aa === "*" ? theme.stopStroke : isStart ? theme.startStroke : theme.aminoAcidStroke;
     ctx.fillStyle = aa === "*" ? theme.stopFill : isStart ? theme.startFill : theme.aminoAcidFill;
     ctx.lineWidth = searchActive ? 2 : 1;
+    const arrowCap = index === visibleCodons[0] || index === visibleCodons.at(-1);
+    ctx.lineJoin = "round";
     ctx.beginPath();
-    ctx.rect(x1 + 1, y - 11, Math.max(1, x2 - x1 - 2), 22);
+    if (arrowCap) {
+      traceTranslationArrow(ctx, x1 + 1, y - 11, Math.max(1, x2 - x1 - 2), 22, strand);
+    } else {
+      ctx.roundRect(x1 + 1, y - 11, Math.max(1, x2 - x1 - 2), 22, 2);
+    }
     ctx.fill();
     ctx.stroke();
     if (selected) {
-      drawLinearSelectedCodonMarker(ctx, { x1, x2, y, theme });
+      drawLinearSelectedCodonMarker(ctx, { x1, x2, y, strand, arrowCap, theme });
     }
     ctx.font = "13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
     ctx.fillStyle = aa === "*" ? theme.stopText : isStart ? theme.startText : theme.aminoAcidText;
@@ -893,6 +975,7 @@ function drawViewer(ctx, canvas, status, record, state) {
   const rows = computeLinearRows(record, state, pxPerBp);
   const layout = { plotLeft, plotRight, pxPerBp, markerTop: rows.markerTop, markerBottom: rows.markerBottom };
   state.hitRegions = [];
+  const selectedIntervalOutlines = [];
 
   ctx.clearRect(0, 0, width, height);
   ctx.fillStyle = theme.background;
@@ -956,11 +1039,15 @@ function drawViewer(ctx, canvas, status, record, state) {
           const markerWidth = Math.max(4, Math.min(10, pxPerBp * 0.75));
           const markerHeight = compactTrack ? 10 : 14;
           addRectHit(state, { x1: x - 8, y1: trackY - 10, x2: x + 8, y2: trackY + 10 }, target);
-          ctx.fillStyle = viewerTargetMatches(state, target) ? theme.selectedFill : theme.restrictionFill;
+          const highlighted = viewerTargetMatches(state, target);
+          ctx.fillStyle = theme.restrictionFill;
           ctx.strokeStyle = color;
-          ctx.lineWidth = viewerTargetMatches(state, target) ? 3 : 1.4;
+          ctx.lineWidth = 1.4;
           ctx.fillRect(x - markerWidth / 2, trackY - markerHeight / 2, markerWidth, markerHeight);
-          ctx.strokeRect(x - markerWidth / 2, trackY - markerHeight / 2, markerWidth, markerHeight);
+          if (!highlighted) ctx.strokeRect(x - markerWidth / 2, trackY - markerHeight / 2, markerWidth, markerHeight);
+          if (highlighted) {
+            selectedIntervalOutlines.push({ x1: x - markerWidth / 2, x2: x + markerWidth / 2, y: trackY, height: markerHeight });
+          }
           if (showLabels) {
             const label = site.label || site.enzyme || "";
             ctx.font = "10px system-ui, sans-serif";
@@ -1028,21 +1115,28 @@ function drawViewer(ctx, canvas, status, record, state) {
           alphabet: proteinViewer ? "protein" : "dna-rna"
         };
         addRectHit(state, { x1, y1: laneY - hitHalfHeight, x2, y2: laneY + hitHalfHeight }, target);
+        const highlighted = viewerTargetMatches(state, target);
         ctx.fillStyle = itemStyle.fill;
         ctx.strokeStyle = itemStyle.stroke;
-        ctx.lineWidth = viewerTargetMatches(state, target) ? 3 : 1;
+        ctx.lineWidth = 1;
         const previousAlpha = ctx.globalAlpha;
         if (placement.fixedSlot) ctx.globalAlpha = Number(track.featureOpacity) || 0.68;
-        ctx.fillRect(x1, laneY - rectHeight / 2, widthPx, rectHeight);
+        const terminalVisible = featureArrowTerminalVisible({ ...placement, partCount: item.parts?.length ?? 1 }, item.strand);
+        const headLength = track.type === "digest-fragments" || item.type === "source"
+          ? 0
+          : featureArrowHeadLength(widthPx, rectHeight, item.strand, terminalVisible);
+        drawLinearIntervalShape(ctx, x1, laneY - rectHeight / 2, widthPx, rectHeight, item.strand, headLength, !highlighted);
         ctx.globalAlpha = previousAlpha;
-        ctx.strokeRect(x1, laneY - rectHeight / 2, widthPx, rectHeight);
+        if (highlighted) {
+          selectedIntervalOutlines.push({ x1, x2, y: laneY, height: rectHeight });
+        }
         const readBasesDrawn = !compactTrack && drawAlignedReadBases(ctx, item, state, layout, {
           x: x1,
           y: laneY,
           widthPx,
           height: rectHeight
         }, theme);
-        const labelPlan = getFeatureLabelRenderPlan(ctx, item.label || item.name || item.type || "", widthPx, pxPerBp, {
+        const labelPlan = getFeatureLabelRenderPlan(ctx, item.label || item.name || item.type || "", widthPx - headLength, pxPerBp, {
           minSize: 8,
           maxSize: 10,
           padding: 8,
@@ -1054,7 +1148,7 @@ function drawViewer(ctx, canvas, status, record, state) {
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
           ctx.font = labelPlan.font;
-          ctx.fillText(labelPlan.label, x1 + widthPx / 2, laneY);
+          ctx.fillText(labelPlan.label, linearIntervalLabelCenter(x1, widthPx, item.strand, headLength), laneY);
           ctx.restore();
         }
       }
@@ -1094,20 +1188,29 @@ function drawViewer(ctx, canvas, status, record, state) {
             alphabet: proteinViewer ? "protein" : "dna-rna"
           };
           addRectHit(state, { x1, y1: trackY - 12, x2, y2: trackY + 12 }, target);
+          const highlighted = viewerTargetMatches(state, target);
           const itemStyle = track.type === "digest-fragments" ? null : getViewerFeatureTypeStyle(item, color);
           ctx.fillStyle = track.type === "digest-fragments" ? theme.digestFill : itemStyle.fill;
           ctx.strokeStyle = track.type === "digest-fragments" ? color : itemStyle.stroke;
-          ctx.lineWidth = viewerTargetMatches(state, target) ? 3 : 1;
+          ctx.lineWidth = 1;
           const rectHeight = compactTrack ? 10 : 20;
-          ctx.fillRect(x1, trackY - rectHeight / 2, widthPx, rectHeight);
-          ctx.strokeRect(x1, trackY - rectHeight / 2, widthPx, rectHeight);
+          const terminalVisible = item.strand === "+"
+            ? part.end === end && part.end <= state.viewEnd
+            : part.start === start && part.start - 1 >= state.viewStart;
+          const headLength = track.type === "digest-fragments" || item.type === "source"
+            ? 0
+            : featureArrowHeadLength(widthPx, rectHeight, item.strand, terminalVisible);
+          drawLinearIntervalShape(ctx, x1, trackY - rectHeight / 2, widthPx, rectHeight, item.strand, headLength, !highlighted);
+          if (highlighted) {
+            selectedIntervalOutlines.push({ x1, x2, y: trackY, height: rectHeight });
+          }
           const readBasesDrawn = !compactTrack && drawAlignedReadBases(ctx, item, state, layout, {
             x: x1,
             y: trackY,
             widthPx,
             height: rectHeight
           }, theme);
-          const labelPlan = getFeatureLabelRenderPlan(ctx, item.label || item.name || item.type || "", widthPx, pxPerBp, {
+          const labelPlan = getFeatureLabelRenderPlan(ctx, item.label || item.name || item.type || "", widthPx - headLength, pxPerBp, {
             minSize: 8,
             maxSize: 11,
             padding: 10,
@@ -1119,7 +1222,7 @@ function drawViewer(ctx, canvas, status, record, state) {
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.font = labelPlan.font;
-            ctx.fillText(labelPlan.label, x1 + widthPx / 2, trackY);
+            ctx.fillText(labelPlan.label, linearIntervalLabelCenter(x1, widthPx, item.strand, headLength), trackY);
             ctx.restore();
           }
         }
@@ -1236,6 +1339,10 @@ function drawViewer(ctx, canvas, status, record, state) {
   }
 
   drawLinearRuler(ctx, state, layout, { y: bottomRulerY, labelsAbove: false, theme });
+
+  for (const outline of selectedIntervalOutlines) {
+    drawLinearSelectedIntervalOutline(ctx, { ...outline, plotLeft, plotRight, theme });
+  }
 
   status.textContent = "";
   const rangeLine = document.createElement("span");

@@ -1,4 +1,3 @@
-import { classifyToolLimitDisclosure } from "../tools/limit-disclosure.js";
 import { readToolInputFileText } from "./input-file-readers.js";
 import {
   getStoredLimitOptionValues,
@@ -20,8 +19,7 @@ export function createToolOptionsController({
   function renderToolOptions(options) {
     const displayOptions = prepareToolOptionsForDisplay(options);
     const visibleOptions = displayOptions.filter(shouldRenderToolOption);
-    const shouldAppendLimitDisclosure = shouldAppendGeneratedLimitDisclosure(state.selectedTool?.metadata);
-    if (visibleOptions.length === 0 && !shouldAppendLimitDisclosure) {
+    if (visibleOptions.length === 0) {
       elements.toolOptions.textContent = "";
       return;
     }
@@ -32,16 +30,8 @@ export function createToolOptionsController({
       ...getStoredLimitOptionValues(state.selectedTool?.metadata?.id, options)
     };
 
-    let appendedLimitDisclosure = false;
     for (const option of visibleOptions) {
       appendToolOptionControl(fragment, option, defaultValues);
-      if (shouldAppendLimitDisclosure && !appendedLimitDisclosure && optionTreeIncludesId(option, "outputFormat")) {
-        fragment.append(createGeneratedLimitDisclosure(state.selectedTool.metadata));
-        appendedLimitDisclosure = true;
-      }
-    }
-    if (shouldAppendLimitDisclosure && !appendedLimitDisclosure) {
-      fragment.append(createGeneratedLimitDisclosure(state.selectedTool.metadata));
     }
     const flatOptions = flattenOptions(options);
     for (const source of getSuggestionSourcesForOptions(flatOptions)) {
@@ -65,41 +55,6 @@ export function createToolOptionsController({
     elements.toolOptions.replaceChildren(fragment);
     wireDependentToolOptions(options);
     updateToolOptionSuggestions({ autofillColumns: true });
-  }
-
-  function shouldAppendGeneratedLimitDisclosure(metadata) {
-    const visibleOptions = (metadata?.options ?? []).filter(shouldRenderToolOption);
-    return Boolean(metadata) && !visibleOptions.some(isTopLevelToolLimitGroup);
-  }
-
-  function isTopLevelToolLimitGroup(option) {
-    const label = String(option.label ?? "");
-    return option.type === "group" && (
-      option.id === "advancedLimits" ||
-      option.id === "referenceMatchLimitsGroup" ||
-      /^limits$/i.test(label)
-    );
-  }
-
-  function optionTreeIncludesId(option, id) {
-    return option.id === id || (option.options ?? []).some((child) => optionTreeIncludesId(child, id));
-  }
-
-  function createGeneratedLimitDisclosure(metadata) {
-    const disclosure = classifyToolLimitDisclosure(metadata);
-    const details = document.createElement("details");
-    details.className = "option-group option-group-collapsible option-limit-disclosure";
-    details.dataset.optionId = "generatedLimits";
-    const summary = document.createElement("summary");
-    summary.append(createOptionLabelContent({
-      label: "Limits",
-      help: "Input, processing, output, and browser-local guardrails for this tool."
-    }));
-    const text = document.createElement("p");
-    text.className = "option-limit-summary";
-    text.textContent = disclosure.summary;
-    details.append(summary, text);
-    return details;
   }
 
   function getSuggestionSourcesForOptions(options) {
@@ -926,6 +881,9 @@ export function createToolOptionsController({
   }
 
   function visibleWhenMatches(visibleWhen, optionValues) {
+    if (visibleWhen?.any) {
+      return visibleWhen.any.some((condition) => visibleWhenMatches(condition, optionValues));
+    }
     return normalizeVisibleWhenConditions(visibleWhen).every((condition) => {
       const expectedValues = Array.isArray(condition.value)
         ? condition.value
@@ -935,6 +893,9 @@ export function createToolOptionsController({
   }
 
   function getVisibleWhenOptionIds(visibleWhen) {
+    if (visibleWhen?.any) {
+      return visibleWhen.any.flatMap(getVisibleWhenOptionIds);
+    }
     return normalizeVisibleWhenConditions(visibleWhen)
       .map((condition) => condition.option)
       .filter(Boolean);
@@ -1106,10 +1067,6 @@ export function createToolOptionsController({
 
   return {
     renderToolOptions,
-    shouldAppendGeneratedLimitDisclosure,
-    isTopLevelToolLimitGroup,
-    optionTreeIncludesId,
-    createGeneratedLimitDisclosure,
     getSuggestionSourcesForOptions,
     shouldRenderToolOption,
     getSuggestionListId,

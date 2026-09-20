@@ -43,16 +43,6 @@ export const linePlotMetadata = {
         { id: "yColumn", type: "text", label: "Y column", defaultValue: "mean_tpm", suggestionsFrom: "table-numeric-columns" },
         { id: "seriesColumn", type: "text", label: "Series", defaultValue: "condition", suggestionsFrom: "table-columns" },
         { id: "labelColumn", type: "text", label: "Point labels", defaultValue: "sample_id", suggestionsFrom: "table-columns" },
-        {
-          id: "maxPointsDrawn",
-          type: "number",
-          label: "Maximum plotted points",
-          defaultValue: 10000,
-          min: 100,
-          max: 20000,
-          step: 100,
-          help: "The Point TSV still contains all parsed points; this only caps visual drawing for browser responsiveness."
-        },
         { id: "title", type: "text", label: "Plot title", defaultValue: "Expression time course" }
       ]
     },
@@ -65,6 +55,25 @@ export const linePlotMetadata = {
           { value: "svg", label: "Line plot" },
           { value: "point-tsv", label: "Point table" }
         ] }
+      ]
+    },
+    {
+      id: "advancedLimits",
+      type: "group",
+      label: "Limits",
+      collapsible: true,
+      collapsed: true,
+      options: [
+        {
+          id: "maxPointsDrawn",
+          type: "number",
+          label: "Maximum plotted points",
+          defaultValue: 10000,
+          min: 100,
+          max: 20000,
+          step: 100,
+          help: "The Point TSV still contains all parsed points; this only caps visual drawing for browser responsiveness."
+        }
       ]
     }
   ]

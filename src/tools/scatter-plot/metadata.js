@@ -43,16 +43,6 @@ export const scatterPlotMetadata = {
         { id: "yColumn", type: "text", label: "Y column", defaultValue: "od260_280", suggestionsFrom: "table-numeric-columns" },
         { id: "groupColumn", type: "text", label: "Color by", defaultValue: "treatment", suggestionsFrom: "table-columns" },
         { id: "labelColumn", type: "text", label: "Point labels", defaultValue: "sample_id", suggestionsFrom: "table-columns" },
-        {
-          id: "maxPointsDrawn",
-          type: "number",
-          label: "Maximum plotted points",
-          defaultValue: 5000,
-          min: 100,
-          max: 20000,
-          step: 100,
-          help: "The Point TSV still contains all parsed points; this only caps visual drawing for browser responsiveness."
-        },
         { id: "title", type: "text", label: "Plot title", defaultValue: "RNA sample QC scatter plot" }
       ]
     },
@@ -65,6 +55,25 @@ export const scatterPlotMetadata = {
           { value: "svg", label: "Scatter plot" },
           { value: "point-tsv", label: "Point table" }
         ] }
+      ]
+    },
+    {
+      id: "advancedLimits",
+      type: "group",
+      label: "Limits",
+      collapsible: true,
+      collapsed: true,
+      options: [
+        {
+          id: "maxPointsDrawn",
+          type: "number",
+          label: "Maximum plotted points",
+          defaultValue: 5000,
+          min: 100,
+          max: 20000,
+          step: 100,
+          help: "The Point TSV still contains all parsed points; this only caps visual drawing for browser responsiveness."
+        }
       ]
     }
   ]

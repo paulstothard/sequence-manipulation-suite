@@ -1,6 +1,8 @@
 import { motifMatchTableColumns } from "../../core/motif-scanner.js";
 import dnaRnaMotifs from "../../reference-data/motifs/dna-rna-motifs.js";
 import proteinMotifs from "../../reference-data/motifs/protein-motifs.js";
+import { makeFastaSourceInputOptions } from "../fasta-source-options.js";
+import { STREAMED_FASTA_SCAN_NOTE } from "../fasta-input-policy.js";
 import {
   MOTIF_SVG_LABEL_MATCH_THRESHOLD,
   MOTIF_SVG_MAP_MATCH_THRESHOLD,
@@ -117,6 +119,13 @@ const motifOutputLimitsGroup = {
     }
   ]
 };
+const dnaRnaMotifLimitsGroup = {
+  ...motifOutputLimitsGroup,
+  options: [
+    ...motifOutputLimitsGroup.options,
+    { id: "streamedMotifLimitsNote", type: "note", text: "Large FASTA motif scans are capped at 50 million bases, 200 million motif-symbol scoring operations, 50,000 candidate hits, and 25 MiB of materialized output. Select a motif or class when scanning large records. Report, table, and linear map outputs are available; text maps and sequence viewers require bounded pasted input." }
+  ]
+};
 
 export const dnaRnaMotifScannerMetadata = {
   id: "dna-rna-motif-scanner",
@@ -124,13 +133,14 @@ export const dnaRnaMotifScannerMetadata = {
   category: "Sequence Analysis",
   tags: ["DNA", "RNA", "raw", "motif", "annotation", "reference data"],
   summary: "Scan DNA/RNA sequences against bundled named motif records with provenance.",
-  inputType: "DNA/RNA sequence",
+  inputType: "DNA/RNA sequence, FASTA/FASTA.GZ, or indexed FASTA",
   outputType: "Report, table, motif text map, linear motif map, linear DNA sequence viewer",
   runInWorker: true,
   workerModule: "../tools/motif-scanner/run.js",
   workerExport: "runDnaRnaMotifScannerWorker",
   workflow: makeWorkflow("dna-rna", "dna-rna-motif-scanner"),
   options: [
+    ...makeFastaSourceInputOptions({ includeStreamedFile: true }),
     {
       id: "motifDatabase",
       type: "select",
@@ -180,11 +190,11 @@ export const dnaRnaMotifScannerMetadata = {
     },
     { id: "allowOverlaps", type: "checkbox", label: "Allow overlapping matches", defaultValue: true, help: "Allows motif hits that share one or more sequence positions." },
     ...dnaRnaOutputOptions,
-    motifOutputLimitsGroup,
+    dnaRnaMotifLimitsGroup,
     {
       id: "methodNote",
       type: "note",
-      text: "Bundled curated motifs are scanned as exact, IUPAC, or JavaScript-regex source patterns. JASPAR motifs are scored as PWM/PSSM profiles using the selected relative-score threshold."
+      text: `Bundled curated motifs are scanned as exact, IUPAC, or JavaScript-regex source patterns. JASPAR motifs are scored as PWM/PSSM profiles using the selected relative-score threshold. ${STREAMED_FASTA_SCAN_NOTE}`
     },
     {
       id: "databaseNote",

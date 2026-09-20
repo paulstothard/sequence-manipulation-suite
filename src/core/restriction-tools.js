@@ -134,7 +134,8 @@ export function findRestrictionSites(sequence, enzymes, context = {}, options = 
         alphabet: "dna-rna",
         patternMode: "iupac",
         caseInsensitive: true,
-        allowOverlaps: true
+        allowOverlaps: true,
+        ...(Number.isFinite(options.maxHits) ? { maxMatches: Math.max(0, options.maxHits - hits.length) } : {})
       }, context);
 
       for (const [matchIndex, match] of matches.entries()) {
@@ -173,6 +174,9 @@ export function findRestrictionSites(sequence, enzymes, context = {}, options = 
           overhang_sequence: overhangSequence,
           ...sequenceContext
         });
+        if (Number.isFinite(options.maxHits) && hits.length > options.maxHits) {
+          throw new Error(`Restriction sites exceed the ${options.maxHits.toLocaleString()}-site scan limit.`);
+        }
       }
     }
     if (enzymeIndex > 0 && enzymeIndex % 25 === 0) {
@@ -266,6 +270,24 @@ function restrictionCutClassName(enzyme) {
   return `restrictionCut-${slug}-${(hash >>> 0).toString(36)}`;
 }
 
+function restrictionCutInspectionText(recordTitle, hit) {
+  const facts = [`${recordTitle} — ${hit.enzyme}`];
+  if (hit.recognition) facts.push(`recognition ${hit.recognition}`);
+  const siteStart = Number(hit.site_start);
+  const siteEnd = Number(hit.site_end);
+  if (Number.isFinite(siteStart) && Number.isFinite(siteEnd)) {
+    facts.push(`site ${siteStart.toLocaleString()}–${siteEnd.toLocaleString()}${hit.wraps_origin ? " (wraps origin)" : ""}`);
+  }
+  const topCut = Number(hit.cut_after);
+  const bottomCut = Number(hit.complement_cut_after);
+  if (Number.isFinite(topCut)) {
+    facts.push(Number.isFinite(bottomCut)
+      ? `cuts after base ${topCut.toLocaleString()} (+) and ${bottomCut.toLocaleString()} (−)`
+      : `cut after base ${topCut.toLocaleString()} (+)`);
+  }
+  return facts.join("; ");
+}
+
 export function makeRestrictionMapSvg(records, options = {}) {
   const showFragmentLabels = options.showFragmentLabels !== false;
   const siteLegendLimit = Number.isFinite(Number(options.siteLegendLimit))
@@ -325,6 +347,7 @@ export function makeRestrictionMapSvg(records, options = {}) {
           end: cutPosition,
           strand: "+",
           label: hit.enzyme,
+          inspectionText: restrictionCutInspectionText(record.title, hit),
           className,
           fill: color,
           stroke: color,

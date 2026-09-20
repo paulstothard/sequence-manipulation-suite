@@ -3116,10 +3116,22 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
       button.dataset.codonCrossesWrap = String(placement.crossesBlock);
       button.dataset.codonSegmentStart = String(placement.visibleStart);
       button.dataset.codonSegmentEnd = String(placement.visibleEnd);
+      button.dataset.strand = target.strand;
       button.dataset.targetKey = targetKey;
       attachHoverInfo(button, target);
       cells.append(button);
     }
+  }
+
+  function markTranslationRowEnds(cells) {
+    const segments = Array.from(cells.querySelectorAll(".sequence-extractor-aa"));
+    if (segments.length === 0) return;
+    const first = segments.reduce((left, right) =>
+      Number(left.dataset.codonSegmentStart) <= Number(right.dataset.codonSegmentStart) ? left : right);
+    const last = segments.reduce((left, right) =>
+      Number(left.dataset.codonSegmentEnd) >= Number(right.dataset.codonSegmentEnd) ? left : right);
+    first.dataset.directionTip = "true";
+    last.dataset.directionTip = "true";
   }
 
   function makeFrameTranslationRow(record, blockStart, blockEnd, frameOffset, strand) {
@@ -3162,6 +3174,7 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
         `${aminoAcid}: ${codon}, bases ${directStart}-${directEnd}, computed frame ${frame}, genetic code ${selectedGeneticCode.id}`
       );
     }
+    markTranslationRowEnds(cells);
     row.append(label, cells);
     return row;
   }
@@ -3223,6 +3236,7 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
             `${target.feature}: ${aminoAcid} from input CDS /translation; ${codon || "partial codon"}, bases ${directStart}-${directEnd}`
           );
         }
+        markTranslationRowEnds(cells);
         row.append(label, cells);
         return row;
       });

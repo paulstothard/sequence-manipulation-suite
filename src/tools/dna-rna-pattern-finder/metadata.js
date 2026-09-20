@@ -3,6 +3,8 @@ import {
   DNA_RNA_PATTERN_SVG_MAP_MATCH_THRESHOLD,
   dnaRnaPatternFinderTableColumns
 } from "./run.js";
+import { STREAMED_FASTA_SCAN_NOTE } from "../fasta-input-policy.js";
+import { makeFastaSourceInputOptions } from "../fasta-source-options.js";
 
 export const dnaRnaPatternFinderMetadata = {
   id: "dna-rna-pattern-finder",
@@ -11,7 +13,7 @@ export const dnaRnaPatternFinderMetadata = {
   tags: ["DNA", "RNA", "raw", "motif", "regex", "search"],
   summary:
     "Find plain-text, IUPAC, or regular-expression DNA/RNA motifs on one or both strands.",
-  inputType: "DNA/RNA sequence",
+  inputType: "DNA/RNA sequence, FASTA/FASTA.GZ, or indexed FASTA",
   outputType: "Match report, table, pattern text map, linear pattern map, linear DNA sequence viewer",
   runInWorker: true,
   workerModule: "../tools/dna-rna-pattern-finder/run.js",
@@ -33,6 +35,7 @@ export const dnaRnaPatternFinderMetadata = {
     ]
   },
   options: [
+    ...makeFastaSourceInputOptions({ includeStreamedFile: true }),
     {
       id: "pattern",
       type: "text",
@@ -89,14 +92,14 @@ export const dnaRnaPatternFinderMetadata = {
         {
           id: "patternOutputLimitNote",
           type: "note",
-          text: `Matched-region sequence streams are capped at ${DNA_RNA_PATTERN_MATCHED_REGION_RECORD_THRESHOLD.toLocaleString()} records, and linear pattern maps are capped at ${DNA_RNA_PATTERN_SVG_MAP_MATCH_THRESHOLD.toLocaleString()} shown matches. Table output contains all coordinates.`
+          text: `Large FASTA scans support plain/IUPAC patterns up to 1,000 bases, 50 million source bases, 500 million symbol comparisons, and 100,000 candidate hits. Use report, table, or linear map output; text maps, sequence viewers, and JavaScript regex require bounded pasted input. Matched-region streams are capped at ${DNA_RNA_PATTERN_MATCHED_REGION_RECORD_THRESHOLD.toLocaleString()} records; linear maps show at most ${DNA_RNA_PATTERN_SVG_MAP_MATCH_THRESHOLD.toLocaleString()} matches.`
         }
       ]
     },
     {
       id: "patternNote",
       type: "note",
-      text: "IUPAC motif mode treats ambiguity codes as matching symbols with overlapping possible bases. Regex mode uses JavaScript regular-expression source syntax; use the case-insensitive checkbox for i-flag behavior. Alignment gap characters (. and -) are removed before searching. Coordinates are 1-based and inclusive on the cleaned sequence."
+      text: `IUPAC motif mode treats ambiguity codes as matching symbols with overlapping possible bases. Regex mode uses JavaScript regular-expression source syntax; use the case-insensitive checkbox for i-flag behavior. Alignment gap characters (. and -) are removed before searching. Coordinates are 1-based and inclusive on the cleaned sequence. ${STREAMED_FASTA_SCAN_NOTE}`
     }
   ]
 };

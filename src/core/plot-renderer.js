@@ -1,5 +1,6 @@
 import "../vendor/d3/d3.min.js";
 import { annotatePointCrowding, pointCrowdingFact } from "./point-plot-inspection.js";
+import { fitSideLegendLabel, sideLegendLayout } from "./plot-side-legend.js";
 
 export const PLOT_FOUNDATION = {
   name: "Observable Plot",
@@ -315,18 +316,17 @@ export function renderCategoricalBarPlotSvg(spec) {
   const series = spec.series ?? [];
   const categories = spec.categories ?? [];
   const showLegend = spec.showLegend !== false;
-  const legendColumns = series.length > 4 ? 2 : 1;
-  const legendRows = showLegend ? Math.ceil(series.length / legendColumns) : 0;
-  const legendHeight = showLegend && series.length > 0 ? 12 + legendRows * 20 : 0;
-  const legendTop = header.contentTop;
+  const legend = showLegend && series.length > 0
+    ? sideLegendLayout(width, series.map((item) => item.label), { left: 78 })
+    : null;
   const splitCodonLabels = spec.xTickLabelMode !== "horizontal";
   const margin = {
-    top: header.contentTop + (legendHeight > 0 ? legendHeight + 18 : 0),
-    right: 28,
+    top: header.contentTop,
+    right: legend?.right ?? 28,
     bottom: splitCodonLabels ? 138 : 96,
     left: 78
   };
-  const height = spec.height ?? Math.max(520, margin.top + 330 + margin.bottom + Math.max(0, noteLines.length - 1) * 14);
+  const height = Math.max(spec.height ?? 0, 520, margin.top + margin.bottom + Math.max(330, 24 + (legend ? series.length : 0) * 20) + Math.max(0, noteLines.length - 1) * 14);
   const plotWidth = width - margin.left - margin.right;
   const plotHeight = height - margin.top - margin.bottom;
   const values = spec.bars.map((bar) => Number(bar.value)).filter((value) => Number.isFinite(value));
@@ -361,18 +361,13 @@ export function renderCategoricalBarPlotSvg(spec) {
     )
   ];
 
-  if (showLegend && series.length > 0) {
-    const legendWidth = width - margin.left - margin.right;
-    const columnWidth = legendWidth / legendColumns;
+  if (legend) {
     parts.push(`<g aria-label="Legend">`);
-    parts.push(`<rect x="${margin.left}" y="${legendTop}" width="${legendWidth}" height="${Math.max(30, legendHeight)}" rx="4" fill="#f8fafc" stroke="#dfe7ec"></rect>`);
     series.forEach((item, index) => {
-      const column = Math.floor(index / legendRows);
-      const row = index % legendRows;
-      const x = margin.left + 12 + column * columnWidth;
-      const y = legendTop + 16 + row * 20;
-      parts.push(`<rect x="${x}" y="${y - 8}" width="24" height="10" fill="${item.color}"></rect>`);
-      parts.push(`<text class="legend-label" x="${x + 32}" y="${y + 1}">${escapeXml(truncateLabel(item.label))}</text>`);
+      const y = margin.top + 12 + index * legend.rowHeight;
+      const label = fitSideLegendLabel(item.label, legend.labelWidth);
+      parts.push(`<rect x="${legend.legendX}" y="${y - 8}" width="24" height="10" fill="${item.color}"></rect>`);
+      parts.push(`<text class="legend-label" x="${legend.labelX}" y="${y + 1}">${escapeXml(label)}<title>${escapeXml(item.label)}</title></text>`);
     });
     parts.push(`</g>`);
   }
@@ -574,7 +569,7 @@ export function renderHeatmapPlotSvg(spec) {
   const height = spec.height ?? Math.ceil(plotBottom + margin.bottom + noteLines.length * 14);
   const cellMap = new Map((spec.cells ?? []).map((item) => [`${item.x}\t${item.y}`, item]));
   const parts = [
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(spec.title)}" data-plot-foundation="observable-plot" data-plot-backend="d3" data-plot-renderer="sms3" data-sms3-inspection-highlight="none">`,
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(spec.title)}" data-plot-foundation="observable-plot" data-plot-backend="d3" data-plot-renderer="sms3">`,
     "<style>[data-plot-renderer=\"sms3\"] text{font-family:Inter,Arial,sans-serif;font-size:11px;fill:#172026;stroke:none!important;stroke-width:0!important;text-shadow:none!important;paint-order:normal!important;font-weight:400}[data-plot-renderer=\"sms3\"] .title{font-size:18px;font-weight:700}[data-plot-renderer=\"sms3\"] .axis-label{font-size:12px;fill:#334155;font-weight:500}[data-plot-renderer=\"sms3\"] .tick{font-size:11px;fill:#334155;font-weight:500}[data-plot-renderer=\"sms3\"] .heatmap-cell{shape-rendering:crispEdges;stroke:#ffffff;stroke-width:1}[data-plot-renderer=\"sms3\"] .heatmap-cell-highlight-marker{fill:#0f766e;fill-opacity:.88}[data-plot-renderer=\"sms3\"] .value{font-size:10px;text-anchor:middle;dominant-baseline:central;fill:#111827;font-weight:500}[data-plot-renderer=\"sms3\"] .note{font-size:11px;fill:#64748b}</style>",
     `<rect width="${width}" height="${height}" fill="#ffffff"></rect>`,
     `<text class="title" x="${FIGURE_TEXT_X}" y="${FIGURE_TITLE_Y}">${escapeXml(spec.title)}</text>`
@@ -696,16 +691,16 @@ export function renderLinePlotSvg(spec) {
     ...bands.map((band) => ({ ...band, kind: "band" })),
     ...series.map((item) => ({ ...item, kind: "line" }))
   ];
-  const legendRows = showLegend ? Math.max(1, legendItems.length) : 0;
-  const legendHeight = showLegend && legendItems.length > 0 ? 12 + legendRows * 20 : 0;
-  const legendTop = header.contentTop;
+  const legend = showLegend && legendItems.length > 0
+    ? sideLegendLayout(width, legendItems.map((item) => item.label), { left: 86 })
+    : null;
   const margin = {
-    top: header.contentTop + (legendHeight > 0 ? legendHeight + 18 : 0),
-    right: 34,
+    top: header.contentTop,
+    right: legend?.right ?? 34,
     bottom: 84,
     left: 86
   };
-  const height = spec.height ?? Math.max(460, margin.top + 310 + Math.max(0, noteLines.length - 1) * 14);
+  const height = Math.max(spec.height ?? 0, 460, margin.top + margin.bottom + Math.max(280, 24 + (legend ? legendItems.length : 0) * 20) + Math.max(0, noteLines.length - 1) * 14);
   const plotWidth = width - margin.left - margin.right;
   const plotHeight = height - margin.top - margin.bottom;
   const allPoints = [
@@ -767,18 +762,18 @@ export function renderLinePlotSvg(spec) {
     )
   ];
 
-  if (showLegend && legendItems.length > 0) {
+  if (legend) {
     parts.push(`<g aria-label="Legend">`);
-    parts.push(`<rect x="${margin.left}" y="${legendTop}" width="${plotWidth}" height="${legendHeight}" rx="4" fill="#f8fafc" stroke="#dfe7ec"></rect>`);
     legendItems.forEach((item, index) => {
-      const y = legendTop + 16 + index * 20;
+      const y = margin.top + 12 + index * legend.rowHeight;
       if (item.kind === "band") {
-        parts.push(`<rect x="${margin.left + 12}" y="${y - 5}" width="26" height="9" fill="${item.color}" fill-opacity="${item.opacity ?? 0.22}"></rect>`);
+        parts.push(`<rect x="${legend.legendX}" y="${y - 5}" width="26" height="9" fill="${item.color}" fill-opacity="${item.opacity ?? 0.22}"></rect>`);
       } else {
         const dash = item.strokeDasharray ? ` stroke-dasharray="${escapeXml(item.strokeDasharray)}"` : "";
-        parts.push(`<line stroke="${item.color}" stroke-width="${item.strokeWidth ?? 3}"${dash} x1="${margin.left + 12}" y1="${y}" x2="${margin.left + 38}" y2="${y}"></line>`);
+        parts.push(`<line stroke="${item.color}" stroke-width="${item.strokeWidth ?? 3}"${dash} x1="${legend.legendX}" y1="${y}" x2="${legend.legendX + 26}" y2="${y}"></line>`);
       }
-      parts.push(`<text class="legend-label" x="${margin.left + 46}" y="${y + 4}">${escapeXml(truncateLabel(item.label))}</text>`);
+      const label = fitSideLegendLabel(item.label, legend.labelWidth);
+      parts.push(`<text class="legend-label" x="${legend.labelX}" y="${y + 4}">${escapeXml(label)}<title>${escapeXml(item.label)}</title></text>`);
     });
     parts.push(`</g>`);
   }

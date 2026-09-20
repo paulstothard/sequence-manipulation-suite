@@ -36,6 +36,7 @@ function normalizeOptions(options = {}) {
       : MULTIPLE_ALIGNMENT_ENGINES.muscle,
     gapOpen: Number.parseFloat(options.gapOpen) || 10,
     gapExtend: Number.parseFloat(options.gapExtend) || 1,
+    limitRecords: options.limitRecords === true,
     maxSequences: normalizeLimitInteger(options.maxSequences, multipleAlignmentDefaultLimits.maxSequences, 2, 1000),
     maxTotalSymbols: normalizeLimitInteger(options.maxTotalSymbols, multipleAlignmentDefaultLimits.maxTotalSymbols, 1000, 1000000),
     maxAlignmentCells: normalizeLimitInteger(

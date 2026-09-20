@@ -107,6 +107,13 @@ export function findPatternMatches(sequence, pattern, options = {}, context = {}
   const regex = makePatternRegex(pattern, options);
   const allowOverlaps = options.allowOverlaps !== false;
   const matches = [];
+  const maxMatches = options.maxMatches != null && Number.isFinite(Number(options.maxMatches))
+    ? Math.max(0, Number(options.maxMatches))
+    : Number.POSITIVE_INFINITY;
+  const addMatch = (match) => {
+    if (matches.length >= maxMatches) throw new Error(`Pattern matches exceed the ${maxMatches.toLocaleString()}-hit scan limit.`);
+    matches.push(match);
+  };
 
   context.throwIfCancelled?.();
   if (allowOverlaps) {
@@ -123,7 +130,7 @@ export function findPatternMatches(sequence, pattern, options = {}, context = {}
         if (match[0].length === 0) {
           throw new Error("Pattern matched zero characters.");
         }
-        matches.push({
+        addMatch({
           start: index + 1,
           end: index + match[0].length,
           length: match[0].length,
@@ -145,7 +152,7 @@ export function findPatternMatches(sequence, pattern, options = {}, context = {}
       if (matchedText.length === 0) {
         throw new Error("Pattern matched zero characters.");
       }
-      matches.push({
+      addMatch({
         start: match.index + 1,
         end: match.index + matchedText.length,
         length: matchedText.length,
@@ -165,7 +172,7 @@ export function findPatternMatches(sequence, pattern, options = {}, context = {}
     if (match[0].length === 0) {
       throw new Error("Pattern matched zero characters.");
     }
-    matches.push({
+    addMatch({
       start: match.index + 1,
       end: match.index + match[0].length,
       length: match[0].length,

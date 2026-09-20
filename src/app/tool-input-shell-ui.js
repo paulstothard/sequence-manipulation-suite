@@ -846,6 +846,10 @@ export function createToolInputShellController({
         ? formatExampleInputForDisplay(state.selectedTool.example ?? "")
         : "";
     }
+    if (state.selectedTool?.metadata?.id === "sankey-plot") {
+      const valueUnit = elements.toolOptions.querySelector("#valueUnit");
+      if (valueUnit) valueUnit.value = "";
+    }
     if (isMarkdownNotebookSelected()) {
       syncMarkdownWorkspaceFromSource("Loaded the bundled notebook example.");
     }

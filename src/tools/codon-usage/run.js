@@ -1,4 +1,5 @@
 import { parseSequenceInput } from "../../core/fasta.js";
+import { openCleanDnaRnaFastaSource } from "../../core/fasta-dna-record-source.js";
 import { getCodonsForCode, getGeneticCode } from "../../core/genetic-code.js";
 import {
   makeCategoricalBarPlotSpec,
@@ -18,6 +19,12 @@ export const codonUsageTableColumns = [
   { id: "amino_acid_total", label: "Amino acid total", type: "number" }
 ];
 
+export const CODON_USAGE_LIMITS = Object.freeze({
+  maxMaterializedOutputCharacters: 25 * 1024 * 1024,
+  maxPlotRecords: 20,
+  maxRecords: 1_000
+});
+
 function formatNumber(value) {
   return value.toFixed(3);
 }
@@ -32,43 +39,61 @@ function makeEmptyUsage(codeOrId = "1") {
   return { codons, counts };
 }
 
-function countCodons(sequence, options = {}) {
-  const code = getGeneticCode(options.geneticCode ?? "1");
+function makeUsageAccumulator(codeOrId = "1") {
+  const code = getGeneticCode(codeOrId);
   const { codons, counts } = makeEmptyUsage(code);
-  const source = normalizeSequence(sequence);
-  const completeCodons = [];
-  let ambiguousCodons = 0;
-
-  for (let index = 0; index + 3 <= source.length; index += 3) {
-    const codon = source.slice(index, index + 3);
-    if (/^[ACGT]{3}$/.test(codon)) {
-      completeCodons.push(codon);
-    } else {
-      ambiguousCodons += 1;
-    }
-  }
-
-  for (const codon of completeCodons) {
-    counts.set(codon, (counts.get(codon) ?? 0) + 1);
-  }
-
-  const countedCodons = completeCodons.length;
-  const aminoAcidsByCodon = new Map(codons.map((item) => [item.codon, item.aa]));
-  const stopCodons = completeCodons.filter((codon) => aminoAcidsByCodon.get(codon) === "*").length;
-  const senseCodons = countedCodons - stopCodons;
-  const gc3Count = completeCodons.filter((codon) => codon[2] === "G" || codon[2] === "C").length;
-
   return {
     code,
     codons,
     counts,
-    countedCodons,
-    senseCodons,
-    stopCodons,
-    ambiguousCodons,
-    trailingBases: source.length % 3,
-    gc3Percent: countedCodons > 0 ? (gc3Count / countedCodons) * 100 : 0
+    carry: "",
+    countedCodons: 0,
+    senseCodons: 0,
+    stopCodons: 0,
+    ambiguousCodons: 0,
+    gc3Count: 0
   };
+}
+
+function appendUsageChunk(accumulator, sequence) {
+  const source = `${accumulator.carry}${normalizeSequence(sequence)}`;
+  const usableLength = source.length - (source.length % 3);
+  const aminoAcidsByCodon = new Map(accumulator.codons.map((item) => [item.codon, item.aa]));
+  for (let index = 0; index < usableLength; index += 3) {
+    const codon = source.slice(index, index + 3);
+    if (!/^[ACGT]{3}$/.test(codon)) {
+      accumulator.ambiguousCodons += 1;
+      continue;
+    }
+    accumulator.counts.set(codon, (accumulator.counts.get(codon) ?? 0) + 1);
+    accumulator.countedCodons += 1;
+    if (aminoAcidsByCodon.get(codon) === "*") accumulator.stopCodons += 1;
+    else accumulator.senseCodons += 1;
+    if (codon[2] === "G" || codon[2] === "C") accumulator.gc3Count += 1;
+  }
+  accumulator.carry = source.slice(usableLength);
+}
+
+function finishUsageAccumulator(accumulator) {
+  return {
+    code: accumulator.code,
+    codons: accumulator.codons,
+    counts: accumulator.counts,
+    countedCodons: accumulator.countedCodons,
+    senseCodons: accumulator.senseCodons,
+    stopCodons: accumulator.stopCodons,
+    ambiguousCodons: accumulator.ambiguousCodons,
+    trailingBases: accumulator.carry.length,
+    gc3Percent: accumulator.countedCodons > 0
+      ? (accumulator.gc3Count / accumulator.countedCodons) * 100
+      : 0
+  };
+}
+
+function countCodons(sequence, options = {}) {
+  const accumulator = makeUsageAccumulator(options.geneticCode ?? "1");
+  appendUsageChunk(accumulator, sequence);
+  return finishUsageAccumulator(accumulator);
 }
 
 function buildRows(title, usage) {
@@ -237,6 +262,69 @@ function makeCodonPlotSpec(analyzedRecords, options) {
   });
 }
 
+function makeCodonUsageResult(analyzedInputRecords, normalizedOptions, {
+  warnings = [],
+  recordsProcessed = analyzedInputRecords.length,
+  basesProcessed = 0,
+  charactersRemoved = 0
+} = {}) {
+  if (normalizedOptions.outputFormat === "plot" && recordsProcessed > CODON_USAGE_LIMITS.maxPlotRecords) {
+    throw new Error(`Codon usage plots support at most ${CODON_USAGE_LIMITS.maxPlotRecords.toLocaleString()} input records per run. Choose the table or summary report for larger record collections.`);
+  }
+  const analyzedRecords = [...analyzedInputRecords];
+  const allRows = analyzedRecords.flatMap((record) => record.rows);
+  const code = getGeneticCode(normalizedOptions.geneticCode);
+  if (analyzedRecords.length > 1) {
+    const totalUsage = mergeUsages(analyzedRecords.map((record) => record.usage), code);
+    const totalRows = buildRows("Total", totalUsage);
+    analyzedRecords.push({ title: "Total", usage: totalUsage, rows: totalRows });
+    allRows.push(...totalRows);
+  }
+
+  const outputFormat = normalizedOptions.outputFormat;
+  const isTableOutput = outputFormat === "table";
+  const isPlotOutput = outputFormat === "plot";
+  const reportOutput = makeReport(analyzedRecords);
+  const plotSpec = isPlotOutput ? makeCodonPlotSpec(analyzedRecords, normalizedOptions) : null;
+  const svgPlot = plotSpec ? renderCategoricalBarPlotSvg(plotSpec) : "";
+  const output = isTableOutput ? makeTsv(allRows) : isPlotOutput ? svgPlot : reportOutput;
+  if (output.length > CODON_USAGE_LIMITS.maxMaterializedOutputCharacters) {
+    throw new Error(`Codon usage output contains ${output.length.toLocaleString()} characters, above the current materialized-output limit of ${CODON_USAGE_LIMITS.maxMaterializedOutputCharacters.toLocaleString()}.`);
+  }
+
+  return makeToolResult({
+    output,
+    download: {
+      filename: `codon-usage.${isTableOutput ? "tsv" : isPlotOutput ? "svg" : "txt"}`,
+      mimeType:
+        isTableOutput
+          ? "text/tab-separated-values"
+          : isPlotOutput
+            ? "image/svg+xml;charset=utf-8"
+            : "text/plain;charset=utf-8"
+    },
+    warnings,
+    recordsProcessed,
+    basesProcessed,
+    charactersRemoved,
+    streams: {
+      report: makeTextStream(reportOutput, "text/plain"),
+      table: makeTableStream(codonUsageTableColumns, allRows, "codon-usage"),
+      ...(isPlotOutput ? { plot: makeTextStream(svgPlot, "image/svg+xml") } : {})
+    },
+    visual: isPlotOutput
+      ? {
+          svg: svgPlot,
+          renderer: "observable-plot",
+          plotSpec,
+          observablePlotConfig: plotSpec ? makeObservablePlotConfig(plotSpec) : undefined,
+          pngDownload: true
+        }
+      : undefined,
+    optionsUsed: normalizedOptions
+  });
+}
+
 export function calculateCodonUsage(sequence, options = {}) {
   return countCodons(sequence, options);
 }
@@ -257,7 +345,6 @@ export function runCodonUsage(input, options = {}) {
   }
 
   const analyzedRecords = [];
-  const allRows = [];
   const code = getGeneticCode(normalizedOptions.geneticCode);
   let basesProcessed = 0;
   let charactersRemoved = 0;
@@ -294,61 +381,13 @@ export function runCodonUsage(input, options = {}) {
 
     const rows = buildRows(record.title, usage);
     analyzedRecords.push({ title: record.title, usage, rows });
-    allRows.push(...rows);
   }
 
-  if (analyzedRecords.length > 1) {
-    const totalUsage = mergeUsages(
-      analyzedRecords.map((record) => record.usage),
-      code
-    );
-    const totalRows = buildRows("Total", totalUsage);
-    analyzedRecords.push({ title: "Total", usage: totalUsage, rows: totalRows });
-    allRows.push(...totalRows);
-  }
-
-  const outputFormat = normalizedOptions.outputFormat;
-  const isTableOutput = outputFormat === "table";
-  const isPlotOutput = outputFormat === "plot";
-  const reportOutput = makeReport(analyzedRecords);
-  const plotSpec = isPlotOutput ? makeCodonPlotSpec(analyzedRecords, normalizedOptions) : null;
-  const svgPlot = plotSpec ? renderCategoricalBarPlotSvg(plotSpec) : "";
-  const output =
-    isTableOutput
-      ? makeTsv(allRows)
-      : isPlotOutput
-        ? svgPlot
-        : reportOutput;
-  return makeToolResult({
-    output,
-    download: {
-      filename: `codon-usage.${isTableOutput ? "tsv" : isPlotOutput ? "svg" : "txt"}`,
-      mimeType:
-        isTableOutput
-          ? "text/tab-separated-values"
-          : isPlotOutput
-            ? "image/svg+xml;charset=utf-8"
-            : "text/plain;charset=utf-8"
-    },
+  return makeCodonUsageResult(analyzedRecords, normalizedOptions, {
     warnings,
     recordsProcessed: records.length,
     basesProcessed,
-    charactersRemoved,
-    streams: {
-      report: makeTextStream(reportOutput, "text/plain"),
-      table: makeTableStream(codonUsageTableColumns, allRows, "codon-usage"),
-      ...(isPlotOutput ? { plot: makeTextStream(svgPlot, "image/svg+xml") } : {})
-    },
-    visual: isPlotOutput
-      ? {
-          svg: svgPlot,
-          renderer: "observable-plot",
-          plotSpec,
-          observablePlotConfig: plotSpec ? makeObservablePlotConfig(plotSpec) : undefined,
-          pngDownload: true
-        }
-      : undefined,
-    optionsUsed: normalizedOptions
+    charactersRemoved
   });
 }
 
@@ -356,7 +395,52 @@ export async function runCodonUsageWorker(input, options = {}, context = {}) {
   context.reportProgress?.({ phase: "counting-codons", progress: 0.1 });
   context.throwIfCancelled?.();
   await context.yieldIfNeeded?.();
-  const result = runCodonUsage(input, options);
+  const normalizedOptions = normalizeOptions(options);
+  const opened = await openCleanDnaRnaFastaSource(input, {
+    ...options,
+    maxSourceRecords: Math.min(CODON_USAGE_LIMITS.maxRecords, Number(options.maxSourceRecords) || CODON_USAGE_LIMITS.maxRecords)
+  }, context);
+  const analyzedRecords = [];
+  const warnings = [];
+  let basesProcessed = 0;
+  let charactersRemoved = 0;
+  let current = null;
+
+  for await (const event of opened.events()) {
+    if (event.type === "record-start") {
+      current = {
+        title: event.title,
+        accumulator: makeUsageAccumulator(normalizedOptions.geneticCode)
+      };
+    } else if (event.type === "sequence-chunk" && current) {
+      appendUsageChunk(current.accumulator, event.text);
+      basesProcessed += event.text.length;
+    } else if (event.type === "record-end" && current) {
+      const usage = finishUsageAccumulator(current.accumulator);
+      charactersRemoved += event.removedCount;
+      if (event.removedCount > 0) {
+        warnings.push(`${current.title}: removed ${event.removedCount} non-DNA/RNA character(s).`);
+      }
+      if (event.length === 0) warnings.push(`${current.title}: no DNA/RNA sequence characters were found.`);
+      if (usage.ambiguousCodons > 0) warnings.push(`${current.title}: skipped ${usage.ambiguousCodons} ambiguous codon(s).`);
+      if (usage.trailingBases > 0) warnings.push(`${current.title}: ignored ${usage.trailingBases} trailing base(s).`);
+      analyzedRecords.push({ title: current.title, usage, rows: buildRows(current.title, usage) });
+      current = null;
+    }
+  }
+  warnings.push(...opened.warnings);
+  if (analyzedRecords.length === 0) {
+    const warning = opened.source.stats.inputProvided ? "No DNA/RNA records were found." : "No sequence input was provided.";
+    const result = makeToolResult({ output: "", warnings: [warning, ...warnings], recordsProcessed: 0, basesProcessed: 0, charactersRemoved });
+    context.reportProgress?.({ phase: "finished", progress: 1 });
+    return result;
+  }
+  const result = makeCodonUsageResult(analyzedRecords, normalizedOptions, {
+    warnings,
+    recordsProcessed: analyzedRecords.length,
+    basesProcessed,
+    charactersRemoved
+  });
   context.reportProgress?.({ phase: "finished", progress: 1 });
   return result;
 }

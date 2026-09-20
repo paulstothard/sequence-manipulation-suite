@@ -2278,7 +2278,7 @@ export function renderViolinSvg(summaryRows, densityRows = [], options = {}) {
       const mean = scale(row.mean, yMin, yMax, plotHeight, 0);
       const label = row.group.length > 14 ? `${row.group.slice(0, 13)}...` : row.group;
       return [
-        path ? `<path d="${path}" fill="${color}" fill-opacity="0.22" stroke="${color}" stroke-width="1.6" stroke-linejoin="round"><title>${escapeXml(`${row.group}: n=${row.count}, median=${row.median}, bandwidth=${row.bandwidth}`)}</title></path>` : "",
+        path ? `<path class="violin-density" d="${path}" fill="${color}" fill-opacity="0.22" stroke="${color}" stroke-width="1.6" stroke-linejoin="round"><title>${escapeXml(`${row.group}: n=${row.count}, median=${row.median}, bandwidth=${row.bandwidth}`)}</title></path>` : "",
         `<line x1="${centerX}" x2="${centerX}" y1="${q3}" y2="${q1}" stroke="${color}" stroke-width="7" stroke-linecap="round" stroke-opacity="0.72"/>`,
         `<line x1="${centerX - maxHalfWidth * 0.42}" x2="${centerX + maxHalfWidth * 0.42}" y1="${median}" y2="${median}" stroke="#0f172a" stroke-width="2.2" stroke-linecap="round"/>`,
         `<path d="M${centerX},${mean - 5} L${centerX + 5},${mean} L${centerX},${mean + 5} L${centerX - 5},${mean} Z" fill="#ffffff" stroke="${color}" stroke-width="1.4"><title>${escapeXml(`${row.group} mean: ${row.mean}`)}</title></path>`,
@@ -2390,7 +2390,6 @@ export function renderHeatmapSvg(rows, options = {}) {
     height,
     xLabel: options.xLabel,
     yLabel: options.yLabel,
-    inspectionHighlight: "none",
     plot: parts.join("")
   });
 }

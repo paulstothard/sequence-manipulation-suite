@@ -1,11 +1,7 @@
 import { shouldShowPointMarkersForSeries } from "../core/plot-renderer.js";
+import { fitSideLegendLabel, sideLegendLayout } from "../core/plot-side-legend.js";
 
-function truncatePlotLabel(label, maxLength = 44) {
-  const text = String(label ?? "");
-  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}...` : text;
-}
-
-function addObservablePlotLegend(svg, plotSpec) {
+function addObservablePlotLegend(svg, plotSpec, plotTop) {
   const namespace = "http://www.w3.org/2000/svg";
   const width = plotSpec.width ?? 920;
   const height = Number(svg.getAttribute("height")) || plotSpec.height || 460;
@@ -16,12 +12,11 @@ function addObservablePlotLegend(svg, plotSpec) {
     ...series.map((item) => ({ ...item, legendKind: "line" }))
   ];
   const showLegend = plotSpec.showLegend !== false;
-  const columnCount = legendItems.length > 6 ? 2 : 1;
-  const rowCount = showLegend ? Math.ceil(legendItems.length / columnCount) : 0;
   const marginLeft = 70;
   const marginRight = 34;
-  const legendWidth = width - marginLeft - marginRight;
-  const columnWidth = legendWidth / columnCount;
+  const legend = showLegend && legendItems.length > 0
+    ? sideLegendLayout(width, legendItems.map((item) => item.label), { left: marginLeft })
+    : null;
   const labelGroup = document.createElementNS(namespace, "g");
   labelGroup.setAttribute("text-anchor", "start");
 
@@ -41,24 +36,10 @@ function addObservablePlotLegend(svg, plotSpec) {
   legendGroup.setAttribute("data-plot-legend", "true");
   legendGroup.setAttribute("text-anchor", "start");
 
-  if (showLegend && legendItems.length > 0) {
-    const legendBox = document.createElementNS(namespace, "rect");
-    legendBox.setAttribute("x", String(marginLeft));
-    legendBox.setAttribute("y", "40");
-    legendBox.setAttribute("width", String(legendWidth));
-    legendBox.setAttribute("height", String(Math.max(30, rowCount * 20 + 12)));
-    legendBox.setAttribute("rx", "4");
-    legendBox.setAttribute("fill", "#f8fafc");
-    legendBox.setAttribute("stroke", "#dfe7ec");
-    legendGroup.append(legendBox);
-  }
-
-  if (showLegend) {
+  if (legend) {
     legendItems.forEach((item, index) => {
-      const column = Math.floor(index / rowCount);
-      const row = index % rowCount;
-      const x = marginLeft + 12 + column * columnWidth;
-      const y = 58 + row * 20;
+      const x = legend.legendX;
+      const y = plotTop + 12 + index * legend.rowHeight;
       if (plotSpec.kind === "categorical-bar-plot" || item.legendKind === "band") {
         const swatch = document.createElementNS(namespace, "rect");
         swatch.setAttribute("x", String(x));
@@ -85,19 +66,23 @@ function addObservablePlotLegend(svg, plotSpec) {
       }
 
       const text = document.createElementNS(namespace, "text");
-      text.setAttribute("x", String(x + 32));
+      text.setAttribute("x", String(legend.labelX));
       text.setAttribute("y", String(y + 4));
       text.setAttribute("font-family", "Inter, Arial, sans-serif");
       text.setAttribute("font-size", "11");
       text.setAttribute("fill", "#172026");
       text.setAttribute("text-anchor", "start");
-      text.textContent = truncatePlotLabel(item.label ?? item.id ?? `Series ${index + 1}`);
+      const fullLabel = item.label ?? item.id ?? `Series ${index + 1}`;
+      text.textContent = fitSideLegendLabel(fullLabel, legend.labelWidth);
+      const fullTitle = document.createElementNS(namespace, "title");
+      fullTitle.textContent = fullLabel;
+      text.append(fullTitle);
       legendGroup.append(text);
     });
   }
 
   const xLabel = document.createElementNS(namespace, "text");
-  xLabel.setAttribute("x", String(width / 2));
+  xLabel.setAttribute("x", String((marginLeft + (legend?.plotRight ?? width - marginRight)) / 2));
   xLabel.setAttribute("y", String(height - 18));
   xLabel.setAttribute("font-family", "Inter, Arial, sans-serif");
   xLabel.setAttribute("font-size", "12");
@@ -116,7 +101,7 @@ function addObservablePlotLegend(svg, plotSpec) {
   labelGroup.append(yLabel);
 
   svg.append(labelGroup);
-  if (showLegend && legendItems.length > 0) {
+  if (legend) {
     svg.append(legendGroup);
   }
 }
@@ -420,7 +405,6 @@ export function renderObservablePlotPreview(plotSpec) {
       svg.setAttribute("data-plot-foundation", "observable-plot");
       svg.setAttribute("data-plot-backend", "d3");
       svg.setAttribute("data-plot-renderer", "observable-plot");
-      svg.setAttribute("data-sms3-inspection-highlight", "none");
       svg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
       lockPlotSvgToLightCanvas(svg);
       addObservableHeatmapAnnotations(svg, plotSpec);
@@ -442,16 +426,20 @@ export function renderObservablePlotPreview(plotSpec) {
       }
       const series = plotSpec.series ?? [];
       const showLegend = plotSpec.showLegend !== false;
-      const legendRows = showLegend ? Math.ceil(series.length / (series.length > 6 ? 2 : 1)) : 0;
-      const topMargin = showLegend && series.length > 0 ? Math.max(92, 58 + legendRows * 20) : 56;
+      const width = plotSpec.width ?? 1120;
+      const sideLegend = showLegend && series.length > 0
+        ? sideLegendLayout(width, series.map((item) => item.label), { left: 70 })
+        : null;
+      const topMargin = sideLegend ? 76 : 56;
       const horizontalCategoryLabels = plotSpec.xTickLabelMode === "horizontal";
+      const bottomMargin = horizontalCategoryLabels ? 74 : 104;
       const plot = window.Plot.plot({
-        width: plotSpec.width ?? 1120,
-        height: plotSpec.height ?? Math.max(520, topMargin + 430),
+        width,
+        height: Math.max(plotSpec.height ?? 0, 520, topMargin + bottomMargin + Math.max(300, 24 + (sideLegend ? series.length : 0) * 20)),
         marginTop: topMargin,
-        marginBottom: horizontalCategoryLabels ? 74 : 104,
+        marginBottom: bottomMargin,
         marginLeft: 70,
-        marginRight: 34,
+        marginRight: sideLegend?.right ?? 34,
         x: {
           label: null,
           grid: false,
@@ -485,7 +473,7 @@ export function renderObservablePlotPreview(plotSpec) {
       svg.setAttribute("data-plot-renderer", "observable-plot");
       svg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
       lockPlotSvgToLightCanvas(svg);
-      addObservablePlotLegend(svg, plotSpec);
+      addObservablePlotLegend(svg, plotSpec, topMargin);
       if (!horizontalCategoryLabels) {
         addCategoricalAminoAcidLabels(svg, plotSpec);
       }
@@ -526,15 +514,18 @@ export function renderObservablePlotPreview(plotSpec) {
     const bands = plotSpec.bands ?? [];
     const showLegend = plotSpec.showLegend !== false;
     const legendItemCount = series.length + bands.length;
-    const legendRows = showLegend ? Math.ceil(legendItemCount / (legendItemCount > 6 ? 2 : 1)) : 0;
-    const topMargin = showLegend && legendItemCount > 0 ? Math.max(92, 58 + legendRows * 20) : 56;
+    const width = plotSpec.width ?? 920;
+    const sideLegend = showLegend && legendItemCount > 0
+      ? sideLegendLayout(width, [...bands, ...series].map((item) => item.label), { left: 70 })
+      : null;
+    const topMargin = sideLegend ? 76 : 56;
     const plot = window.Plot.plot({
-      width: plotSpec.width ?? 920,
-      height: plotSpec.height ?? Math.max(460, topMargin + 340),
+      width,
+      height: Math.max(plotSpec.height ?? 0, 460, topMargin + 64 + Math.max(300, 24 + (sideLegend ? legendItemCount : 0) * 20)),
       marginTop: topMargin,
       marginBottom: 64,
       marginLeft: 70,
-      marginRight: 34,
+      marginRight: sideLegend?.right ?? 34,
       x: { label: null, grid: true },
       y: { label: null, domain: plotSpec.yDomain, grid: true },
       color: { legend: false },
@@ -590,7 +581,7 @@ export function renderObservablePlotPreview(plotSpec) {
     svg.setAttribute("data-plot-renderer", "observable-plot");
     svg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
     lockPlotSvgToLightCanvas(svg);
-    addObservablePlotLegend(svg, plotSpec);
+    addObservablePlotLegend(svg, plotSpec, topMargin);
     return svg;
   } catch {
     return null;

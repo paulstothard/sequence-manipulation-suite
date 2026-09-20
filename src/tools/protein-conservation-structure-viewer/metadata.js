@@ -180,6 +180,13 @@ export const proteinConservationStructureViewerMetadata = {
       visibleWhen: { option: "alignmentInputMode", value: "unaligned" },
       options: [
         {
+          id: "limitRecords",
+          type: "checkbox",
+          label: "Align only the first records",
+          defaultValue: false,
+          help: "Off by default: use the structure chain and every comparison record up to the supported 1,000-record ceiling. Turn on to intentionally limit the alignment."
+        },
+        {
           id: "maxSequences",
           type: "number",
           label: "Maximum sequences to align",
@@ -187,6 +194,7 @@ export const proteinConservationStructureViewerMetadata = {
           min: 2,
           max: 1000,
           step: 1,
+          visibleWhen: { option: "limitRecords", value: true },
           help: "Includes the extracted structure-chain sequence plus the comparison FASTA records."
         },
         {

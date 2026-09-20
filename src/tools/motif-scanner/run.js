@@ -1,4 +1,6 @@
 import { parseSequenceInput } from "../../core/fasta.js";
+import { openCleanDnaRnaFastaSource } from "../../core/fasta-dna-record-source.js";
+import { iterateFastaFixedWindowSegments } from "../../core/fasta-fixed-window-segments.js";
 import {
   motifMatchTableColumns,
   scanMotifRecords,
@@ -14,6 +16,10 @@ import proteinMotifs from "../../reference-data/motifs/protein-motifs.js";
 import motifProvenance from "../../reference-data/motifs/provenance.js";
 
 const DETAILED_REPORT_MATCH_THRESHOLD = 2000;
+const MAX_STREAMED_MOTIF_BASES = 50_000_000;
+const MAX_MOTIF_WORK = 200_000_000;
+const MAX_STREAMED_MOTIF_HITS = 50_000;
+const MAX_MATERIALIZED_OUTPUT_CHARACTERS = 25 * 1024 * 1024;
 export const MOTIF_TEXT_MAP_MATCH_THRESHOLD = 5000;
 export const MOTIF_SVG_MAP_MATCH_THRESHOLD = 120;
 export const MOTIF_SVG_RECORD_MATCH_THRESHOLD = 30;
@@ -494,7 +500,119 @@ function runMotifScanner(input, options = {}, config) {
   });
 }
 
+async function runStreamedDnaRnaMotifScanner(input, options, config, context) {
+  const selectedMotifs = getSelectedMotifs(config.motifs, options);
+  if (selectedMotifs.some((motif) => motif.syntax === "regex")) {
+    throw new Error("Large FASTA motif scans support fixed-width exact, IUPAC, and PWM motifs. Regex motifs require bounded pasted input.");
+  }
+  const outputFormat = getOutputFormat(options, config);
+  if (!["report", "tsv", "svg-map"].includes(outputFormat)) {
+    throw new Error("Large FASTA motif scans support report, table, and linear map output. Text maps and sequence viewers require bounded pasted input.");
+  }
+  const widths = selectedMotifs.map((motif) => motif.syntax === "pwm" ? motif.pwm?.weights?.length ?? 0 : motif.pattern?.length ?? 0);
+  const maxWidth = Math.max(1, ...widths);
+  if (maxWidth > 32_000) throw new Error("Selected motif exceeds the 32,000-base fixed-window scan limit.");
+  const workPerBase = selectedMotifs.reduce((sum, motif, index) => sum + widths[index] * (options.strand === "forward" || motif.match?.strand !== "both" ? 1 : 2), 0);
+  const opened = await openCleanDnaRnaFastaSource(input, {
+    ...options,
+    maxSourceBases: Math.min(MAX_STREAMED_MOTIF_BASES, Number(options.maxSourceBases) || MAX_STREAMED_MOTIF_BASES)
+  }, context);
+  const analyzedRecords = [];
+  const warnings = [];
+  const motifOrder = new Map(selectedMotifs.map((motif, index) => [motif.id, index]));
+  let current = null;
+  let work = 0;
+  let candidateHits = 0;
+  let retainedRowCharacters = 0;
+  let sequenceLength = 0;
+  let charactersRemoved = 0;
+  for await (const event of iterateFastaFixedWindowSegments(opened.events(), { maxWindowLength: maxWidth + 20 })) {
+    if (event.type === "record-start") {
+      current = { title: event.title ?? "sequence", sequence: "", sequenceLength: 0, rows: [] };
+      continue;
+    }
+    if (event.type === "scan-segment") {
+      work += (event.ownedEnd0 - event.ownedStart0) * workPerBase;
+      if (work > MAX_MOTIF_WORK) throw new Error(`Motif scan exceeds the ${MAX_MOTIF_WORK.toLocaleString()}-symbol scoring budget. Choose fewer motifs, one strand, or fewer records.`);
+      if (selectedMotifs.length) {
+        const scanned = await scanMotifRecordsWithContext({ title: current.title, sequence: event.text }, selectedMotifs, {
+          alphabet: "dna-rna", strand: options.strand ?? "both", allowOverlaps: true,
+          pwmThresholdPercent: options.pwmThresholdPercent,
+          maxMatches: MAX_STREAMED_MOTIF_HITS, failOnLimit: true
+        }, context);
+        for (const row of scanned.rows) {
+          const start0 = event.segmentStart0 + row.start - 1;
+          if (start0 < event.ownedStart0 || start0 >= event.ownedEnd0) continue;
+          const retained = { ...row, start: start0 + 1, end: event.segmentStart0 + row.end };
+          retainedRowCharacters += JSON.stringify(retained).length;
+          if (retainedRowCharacters > MAX_MATERIALIZED_OUTPUT_CHARACTERS) throw new Error("Motif hit table exceeds the 25 MiB materialized-output limit. Choose fewer motifs or records.");
+          current.rows.push(retained);
+          candidateHits += 1;
+          if (candidateHits > MAX_STREAMED_MOTIF_HITS) throw new Error(`Motif scan exceeds the ${MAX_STREAMED_MOTIF_HITS.toLocaleString()}-candidate-hit limit. Raise the PWM threshold or choose fewer motifs.`);
+        }
+        warnings.push(...scanned.warnings);
+      }
+      await context.yieldIfNeeded?.();
+      continue;
+    }
+    if (event.type === "record-end" && current) {
+      current.sequenceLength = event.length;
+      sequenceLength += event.length;
+      charactersRemoved += event.removedCount;
+      if (event.removedCount) warnings.push(`${current.title}: removed ${event.removedCount} non-DNA/RNA character(s).`);
+      if (!event.length) warnings.push(`${current.title}: no DNA/RNA sequence characters were found.`);
+      if (options.allowOverlaps === false) {
+        const groups = new Map();
+        for (const row of current.rows) {
+          const key = `${row.motif_id}\t${row.strand}`;
+          if (!groups.has(key)) groups.set(key, []);
+          groups.get(key).push(row);
+        }
+        const retained = [];
+        for (const group of groups.values()) {
+          const reverse = group[0].strand === "-";
+          group.sort((a, b) => reverse ? b.start - a.start : a.start - b.start);
+          let edge = reverse ? event.length + 1 : 0;
+          for (const row of group) {
+            if (reverse ? row.end < edge : row.start > edge) {
+              retained.push(row);
+              edge = reverse ? row.start : row.end;
+            }
+          }
+        }
+        current.rows = retained;
+      }
+      current.rows.sort((a, b) => (motifOrder.get(a.motif_id) ?? 0) - (motifOrder.get(b.motif_id) ?? 0) || a.start - b.start || a.end - b.end || a.strand.localeCompare(b.strand));
+      analyzedRecords.push(current);
+      current = null;
+      context.reportProgress?.({ phase: "scanning-records", recordsProcessed: analyzedRecords.length, progress: Math.min(0.9, 0.1 + sequenceLength / MAX_STREAMED_MOTIF_BASES * 0.8) });
+    }
+  }
+  warnings.push(...opened.warnings);
+  if (!analyzedRecords.length) return makeToolResult({ output: "", warnings: [opened.source.stats.inputProvided ? "No DNA/RNA records were found." : "No DNA/RNA sequence input was provided.", ...warnings], recordsProcessed: 0, basesProcessed: 0, charactersRemoved: 0, streams: { table: makeTableStream(motifMatchTableColumns, [], config.schema) } });
+  if (!selectedMotifs.length) warnings.push("No bundled motif records matched the selected filters.");
+  const rows = analyzedRecords.flatMap((record) => record.rows);
+  context.reportProgress?.({ phase: "building-output", progress: 0.95 });
+  const materialized = buildMotifScannerOutput({ analyzedRecords, rows, selectedMotifs, recordsProcessed: analyzedRecords.length, sequenceLength, alphabet: "dna-rna", title: config.title, options, config, warnings });
+  if (Math.max(materialized.output.length, materialized.report.length) > MAX_MATERIALIZED_OUTPUT_CHARACTERS) throw new Error("Motif output exceeds the 25 MiB materialized-output limit. Choose fewer motifs or records.");
+  return makeToolResult({
+    output: materialized.output,
+    download: { filename: `${config.filenameBase}.${outputFormat === "tsv" ? "tsv" : outputFormat === "svg-map" ? "svg" : "txt"}`, mimeType: outputFormat === "tsv" ? "text/tab-separated-values" : outputFormat === "svg-map" ? "image/svg+xml;charset=utf-8" : "text/plain;charset=utf-8" },
+    warnings, recordsProcessed: analyzedRecords.length, basesProcessed: sequenceLength, charactersRemoved,
+    streams: {
+      report: makeTextStream(materialized.report, "text/plain"),
+      ...(outputFormat === "svg-map" ? { overview: makeTextStream(materialized.svgMap, "image/svg+xml") } : {}),
+      table: makeTableStream(motifMatchTableColumns, rows, config.schema)
+    },
+    visual: outputFormat === "svg-map" ? { svg: materialized.svgMap } : undefined
+  });
+}
+
 async function runMotifScannerWorker(input, options = {}, config, context = {}) {
+  const largeSource = config.alphabet === "dna-rna" && Boolean(
+    options.loadedFastaFile?.stream || ["indexed", "bgzf"].includes(options.sourceMode) || String(input ?? "").length > 1_000_000
+  );
+  if (largeSource) return runStreamedDnaRnaMotifScanner(input, options, config, context);
   context.reportProgress?.({ phase: "parsing-input", progress: 0.05 });
   const records = parseSequenceInput(input, config.alphabet);
   const selectedMotifs = getSelectedMotifs(config.motifs, options);

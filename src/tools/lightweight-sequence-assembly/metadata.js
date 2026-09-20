@@ -60,7 +60,11 @@ export const lightweightSequenceAssemblyMetadata = {
       collapsible: true,
       collapsed: true,
       options: [
-        { id: "maxReads", type: "number", label: "Maximum reads/contigs to assemble", defaultValue: 100, min: 2, max: 1000, step: 1, help: "Caps this small lab-scale assembler before work begins. It is not intended for whole-genome or NGS read assembly." }
+        { id: "limitReads", type: "checkbox", label: "Assemble only the first reads", defaultValue: false,
+          help: "Off by default: assemble every input read or contig up to the supported 1,000-record ceiling." },
+        { id: "maxReads", type: "number", label: "Maximum reads/contigs to assemble", defaultValue: 100, min: 2, max: 1000, step: 1,
+          visibleWhen: { option: "limitReads", value: true },
+          help: "Used only when Assemble only the first reads is on. This tool is for small lab-scale assemblies." }
       ]
     },
     {

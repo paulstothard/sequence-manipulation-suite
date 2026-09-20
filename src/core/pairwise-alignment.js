@@ -238,11 +238,11 @@ function hasExactSeqAlignScoringSupport(sequenceA, sequenceB, alphabet, options)
   if (alphabet === "dna-rna") {
     const combined = `${sequenceA}${sequenceB}`.toUpperCase();
     const hasUnsupportedAmbiguity = /[^ACGTU]/.test(combined);
-    if (hasUnsupportedAmbiguity && options.similarScore !== options.mismatchScore) {
-      return "seq-align cannot reproduce SMS3 IUPAC-overlap scoring for ambiguous DNA/RNA symbols";
+    if (hasUnsupportedAmbiguity) {
+      return "seq-align does not support SMS3 IUPAC-overlap scoring for ambiguous DNA/RNA symbols";
     }
-    if (combined.includes("T") && combined.includes("U") && options.similarScore !== options.matchScore) {
-      return "seq-align cannot reproduce SMS3 T/U overlap scoring when DNA and RNA symbols are mixed";
+    if (combined.includes("T") && combined.includes("U")) {
+      return "seq-align does not support SMS3 T/U overlap scoring when DNA and RNA symbols are mixed";
     }
   }
 
@@ -918,6 +918,9 @@ export function makePairwiseAlignmentReport(records, alignment, options = {}) {
   const engineLabel = alignment.engine === PAIRWISE_ALIGNMENT_ENGINES.seqAlign
     ? `seq-align ${alignment.engineVersion || BIOWASM_SEQ_ALIGN_VERSION} via vendored BioWasm/Aioli`
     : "SMS3 affine dynamic programming";
+  const nucleotideScoring = alignment.engine === PAIRWISE_ALIGNMENT_ENGINES.seqAlign
+    ? `match ${options.matchScore ?? 5}, mismatch ${options.mismatchScore ?? -4}`
+    : `match ${options.matchScore ?? 5}, similar ${options.similarScore ?? 1}, mismatch ${options.mismatchScore ?? -4}`;
   const lines = [
     "Pairwise sequence alignment",
     "",
@@ -933,12 +936,12 @@ export function makePairwiseAlignmentReport(records, alignment, options = {}) {
       : []),
     `Mode: ${alignment.mode === "local" ? "Local Smith-Waterman" : "Global Needleman-Wunsch"}`,
     `Engine: ${engineLabel}`,
-    `Scoring: ${alignment.alphabet === "protein" ? "BLOSUM62" : `match ${options.matchScore ?? 5}, similar ${options.similarScore ?? 1}, mismatch ${options.mismatchScore ?? -4}`}, gap open ${options.gapOpen ?? 10}, gap extend ${options.gapExtend ?? 1}`,
+    `Scoring: ${alignment.alphabet === "protein" ? "BLOSUM62" : nucleotideScoring}, gap open ${options.gapOpen ?? 10}, gap extend ${options.gapExtend ?? 1}`,
     `Affine gap model: Gotoh`,
     `Score: ${alignment.score}`,
     `Aligned length: ${alignment.alignedLength}`,
     `Matches: ${alignment.matches}`,
-    `${similarLabel}: ${alignment.similar}`,
+    ...(alignment.alphabet === "protein" || alignment.engine !== PAIRWISE_ALIGNMENT_ENGINES.seqAlign ? [`${similarLabel}: ${alignment.similar}`] : []),
     `Mismatches: ${alignment.mismatches}`,
     `Gap columns: ${alignment.gaps}`,
     `Gap openings: ${alignment.gapOpenings}`,

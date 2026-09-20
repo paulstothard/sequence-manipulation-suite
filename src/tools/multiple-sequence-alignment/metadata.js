@@ -10,6 +10,15 @@ import {
 import { pairwiseAlignmentDefaultLimits } from "../../core/pairwise-alignment.js";
 import { geneticCodes } from "../../core/genetic-code.js";
 
+const identityOutputFormats = ["identity-matrix", "identity-heatmap"];
+const alignmentOutputFormats = ["clustal", "aligned-fasta", "translated-protein-fasta", "report", "tsv", "svg-color", "tree-viewer", "nj-tree", "nj-tree-svg"];
+const pairwiseScoringVisibleWhen = {
+  any: [
+    { option: "alignmentEngine", value: MULTIPLE_ALIGNMENT_ENGINES.sms3 },
+    { option: "outputFormat", value: identityOutputFormats }
+  ]
+};
+
 function buildMetadata(alphabet) {
   const isProtein = alphabet === "protein";
   const isCodingDna = alphabet === "coding-dna";
@@ -58,6 +67,7 @@ function buildMetadata(alphabet) {
         type: "radio",
         label: "Alignment engine",
         defaultValue: MULTIPLE_ALIGNMENT_ENGINES.muscle,
+        visibleWhen: { option: "outputFormat", value: alignmentOutputFormats },
         choices: [
           { value: MULTIPLE_ALIGNMENT_ENGINES.muscle, label: "MUSCLE" },
           { value: MULTIPLE_ALIGNMENT_ENGINES.sms3, label: "SMS3 progressive" }
@@ -65,9 +75,9 @@ function buildMetadata(alphabet) {
         help: "Browser runs use bundled local MUSCLE files for the MUSCLE engine. Select SMS3 progressive when you want the smaller deterministic teaching/review aligner."
       },
       ...(isProtein || isCodingDna ? [] : [
-        { id: "matchScore", type: "number", label: "Match score", defaultValue: 5, step: 1, visibleWhen: { option: "alignmentEngine", value: MULTIPLE_ALIGNMENT_ENGINES.sms3 } },
-        { id: "similarScore", type: "number", label: "Ambiguous overlap score", defaultValue: 1, step: 1, visibleWhen: { option: "alignmentEngine", value: MULTIPLE_ALIGNMENT_ENGINES.sms3 } },
-        { id: "mismatchScore", type: "number", label: "Mismatch score", defaultValue: -4, step: 1, visibleWhen: { option: "alignmentEngine", value: MULTIPLE_ALIGNMENT_ENGINES.sms3 } }
+        { id: "matchScore", type: "number", label: "Match score", defaultValue: 5, step: 1, visibleWhen: pairwiseScoringVisibleWhen },
+        { id: "similarScore", type: "number", label: "Ambiguous overlap score", defaultValue: 1, step: 1, visibleWhen: pairwiseScoringVisibleWhen },
+        { id: "mismatchScore", type: "number", label: "Mismatch score", defaultValue: -4, step: 1, visibleWhen: pairwiseScoringVisibleWhen }
       ]),
       ...(isCodingDna ? [
         {
@@ -79,8 +89,8 @@ function buildMetadata(alphabet) {
           help: "Used to translate complete codons before the protein-guided alignment. Stop and ambiguous codons are scored as X."
         }
       ] : []),
-      { id: "gapOpen", type: "number", label: "Gap opening penalty", defaultValue: 10, min: 0, step: 1, visibleWhen: { option: "alignmentEngine", value: MULTIPLE_ALIGNMENT_ENGINES.sms3 } },
-      { id: "gapExtend", type: "number", label: "Gap extension penalty", defaultValue: 1, min: 0, step: 1, visibleWhen: { option: "alignmentEngine", value: MULTIPLE_ALIGNMENT_ENGINES.sms3 } },
+      { id: "gapOpen", type: "number", label: "Gap opening penalty", defaultValue: 10, min: 0, step: 1, visibleWhen: pairwiseScoringVisibleWhen },
+      { id: "gapExtend", type: "number", label: "Gap extension penalty", defaultValue: 1, min: 0, step: 1, visibleWhen: pairwiseScoringVisibleWhen },
       {
         id: "outputFormat",
         type: "radio",
@@ -99,7 +109,7 @@ function buildMetadata(alphabet) {
           { value: "identity-matrix", label: "Identity matrix table" },
           { value: "identity-heatmap", label: "Identity heatmap" }
         ],
-        help: "Tree and identity outputs are selected materializations; they can require all-vs-all distance or identity calculations for every record pair."
+        help: "Tree outputs use the selected alignment engine. Identity matrix and heatmap outputs instead use all-vs-all SMS3 affine pairwise alignments with the scoring controls shown for those outputs."
       },
       {
         id: "advancedLimits",
@@ -109,6 +119,13 @@ function buildMetadata(alphabet) {
         collapsed: true,
         options: [
           {
+            id: "limitRecords",
+            type: "checkbox",
+            label: "Align only the first records",
+            defaultValue: false,
+            help: "Off by default: use every input record up to the supported 1,000-record ceiling. Turn on to intentionally align only the first N records."
+          },
+          {
             id: "maxSequences",
             type: "number",
             label: "Maximum records to align",
@@ -116,7 +133,8 @@ function buildMetadata(alphabet) {
             min: 2,
             max: 1000,
             step: 1,
-            help: "Only the first records up to this limit are aligned."
+            visibleWhen: { option: "limitRecords", value: true },
+            help: "Used only when Align only the first records is on."
           },
           {
             id: "maxTotalSymbols",
@@ -138,7 +156,7 @@ function buildMetadata(alphabet) {
             min: 1000,
             max: pairwiseAlignmentDefaultLimits.maxAlignmentCells * 10,
             step: 100000,
-            visibleWhen: { option: "alignmentEngine", value: MULTIPLE_ALIGNMENT_ENGINES.sms3 },
+            visibleWhen: pairwiseScoringVisibleWhen,
             help: "SMS3 progressive mode uses pairwise dynamic-programming alignments internally; this cap applies to each pairwise matrix."
           }
         ]
@@ -146,6 +164,7 @@ function buildMetadata(alphabet) {
       {
         id: "methodNote",
         type: "note",
+        visibleWhen: { option: "outputFormat", value: alignmentOutputFormats },
         text: isCodingDna
           ? "Coding DNA/RNA is split into complete codons, translated, aligned in protein space, and projected back to codons. With the MUSCLE engine, SMS3 uses vendored BioWasm MUSCLE 5.1.0. Neighbor-joining and identity matrix distances are calculated from the projected nucleotide alignment to preserve synonymous-change resolution."
           : `With the MUSCLE engine, SMS3 uses vendored BioWasm MUSCLE 5.1.0. The SMS3 progressive engine chooses a center sequence from pairwise global alignments, then merges center-to-sequence alignments. ${isProtein ? "SMS3 progressive protein scoring uses BLOSUM62." : "SMS3 progressive DNA/RNA scoring uses identity plus ambiguous IUPAC overlap."} Neighbor-joining tree output is built from an alignment-derived p-distance matrix and is intended for quick review. Identity matrix outputs use all-vs-all optimal pairwise alignments.`
@@ -153,7 +172,14 @@ function buildMetadata(alphabet) {
       {
         id: "citationNote",
         type: "note",
+        visibleWhen: { option: "outputFormat", value: alignmentOutputFormats },
         text: "References:\n\nMUSCLE v5: Edgar 2022.\n\nSMS3 progressive mode: Needleman and Wunsch 1970; Gotoh 1982; Feng and Doolittle 1987. Protein and coding-DNA scoring use BLOSUM62 (Henikoff and Henikoff 1992)."
+      },
+      {
+        id: "identityMethodNote",
+        type: "note",
+        visibleWhen: { option: "outputFormat", value: identityOutputFormats },
+        text: `Identity outputs use all-vs-all SMS3 affine global pairwise alignments. ${isCodingDna ? "Coding sequences are translated first and aligned in protein space before identity is measured on the projected nucleotides." : isProtein ? "Protein substitutions use BLOSUM62." : "DNA/RNA matches use identity and IUPAC ambiguity overlap scoring."} Gap columns are excluded from identity percentages. References: Needleman and Wunsch 1970; Gotoh 1982${isProtein || isCodingDna ? "; Henikoff and Henikoff 1992" : ""}.`
       }
     ]
   };

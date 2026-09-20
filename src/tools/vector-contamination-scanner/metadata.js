@@ -1,6 +1,8 @@
 import { vectorContaminationTableColumns } from "../../core/vector-contamination-scanner.js";
 import vectorSummary from "../../reference-data/vector-contamination/summary.js";
 import { VECTOR_CONTAMINATION_SVG_MAP_HIT_THRESHOLD } from "./run.js";
+import { makeFastaSourceInputOptions } from "../fasta-source-options.js";
+import { STREAMED_FASTA_SCAN_NOTE } from "../fasta-input-policy.js";
 
 export const vectorContaminationScannerMetadata = {
   id: "vector-contamination-scanner",
@@ -8,7 +10,7 @@ export const vectorContaminationScannerMetadata = {
   category: "Sequence Analysis",
   tags: ["DNA", "RNA", "raw", "vector", "adapter", "contamination", "reference data"],
   summary: "Screen DNA/RNA sequences for vector-like contamination using bundled indexed references.",
-  inputType: "DNA/RNA sequence",
+  inputType: "DNA/RNA sequence, FASTA/FASTA.GZ, or indexed FASTA",
   outputType: "Report, table, text annotation map, linear contamination map, or linear DNA sequence viewer",
   runInWorker: true,
   workerModule: "../tools/vector-contamination-scanner/run.js",
@@ -34,6 +36,7 @@ export const vectorContaminationScannerMetadata = {
     ]
   },
   options: [
+    ...makeFastaSourceInputOptions({ includeStreamedFile: true }),
     {
       id: "sensitivity",
       type: "select",
@@ -72,14 +75,6 @@ export const vectorContaminationScannerMetadata = {
       max: 100
     },
     {
-      id: "maxHitsPerRecord",
-      type: "number",
-      label: "Maximum hits per record",
-      defaultValue: 50,
-      min: 1,
-      max: 1000
-    },
-    {
       id: "outputFormat",
       type: "radio",
       label: "Output format",
@@ -100,10 +95,19 @@ export const vectorContaminationScannerMetadata = {
       collapsible: true,
       collapsed: true,
       options: [
+        { id: "vectorLargeSourceLimitNote", type: "note", text: "Large FASTA scans are capped at 10 million bases, 5 million A/C/G/T query windows, 100,000 seed extensions, 20,000 candidate hits, and 25 MiB of materialized output. Report, table, and linear map outputs are available; text maps and viewers require bounded pasted input." },
+        {
+          id: "maxHitsPerRecord",
+          type: "number",
+          label: "Maximum hits per record",
+          defaultValue: 50,
+          min: 1,
+          max: 1000
+        },
         {
           id: "vectorContaminationMapLimitNote",
           type: "note",
-          text: `Linear contamination map output is capped at ${VECTOR_CONTAMINATION_SVG_MAP_HIT_THRESHOLD.toLocaleString()} shown hits. Table output contains all hit coordinates.`
+          text: `Linear contamination map output is capped at ${VECTOR_CONTAMINATION_SVG_MAP_HIT_THRESHOLD.toLocaleString()} shown hits. Table output contains all hit coordinates. ${STREAMED_FASTA_SCAN_NOTE}`
         }
       ]
     },

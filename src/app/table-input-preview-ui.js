@@ -12,6 +12,9 @@ function normalizeVisibleWhenConditions(visibleWhen) {
 }
 
 function visibleWhenMatches(visibleWhen, optionValues) {
+  if (visibleWhen?.any) {
+    return visibleWhen.any.some((condition) => visibleWhenMatches(condition, optionValues));
+  }
   return normalizeVisibleWhenConditions(visibleWhen).every((condition) => {
     const expectedValues = Array.isArray(condition.value) ? condition.value : [condition.value];
     return expectedValues.includes(optionValues[condition.option]);

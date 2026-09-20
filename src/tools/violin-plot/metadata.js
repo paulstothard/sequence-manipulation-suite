@@ -61,16 +61,6 @@ export const violinPlotMetadata = {
           step: 8,
           help: "Number of vertical points used to draw each kernel-density curve and density table."
         },
-        {
-          id: "maxDotsDrawn",
-          type: "number",
-          label: "Maximum measurement dots",
-          defaultValue: 1000,
-          min: 0,
-          max: 10000,
-          step: 100,
-          help: "Density and summary TSV outputs use all numeric values; this only caps individual dot drawing in the visual output."
-        },
         { id: "title", type: "text", label: "Plot title", defaultValue: "Expression distribution by condition" }
       ]
     },
@@ -84,6 +74,25 @@ export const violinPlotMetadata = {
           { value: "density-tsv", label: "Density table" },
           { value: "summary-tsv", label: "Summary table" }
         ] }
+      ]
+    },
+    {
+      id: "advancedLimits",
+      type: "group",
+      label: "Limits",
+      collapsible: true,
+      collapsed: true,
+      options: [
+        {
+          id: "maxDotsDrawn",
+          type: "number",
+          label: "Maximum measurement dots",
+          defaultValue: 1000,
+          min: 0,
+          max: 10000,
+          step: 100,
+          help: "Density and summary TSV outputs use all numeric values; this only caps individual dot drawing in the visual output."
+        }
       ]
     }
   ],

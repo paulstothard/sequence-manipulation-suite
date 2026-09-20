@@ -17,6 +17,7 @@ function compactInspectionValue(value, maxLength = 180) {
 }
 
 function featureInspectionText(feature, recordTitle = "") {
+  if (feature.inspectionText) return compactInspectionValue(feature.inspectionText, 300);
   const label = compactInspectionValue(feature.inspectionLabel ?? feature.label ?? feature.type ?? "Feature");
   const type = compactInspectionValue(feature.type ?? feature.className ?? "");
   const parts = feature.parts?.length ? feature.parts : [feature];

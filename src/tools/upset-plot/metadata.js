@@ -49,7 +49,6 @@ export const upsetPlotMetadata = {
       label: "Output format",
       help: "Shared items are present in every list. Unique items are present in exactly one list. The comparison TSV contains exact item-level membership and duplicate counts.",
       options: [
-        { id: "maxIntersections", type: "number", label: "Maximum plotted intersections", defaultValue: 24, min: 1, max: 80, step: 1 },
         {
           id: "scaleMode",
           type: "select",
@@ -75,6 +74,16 @@ export const upsetPlotMetadata = {
             { value: "report", label: "Summary report" }
           ]
         }
+      ]
+    },
+    {
+      id: "advancedLimits",
+      type: "group",
+      label: "Limits",
+      collapsible: true,
+      collapsed: true,
+      options: [
+        { id: "maxIntersections", type: "number", label: "Maximum plotted intersections", defaultValue: 24, min: 1, max: 80, step: 1 }
       ]
     }
   ]

@@ -41,16 +41,6 @@ export const qqPlotMetadata = {
       options: [
         { id: "valueColumn", type: "text", label: "Value column", defaultValue: "normalized_expression", suggestionsFrom: "table-numeric-columns" },
         { id: "labelColumn", type: "text", label: "Label column", defaultValue: "sample_id", suggestionsFrom: "table-columns" },
-        {
-          id: "maxPointsDrawn",
-          type: "number",
-          label: "Max plotted points",
-          defaultValue: 10000,
-          min: 100,
-          max: 20000,
-          step: 100,
-          help: "The plot samples evenly across sorted quantiles above this limit; the quantile TSV still includes every usable row."
-        },
         { id: "title", type: "text", label: "Plot title", defaultValue: "Normal Q-Q plot of normalized expression" }
       ]
     },
@@ -63,6 +53,25 @@ export const qqPlotMetadata = {
           { value: "svg", label: "Q-Q plot" },
           { value: "quantile-tsv", label: "Quantile table" }
         ] }
+      ]
+    },
+    {
+      id: "advancedLimits",
+      type: "group",
+      label: "Limits",
+      collapsible: true,
+      collapsed: true,
+      options: [
+        {
+          id: "maxPointsDrawn",
+          type: "number",
+          label: "Max plotted points",
+          defaultValue: 10000,
+          min: 100,
+          max: 20000,
+          step: 100,
+          help: "The plot samples evenly across sorted quantiles above this limit; the quantile TSV still includes every usable row."
+        }
       ]
     }
   ]

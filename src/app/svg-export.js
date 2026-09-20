@@ -13,13 +13,18 @@ export function serializeSvgElement(svgElement) {
   if (!clone.getAttribute("xmlns")) {
     clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
   }
+  for (const outline of clone.querySelectorAll("[data-sms3-inspection-outline]")) outline.remove();
+  for (const active of clone.querySelectorAll("[data-sms3-inspection-active]")) {
+    active.removeAttribute("data-sms3-inspection-active");
+    active.style.removeProperty("--sms3-inspection-contrast");
+    if (!active.getAttribute("style")) active.removeAttribute("style");
+  }
   for (const mark of clone.querySelectorAll("[data-sms3-title-mark]")) {
     const text = String(mark.getAttribute("data-sms3-title-text") ?? "").trim();
     const title = [...mark.children].find((child) => child.tagName?.toLowerCase() === "title");
     if (title && text) title.textContent = text;
     mark.removeAttribute("data-sms3-title-mark");
     mark.removeAttribute("data-sms3-title-text");
-    mark.removeAttribute("data-sms3-inspection-active");
     mark.removeAttribute("data-sms3-inspection-nearby");
   }
   const describedBy = String(clone.getAttribute("aria-describedby") ?? "")

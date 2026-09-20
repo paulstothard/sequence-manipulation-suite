@@ -78,7 +78,7 @@ export function classifyToolLimitDisclosure(metadata) {
       profile: "general",
       label: "No tool-specific editable limits",
       controls: [],
-      summary: "No tool-specific editable input or processing caps are exposed for this tool. Shared browser-local input, file, and output guardrails still apply."
+      summary: "This tool has no adjustable processing limit. File and output limits depend on the input and output format; any limit reached is reported when you run the tool."
     };
   }
 

@@ -41,16 +41,6 @@ export const boxPlotMetadata = {
       options: [
         { id: "valueColumn", type: "text", label: "Value column", defaultValue: "rin", suggestionsFrom: "table-numeric-columns" },
         { id: "groupColumn", type: "text", label: "Group column", defaultValue: "treatment", suggestionsFrom: "table-columns" },
-        {
-          id: "maxDotsDrawn",
-          type: "number",
-          label: "Maximum measurement dots",
-          defaultValue: 1000,
-          min: 0,
-          max: 10000,
-          step: 100,
-          help: "Quartiles, whiskers, and the Box summary TSV use all numeric values; this only caps individual dot drawing in the visual output."
-        },
         { id: "title", type: "text", label: "Plot title", defaultValue: "RNA integrity by treatment" }
       ]
     },
@@ -63,6 +53,25 @@ export const boxPlotMetadata = {
           { value: "svg", label: "Box plot" },
           { value: "box-tsv", label: "Box summary table" }
         ] }
+      ]
+    },
+    {
+      id: "advancedLimits",
+      type: "group",
+      label: "Limits",
+      collapsible: true,
+      collapsed: true,
+      options: [
+        {
+          id: "maxDotsDrawn",
+          type: "number",
+          label: "Maximum measurement dots",
+          defaultValue: 1000,
+          min: 0,
+          max: 10000,
+          step: 100,
+          help: "Quartiles, whiskers, and the Box summary TSV use all numeric values; this only caps individual dot drawing in the visual output."
+        }
       ]
     }
   ]

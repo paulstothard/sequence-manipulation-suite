@@ -25,7 +25,6 @@ export const wordCloudMetadata = {
       label: "Word filtering",
       options: [
         { id: "minimumWordLength", type: "number", label: "Minimum word length", defaultValue: 3, min: 1, max: 30, step: 1 },
-        { id: "maxWords", type: "number", label: "Maximum words", defaultValue: 80, min: 5, max: 250, step: 5 },
         { id: "caseSensitive", type: "checkbox", label: "Keep case distinctions", defaultValue: false },
         {
           id: "extraStopWords",
@@ -51,6 +50,17 @@ export const wordCloudMetadata = {
           { value: "svg", label: "Word cloud plot" },
           { value: "word-tsv", label: "Word-count table" }
         ] }
+      ]
+    },
+    {
+      id: "advancedLimits",
+      type: "group",
+      label: "Limits",
+      collapsible: true,
+      collapsed: true,
+      options: [
+        { id: "maxWords", type: "number", label: "Maximum words", defaultValue: 80, min: 5, max: 250, step: 5,
+          help: "The cloud and word-count table include only the most frequent words up to this limit." }
       ]
     }
   ],

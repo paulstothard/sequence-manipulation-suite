@@ -125,6 +125,13 @@ export const phylogenyBuilderMetadata = {
       collapsed: true,
       options: [
         {
+          id: "limitRecords",
+          type: "checkbox",
+          label: "Align only the first records",
+          defaultValue: false,
+          help: "Off by default: use every input record up to the supported 1,000-record ceiling. Turn on to intentionally build a tree from only the first N records."
+        },
+        {
           id: "maxSequences",
           type: "number",
           label: "Maximum records to align",
@@ -132,7 +139,8 @@ export const phylogenyBuilderMetadata = {
           min: 2,
           max: 1000,
           step: 1,
-          help: "Only the first records up to this limit are aligned before tree construction."
+          visibleWhen: { option: "limitRecords", value: true },
+          help: "Used only when Align only the first records is on."
         },
         {
           id: "maxTotalSymbols",

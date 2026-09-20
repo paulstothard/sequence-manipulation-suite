@@ -3,6 +3,8 @@ import {
   getRestrictionEnzymeChoices,
   restrictionSummaryTableColumns
 } from "../../core/restriction-tools.js";
+import { STREAMED_FASTA_SCAN_NOTE } from "../fasta-input-policy.js";
+import { makeFastaSourceInputOptions } from "../fasta-source-options.js";
 
 export const restrictionSummaryMetadata = {
   id: "restriction-summary",
@@ -10,7 +12,7 @@ export const restrictionSummaryMetadata = {
   category: "Restriction, PCR & Primers",
   tags: ["DNA", "table", "raw", "FASTA", "GenBank", "EMBL", "DDBJ", "restriction", "enzyme", "search"],
   summary: "Screen restriction enzymes and summarize cut counts, positions, and fragment sizes.",
-  inputType: "DNA sequence, FASTA records, or GenBank/DDBJ/EMBL records",
+  inputType: "DNA sequence, FASTA/FASTA.GZ or indexed FASTA, or GenBank/DDBJ/EMBL records",
   outputType: "Restriction summary report, table, text map, site maps",
   fileInput: {
     dropLabel: "Drop one plain-text DNA sequence, FASTA records, or GenBank/DDBJ/EMBL records here",
@@ -18,7 +20,7 @@ export const restrictionSummaryMetadata = {
   },
   runInWorker: true,
   workerModule: "../tools/restriction-summary/run.js",
-  workerExport: "runRestrictionSummary",
+  workerExport: "runRestrictionSummaryWorker",
   workflow: {
     inputs: [
       { id: "input", kind: "text", mediaType: "text/plain" },
@@ -35,6 +37,7 @@ export const restrictionSummaryMetadata = {
     ]
   },
   options: [
+    ...makeFastaSourceInputOptions({ includeStreamedFile: true }),
     {
       id: "enzymeIds",
       type: "select",
@@ -94,7 +97,18 @@ export const restrictionSummaryMetadata = {
       id: "sourceNote",
       type: "note",
       text:
-        "Restriction enzyme records are a small bundled seed set from common Type II enzymes, checked against NEB recognition-specificity listings and REBASE literature. Coordinates are 1-based on the submitted sequence."
+        `Restriction enzyme records are a small bundled seed set from common Type II enzymes, checked against NEB recognition-specificity listings and REBASE literature. Coordinates are 1-based on the submitted sequence. ${STREAMED_FASTA_SCAN_NOTE}`
+    },
+    {
+      type: "group",
+      label: "Limits",
+      collapsible: true,
+      collapsed: true,
+      options: [{
+        id: "streamingLimitsNote",
+        type: "note",
+        text: "Large FASTA scans are capped at 50 million bases, 1 billion enzyme-window evaluations, 100,000 retained sites, 50,000 summary rows, and 25 MiB of materialized output. They support report, table, and single-line map output (up to 5,000 shown sites). Sequence text maps, detailed maps, and viewers require bounded pasted input. Selecting one enzyme permits a larger sequence within the work budget."
+      }]
     }
   ]
 };

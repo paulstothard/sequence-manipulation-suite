@@ -11,7 +11,8 @@ function normalizeOptions(options = {}) {
     outputFormat: outputFormat === "report" ? "report" : outputFormat === "linear" ? "linear" : "circular",
     layout: outputFormat === "linear" ? "linear" : "circular",
     labelDensity: new Set(["low", "medium", "high"]).has(options.labelDensity) ? options.labelDensity : "medium",
-    featureLayout: new Set(["non-overlap", "type-slots"]).has(options.featureLayout) ? options.featureLayout : "type-slots"
+    featureLayout: new Set(["non-overlap", "type-slots"]).has(options.featureLayout) ? options.featureLayout : "non-overlap",
+    featureSlotGrouping: new Set(["types", "rna", "families"]).has(options.featureSlotGrouping) ? options.featureSlotGrouping : "rna"
   };
 }
 

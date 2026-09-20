@@ -50,16 +50,6 @@ export const volcanoPlotMetadata = {
         { id: "labelColumn", type: "text", label: "Point labels", defaultValue: "gene_id", suggestionsFrom: "table-columns" },
         { id: "foldChangeCutoff", type: "number", label: "|log2 fold-change| threshold", defaultValue: 1, min: 0, max: 20, step: 0.1 },
         { id: "pValueCutoff", type: "number", label: "p-value threshold", defaultValue: 0.05, min: 0.000001, max: 1, step: 0.001 },
-        {
-          id: "maxPointsDrawn",
-          type: "number",
-          label: "Maximum plotted points",
-          defaultValue: 10000,
-          min: 100,
-          max: 20000,
-          step: 100,
-          help: "The Point TSV still contains all parsed points; this only caps visual drawing for browser responsiveness."
-        },
         { id: "title", type: "text", label: "Plot title", defaultValue: "Differential expression volcano plot" }
       ]
     },
@@ -77,6 +67,25 @@ export const volcanoPlotMetadata = {
             { value: "svg", label: "Volcano plot" },
             { value: "point-tsv", label: "Point table" }
           ]
+        }
+      ]
+    },
+    {
+      id: "advancedLimits",
+      type: "group",
+      label: "Limits",
+      collapsible: true,
+      collapsed: true,
+      options: [
+        {
+          id: "maxPointsDrawn",
+          type: "number",
+          label: "Maximum plotted points",
+          defaultValue: 10000,
+          min: 100,
+          max: 20000,
+          step: 100,
+          help: "The Point TSV still contains all parsed points; this only caps visual drawing for browser responsiveness."
         }
       ]
     }

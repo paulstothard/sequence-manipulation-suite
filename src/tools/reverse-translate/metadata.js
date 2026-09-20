@@ -84,17 +84,6 @@ export const reverseTranslateMetadata = {
           step: 10,
           visibleWhen: { option: "outputFormat", value: "plot" },
           help: "Wraps each protein record across multiple plot rows so longer sequences remain readable."
-        },
-        {
-          id: "plotMaxResidues",
-          type: "number",
-          label: "Maximum plotted residues per record",
-          defaultValue: 1000,
-          min: 10,
-          max: 5000,
-          step: 50,
-          visibleWhen: { option: "outputFormat", value: "plot" },
-          help: "Controls how much of each protein is included in the probability plot. Longer records are reported as truncated."
         }
       ]
     },
@@ -118,6 +107,16 @@ export const reverseTranslateMetadata = {
       collapsed: true,
       visibleWhen: { option: "outputFormat", value: "plot" },
       options: [
+        {
+          id: "plotMaxResidues",
+          type: "number",
+          label: "Maximum plotted residues per record",
+          defaultValue: 1000,
+          min: 10,
+          max: 5000,
+          step: 50,
+          help: "Controls how much of each protein is included in the probability plot. Longer records are reported as truncated."
+        },
         {
           id: "probabilityPlotLimitNote",
           type: "note",

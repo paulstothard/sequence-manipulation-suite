@@ -1,3 +1,5 @@
+import { fitSideLegendLabel, sideLegendLayout } from "./plot-side-legend.js";
+
 const DEFAULT_COLORS = ["#0f766e", "#2563eb", "#a33a3a", "#7c3aed", "#b7791f", "#64748b"];
 
 function escapeXml(value) {
@@ -68,10 +70,6 @@ export function renderLinePlotSpecToSvg(spec, options = {}) {
   }
 
   const width = options.width ?? 920;
-  const height = options.height ?? 420;
-  const margin = { top: 66, right: 30, bottom: 64, left: 62 };
-  const plotWidth = width - margin.left - margin.right;
-  const plotHeight = height - margin.top - margin.bottom;
   const xField = spec.encoding.x.field;
   const yField = spec.encoding.y.field;
   const seriesField = spec.encoding.series?.field;
@@ -90,9 +88,14 @@ export function renderLinePlotSpecToSvg(spec, options = {}) {
   const yDomain = spec.scale.yDomain ?? [Math.min(...yValues, 0), Math.max(...yValues, 1)];
   const yMin = yDomain[0];
   const yMax = yDomain[1] === yDomain[0] ? yDomain[0] + 1 : yDomain[1];
+  const seriesValues = uniqueValues(validRows.map((item) => item.series));
+  const legend = seriesValues.length > 0 ? sideLegendLayout(width, seriesValues, { left: 62 }) : null;
+  const margin = { top: 66, right: legend?.right ?? 30, bottom: 64, left: 62 };
+  const height = Math.max(options.height ?? 0, 420, margin.top + margin.bottom + Math.max(270, 24 + seriesValues.length * 20));
+  const plotWidth = width - margin.left - margin.right;
+  const plotHeight = height - margin.top - margin.bottom;
   const scaleX = (value) => margin.left + ((value - xMin) / Math.max(1, xMax - xMin)) * plotWidth;
   const scaleY = (value) => margin.top + ((yMax - value) / (yMax - yMin)) * plotHeight;
-  const seriesValues = uniqueValues(validRows.map((item) => item.series));
   const rowsBySeries = new Map(seriesValues.map((value) => [value, []]));
 
   for (const item of validRows) {
@@ -136,16 +139,13 @@ export function renderLinePlotSpecToSvg(spec, options = {}) {
     }
   });
 
-  if (seriesValues.length > 0) {
-    const legendRows = Math.ceil(Math.min(seriesValues.length, DEFAULT_COLORS.length) / 2);
+  if (legend) {
     parts.push(`<g aria-label="Legend">`);
-    parts.push(`<rect x="${margin.left}" y="38" width="${width - margin.left - margin.right}" height="${Math.max(26, legendRows * 20 + 8)}" rx="4" fill="#f8fafc" stroke="#dfe7ec"></rect>`);
-    seriesValues.slice(0, DEFAULT_COLORS.length).forEach((seriesName, index) => {
+    seriesValues.forEach((seriesName, index) => {
       const color = DEFAULT_COLORS[index % DEFAULT_COLORS.length];
-      const legendX = margin.left + 14 + (index % 2) * 330;
-      const legendY = 55 + Math.floor(index / 2) * 20;
-      parts.push(`<line stroke="${color}" stroke-width="3" x1="${legendX}" y1="${legendY}" x2="${legendX + 26}" y2="${legendY}"></line>`);
-      parts.push(`<text class="label" x="${legendX + 34}" y="${legendY + 4}">${escapeXml(seriesName)}</text>`);
+      const legendY = margin.top + 12 + index * legend.rowHeight;
+      parts.push(`<line stroke="${color}" stroke-width="3" x1="${legend.legendX}" y1="${legendY}" x2="${legend.legendX + 26}" y2="${legendY}"></line>`);
+      parts.push(`<text class="label" x="${legend.labelX}" y="${legendY + 4}">${escapeXml(fitSideLegendLabel(seriesName, legend.labelWidth))}<title>${escapeXml(seriesName)}</title></text>`);
     });
     parts.push(`</g>`);
   }

@@ -42,8 +42,7 @@ export const sirnaDesignMetadata = {
         { id: "targetLength", type: "number", label: "Target length", defaultValue: 19, min: 19, max: 23, step: 1 },
         { id: "minGcPercent", type: "number", label: "Minimum target GC %", defaultValue: 30, min: 0, max: 100, step: 1 },
         { id: "maxGcPercent", type: "number", label: "Maximum target GC %", defaultValue: 52, min: 0, max: 100, step: 1 },
-        { id: "skipFirstBases", type: "number", label: "Skip first bases", defaultValue: 0, min: 0, step: 1, help: "Set this when you want to avoid candidates near the 5' end, for example around the start codon." },
-        { id: "maxCandidatesPerRecord", type: "number", label: "Candidates per record", defaultValue: 25, min: 1, max: 1000, step: 1 }
+        { id: "skipFirstBases", type: "number", label: "Skip first bases", defaultValue: 0, min: 0, step: 1, help: "Set this when you want to avoid candidates near the 5' end, for example around the start codon." }
       ]
     },
     {
@@ -88,6 +87,17 @@ export const sirnaDesignMetadata = {
           ]
         },
         { id: "contextBases", type: "number", label: "Context bases", defaultValue: 20, min: 0, max: 100, step: 1, visibleWhen: { option: "outputFormat", value: "context-text" } }
+      ]
+    },
+    {
+      id: "advancedLimits",
+      type: "group",
+      label: "Limits",
+      collapsible: true,
+      collapsed: true,
+      options: [
+        { id: "maxCandidatesPerRecord", type: "number", label: "Candidates per record", defaultValue: 25, min: 1, max: 1000, step: 1,
+          help: "Only the top-ranked candidates up to this count are returned for each record." }
       ]
     },
     {

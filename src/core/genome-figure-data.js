@@ -69,7 +69,8 @@ function normalizeOptions(options = {}) {
     layout: options.layout === "linear" ? "linear" : "circular",
     labelDensity: new Set(["low", "medium", "high"]).has(options.labelDensity) ? options.labelDensity : "medium",
     showLegend: options.showLegend !== false,
-    featureLayout: new Set(["non-overlap", "type-slots"]).has(options.featureLayout) ? options.featureLayout : "type-slots",
+    featureLayout: new Set(["non-overlap", "type-slots"]).has(options.featureLayout) ? options.featureLayout : "non-overlap",
+    featureSlotGrouping: new Set(["types", "rna", "families"]).has(options.featureSlotGrouping) ? options.featureSlotGrouping : "rna",
     title: String(options.title || "Genome figure").trim() || "Genome figure",
     width: Math.max(900, Math.min(2600, Number.parseInt(options.width ?? 1600, 10) || 1600))
   };
@@ -492,6 +493,7 @@ function makeGenomeFigureDataFromRecords(parsedRecords, options = {}, context = 
       showLegend: normalized.showLegend,
       plotMode: "both",
       featureLayout: normalized.featureLayout,
+      featureSlotGrouping: normalized.featureSlotGrouping,
       width: normalized.width,
       records
     },

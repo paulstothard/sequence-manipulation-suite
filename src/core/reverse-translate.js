@@ -355,7 +355,7 @@ export function renderReverseTranslateProbabilitySvg(records, options = {}) {
     ? `Degenerate IUPAC codons; genetic code ${options.geneticCodeLabel ?? ""}`.trim()
     : `Most likely codons; ${options.referenceLabel ?? ""}`.trim();
   const parts = [
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="d3-reverse-translate-probability" data-plot-renderer="sms3-d3">`,
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="d3-reverse-translate-probability" data-plot-renderer="sms3-d3" data-sms3-inspection-highlight="none">`,
     "<style>",
     ".title{font:700 19px system-ui,sans-serif;fill:#172026}.subtitle,.note{font:12px system-ui,sans-serif;fill:#526273}.record{font:700 13px system-ui,sans-serif;fill:#172026}.row-label{font:700 11px system-ui,sans-serif;fill:#334155}.axis{stroke:#8393a3;stroke-width:1}.grid{stroke:#e2e8f0;stroke-width:1}.tick{font:10px system-ui,sans-serif;fill:#64748b}.residue{font:700 11px ui-monospace,SFMono-Regular,Menlo,monospace;fill:#172026;text-anchor:middle}.codon{font:10px ui-monospace,SFMono-Regular,Menlo,monospace;fill:#475569;text-anchor:middle}.legend{font:12px system-ui,sans-serif;fill:#334155}.bar{stroke:none;shape-rendering:geometricPrecision}.bar-outline{fill:none;stroke:#334155;stroke-opacity:.22;stroke-width:.55;vector-effect:non-scaling-stroke;shape-rendering:geometricPrecision}.fixed{fill:#f8fafc;stroke:#cbd5e1}.omit{font:11px system-ui,sans-serif;fill:#7c2d12}",
     "</style>",

@@ -5,6 +5,8 @@ import {
   technicalSequenceTableColumns
 } from "./run.js";
 import technicalSequenceSummary from "../../reference-data/technical-sequences/summary.js";
+import { makeFastaSourceInputOptions } from "../fasta-source-options.js";
+import { STREAMED_FASTA_SCAN_NOTE } from "../fasta-input-policy.js";
 
 function makeClassChoices(records) {
   return [
@@ -39,7 +41,7 @@ export const technicalSequenceScannerMetadata = {
   category: "Sequence Analysis",
   tags: ["DNA", "RNA", "raw", "technical sequence", "adapter", "primer", "contamination", "reference data"],
   summary: "Scan DNA/RNA sequences for bundled or custom primers, adapters, and other technical sequences.",
-  inputType: "DNA/RNA sequence",
+  inputType: "DNA/RNA sequence, FASTA/FASTA.GZ, or indexed FASTA",
   outputType: "Report, table, text annotation map, linear technical-sequence map, or linear DNA sequence viewer",
   runInWorker: true,
   workerModule: "../tools/technical-sequence-scanner/run.js",
@@ -65,6 +67,7 @@ export const technicalSequenceScannerMetadata = {
     ]
   },
   options: [
+    ...makeFastaSourceInputOptions({ includeStreamedFile: true }),
     {
       id: "sequenceClass",
       type: "select",
@@ -181,10 +184,11 @@ export const technicalSequenceScannerMetadata = {
       collapsible: true,
       collapsed: true,
       options: [
+        { id: "technicalLargeSourceLimitNote", type: "note", text: "Large FASTA scans are capped at 50 million bases; 500 million full-match, 200 million mismatch, or 20 million terminal pattern-symbol comparisons; 50,000 candidate hits; and 25 MiB of materialized output. Report, table, and linear map outputs are available; text maps and viewers require bounded pasted input. Select a sequence class or specific sequence for large scans." },
         {
           id: "technicalSequenceMapLimitNote",
           type: "note",
-          text: `Linear technical-sequence maps show up to ${TECHNICAL_SEQUENCE_SVG_MAX_RECORDS.toLocaleString()} records, ${TECHNICAL_SEQUENCE_SVG_MAX_TOTAL_HITS.toLocaleString()} hits total, and ${TECHNICAL_SEQUENCE_SVG_MAX_HITS_PER_RECORD.toLocaleString()} hits per record. Table output contains all hit coordinates.`
+          text: `Linear technical-sequence maps show up to ${TECHNICAL_SEQUENCE_SVG_MAX_RECORDS.toLocaleString()} records, ${TECHNICAL_SEQUENCE_SVG_MAX_TOTAL_HITS.toLocaleString()} hits total, and ${TECHNICAL_SEQUENCE_SVG_MAX_HITS_PER_RECORD.toLocaleString()} hits per record. Table output contains all hit coordinates. ${STREAMED_FASTA_SCAN_NOTE}`
         }
       ]
     },

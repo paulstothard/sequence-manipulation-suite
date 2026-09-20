@@ -7,6 +7,10 @@ export async function runSankeyPlot(input, options = {}, context = {}) {
   await context.yieldIfNeeded?.();
 
   const result = makeSankeyPlot(input, options);
+  const valueLabel = String(options.valueUnit ?? "").trim() || result.valueColumnLabel || "input units";
+  const flowColumns = sankeyFlowColumns.map((column) => column.id === "value"
+    ? { ...column, label: `Value (${valueLabel})` }
+    : column);
   const outputFormat = options.outputFormat === "flow-tsv" ? "flow-tsv" : "svg";
   const tsv = sankeyRowsToTsv(result.rows);
   const output = outputFormat === "flow-tsv" ? tsv : result.svg;
@@ -21,7 +25,7 @@ export async function runSankeyPlot(input, options = {}, context = {}) {
     warnings: result.warnings,
     recordsProcessed: result.table.rows.length,
     streams: {
-      flowTable: makeTableStream(sankeyFlowColumns, result.rows, "sankey-flows")
+      flowTable: makeTableStream(flowColumns, result.rows, "sankey-flows")
     },
     visual: outputFormat === "svg" ? { svg: result.svg, pngDownload: true } : undefined
   });

@@ -4006,14 +4006,6 @@ legend {
   margin-left: 0.8rem;
 }
 
-.option-limit-summary {
-  margin-top: 0;
-  margin-bottom: 0;
-  color: var(--muted);
-  font-size: 0.9rem;
-  line-height: 1.45;
-}
-
 .option-group-dependent {
   gap: 0.55rem;
   margin-top: -0.45rem;
@@ -6635,6 +6627,10 @@ legend {
   outline-offset: -3px;
 }
 
+:is(.visual-output, .showcase-preview) :is(svg, canvas)[tabindex="0"]:focus:not(:focus-visible) {
+  outline: none;
+}
+
 :is(.visual-output, .showcase-preview) canvas:is(.dna-viewer-canvas, .sanger-trace-canvas, .protein-structure-canvas)[tabindex="0"]:focus-visible,
 :is(.visual-output, .showcase-preview) .protein-structure-canvas-host canvas[tabindex="0"]:focus-visible {
   outline: 3px solid var(--focus-ring, #2563eb);
@@ -6650,31 +6646,169 @@ legend {
 }
 
 :is(.visual-output, .showcase-preview) [data-sms3-inspection-active="true"] {
-  filter: drop-shadow(0 0 2px #ffffff) drop-shadow(0 0 3px #2563eb);
+  filter: drop-shadow(0 0 1.5px var(--sms3-inspection-contrast, #0f172a));
 }
 
-:is(.visual-output, .showcase-preview) svg :is(rect, line, polyline, polygon)[data-sms3-inspection-active="true"] {
+:is(.visual-output, .showcase-preview) svg [data-sms3-inspection-mark="intersection"][data-sms3-inspection-active="true"] {
+  filter: none;
+}
+
+:is(.visual-output, .showcase-preview) svg [data-sms3-inspection-mark="intersection"][data-sms3-inspection-active="true"] :is(.intersection-member, .intersection-connector, .intersection-size-bar) {
+  filter: drop-shadow(0 0 1.5px var(--sms3-inspection-contrast, #0f172a));
+}
+
+:is(.visual-output, .showcase-preview) svg :is(line, polyline, polygon)[data-sms3-inspection-active="true"],
+:is(.visual-output, .showcase-preview) svg:not(:is([data-plot-foundation], [data-plot-backend], [data-plot-renderer])) rect[data-sms3-inspection-active="true"]:where(:not([data-sms3-inspection-highlight="fill"])) {
   filter: none !important;
-  stroke: #2563eb !important;
+  stroke: var(--sms3-inspection-contrast, #2563eb) !important;
   stroke-width: 2px !important;
   vector-effect: non-scaling-stroke !important;
 }
 
+:is(.visual-output, .showcase-preview) svg:is([data-plot-foundation], [data-plot-backend], [data-plot-renderer]) :is(line, polyline, polygon)[data-sms3-inspection-active="true"] {
+  stroke-width: 1.25px !important;
+  stroke-linejoin: round;
+}
+
+:is(.visual-output, .showcase-preview) svg:is([data-plot-foundation], [data-plot-backend], [data-plot-renderer]) :is(line, polyline)[data-sms3-inspection-active="true"] {
+  stroke: #0f172a !important;
+}
+
+:is(.visual-output, .showcase-preview) svg:is([data-plot-foundation], [data-plot-backend], [data-plot-renderer]) :is(circle, ellipse, path)[data-sms3-inspection-active="true"] {
+  filter: drop-shadow(0 0 1.5px var(--sms3-inspection-contrast, #0f172a));
+}
+
+:is(.visual-output, .showcase-preview) svg:is([data-plot-foundation], [data-plot-backend], [data-plot-renderer]) rect[data-sms3-inspection-active="true"] {
+  filter: none !important;
+}
+
+:is(.visual-output, .showcase-preview) svg:is([data-plot-foundation], [data-plot-backend], [data-plot-renderer]) circle[data-sms3-inspection-active="true"] {
+  filter: none !important;
+}
+
+:is(.visual-output, .showcase-preview) svg:is([data-plot-foundation], [data-plot-backend], [data-plot-renderer]) text[data-sms3-inspection-active="true"] {
+  text-decoration: underline;
+  text-decoration-color: var(--sms3-inspection-contrast, #0f172a);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+:is(.visual-output, .showcase-preview) svg[data-plot-foundation="sms3-sankey-svg"] path.sankey-link[data-sms3-inspection-active="true"] {
+  fill-opacity: 0.5 !important;
+  filter: none !important;
+}
+
+:is(.visual-output, .showcase-preview) svg path.violin-density[data-sms3-inspection-active="true"] {
+  fill-opacity: 0.46 !important;
+  filter: none !important;
+}
+
+:is(.visual-output, .showcase-preview) svg.sms3-genome-comparison-poster :is(rect, path, polygon)[data-sms3-inspection-active="true"] {
+  filter: none !important;
+  stroke: none !important;
+}
+
+:is(.visual-output, .showcase-preview) svg:not(:is([data-plot-foundation], [data-plot-backend], [data-plot-renderer])) rect[data-sms3-inspection-active="true"]:where(:not([data-sms3-inspection-highlight="fill"])) {
+  stroke-width: 1.25px !important;
+  rx: 2px;
+  ry: 2px;
+}
+
+:is(.visual-output, .showcase-preview) svg[data-sms3-plot="sam-region-map"] rect.coverage[data-sms3-inspection-highlight="fill"][data-sms3-inspection-active="true"] {
+  filter: none !important;
+  stroke: none !important;
+  fill: #8fa8f5 !important;
+}
+
+:is(.visual-output, .showcase-preview) svg rect[data-alignment-column][data-sms3-inspection-active="true"] {
+  stroke-width: 1px !important;
+  rx: 2px;
+  ry: 2px;
+}
+
 .visual-inspection-tooltip {
-  background: rgb(15 23 42 / 0.96);
+  background: #111827;
   border: 1px solid rgb(255 255 255 / 0.24);
-  border-radius: 6px;
+  border-radius: 9px;
   box-shadow: 0 8px 22px rgb(15 23 42 / 0.24);
   color: #ffffff;
   font-size: 0.78rem;
   line-height: 1.35;
-  max-width: min(26rem, calc(100% - 1rem));
+  max-width: min(31rem, calc(100% - 1rem));
   overflow-wrap: anywhere;
-  padding: 0.42rem 0.56rem;
+  padding: 0.56rem 0.68rem;
   pointer-events: none;
   position: absolute;
+  /* Give the first reveal a safe anchor before JavaScript measures and places it. */
+  left: 0;
+  top: 0;
   white-space: normal;
   z-index: 40;
+}
+
+.visual-inspection-tooltip-content {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.visual-inspection-tooltip:has(.visual-inspection-tooltip-fact) {
+  min-width: min(18rem, calc(100% - 1rem));
+}
+
+.visual-inspection-tooltip-heading {
+  color: #ffffff;
+  font-size: 0.84rem;
+  line-height: 1.28;
+  padding-bottom: 0.27rem;
+  border-bottom: 1px solid rgb(255 255 255 / 0.17);
+}
+
+.visual-inspection-tooltip-heading .visual-inspection-tooltip-value {
+  font-weight: 400;
+}
+
+.visual-inspection-tooltip-fact {
+  display: grid;
+  grid-template-columns: minmax(0, 39%) minmax(0, 1fr);
+  align-items: baseline;
+  column-gap: 0.56rem;
+}
+
+.visual-inspection-tooltip-fact.is-note {
+  display: block;
+  color: #cbd5e1;
+}
+
+.visual-inspection-tooltip-fact .visual-inspection-tooltip-label {
+  color: #bfdbfe;
+  font-weight: 650;
+}
+
+.visual-inspection-tooltip-fact .visual-inspection-tooltip-value {
+  color: #ffffff;
+}
+
+.visual-inspection-tooltip-fact.is-note .visual-inspection-tooltip-value {
+  color: #cbd5e1;
+}
+
+.visual-inspection-tooltip-fact.is-strand .visual-inspection-tooltip-value {
+  color: #bfdbfe;
+  font-weight: 650;
+}
+
+.visual-inspection-tooltip-fact.is-measure .visual-inspection-tooltip-value {
+  color: #ffffff;
+  font-weight: 650;
+}
+
+.visual-inspection-tooltip-separator {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .visual-inspection-tooltip.is-pinned {
@@ -8316,6 +8450,13 @@ legend {
 .genome-figure-control select option {
   color: var(--gf-text);
   background: var(--gf-surface);
+  line-height: 1.35;
+}
+
+.genome-figure-grouping-summary {
+  color: var(--gf-muted);
+  font-size: 0.67rem;
+  font-weight: 500;
   line-height: 1.35;
 }
 
@@ -10879,12 +11020,34 @@ legend {
   display: grid;
   grid-template-columns: repeat(var(--sequence-extractor-aa-segment-columns, 1), minmax(0, 1fr));
   align-items: center;
+  position: relative;
+  isolation: isolate;
+}
+
+.sequence-extractor-translation-row .sequence-extractor-aa::before {
+  content: "";
+  position: absolute;
+  inset: 2px 1px;
+  background: color-mix(in srgb, currentColor 20%, transparent);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.sequence-extractor-translation-row .sequence-extractor-aa[data-direction-tip="true"][data-strand="+"]::before {
+  clip-path: polygon(0 0, calc(100% - 5px) 0, 100% 50%, calc(100% - 5px) 100%, 0 100%, 5px 50%);
+  border-radius: 0;
+}
+
+.sequence-extractor-translation-row .sequence-extractor-aa[data-direction-tip="true"][data-strand="-"]::before {
+  clip-path: polygon(5px 0, 100% 0, calc(100% - 5px) 50%, 100% 100%, 5px 100%, 0 50%);
+  border-radius: 0;
 }
 
 .sequence-extractor-aa-label {
   grid-column: var(--sequence-extractor-aa-label-column, 1);
   min-width: 0;
   text-align: center;
+  position: relative;
 }
 
 .sequence-extractor-cds-translation-row .sequence-extractor-cds-aa,

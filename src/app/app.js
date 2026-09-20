@@ -3973,22 +3973,6 @@ function renderToolOptions(...args) {
   return toolOptionsUi.renderToolOptions(...args);
 }
 
-function shouldAppendGeneratedLimitDisclosure(...args) {
-  return toolOptionsUi.shouldAppendGeneratedLimitDisclosure(...args);
-}
-
-function isTopLevelToolLimitGroup(...args) {
-  return toolOptionsUi.isTopLevelToolLimitGroup(...args);
-}
-
-function optionTreeIncludesId(...args) {
-  return toolOptionsUi.optionTreeIncludesId(...args);
-}
-
-function createGeneratedLimitDisclosure(...args) {
-  return toolOptionsUi.createGeneratedLimitDisclosure(...args);
-}
-
 function getSuggestionSourcesForOptions(...args) {
   return toolOptionsUi.getSuggestionSourcesForOptions(...args);
 }

@@ -140,16 +140,6 @@ export const vcfGenotypeTableMetadata = {
           placeholder: "optional comma-separated sample names",
           help: "Optional comma-separated sample names. Leave blank to include all samples."
         },
-        {
-          id: "maxVariants",
-          type: "number",
-          label: "Maximum variants to display",
-          defaultValue: 500,
-          min: 1,
-          max: 10000,
-          step: 100,
-          help: "Caps materialized region rows and variant glyphs. Indexed mode reads only the requested region; paste/upload mode may still need to scan the file."
-        }
       ]
     },
     {
@@ -182,6 +172,16 @@ export const vcfGenotypeTableMetadata = {
       collapsible: true,
       collapsed: true,
       options: [
+        {
+          id: "maxVariants",
+          type: "number",
+          label: "Maximum variants to display",
+          defaultValue: 500,
+          min: 1,
+          max: 10000,
+          step: 100,
+          help: "Caps materialized region rows and variant glyphs. Indexed mode reads only the requested region; paste/upload mode may still need to scan the file."
+        },
         {
           id: "variantViewerLimitNote",
           type: "note",

@@ -119,6 +119,9 @@ function findPwmMatches(sequence, motif, options = {}, context = {}) {
       matchedText: sequence.slice(index, index + length),
       score: Number(score.relativeScore.toFixed(2))
     });
+    if (Number.isFinite(options.maxMatches) && matches.length > options.maxMatches) {
+      throw new Error(`PWM matches exceed the ${options.maxMatches.toLocaleString()}-hit scan limit.`);
+    }
     if (!allowOverlaps) {
       index += length - 1;
     }
@@ -150,7 +153,8 @@ function scanMotif(recordTitle, sequence, motif, options = {}, context = {}) {
     alphabet: motif.alphabet,
     patternMode: getPatternMode(motif.syntax),
     allowOverlaps: options.allowOverlaps ?? motif.match?.overlappingDefault ?? true,
-    caseInsensitive: true
+    caseInsensitive: true,
+    ...(Number.isFinite(options.maxMatches) ? { maxMatches: options.maxMatches } : {})
   };
   const rows = [];
   const matchFinder = motif.syntax === "pwm"
@@ -164,6 +168,7 @@ function scanMotif(recordTitle, sequence, motif, options = {}, context = {}) {
       )
     );
   } catch (error) {
+    if (options.failOnLimit && /scan limit/.test(error.message)) throw error;
     warnings.push(`${motif.id}: ${error.message}`);
   }
 
@@ -188,6 +193,7 @@ function scanMotif(recordTitle, sequence, motif, options = {}, context = {}) {
         )
       );
     } catch (error) {
+      if (options.failOnLimit && /scan limit/.test(error.message)) throw error;
       warnings.push(`${motif.id} reverse strand: ${error.message}`);
     }
   }

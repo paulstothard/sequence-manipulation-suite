@@ -1,5 +1,6 @@
 import { geneticCodes, getStartCodons, makeCodonMap } from "../core/genetic-code.js";
 import { complementDnaRnaSequence } from "../core/sequence.js";
+import { featureArrowHeadLength, featureArrowTerminalVisible } from "../core/directional-feature-geometry.js";
 import { createStackedIntervalLayout, isStackedIntervalTrack } from "../core/viewer-track-layout.js";
 import { downloadCanvasPng, downloadCanvasSvg, makeSafeFileStem } from "./canvas-export.js";
 import { getFeatureLabelRenderPlan } from "./viewer-label-rules.js";
@@ -766,7 +767,7 @@ function getVisibleIntervalCopies(item, state, length) {
   const viewStart = getViewStart(state);
   const viewEnd = getViewEnd(state);
   const copies = [];
-  for (const part of rawParts) {
+  for (const [partIndex, part] of rawParts.entries()) {
     const start = Number(part.start) - 1;
     const end = Number(part.end);
     if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
@@ -785,7 +786,13 @@ function getVisibleIntervalCopies(item, state, length) {
           start: clippedStart,
           end: clippedEnd,
           sourceStart: interval.start,
-          sourceEnd: interval.end
+          sourceEnd: interval.end,
+          partStart: start,
+          partEnd: end,
+          partIndex,
+          partCount: rawParts.length,
+          fullStart: copiedStart,
+          fullEnd: copiedEnd
         });
       }
     }
@@ -826,6 +833,85 @@ function drawAnnularArc(ctx, cx, cy, outerRadius, innerRadius, startAngle, endAn
   ctx.lineWidth = lineWidth;
   ctx.fill();
   ctx.stroke();
+}
+
+function drawDirectionalAnnularArc(ctx, cx, cy, outerRadius, innerRadius, startAngle, endAngle, fill, stroke, strand, headLength) {
+  if (!Number.isFinite(outerRadius) || !Number.isFinite(innerRadius) || innerRadius <= 0 || outerRadius <= innerRadius) return;
+  if (!headLength) {
+    drawAnnularArc(ctx, cx, cy, outerRadius, innerRadius, startAngle, endAngle, fill, stroke);
+    return;
+  }
+  const middleRadius = (outerRadius + innerRadius) / 2;
+  const headAngle = headLength / Math.max(1, middleRadius);
+  ctx.beginPath();
+  if (strand === "+") {
+    const shoulderAngle = endAngle - headAngle;
+    const outerStart = pointOnCircle(cx, cy, outerRadius, startAngle);
+    const tip = pointOnCircle(cx, cy, middleRadius, endAngle);
+    const innerShoulder = pointOnCircle(cx, cy, innerRadius, shoulderAngle);
+    ctx.moveTo(outerStart.x, outerStart.y);
+    ctx.arc(cx, cy, outerRadius, startAngle, shoulderAngle);
+    ctx.lineTo(tip.x, tip.y);
+    ctx.lineTo(innerShoulder.x, innerShoulder.y);
+    ctx.arc(cx, cy, innerRadius, shoulderAngle, startAngle, true);
+  } else {
+    const shoulderAngle = startAngle + headAngle;
+    const outerShoulder = pointOnCircle(cx, cy, outerRadius, shoulderAngle);
+    const innerEnd = pointOnCircle(cx, cy, innerRadius, endAngle);
+    const tip = pointOnCircle(cx, cy, middleRadius, startAngle);
+    ctx.moveTo(outerShoulder.x, outerShoulder.y);
+    ctx.arc(cx, cy, outerRadius, shoulderAngle, endAngle);
+    ctx.lineTo(innerEnd.x, innerEnd.y);
+    ctx.arc(cx, cy, innerRadius, endAngle, shoulderAngle, true);
+    ctx.lineTo(tip.x, tip.y);
+  }
+  ctx.closePath();
+  ctx.fillStyle = fill;
+  ctx.strokeStyle = stroke;
+  ctx.lineWidth = 1;
+  ctx.fill();
+  ctx.stroke();
+}
+
+function traceAnnularTranslationArrow(ctx, cx, cy, outerRadius, innerRadius, startAngle, endAngle, strand, chevronCap) {
+  if (!Number.isFinite(outerRadius) || !Number.isFinite(innerRadius) || innerRadius <= 0 || outerRadius <= innerRadius) {
+    ctx.beginPath();
+    return;
+  }
+  const span = endAngle - startAngle;
+  const tipAngle = chevronCap ? Math.min(span * 0.18, 8 / Math.max(1, (outerRadius + innerRadius) / 2)) : 0;
+  const middleRadius = (outerRadius + innerRadius) / 2;
+  ctx.beginPath();
+  if (strand === "-" && tipAngle > 0) {
+    const bodyStart = startAngle + tipAngle;
+    const outerStart = pointOnCircle(cx, cy, outerRadius, bodyStart);
+    const tip = pointOnCircle(cx, cy, middleRadius, startAngle);
+    const notch = pointOnCircle(cx, cy, middleRadius, endAngle - tipAngle);
+    ctx.moveTo(outerStart.x, outerStart.y);
+    ctx.arc(cx, cy, outerRadius, bodyStart, endAngle);
+    ctx.lineTo(notch.x, notch.y);
+    const innerEnd = pointOnCircle(cx, cy, innerRadius, endAngle);
+    ctx.lineTo(innerEnd.x, innerEnd.y);
+    ctx.arc(cx, cy, innerRadius, endAngle, bodyStart, true);
+    ctx.lineTo(tip.x, tip.y);
+  } else {
+    const bodyEnd = endAngle - tipAngle;
+    const outerStart = pointOnCircle(cx, cy, outerRadius, startAngle);
+    ctx.moveTo(outerStart.x, outerStart.y);
+    ctx.arc(cx, cy, outerRadius, startAngle, bodyEnd);
+    if (tipAngle > 0) {
+      const tip = pointOnCircle(cx, cy, middleRadius, endAngle);
+      ctx.lineTo(tip.x, tip.y);
+    }
+    const innerEnd = pointOnCircle(cx, cy, innerRadius, bodyEnd);
+    ctx.lineTo(innerEnd.x, innerEnd.y);
+    ctx.arc(cx, cy, innerRadius, bodyEnd, startAngle, true);
+    if (tipAngle > 0) {
+      const notch = pointOnCircle(cx, cy, middleRadius, startAngle + tipAngle);
+      ctx.lineTo(notch.x, notch.y);
+    }
+  }
+  ctx.closePath();
 }
 
 function strokeAnnularArc(ctx, cx, cy, outerRadius, innerRadius, startAngle, endAngle, stroke, lineWidth = 1) {
@@ -1416,7 +1502,13 @@ function getCircularIntervalCopies(track, state, record) {
       start: interval.start,
       end: interval.end,
       sourceStart: interval.sourceStart,
-      sourceEnd: interval.sourceEnd
+      sourceEnd: interval.sourceEnd,
+      partStart: interval.partStart,
+      partEnd: interval.partEnd,
+      partIndex: interval.partIndex,
+      partCount: interval.partCount,
+      fullStart: interval.fullStart,
+      fullEnd: interval.fullEnd
     }))
   );
 }
@@ -1427,7 +1519,7 @@ function layoutCircularFeatureTrack(track, state, record, pxPerBp) {
   const placements = [];
   const hidden = [];
   for (const copy of visibleCopies) {
-    const key = `${copy.itemIndex}:${copy.sourceStart}:${copy.sourceEnd}`;
+    const key = `${copy.itemIndex}:${copy.partStart}:${copy.partEnd}`;
     const slot = cachedLayout.slotByPart.get(key);
     if (slot === undefined) {
       hidden.push(copy);
@@ -1655,6 +1747,7 @@ function drawIntervalTrack(ctx, track, cx, cy, outerRadius, innerRadius, state, 
   }
   const placements = slotLayout?.placements ?? getCircularIntervalCopies(track, state, record).map((copy) => ({ ...copy, slot: 0 }));
   const labelCandidates = [];
+  const selectedArcOutlines = [];
   const viewStart = getViewStart(state);
   const viewEnd = getViewEnd(state);
   for (const placement of placements) {
@@ -1688,10 +1781,14 @@ function drawIntervalTrack(ctx, track, cx, cy, outerRadius, innerRadius, state, 
     addPolarHit(state, { cx, cy, innerRadius: slotInnerRadius, outerRadius: slotOuterRadius, startAngle, endAngle }, target);
     const previousAlpha = ctx.globalAlpha;
     if (placement.fixedSlot) ctx.globalAlpha = Number(track.featureOpacity) || 0.68;
-    drawAnnularArc(ctx, cx, cy, slotOuterRadius, slotInnerRadius, startAngle, endAngle, itemStyle.fill, itemStyle.stroke);
+    const terminalVisible = featureArrowTerminalVisible(placement, item.strand);
+    const headLength = track.type === "digest-fragments" || item.type === "source"
+      ? 0
+      : featureArrowHeadLength((endAngle - startAngle) * slotCenterRadius, slotOuterRadius - slotInnerRadius, item.strand, terminalVisible);
+    drawDirectionalAnnularArc(ctx, cx, cy, slotOuterRadius, slotInnerRadius, startAngle, endAngle, itemStyle.fill, itemStyle.stroke, item.strand, headLength);
     ctx.globalAlpha = previousAlpha;
     if (viewerTargetMatches(state, target)) {
-      drawAnnularArc(ctx, cx, cy, slotOuterRadius + 3, slotInnerRadius - 3, startAngle, endAngle, theme.searchActiveFill, theme.selectedStroke);
+      selectedArcOutlines.push({ outerRadius: slotOuterRadius + 2, innerRadius: slotInnerRadius - 2, startAngle, endAngle });
     }
     const labelText = item.label || item.name || item.type || "";
     const labelStart = Math.max(Number(placement.start), viewStart);
@@ -1700,7 +1797,7 @@ function drawIntervalTrack(ctx, track, cx, cy, outerRadius, innerRadius, state, 
     const labelRadius = slotCenterRadius;
     const labelStartAngle = absToAngle(labelStart, state, arc);
     const labelEndAngle = absToAngle(labelEnd, state, arc);
-    const labelArcWidth = Math.abs(labelEndAngle - labelStartAngle) * Math.max(1, labelRadius);
+    const labelArcWidth = Math.max(0, Math.abs(labelEndAngle - labelStartAngle) * Math.max(1, labelRadius) - headLength);
     const labelPaddingPx = slotLayout ? 12 : 10;
     const useStraightZoomLabel = shouldUseStraightCircularFeatureLabel(
       track.type,
@@ -1815,6 +1912,13 @@ function drawIntervalTrack(ctx, track, cx, cy, outerRadius, innerRadius, state, 
         fallback: true
       });
     }
+  }
+  for (const outline of selectedArcOutlines) {
+    ctx.save();
+    ctx.shadowColor = theme.selectedStroke;
+    ctx.shadowBlur = theme.dark ? 4 : 3;
+    strokeAnnularArc(ctx, cx, cy, outline.outerRadius, outline.innerRadius, outline.startAngle, outline.endAngle, theme.selectedStroke, 1.5);
+    ctx.restore();
   }
   const drawnLabelBounds = [];
   const labelCanvasRect = ctx.canvas?.getBoundingClientRect?.();
@@ -1995,16 +2099,40 @@ export function getCircularTranslationCodon(sequence, codonStart, length, strand
   return strand === "-" ? reverseComplement(genomicCodon) : genomicCodon;
 }
 
-function drawTranslationFrame(ctx, cx, cy, radius, label, frameOffset, strand, state, record, arc, revealDetail, theme) {
-  if (!revealDetail) {
+function drawTranslationFrame(ctx, cx, cy, radius, label, frameOffset, strand, state, record, arc, revealDetail, theme, viewport) {
+  if (!revealDetail || radius <= 10) {
     return;
   }
   const codonMap = makeCodonMap(getViewerGeneticCode(record, state));
   const startCodons = getStartCodons(getViewerGeneticCode(record, state));
   const viewStart = getViewStart(state);
   const viewEnd = getViewEnd(state);
+  const highlightedOutlines = [];
   const selectedOutlines = [];
-  for (const segment of getVisibleTranslationCodonSegments(frameOffset, viewStart, viewEnd, record.length)) {
+  const allSegments = getVisibleTranslationCodonSegments(frameOffset, viewStart, viewEnd, record.length);
+  // At high zoom the circular arc can extend beyond the canvas. Place the two
+  // chevrons on on-screen codons while retaining every visible codon segment.
+  const insideCanvas = (point) => point.x >= 12 && point.x <= viewport.width - 12 &&
+    point.y >= 12 && point.y <= viewport.height - 12;
+  const completeSegments = allSegments.filter((segment) => {
+    const startAngle = relToAngle(segment.visibleStart - viewStart, state, arc);
+    const endAngle = relToAngle(segment.visibleEnd - viewStart, state, arc);
+    return [startAngle, endAngle].every((angle) =>
+      insideCanvas(pointOnCircle(cx, cy, radius + 11, angle)) &&
+      insideCanvas(pointOnCircle(cx, cy, radius - 11, angle)));
+  });
+  const partialSegments = allSegments.filter((segment) => {
+    const angles = [segment.visibleStart, segment.codonMidpoint, segment.visibleEnd]
+      .map((position) => relToAngle(position - viewStart, state, arc));
+    return angles.some((angle) => {
+      const point = pointOnCircle(cx, cy, radius, angle);
+      return point.x >= 0 && point.x <= viewport.width && point.y >= 0 && point.y <= viewport.height;
+    });
+  });
+  const capSegments = completeSegments.length >= 2
+    ? completeSegments
+    : partialSegments.length > 0 ? partialSegments : allSegments;
+  for (const segment of allSegments) {
     const absBp = segment.codonStart;
     const codon = getCircularTranslationCodon(record.sequence, absBp, record.length, strand);
     const normalizedCodon = codon.toUpperCase().replaceAll("U", "T");
@@ -2024,19 +2152,22 @@ function drawTranslationFrame(ctx, cx, cy, radius, label, frameOffset, strand, s
     };
     const selected = viewerTargetMatches(state, target);
     addPolarHit(state, { cx, cy, innerRadius: radius - 11, outerRadius: radius + 11, startAngle, endAngle }, target);
-    drawAnnularArc(
-      ctx,
-      cx,
-      cy,
-      radius + 10,
-      radius - 10,
-      startAngle,
-      endAngle,
-      aa === "*" ? theme.stopFill : isStart ? theme.startFill : theme.aminoAcidFill,
-      aa === "*" ? theme.stopStroke : isStart ? theme.startStroke : theme.aminoAcidStroke
-    );
+    const chevronCap = segment === capSegments[0] || segment === capSegments.at(-1);
+    traceAnnularTranslationArrow(ctx, cx, cy, radius + 10, radius - 10, startAngle, endAngle, strand, chevronCap);
+    ctx.fillStyle = aa === "*" ? theme.stopFill : isStart ? theme.startFill : theme.aminoAcidFill;
+    ctx.strokeStyle = theme.aminoAcidStroke;
+    ctx.lineWidth = 1;
+    ctx.lineJoin = "round";
+    ctx.fill();
+    ctx.stroke();
+    if (aa === "*" || isStart) {
+      highlightedOutlines.push({
+        startAngle, endAngle, chevronCap,
+        stroke: aa === "*" ? theme.stopStroke : theme.startStroke
+      });
+    }
     if (selected) {
-      selectedOutlines.push({ startAngle, endAngle, outerRadius: radius + 10, innerRadius: radius - 10 });
+      selectedOutlines.push({ startAngle, endAngle, outerRadius: radius + 10, innerRadius: radius - 10, chevronCap });
     }
     if (!segment.labelVisible) continue;
     const midAngle = relToAngle(segment.codonMidpoint - viewStart, state, arc);
@@ -2052,18 +2183,26 @@ function drawTranslationFrame(ctx, cx, cy, radius, label, frameOffset, strand, s
     ctx.fillText(aa, 0, 0);
     ctx.restore();
   }
+  // Adjacent codon fills and borders share an edge. Finish start/stop outlines
+  // after the neighboring cells so their color has the same weight on every side.
+  for (const outline of highlightedOutlines) {
+    ctx.save();
+    traceAnnularTranslationArrow(ctx, cx, cy, radius + 10, radius - 10,
+      outline.startAngle, outline.endAngle, strand, outline.chevronCap);
+    // Keep each border inside its own tile, including when two highlighted
+    // codons touch, so neither color covers the other's shared edge.
+    ctx.clip();
+    ctx.strokeStyle = outline.stroke;
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    ctx.restore();
+  }
   for (const outline of selectedOutlines) {
-    strokeAnnularArc(
-      ctx,
-      cx,
-      cy,
-      outline.outerRadius + 0.5,
-      outline.innerRadius - 0.5,
-      outline.startAngle,
-      outline.endAngle,
-      theme.selectedStroke,
-      2.6
-    );
+    traceAnnularTranslationArrow(ctx, cx, cy, outline.outerRadius + 0.5, outline.innerRadius - 0.5,
+      outline.startAngle, outline.endAngle, strand, outline.chevronCap);
+    ctx.strokeStyle = theme.selectedStroke;
+    ctx.lineWidth = 2.6;
+    ctx.stroke();
   }
 }
 
@@ -2276,9 +2415,9 @@ function drawCircularViewer(ctx, canvas, status, record, state) {
   }
 
   if (state.showForwardTranslations) {
-    drawTranslationFrame(ctx, cx, cy, baseRadius + 8, "+1", 0, "+", state, record, arc, revealDetail, theme);
-    drawTranslationFrame(ctx, cx, cy, baseRadius - 18, "+2", 1, "+", state, record, arc, revealDetail, theme);
-    drawTranslationFrame(ctx, cx, cy, baseRadius - 44, "+3", 2, "+", state, record, arc, revealDetail, theme);
+    drawTranslationFrame(ctx, cx, cy, baseRadius + 8, "+1", 0, "+", state, record, arc, revealDetail, theme, { width, height });
+    drawTranslationFrame(ctx, cx, cy, baseRadius - 18, "+2", 1, "+", state, record, arc, revealDetail, theme, { width, height });
+    drawTranslationFrame(ctx, cx, cy, baseRadius - 44, "+3", 2, "+", state, record, arc, revealDetail, theme, { width, height });
   }
 
   const dnaPlusRadius = state.showForwardTranslations ? baseRadius - 76 : baseRadius - 28;
@@ -2289,9 +2428,9 @@ function drawCircularViewer(ctx, canvas, status, record, state) {
 
   if (state.showReverseTranslations) {
     const reverseStart = state.showSecondStrand ? dnaPlusRadius - 58 : dnaPlusRadius - 34;
-    drawTranslationFrame(ctx, cx, cy, reverseStart, "-1", 0, "-", state, record, arc, revealDetail, theme);
-    drawTranslationFrame(ctx, cx, cy, reverseStart - 26, "-2", 1, "-", state, record, arc, revealDetail, theme);
-    drawTranslationFrame(ctx, cx, cy, reverseStart - 52, "-3", 2, "-", state, record, arc, revealDetail, theme);
+    drawTranslationFrame(ctx, cx, cy, reverseStart, "-1", 0, "-", state, record, arc, revealDetail, theme, { width, height });
+    drawTranslationFrame(ctx, cx, cy, reverseStart - 26, "-2", 1, "-", state, record, arc, revealDetail, theme, { width, height });
+    drawTranslationFrame(ctx, cx, cy, reverseStart - 52, "-3", 2, "-", state, record, arc, revealDetail, theme, { width, height });
   }
 
   updateStatus(status, state, record, pxPerBp);

@@ -101,7 +101,6 @@ export const crisprGuideDesignMetadata = {
           defaultValue: false,
           help: "When enabled, IUPAC ambiguity is treated as a possible overlap and flagged in the table."
         },
-        { id: "maxCandidatesPerRecord", type: "number", label: "Candidates per record", defaultValue: 50, min: 1, max: 2000, step: 1 }
       ]
     },
     makeOptionalReferenceGenomeOptionGroup({
@@ -140,8 +139,21 @@ export const crisprGuideDesignMetadata = {
             { value: "interactive-viewer", label: "Linear DNA sequence viewer" }
           ]
         },
-        { id: "contextBases", type: "number", label: "Context bases", defaultValue: 20, min: 0, max: 200, step: 1, visibleWhen: { option: "outputFormat", value: ["context-text"] } },
-        { id: "mapMaxCandidatesPerRecord", type: "number", label: "Map candidates per record", defaultValue: 80, min: 1, max: 500, step: 1, visibleWhen: { option: "outputFormat", value: ["text-map", "svg-map"] } }
+        { id: "contextBases", type: "number", label: "Context bases", defaultValue: 20, min: 0, max: 200, step: 1, visibleWhen: { option: "outputFormat", value: ["context-text"] } }
+      ]
+    },
+    {
+      id: "advancedLimits",
+      type: "group",
+      label: "Limits",
+      collapsible: true,
+      collapsed: true,
+      options: [
+        { id: "maxCandidatesPerRecord", type: "number", label: "Candidates per record", defaultValue: 50, min: 1, max: 2000, step: 1,
+          help: "Only the top-ranked candidates up to this count are returned for each record." },
+        { id: "mapMaxCandidatesPerRecord", type: "number", label: "Map candidates per record", defaultValue: 80, min: 1, max: 500, step: 1,
+          visibleWhen: { option: "outputFormat", value: ["text-map", "svg-map"] },
+          help: "Limits how many returned candidates are drawn in the map." }
       ]
     },
     {

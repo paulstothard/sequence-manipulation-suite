@@ -135,7 +135,7 @@ const SEQUENCE_SET_CONFIGS = {
       };
     },
     describeGapLine(options) {
-      return `DNA/RNA affine scores: match ${options.matchScore}, ambiguous overlap ${options.similarScore}, mismatch ${options.mismatchScore}, gap open ${options.gapOpen}, gap extend ${options.gapExtend}`;
+      return `DNA/RNA affine scores: match ${options.matchScore}, ${options.verificationEngine === PAIRWISE_ALIGNMENT_ENGINES.sms3 ? `ambiguous overlap ${options.similarScore}, ` : ""}mismatch ${options.mismatchScore}, gap open ${options.gapOpen}, gap extend ${options.gapExtend}`;
     },
     scopeNote: "Shared k-mers are used only as a candidate filter. Reported reciprocal matches are based on verified affine pairwise alignments among the selected candidates, not on k-mer counts alone."
   }

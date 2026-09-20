@@ -79,15 +79,6 @@ export const twoGroupPermutationTestMetadata = {
           help: "Used only when the number of possible group assignments is larger than the exact-enumeration limit."
         },
         {
-          id: "maxExactPermutations",
-          type: "number",
-          label: "Exact enumeration limit",
-          defaultValue: 10000,
-          min: 100,
-          max: 100000,
-          step: 100
-        },
-        {
           id: "seed",
           type: "text",
           label: "Random seed",
@@ -106,6 +97,25 @@ export const twoGroupPermutationTestMetadata = {
           { value: "null-tsv", label: "Null distribution table" },
           { value: "svg", label: "Null distribution plot" }
         ] }
+      ]
+    },
+    {
+      id: "advancedLimits",
+      type: "group",
+      label: "Limits",
+      collapsible: true,
+      collapsed: true,
+      options: [
+        {
+          id: "maxExactPermutations",
+          type: "number",
+          label: "Exact enumeration limit",
+          defaultValue: 10000,
+          min: 100,
+          max: 100000,
+          step: 100,
+          help: "When the number of assignments exceeds this limit, the test uses the selected number of random permutations instead."
+        }
       ]
     }
   ],

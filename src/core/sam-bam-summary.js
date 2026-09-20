@@ -1085,7 +1085,7 @@ export function renderSamRegionSvg(result, options = {}) {
     const x2 = scaleBoundary(segment.endExclusive, region, left, width);
     const y = coverageBaseY - barHeight;
     const coverageScope = totalOmitted > 0 ? "; calculated from displayed alignments only" : "";
-    parts.push(`<rect class="coverage" data-start="${segment.start}" data-end-exclusive="${segment.endExclusive}" data-depth="${segment.depth}" x="${x1.toFixed(2)}" y="${y.toFixed(2)}" width="${Math.max(1, x2 - x1).toFixed(2)}" height="${barHeight.toFixed(2)}"><title>${escapeXml(`${region.reference}:${segment.start.toLocaleString()}–${(segment.endExclusive - 1).toLocaleString()}; coverage depth ${segment.depth}×${coverageScope}`)}</title></rect>`);
+    parts.push(`<rect class="coverage" data-sms3-inspection-highlight="fill" data-start="${segment.start}" data-end-exclusive="${segment.endExclusive}" data-depth="${segment.depth}" x="${x1.toFixed(2)}" y="${y.toFixed(2)}" width="${Math.max(1, x2 - x1).toFixed(2)}" height="${barHeight.toFixed(2)}"><title>${escapeXml(`${region.reference}:${segment.start.toLocaleString()}–${(segment.endExclusive - 1).toLocaleString()}; coverage depth ${segment.depth}×${coverageScope}`)}</title></rect>`);
   });
   if (totalOmitted > 0) {
     parts.push(`<text class="note" x="${left}" y="${coverageTop - 14}">Coverage depth uses displayed alignments only.</text>`);

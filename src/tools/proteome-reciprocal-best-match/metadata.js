@@ -78,12 +78,22 @@ function makeOptions({ alphabet, kmerLabel, kmerDefault, kmerMin, kmerMax, seque
             { value: "global", label: "Global" }
           ],
           help: alphabet === "protein"
-            ? "Local alignment is usually more appropriate for domain-level similarity; global alignment is stricter for near-full-length orthologs."
-            : "Local alignment is usually more appropriate for shared regions; global alignment is stricter for near-full-length sequence matches."
+            ? "Local scores one highest-scoring aligned region per protein pair, which can reveal shared domains. Global aligns both complete proteins end to end. Use the coverage filter to require a minimum aligned fraction of each protein."
+            : "Local scores one highest-scoring aligned region per sequence pair. Global aligns both complete sequences end to end. Use the coverage filter to require a minimum aligned fraction of each sequence."
         },
         ...(includeDnaScores ? [
           { id: "matchScore", type: "number", label: "Match score", defaultValue: 5, min: -100, max: 100, step: 0.5 },
-          { id: "similarScore", type: "number", label: "Ambiguous overlap score", defaultValue: 1, min: -100, max: 100, step: 0.5 },
+          {
+            id: "similarScore",
+            type: "number",
+            label: "Ambiguous overlap score",
+            defaultValue: 1,
+            min: -100,
+            max: 100,
+            step: 0.5,
+            visibleWhen: { option: "verificationEngine", value: PAIRWISE_ALIGNMENT_ENGINES.sms3 },
+            help: "Only the SMS3 affine engine scores overlapping IUPAC ambiguity symbols separately."
+          },
           { id: "mismatchScore", type: "number", label: "Mismatch score", defaultValue: -4, min: -100, max: 100, step: 0.5 }
         ] : []),
         { id: "gapOpen", type: "number", label: "Gap open penalty", defaultValue: 10, min: 1, max: 100, step: 1 },

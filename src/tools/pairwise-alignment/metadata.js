@@ -54,7 +54,7 @@ const commonOptions = [
       { value: "global", label: "Global" },
       { value: "local", label: "Local" }
     ],
-    help: "Global aligns both complete sequences. Local reports the best matching region."
+    help: "Global aligns both sequences end to end, including gaps. Local returns one highest-scoring alignment between subsequences and leaves their other ends unaligned."
   },
   {
     id: "alignmentEngine",
@@ -115,6 +115,7 @@ const pairwiseLimitsGroup = {
   label: "Limits",
   collapsible: true,
   collapsed: true,
+  visibleWhen: { option: "alignmentEngine", value: PAIRWISE_ALIGNMENT_ENGINES.sms3 },
   options: [
     {
       id: "maxAlignmentCells",
@@ -124,7 +125,8 @@ const pairwiseLimitsGroup = {
       min: 1000,
       max: pairwiseAlignmentDefaultLimits.maxAlignmentCells * 10,
       step: 100000,
-      help: "Applies to the SMS3 affine dynamic-programming matrix. The seq-align engine is run through the bundled local runtime and is not controlled by this SMS3 matrix cap."
+      visibleWhen: { option: "alignmentEngine", value: PAIRWISE_ALIGNMENT_ENGINES.sms3 },
+      help: "Caps the SMS3 affine dynamic-programming matrix."
     }
   ]
 };
@@ -145,7 +147,17 @@ export const pairwiseAlignDnaRnaMetadata = {
   options: [
     ...commonOptions.slice(0, 2),
     { id: "matchScore", type: "number", label: "Match score", defaultValue: 5, min: -100, max: 100, step: 0.5 },
-    { id: "similarScore", type: "number", label: "Ambiguous overlap score", defaultValue: 1, min: -100, max: 100, step: 0.5 },
+    {
+      id: "similarScore",
+      type: "number",
+      label: "Ambiguous overlap score",
+      defaultValue: 1,
+      min: -100,
+      max: 100,
+      step: 0.5,
+      visibleWhen: { option: "alignmentEngine", value: PAIRWISE_ALIGNMENT_ENGINES.sms3 },
+      help: "Only the SMS3 affine engine scores overlapping IUPAC ambiguity symbols separately."
+    },
     { id: "mismatchScore", type: "number", label: "Mismatch score", defaultValue: -4, min: -100, max: 100, step: 0.5 },
     {
       id: "secondSequenceOrientation",
@@ -165,7 +177,7 @@ export const pairwiseAlignDnaRnaMetadata = {
     {
       id: "citationNote",
       type: "note",
-      text: "References:\n\nGlobal alignment: Needleman and Wunsch 1970.\n\nLocal alignment: Smith and Waterman 1981.\n\nAffine gap model: Gotoh 1982.\n\nDNA/RNA ambiguity symbols are scored by IUPAC set overlap."
+      text: "References:\n\nGlobal alignment: Needleman and Wunsch 1970.\n\nLocal alignment: Smith and Waterman 1981.\n\nAffine gap model: Gotoh 1982."
     }
   ]
 };
@@ -213,7 +225,11 @@ export const pairwiseAlignCodingDnaMetadata = {
   workerModule: "../tools/pairwise-alignment/run.js",
   workerExport: "runPairwiseAlignCodingDna",
   options: [
-    ...commonOptions.slice(0, 2),
+    {
+      ...commonOptions[0],
+      help: "Global aligns the complete translated proteins end to end. Local returns one highest-scoring alignment between protein subsequences. Both results are projected back to complete codons."
+    },
+    commonOptions[1],
     { ...commonOptions[2], help: "Penalty for starting a codon-sized gap. Internally this is applied as a negative amino-acid alignment score." },
     { ...commonOptions[3], help: "Penalty for extending an existing codon-sized gap by one codon." },
     {

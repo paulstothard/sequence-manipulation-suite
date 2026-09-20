@@ -1,7 +1,14 @@
+import { parseInspectionTooltipText } from "../core/inspection-tooltip-layout.js";
+
 const TITLE_MARK_ATTRIBUTE = "data-sms3-title-mark";
 const ACTIVE_ATTRIBUTE = "data-sms3-inspection-active";
 const NEARBY_ATTRIBUTE = "data-sms3-inspection-nearby";
 const HIGHLIGHT_POLICY_ATTRIBUTE = "data-sms3-inspection-highlight";
+const PLOT_SVG_SELECTOR = "svg:is([data-plot-foundation], [data-plot-backend], [data-plot-renderer])";
+const GENOME_POSTER_SELECTOR = "svg.sms3-genome-comparison-poster";
+const PLOT_OUTLINE_ATTRIBUTE = "data-sms3-inspection-outline";
+const CONTRAST_PROPERTY = "--sms3-inspection-contrast";
+const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const EXPLICIT_MARK_SELECTOR = [
   "[data-sms3-inspection-text]",
   "[data-alignment-column]",
@@ -19,6 +26,47 @@ const NEAREST_POINT_GRID_SIZE = 16;
 
 function normalizedText(value) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
+}
+
+function renderInspectionTooltip(tooltip, text) {
+  if (tooltip._sms3InspectionText === text) return;
+  const { sections } = parseInspectionTooltipText(text);
+  const content = document.createElement("div");
+  content.className = "visual-inspection-tooltip-content";
+  for (const section of sections) {
+    const row = document.createElement("div");
+    row.className = section.kind === "heading"
+      ? "visual-inspection-tooltip-heading"
+      : `visual-inspection-tooltip-fact${section.parts ? "" : " is-note"}`;
+    if (!section.parts && /^(?:[+-]|forward|reverse) strand$/i.test(section.text)) row.classList.add("is-strand");
+    if (!section.parts && /^\d[\d,.]*\s*(?:bp|aa|reads?)$/i.test(section.text)) row.classList.add("is-measure");
+    if (section.separator) {
+      const separator = document.createElement("span");
+      separator.className = "visual-inspection-tooltip-separator";
+      separator.textContent = section.separator;
+      row.append(separator);
+    }
+    if (section.parts) {
+      const label = document.createElement("strong");
+      label.className = "visual-inspection-tooltip-label";
+      label.textContent = section.parts.label;
+      const infix = document.createElement("span");
+      infix.className = section.kind === "heading" ? "visual-inspection-tooltip-heading-infix" : "visual-inspection-tooltip-separator";
+      infix.textContent = section.parts.infix;
+      const value = document.createElement("span");
+      value.className = "visual-inspection-tooltip-value";
+      value.textContent = section.parts.value;
+      row.append(label, infix, value);
+    } else {
+      const value = document.createElement(section.kind === "heading" ? "strong" : "span");
+      value.className = "visual-inspection-tooltip-value";
+      value.textContent = section.text;
+      row.append(value);
+    }
+    content.append(row);
+  }
+  tooltip.replaceChildren(content);
+  tooltip._sms3InspectionText = text;
 }
 
 function evenlyLimitedTargets(targets, limit = MAX_KEYBOARD_TARGETS) {
@@ -75,6 +123,75 @@ function pointerPositionForElement(element) {
     clientX: rect.left + rect.width / 2,
     clientY: rect.top + Math.min(rect.height / 2, 18)
   };
+}
+
+function inspectionRgb(value) {
+  const match = String(value ?? "").match(/^rgba?\(\s*(\d+(?:\.\d+)?)\s*[, ]\s*(\d+(?:\.\d+)?)\s*[, ]\s*(\d+(?:\.\d+)?)(?:\s*[,/]\s*(\d+(?:\.\d+)?))?/i);
+  if (!match) return null;
+  return {
+    channels: match.slice(1, 4).map(Number),
+    alpha: match[4] === undefined ? 1 : Number(match[4])
+  };
+}
+
+function inspectionLuminance(rgb) {
+  const linear = rgb.map((component) => {
+    const value = component / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  });
+  return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722;
+}
+
+function inspectionContrastRatio(left, right) {
+  const a = inspectionLuminance(left);
+  const b = inspectionLuminance(right);
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+}
+
+function inspectionSurfaceRgb(mark) {
+  const plotBackground = mark.closest(PLOT_SVG_SELECTOR)?.querySelector(":scope > rect");
+  const plotColor = plotBackground && inspectionRgb(getComputedStyle(plotBackground).fill);
+  if (plotColor?.alpha === 1) return plotColor.channels;
+  const paper = mark.ownerSVGElement?.querySelector(".genome-figure-paper");
+  const paperColor = paper && inspectionRgb(getComputedStyle(paper).fill);
+  if (paperColor?.alpha === 1) return paperColor.channels;
+  for (let element = mark.ownerSVGElement; element; element = element.parentElement) {
+    const color = inspectionRgb(getComputedStyle(element).backgroundColor);
+    if (color?.alpha === 1) return color.channels;
+  }
+  return document.documentElement.dataset.theme === "dark" ? [26, 32, 38] : [255, 255, 255];
+}
+
+function inspectionContrast(mark) {
+  const style = getComputedStyle(mark);
+  const tag = mark.tagName?.toLowerCase();
+  const usesStroke = tag === "line" || tag === "polyline";
+  const painted = inspectionRgb(usesStroke ? style.stroke : style.fill)
+    ?? inspectionRgb(style.stroke);
+  if (!painted) return "#0f172a";
+  const isGenomePoster = Boolean(mark.closest(GENOME_POSTER_SELECTOR));
+  if (mark.closest(PLOT_SVG_SELECTOR) && !isGenomePoster) {
+    return inspectionLuminance(painted.channels) < 0.18 ? "#ffffff" : "#0f172a";
+  }
+  const surface = inspectionSurfaceRgb(mark);
+  if (painted.alpha <= 0.01) {
+    return inspectionLuminance(surface) < 0.18 ? "#67e8f9" : "#2563eb";
+  }
+  const opacity = Math.max(0, Math.min(1, painted.alpha * Number(style.opacity || 1) * Number(usesStroke ? style.strokeOpacity || 1 : style.fillOpacity || 1)));
+  const fill = painted.channels.map((component, index) => component * opacity + surface[index] * (1 - opacity));
+  const candidates = [
+    { color: "#0f172a", rgb: [15, 23, 42] },
+    { color: "#ffffff", rgb: [255, 255, 255] },
+    { color: "#f59e0b", rgb: [245, 158, 11] }
+  ];
+  if (isGenomePoster) candidates.push({ color: "#2563eb", rgb: [37, 99, 235] });
+  return candidates.reduce((best, candidate) => {
+    const score = Math.min(
+      inspectionContrastRatio(candidate.rgb, fill),
+      inspectionContrastRatio(candidate.rgb, surface)
+    );
+    return score > best.score ? { color: candidate.color, score } : best;
+  }, { color: "#0f172a", score: -1 }).color;
 }
 
 export function installVisualInspection(container, {
@@ -148,7 +265,9 @@ export function installVisualInspection(container, {
       tabindex: svg.getAttribute("tabindex"),
       describedBy: svg.getAttribute("aria-describedby"),
       keyShortcuts: svg.getAttribute("aria-keyshortcuts"),
-      nearestPointIndex: null
+      nearestPointIndex: null,
+      circlesByTitle: null,
+      outlines: new Map()
     };
     svgStates.set(svg, state);
     const hasFocusableMarks = Boolean(svg.querySelector("[tabindex],a,button,[role='button'],[role='link']"));
@@ -159,6 +278,97 @@ export function installVisualInspection(container, {
         ? "ArrowLeft ArrowRight Home End Enter Escape"
         : "ArrowLeft ArrowRight Home End Escape");
     }
+    if (svg.matches(PLOT_SVG_SELECTOR) && svg.getAttribute(HIGHLIGHT_POLICY_ATTRIBUTE) !== "none") {
+      const tags = svg.matches(GENOME_POSTER_SELECTOR) ? ["rect", "path", "polygon", "circle"] : ["rect", "circle"];
+      for (const tag of tags) {
+        const outline = document.createElementNS(SVG_NAMESPACE, tag);
+        outline.setAttribute(PLOT_OUTLINE_ATTRIBUTE, "");
+        outline.setAttribute("aria-hidden", "true");
+        outline.setAttribute("pointer-events", "none");
+        outline.setAttribute("fill", "none");
+        outline.setAttribute("stroke-width", tag === "circle" ? "1.5" : "1.25");
+        outline.setAttribute("stroke-linejoin", "round");
+        outline.setAttribute("vector-effect", "non-scaling-stroke");
+        outline.setAttribute("shape-rendering", "geometricPrecision");
+        outline.setAttribute("visibility", "hidden");
+        svg.append(outline);
+        state.outlines.set(tag, outline);
+      }
+    }
+  }
+
+  function showPlotOutline(mark) {
+    const svg = mark.closest(PLOT_SVG_SELECTOR);
+    const state = svgStates.get(svg);
+    const tag = mark.tagName?.toLowerCase();
+    let geometryMark = mark;
+    if (tag === "path" && getComputedStyle(mark).fill === "none") {
+      if (!state?.circlesByTitle) {
+        state.circlesByTitle = new Map();
+        for (const circle of svg.querySelectorAll(`circle[${TITLE_MARK_ATTRIBUTE}]`)) {
+          const title = getVisualInspectionText(circle);
+          // Reused labels cannot safely identify the point that owns a line segment.
+          state.circlesByTitle.set(title, state.circlesByTitle.has(title) ? null : circle);
+        }
+      }
+      geometryMark = state.circlesByTitle.get(getVisualInspectionText(mark)) ?? mark;
+    }
+    const pointHit = tag === "rect" && mark.hasAttribute("data-sms3-point-x") && mark.hasAttribute("data-sms3-point-y");
+    const outlineTag = pointHit || geometryMark.tagName?.toLowerCase() === "circle" ? "circle" : tag;
+    const outline = state?.outlines.get(outlineTag);
+    if (!outline) return;
+    const svgMatrix = svg.getScreenCTM?.();
+    const markMatrix = geometryMark.getScreenCTM?.();
+    if (!svgMatrix || !markMatrix) return;
+    let box;
+    try {
+      box = geometryMark.getBBox();
+    } catch {
+      return;
+    }
+    const transform = svgMatrix.inverse().multiply(markMatrix);
+    outline.setAttribute("transform", `matrix(${transform.a} ${transform.b} ${transform.c} ${transform.d} ${transform.e} ${transform.f})`);
+    if (outlineTag === "circle") {
+      const scale = Math.max(0.001, Math.min(
+        Math.hypot(markMatrix.a, markMatrix.b),
+        Math.hypot(markMatrix.c, markMatrix.d)
+      ));
+      const cx = pointHit ? Number(mark.dataset.sms3PointX) : Number(geometryMark.getAttribute("cx"));
+      const cy = pointHit ? Number(mark.dataset.sms3PointY) : Number(geometryMark.getAttribute("cy"));
+      const radius = pointHit ? 0 : Number(geometryMark.getAttribute("r"));
+      if (![cx, cy, radius].every(Number.isFinite)) return;
+      outline.setAttribute("cx", String(cx));
+      outline.setAttribute("cy", String(cy));
+      outline.setAttribute("r", String(Math.max(radius + 2.5 / scale, 5 / scale)));
+      outline.setAttribute("stroke", inspectionLuminance(inspectionSurfaceRgb(geometryMark)) < 0.18 ? "#ffffff" : "#0f172a");
+      outline.setAttribute("visibility", "visible");
+      return;
+    }
+    if (tag === "rect") {
+      const scaleX = Math.hypot(markMatrix.a, markMatrix.b);
+      const scaleY = Math.hypot(markMatrix.c, markMatrix.d);
+      if (!scaleX || !scaleY || box.width * scaleX < 3 || box.height * scaleY < 3) return;
+      // Inset the complete non-scaling stroke inside bars that meet a plot edge.
+      const insetX = 0.9 / scaleX;
+      const insetY = 0.9 / scaleY;
+      const width = box.width - 2 * insetX;
+      const height = box.height - 2 * insetY;
+      if (width <= 0 || height <= 0) return;
+      outline.setAttribute("x", String(box.x + insetX));
+      outline.setAttribute("y", String(box.y + insetY));
+      outline.setAttribute("width", String(width));
+      outline.setAttribute("height", String(height));
+      const radiusX = Number(mark.getAttribute("rx") ?? 0);
+      const radiusY = Number(mark.getAttribute("ry") ?? radiusX);
+      outline.setAttribute("rx", String(Math.max(0, radiusX - insetX)));
+      outline.setAttribute("ry", String(Math.max(0, radiusY - insetY)));
+    } else if (tag === "path") {
+      outline.setAttribute("d", mark.getAttribute("d") ?? "");
+    } else if (tag === "polygon") {
+      outline.setAttribute("points", mark.getAttribute("points") ?? "");
+    }
+    outline.setAttribute("stroke", inspectionContrast(mark));
+    outline.setAttribute("visibility", "visible");
   }
 
   function prepareNearestPointIndex(svg) {
@@ -445,26 +655,52 @@ export function installVisualInspection(container, {
 
   function setActiveMark(mark) {
     if (activeMark === mark) return;
+    const previousSvg = highlightedMark?.closest(PLOT_SVG_SELECTOR);
+    for (const outline of svgStates.get(previousSvg)?.outlines.values() ?? []) {
+      outline.setAttribute("visibility", "hidden");
+    }
+    highlightedMark?.style.removeProperty(CONTRAST_PROPERTY);
     highlightedMark?.removeAttribute(ACTIVE_ATTRIBUTE);
     activeMark = mark;
     highlightedMark = mark && !markContainsDetailedInspection(mark) && markAllowsVisualHighlight(mark)
       ? mark
       : null;
-    highlightedMark?.setAttribute(ACTIVE_ATTRIBUTE, "true");
+    if (highlightedMark) {
+      const tag = highlightedMark.tagName?.toLowerCase();
+      const plotHalo = highlightedMark.closest(PLOT_SVG_SELECTOR)
+        && !highlightedMark.closest(GENOME_POSTER_SELECTOR)
+        && (tag === "path" || tag === "text");
+      const contrast = plotHalo
+        ? (inspectionLuminance(inspectionSurfaceRgb(highlightedMark)) < 0.18 ? "#ffffff" : "#0f172a")
+        : inspectionContrast(highlightedMark);
+      highlightedMark.style.setProperty(CONTRAST_PROPERTY, contrast);
+      highlightedMark.setAttribute(ACTIVE_ATTRIBUTE, "true");
+      showPlotOutline(highlightedMark);
+    }
   }
 
-  function placeTooltip(position) {
+  function placeTooltip(position, mark) {
     const containerRect = container.getBoundingClientRect();
     const tooltipRect = tooltip.getBoundingClientRect();
     const scrollLeft = container.scrollLeft;
     const scrollTop = container.scrollTop;
     const inset = 8;
     const preferredLeft = scrollLeft + position.clientX - containerRect.left + 12;
-    const preferredTop = scrollTop + position.clientY - containerRect.top + 14;
+    let preferredTop = scrollTop + position.clientY - containerRect.top + 14;
     const minLeft = scrollLeft + inset;
     const maxLeft = scrollLeft + container.clientWidth - tooltipRect.width - inset;
     const minTop = scrollTop + inset;
     const maxTop = scrollTop + container.clientHeight - tooltipRect.height - inset;
+    const shortPlotRect = mark?.tagName?.toLowerCase() === "rect" &&
+      (mark.getAttribute(HIGHLIGHT_POLICY_ATTRIBUTE) === "fill" || Boolean(mark.closest(PLOT_SVG_SELECTOR))) &&
+      mark.getBoundingClientRect().height <= 80;
+    if (shortPlotRect) {
+      const markRect = mark.getBoundingClientRect();
+      const below = scrollTop + markRect.bottom - containerRect.top + inset;
+      const above = scrollTop + markRect.top - containerRect.top - tooltipRect.height - inset;
+      if (below <= maxTop) preferredTop = Math.max(preferredTop, below);
+      else if (above >= minTop) preferredTop = above;
+    }
     tooltip.style.left = `${Math.max(minLeft, Math.min(preferredLeft, Math.max(minLeft, maxLeft)))}px`;
     tooltip.style.top = `${Math.max(minTop, Math.min(preferredTop, Math.max(minTop, maxTop)))}px`;
   }
@@ -477,10 +713,10 @@ export function installVisualInspection(container, {
     keyboardPointerAnchor = source === "keyboard" && lastPointerPosition
       ? { ...lastPointerPosition }
       : null;
-    tooltip.textContent = text;
+    renderInspectionTooltip(tooltip, text);
     tooltip.hidden = false;
     tooltip.classList.toggle("is-pinned", mark === pinnedMark);
-    placeTooltip(position ?? pointerPositionForElement(mark));
+    placeTooltip(position ?? pointerPositionForElement(mark), mark);
     if (announce) {
       liveStatus.textContent = "";
       requestAnimationFrame(() => { liveStatus.textContent = text; });
@@ -621,6 +857,7 @@ export function installVisualInspection(container, {
       }
     }
     for (const [svg, state] of svgStates) {
+      for (const outline of state.outlines.values()) outline.remove();
       if (state.tabindex === null) svg.removeAttribute("tabindex");
       else svg.setAttribute("tabindex", state.tabindex);
       if (state.describedBy === null) svg.removeAttribute("aria-describedby");
@@ -770,7 +1007,7 @@ export function installCanvasVisualInspection(container, {
     const text = normalizedText(getText(target));
     if (!target || !text) return hide();
     setActive(target);
-    tooltip.textContent = text;
+    renderInspectionTooltip(tooltip, text);
     tooltip.hidden = false;
     placeTooltip(position ?? targetPosition(target));
     if (shouldAnnounce) announce(text);

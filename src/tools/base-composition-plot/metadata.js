@@ -23,7 +23,7 @@ export const baseCompositionPlotMetadata = {
   category: "Sequence Analysis",
   tags: ["DNA", "RNA", "raw", "GC", "composition", "plot"],
   summary: "Plot sliding-window DNA/RNA base composition, GC/AT content, and skew metrics.",
-  inputType: "DNA/RNA sequence",
+  inputType: "DNA/RNA sequence, FASTA/FASTA.GZ, or indexed FASTA",
   outputType: "Base composition plot, report, table",
   runInWorker: true,
   workerModule: "../tools/base-composition-plot/run.js",
@@ -42,6 +42,7 @@ export const baseCompositionPlotMetadata = {
     ]
   },
   options: [
+    ...makeFastaSourceInputOptions({ includeStreamedFile: true }),
     {
       id: "windowMode",
       type: "radio",
@@ -131,11 +132,24 @@ export const baseCompositionPlotMetadata = {
       ]
     },
     {
+      type: "group",
+      label: "Limits",
+      collapsible: true,
+      collapsed: true,
+      options: [{
+        id: "streamingLimitsNote",
+        type: "note",
+        text: "Runs accept up to 100 million accepted FASTA bases and 10,000 records. A run may produce at most 50,000 windows and 25 MiB of materialized output; plots show at most 5,000 windows. Increase the step size or select fewer records when a limit is reached."
+      }]
+    },
+    {
       id: "methodNote",
       type: "note",
-      text: "Percent metrics use A+C+G+T+U as the denominator. Skew metrics return n/a when their denominator is zero."
+      text: `Percent metrics use A+C+G+T+U as the denominator. Skew metrics return n/a when their denominator is zero. ${STREAMED_FASTA_SCAN_NOTE}`
     }
   ]
 };
 
 export const baseCompositionPlotTableColumns = TABLE_COLUMNS;
+import { STREAMED_FASTA_SCAN_NOTE } from "../fasta-input-policy.js";
+import { makeFastaSourceInputOptions } from "../fasta-source-options.js";

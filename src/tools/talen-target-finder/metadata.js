@@ -56,7 +56,6 @@ export const talenTargetFinderMetadata = {
           defaultValue: false,
           help: "Ambiguous half-sites are reported with uncertain RVD entries and warning flags. Leave off for order-ready review tables."
         },
-        { id: "maxPairsPerRecord", type: "number", label: "Pairs per record", defaultValue: 100, min: 1, max: 2000, step: 1 }
       ]
     },
     {
@@ -99,7 +98,18 @@ export const talenTargetFinderMetadata = {
             { value: "interactive-viewer", label: "Linear DNA sequence viewer" }
           ]
         },
-        { id: "contextBases", type: "number", label: "Context bases", defaultValue: 20, min: 0, max: 200, step: 1, visibleWhen: { option: "outputFormat", value: "context-text" } },
+        { id: "contextBases", type: "number", label: "Context bases", defaultValue: 20, min: 0, max: 200, step: 1, visibleWhen: { option: "outputFormat", value: "context-text" } }
+      ]
+    },
+    {
+      id: "advancedLimits",
+      type: "group",
+      label: "Limits",
+      collapsible: true,
+      collapsed: true,
+      options: [
+        { id: "maxPairsPerRecord", type: "number", label: "Pairs per record", defaultValue: 100, min: 1, max: 2000, step: 1,
+          help: "Only the top-ranked target pairs up to this count are returned for each record." },
         {
           id: "mapMaxPairsPerRecord",
           type: "number",
@@ -110,16 +120,7 @@ export const talenTargetFinderMetadata = {
           step: 1,
           visibleWhen: { option: "outputFormat", value: ["text-map", "svg-map"] },
           help: "Limits how many ranked target pairs are drawn in dense visual maps. The target pair table can still report more candidates."
-        }
-      ]
-    },
-    {
-      id: "advancedLimits",
-      type: "group",
-      label: "Limits",
-      collapsible: true,
-      collapsed: true,
-      options: [
+        },
         {
           id: "maxRecordLength",
           type: "number",

@@ -1,5 +1,7 @@
 import { geneticCodes } from "../../core/genetic-code.js";
 import { codonUsageTableColumns } from "./run.js";
+import { STREAMED_FASTA_SCAN_NOTE } from "../fasta-input-policy.js";
+import { makeFastaSourceInputOptions } from "../fasta-source-options.js";
 
 export const codonUsageMetadata = {
   id: "codon-usage",
@@ -32,6 +34,7 @@ export const codonUsageMetadata = {
     ]
   },
   options: [
+    ...makeFastaSourceInputOptions({ includeStreamedFile: true }),
     {
       id: "geneticCode",
       type: "radio",
@@ -74,7 +77,18 @@ export const codonUsageMetadata = {
     {
       id: "cleaningNote",
       type: "note",
-      text: "Input is treated as coding sequence starting at the first base. Stop codons are counted, ambiguous codons are skipped, and trailing bases outside complete codons are ignored."
+      text: `Each FASTA record is treated as an independent coding sequence starting at its first base. Stop codons are counted, ambiguous codons are skipped, and trailing bases outside complete codons are ignored. ${STREAMED_FASTA_SCAN_NOTE}`
+    },
+    {
+      type: "group",
+      label: "Limits",
+      collapsible: true,
+      collapsed: true,
+      options: [{
+        id: "streamingLimitsNote",
+        type: "note",
+        text: "Runs accept up to 1,000 coding records and 100 million accepted source characters. Plots accept at most 20 input records; use the table or report for larger collections. Materialized output is limited to 25 MiB."
+      }]
     }
   ]
 };

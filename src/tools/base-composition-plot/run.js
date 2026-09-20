@@ -1,4 +1,5 @@
 import { parseSequenceInput } from "../../core/fasta.js";
+import { openCleanDnaRnaFastaSource } from "../../core/fasta-dna-record-source.js";
 import {
   makeLinePlotSpec,
   makeObservablePlotConfig,
@@ -18,6 +19,8 @@ const AUTO_POINT_MARKER_THRESHOLD = 300;
 const AUTO_WINDOW_TARGET_TOTAL_ROWS = 1200;
 const AUTO_WINDOW_MAX_ROWS_PER_RECORD = 80;
 const AUTO_WINDOW_MIN_ROWS_PER_RECORD = 20;
+const MAX_WINDOW_ROWS = 50_000;
+const MAX_MATERIALIZED_OUTPUT_CHARACTERS = 25 * 1024 * 1024;
 const METRIC_LABELS = {
   gc_percent: "GC percent",
   at_percent: "AT percent",
@@ -121,6 +124,75 @@ function countWindow(sequence) {
 
 function divideOrNull(numerator, denominator) {
   return denominator === 0 ? null : numerator / denominator;
+}
+
+function makeWindowRow(title, start, end, counts, metric) {
+  const unambiguous = counts.A + counts.C + counts.G + counts.TU;
+  const gcPercent = divideOrNull((counts.G + counts.C) * 100, unambiguous);
+  const atPercent = divideOrNull((counts.A + counts.TU) * 100, unambiguous);
+  const gcSkew = divideOrNull(counts.G - counts.C, counts.G + counts.C);
+  const atSkew = divideOrNull(counts.A - counts.TU, counts.A + counts.TU);
+  const ambiguousPercent = (counts.ambiguous / (end - start)) * 100;
+  return {
+    record: title,
+    window_start: start + 1,
+    window_end: end,
+    position: (start + 1 + end) / 2,
+    window_size: end - start,
+    a_count: counts.A,
+    c_count: counts.C,
+    g_count: counts.G,
+    t_u_count: counts.TU,
+    ambiguous_count: counts.ambiguous,
+    gc_percent: gcPercent,
+    at_percent: atPercent,
+    gc_skew: gcSkew,
+    at_skew: atSkew,
+    ambiguous_percent: ambiguousPercent,
+    metric_value: {
+      gc_percent: gcPercent,
+      at_percent: atPercent,
+      gc_skew: gcSkew,
+      at_skew: atSkew,
+      ambiguous_percent: ambiguousPercent
+    }[metric]
+  };
+}
+
+const BASE_CATEGORY = Object.freeze({ A: 0, C: 1, G: 2, T: 3, U: 3 });
+const CATEGORY_FIELD = ["A", "C", "G", "TU", "ambiguous"];
+
+function makeStreamingWindowState(title, length, windowSettings, metric) {
+  const windowSize = Math.min(windowSettings.windowSize, length);
+  return {
+    title,
+    length,
+    windowSize,
+    stepSize: windowSettings.stepSize,
+    metric,
+    position: 0,
+    ring: new Uint8Array(windowSize),
+    counts: { A: 0, C: 0, G: 0, TU: 0, ambiguous: 0 },
+    rows: []
+  };
+}
+
+async function consumeStreamingWindowChunk(state, text, context) {
+  const { windowSize, counts, ring } = state;
+  if (!windowSize) return;
+  for (const character of text) {
+    const position = state.position;
+    const slot = position % windowSize;
+    if (position >= windowSize) counts[CATEGORY_FIELD[ring[slot]]] -= 1;
+    const category = BASE_CATEGORY[character] ?? 4;
+    ring[slot] = category;
+    counts[CATEGORY_FIELD[category]] += 1;
+    state.position += 1;
+    if (state.position >= windowSize && (state.position - windowSize) % state.stepSize === 0) {
+      state.rows.push(makeWindowRow(state.title, state.position - windowSize, state.position, counts, state.metric));
+    }
+    if ((state.position & 0xffff) === 0) await context.yieldIfNeeded?.();
+  }
 }
 
 function makeWindowRows(title, sequence, options) {
@@ -421,6 +493,9 @@ function makeBaseCompositionResult({
   const tableRows = analyzedRecords.flatMap((record) => record.rows);
   const windowSettings = { windowMode, windowSize, stepSize };
   const reportOutput = makeReport(analyzedRecords, metric, windowSettings);
+  if (reportOutput.length > MAX_MATERIALIZED_OUTPUT_CHARACTERS) {
+    throw new Error(`Base composition report exceeds the ${MAX_MATERIALIZED_OUTPUT_CHARACTERS.toLocaleString()}-character materialized-output limit.`);
+  }
   const isSvgOutput = outputFormat === "plot";
   const svgRenderer = "observable-plot";
   let svgPlot = "";
@@ -446,6 +521,9 @@ function makeBaseCompositionResult({
     ]);
   }
   const output = outputFormat === "report" ? reportOutput : outputFormat === "tsv" ? makeTsv(tableRows) : svgPlot;
+  if (output.length > MAX_MATERIALIZED_OUTPUT_CHARACTERS) {
+    throw new Error(`Base composition output exceeds the ${MAX_MATERIALIZED_OUTPUT_CHARACTERS.toLocaleString()}-character materialized-output limit. Increase the step size or select fewer records.`);
+  }
 
   return makeToolResult({
     output,
@@ -556,79 +634,70 @@ export function runBaseCompositionPlot(input, options = {}) {
 }
 
 export async function runBaseCompositionPlotWorker(input, options = {}, context = {}) {
-  context.reportProgress?.({ phase: "parsing-input", progress: 0.05 });
-  const records = parseSequenceInput(input, "sequence");
+  context.reportProgress?.({ phase: "reading-record-lengths", progress: 0.05 });
   const warnings = [];
   const normalizedOptions = normalizeBaseCompositionOptions(options);
-
-  if (records.length === 0) {
+  const opened = await openCleanDnaRnaFastaSource(input, options, context);
+  const recordLengths = [];
+  let currentLength = 0;
+  for await (const event of opened.events({ trackStats: false })) {
+    if (event.type === "record-start") currentLength = 0;
+    else if (event.type === "sequence-chunk") currentLength += event.text.length;
+    else if (event.type === "record-end") recordLengths.push(currentLength);
+  }
+  if (recordLengths.length === 0) {
     return makeToolResult({
       output: "",
-      warnings: ["No sequence input was provided."],
+      warnings: [opened.source.stats.inputProvided ? "No DNA/RNA records were found." : "No sequence input was provided.", ...opened.warnings],
       recordsProcessed: 0,
       basesProcessed: 0,
       charactersRemoved: 0
     });
   }
+  const windowSettings = resolveWindowSettings(normalizedOptions, recordLengths);
+  const estimatedRows = estimateWindowRowCount(recordLengths, windowSettings.windowSize, windowSettings.stepSize);
+  if (estimatedRows > MAX_WINDOW_ROWS) {
+    throw new Error(`Base composition would produce ${estimatedRows.toLocaleString()} windows, above the ${MAX_WINDOW_ROWS.toLocaleString()}-row limit. Increase the step size or select fewer records.`);
+  }
 
-  const cleanedRecords = [];
+  context.reportProgress?.({ phase: "scanning-windows", progress: 0.25 });
+  const analyzedRecords = [];
   let basesProcessed = 0;
   let charactersRemoved = 0;
-
-  for (const [index, record] of records.entries()) {
-    await context.yieldIfNeeded?.();
-    const cleaned = cleanDnaRnaSequence(record.sequence, {
-      preserveCase: false,
-      keepGaps: false
-    });
-    charactersRemoved += cleaned.removedCount;
-    basesProcessed += cleaned.sequence.length;
-    if (cleaned.removedCount > 0) {
-      warnings.push(`${record.title}: removed ${cleaned.removedCount} non-DNA/RNA character(s).`);
+  let current = null;
+  for await (const event of opened.events()) {
+    if (event.type === "record-start") {
+      const length = recordLengths[analyzedRecords.length];
+      current = makeStreamingWindowState(event.title, length, windowSettings, normalizedOptions.metric);
+    } else if (event.type === "sequence-chunk" && current) {
+      await consumeStreamingWindowChunk(current, event.text, context);
+    } else if (event.type === "record-end" && current) {
+      if (current.position !== event.length) throw new Error(`${current.title}: cleaned FASTA length changed between scan passes.`);
+      basesProcessed += event.length;
+      charactersRemoved += event.removedCount;
+      if (event.removedCount > 0) warnings.push(`${current.title}: removed ${event.removedCount} non-DNA/RNA character(s).`);
+      if (event.length === 0) warnings.push(`${current.title}: no DNA/RNA sequence characters were found.`);
+      if (event.length > 0 && event.length < windowSettings.windowSize) {
+        warnings.push(`${current.title}: sequence shorter than window size; used a ${event.length}-base window.`);
+      }
+      analyzedRecords.push({ title: current.title, cleanedLength: event.length, rows: current.rows });
+      current = null;
+      context.reportProgress?.({
+        phase: "scanning-windows",
+        progress: 0.25 + (analyzedRecords.length / recordLengths.length) * 0.65,
+        recordsProcessed: analyzedRecords.length,
+        totalRecords: recordLengths.length
+      });
     }
-    if (cleaned.sequence.length === 0) {
-      warnings.push(`${record.title}: no DNA/RNA sequence characters were found.`);
-    }
-    cleanedRecords.push({ title: record.title, sequence: cleaned.sequence });
-    context.reportProgress?.({
-      phase: "cleaning-records",
-      progress: 0.05 + ((index + 1) / records.length) * 0.2,
-      recordsProcessed: index + 1,
-      totalRecords: records.length
-    });
   }
 
-  const windowSettings = resolveWindowSettings(
-    normalizedOptions,
-    cleanedRecords.map((record) => record.sequence.length)
-  );
-  const analyzedRecords = [];
-
-  for (const [index, record] of cleanedRecords.entries()) {
-    await context.yieldIfNeeded?.();
-    if (record.sequence.length > 0 && record.sequence.length < windowSettings.windowSize) {
-      warnings.push(`${record.title}: sequence shorter than window size; used a ${record.sequence.length}-base window.`);
-    }
-    const rows = await makeWindowRowsWithContext(record.title, record.sequence, { ...normalizedOptions, ...windowSettings }, context);
-    analyzedRecords.push({
-      title: record.title,
-      cleanedLength: record.sequence.length,
-      rows
-    });
-    context.reportProgress?.({
-      phase: "building-windows",
-      progress: 0.25 + ((index + 1) / cleanedRecords.length) * 0.65,
-      recordsProcessed: index + 1,
-      totalRecords: cleanedRecords.length
-    });
-  }
-
+  warnings.push(...opened.warnings);
   context.reportProgress?.({ phase: "building-output", progress: 0.95 });
   context.throwIfCancelled?.();
   return makeBaseCompositionResult({
     analyzedRecords,
     warnings,
-    recordsProcessed: records.length,
+    recordsProcessed: analyzedRecords.length,
     basesProcessed,
     charactersRemoved,
     metric: normalizedOptions.metric,

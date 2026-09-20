@@ -689,6 +689,7 @@ export async function prepareProteinConservationStructureForRun(input, options =
     gapOpen: options.gapOpen,
     gapExtend: options.gapExtend,
     similarScore: options.similarScore,
+    limitRecords: options.limitRecords,
     maxSequences: options.maxSequences,
     maxTotalSymbols: options.maxTotalSymbols,
     maxAlignmentCells: options.maxAlignmentCells

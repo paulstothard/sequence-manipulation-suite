@@ -32,7 +32,7 @@ function makeWarning(message) {
   return message;
 }
 
-function makeRelativeWeights(reference) {
+export function makeRelativeWeights(reference) {
   const codeId = reference?.geneticCode?.id ?? "1";
   const codons = getCodonsForCode(codeId).filter((item) => item.aa !== "*");
   const byAminoAcid = new Map();
@@ -55,6 +55,90 @@ function makeRelativeWeights(reference) {
   return weights;
 }
 
+export function createCodonAdaptationAccumulator(reference, options = {}) {
+  const maxCodonRows = Number.isSafeInteger(options.maxCodonRows) && options.maxCodonRows >= 0
+    ? options.maxCodonRows
+    : Number.MAX_SAFE_INTEGER;
+  return {
+    reference,
+    weights: makeRelativeWeights(reference),
+    includeCodonRows: options.includeCodonRows !== false,
+    maxCodonRows,
+    carry: "",
+    codonPosition: 0,
+    scored: 0,
+    ignored: 0,
+    zeroWeight: 0,
+    logSum: 0,
+    codonRows: []
+  };
+}
+
+export function appendCodonAdaptationChunk(accumulator, sequence) {
+  const source = `${accumulator.carry}${String(sequence ?? "").toUpperCase().replaceAll("U", "T")}`;
+  const usableLength = source.length - (source.length % 3);
+  for (let index = 0; index < usableLength; index += 3) {
+    const codon = source.slice(index, index + 3);
+    const weight = accumulator.weights.get(codon);
+    accumulator.codonPosition += 1;
+    let note = "";
+    if (!weight) {
+      accumulator.ignored += 1;
+      note = "Ambiguous, stop, or unsupported codon";
+    } else if (weight.weight <= 0) {
+      accumulator.ignored += 1;
+      accumulator.zeroWeight += 1;
+      note = "Zero weight in selected reference";
+    } else {
+      accumulator.scored += 1;
+      accumulator.logSum += Math.log(weight.weight);
+    }
+    if (accumulator.includeCodonRows) {
+      if (accumulator.codonRows.length >= accumulator.maxCodonRows) {
+        throw new Error(`Per-codon CAI output exceeds the current limit of ${accumulator.maxCodonRows.toLocaleString()} rows. Choose the CAI summary table or summary report for larger inputs.`);
+      }
+      accumulator.codonRows.push({
+        position: accumulator.codonPosition,
+        codon,
+        amino_acid: weight?.aminoAcid ?? "",
+        relative_adaptiveness: weight ? roundNumber(weight.weight, 6) : 0,
+        reference_count: weight?.count ?? 0,
+        note
+      });
+    }
+  }
+  accumulator.carry = source.slice(usableLength);
+}
+
+export function finishCodonAdaptationAccumulator(accumulator, title) {
+  const meanLog = accumulator.scored > 0 ? accumulator.logSum / accumulator.scored : "";
+  return {
+    row: {
+      record: title,
+      reference_id: accumulator.reference.id,
+      reference_name: accumulator.reference.name,
+      codons_scored: accumulator.scored,
+      codons_ignored: accumulator.ignored,
+      cai: accumulator.scored > 0 ? roundNumber(Math.exp(meanLog), 6) : "",
+      geometric_mean_log: accumulator.scored > 0 ? roundNumber(meanLog, 6) : "",
+      zero_weight_codons: accumulator.zeroWeight
+    },
+    codonRows: accumulator.codonRows.map((row) => ({ record: title, ...row })),
+    trailingBases: accumulator.carry.length
+  };
+}
+
+export function makeCodonAdaptationReport(reference, rows) {
+  return [
+    "Codon adaptation index",
+    `Reference: ${reference.name} (${reference.id})`,
+    "Method: geometric mean of codon relative adaptiveness weights as described by Sharp and Li (1987). Stop, ambiguous, and zero-weight codons are excluded and counted as ignored.",
+    "Citation: Sharp PM and Li WH. Nucleic Acids Res. 1987;15:1281-1295.",
+    "",
+    ...rows.map((row) => `${row.record}: CAI ${row.cai || "not calculated"}; codons scored ${row.codons_scored}; ignored ${row.codons_ignored}`)
+  ].join("\n") + "\n";
+}
+
 function parseCodingRecords(input) {
   return parseSequenceInput(input).map((record, index) => {
     const cleaned = cleanSequence(record.sequence, {
@@ -65,14 +149,13 @@ function parseCodingRecords(input) {
     return {
       title: record.title || `Record ${index + 1}`,
       sequence: cleaned.sequence.replace(/U/g, "T"),
-      removed: cleaned.removed
+      removed: cleaned.removedCount
     };
   });
 }
 
 export function calculateCodonAdaptationIndex(input, references, options = {}) {
   const reference = getCodonUsageReference(references, options.referenceId);
-  const weights = makeRelativeWeights(reference);
   const records = parseCodingRecords(input);
   const includeCodonRows = options.includeCodonRows !== false;
   const warnings = [];
@@ -83,67 +166,27 @@ export function calculateCodonAdaptationIndex(input, references, options = {}) {
     if (record.removed > 0) {
       warnings.push(makeWarning(`${record.title}: removed ${record.removed} unsupported character(s) before CAI calculation.`));
     }
-    const usableLength = record.sequence.length - (record.sequence.length % 3);
-    if (record.sequence.length % 3 !== 0) {
-      warnings.push(makeWarning(`${record.title}: ignored ${record.sequence.length % 3} trailing base(s) because the sequence length is not a multiple of three.`));
-    }
-    let scored = 0;
-    let ignored = 0;
-    let zeroWeight = 0;
-    let logSum = 0;
-    for (let index = 0; index < usableLength; index += 3) {
-      const codon = record.sequence.slice(index, index + 3);
-      const weight = weights.get(codon);
-      let note = "";
-      if (!weight) {
-        ignored += 1;
-        note = "Ambiguous, stop, or unsupported codon";
-      } else if (weight.weight <= 0) {
-        ignored += 1;
-        zeroWeight += 1;
-        note = "Zero weight in selected reference";
-      } else {
-        scored += 1;
-        logSum += Math.log(weight.weight);
-      }
-      if (includeCodonRows) {
-        codonRows.push({
-          record: record.title,
-          position: index / 3 + 1,
-          codon,
-          amino_acid: weight?.aminoAcid ?? "",
-          relative_adaptiveness: weight ? roundNumber(weight.weight, 6) : 0,
-          reference_count: weight?.count ?? 0,
-          note
-        });
-      }
-    }
-    // CAI follows Sharp and Li 1987: geometric mean of relative synonymous codon adaptiveness weights.
-    const meanLog = scored > 0 ? logSum / scored : "";
-    rows.push({
-      record: record.title,
-      reference_id: reference.id,
-      reference_name: reference.name,
-      codons_scored: scored,
-      codons_ignored: ignored,
-      cai: scored > 0 ? roundNumber(Math.exp(meanLog), 6) : "",
-      geometric_mean_log: scored > 0 ? roundNumber(meanLog, 6) : "",
-      zero_weight_codons: zeroWeight
+    const remainingCodonRows = Number.isSafeInteger(options.maxCodonRows)
+      ? Math.max(0, options.maxCodonRows - codonRows.length)
+      : undefined;
+    const accumulator = createCodonAdaptationAccumulator(reference, {
+      includeCodonRows,
+      maxCodonRows: remainingCodonRows
     });
+    appendCodonAdaptationChunk(accumulator, record.sequence);
+    const scored = finishCodonAdaptationAccumulator(accumulator, record.title);
+    if (scored.trailingBases !== 0) {
+      warnings.push(makeWarning(`${record.title}: ignored ${scored.trailingBases} trailing base(s) because the sequence length is not a multiple of three.`));
+    }
+    rows.push(scored.row);
+    codonRows.push(...scored.codonRows);
   }
 
   if (records.length === 0) {
     warnings.push(makeWarning("No DNA/RNA records were found."));
   }
 
-  const report = [
-    "Codon adaptation index",
-    `Reference: ${reference.name} (${reference.id})`,
-    "Method: geometric mean of codon relative adaptiveness weights as described by Sharp and Li (1987). Stop, ambiguous, and zero-weight codons are excluded and counted as ignored.",
-    "Citation: Sharp PM and Li WH. Nucleic Acids Res. 1987;15:1281-1295.",
-    "",
-    ...rows.map((row) => `${row.record}: CAI ${row.cai || "not calculated"}; codons scored ${row.codons_scored}; ignored ${row.codons_ignored}`)
-  ].join("\n") + "\n";
+  const report = makeCodonAdaptationReport(reference, rows);
   return { reference, records, rows, codonRows, warnings, report };
 }
 

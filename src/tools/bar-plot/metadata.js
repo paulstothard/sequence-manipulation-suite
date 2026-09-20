@@ -42,16 +42,6 @@ export const barPlotMetadata = {
         { id: "categoryColumn", type: "text", label: "Category column", defaultValue: "gene_id", suggestionsFrom: "table-columns" },
         { id: "valueColumn", type: "text", label: "Value column", defaultValue: "mean_tpm", suggestionsFrom: "table-numeric-columns" },
         { id: "groupColumn", type: "text", label: "Group bars by", defaultValue: "condition", suggestionsFrom: "table-columns" },
-        {
-          id: "maxBarsDrawn",
-          type: "number",
-          label: "Maximum plotted bars",
-          defaultValue: 300,
-          min: 10,
-          max: 2000,
-          step: 10,
-          help: "The Bar TSV still contains all parsed bars; this only caps visual drawing for browser responsiveness."
-        },
         { id: "title", type: "text", label: "Plot title", defaultValue: "Expression by gene and condition" }
       ]
     },
@@ -64,6 +54,25 @@ export const barPlotMetadata = {
           { value: "svg", label: "Bar plot" },
           { value: "bar-tsv", label: "Bar table" }
         ] }
+      ]
+    },
+    {
+      id: "advancedLimits",
+      type: "group",
+      label: "Limits",
+      collapsible: true,
+      collapsed: true,
+      options: [
+        {
+          id: "maxBarsDrawn",
+          type: "number",
+          label: "Maximum plotted bars",
+          defaultValue: 300,
+          min: 10,
+          max: 2000,
+          step: 10,
+          help: "The Bar TSV still contains all parsed bars; this only caps visual drawing for browser responsiveness."
+        }
       ]
     }
   ]

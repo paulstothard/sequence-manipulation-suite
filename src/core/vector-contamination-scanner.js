@@ -242,7 +242,7 @@ function rowsRepresentSameHit(left, right) {
   return overlap / Math.max(1, shorterLength) >= 0.8;
 }
 
-function deduplicateMergeAndSortRows(rows, maxHitsPerRecord) {
+export function deduplicateMergeAndSortRows(rows, maxHitsPerRecord) {
   const byKey = new Map();
   for (const row of rows) {
     const key = rowKey(row);
@@ -261,10 +261,32 @@ function deduplicateMergeAndSortRows(rows, maxHitsPerRecord) {
       left.reference_id.localeCompare(right.reference_id)
   );
   const merged = [];
+  const intervalGroups = new Map();
   for (const row of sortedCandidates) {
-    if (merged.some((kept) => rowsRepresentSameHit(kept, row))) {
-      continue;
+    const groupKey = `${row.record}\t${row.reference_id}\t${row.strand}`;
+    let group = intervalGroups.get(groupKey);
+    if (!group) {
+      group = { rows: [], maxAlignedLength: 0 };
+      intervalGroups.set(groupKey, group);
     }
+    let low = 0;
+    let high = group.rows.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (group.rows[middle].query_start < row.query_start) low = middle + 1;
+      else high = middle;
+    }
+    const insertionIndex = low;
+    let duplicate = false;
+    for (let index = insertionIndex - 1; index >= 0 && group.rows[index].query_start >= row.query_start - group.maxAlignedLength; index -= 1) {
+      if (rowsRepresentSameHit(group.rows[index], row)) { duplicate = true; break; }
+    }
+    for (let index = insertionIndex; !duplicate && index < group.rows.length && group.rows[index].query_start <= row.query_end; index += 1) {
+      if (rowsRepresentSameHit(group.rows[index], row)) { duplicate = true; break; }
+    }
+    if (duplicate) continue;
+    group.rows.splice(insertionIndex, 0, row);
+    group.maxAlignedLength = Math.max(group.maxAlignedLength, row.aligned_length);
     merged.push(row);
   }
 
@@ -314,8 +336,16 @@ function scanOrientedSequence(recordTitle, sequence, originalSequence, strand, r
     if (!/^[ACGT]+$/.test(kmer)) {
       continue;
     }
+    if (context.scanBudget) {
+      context.scanBudget.queryWindows += 1;
+      if (context.scanBudget.queryWindows > context.scanBudget.maxQueryWindows) throw new Error(`Vector scan exceeds the ${context.scanBudget.maxQueryWindows.toLocaleString()}-valid-query-window budget.`);
+    }
     const seeds = kmerMap[kmer] ?? [];
     for (const [seedIndex, seed] of seeds.entries()) {
+      if (context.scanBudget) {
+        context.scanBudget.seedExtensions += 1;
+        if (context.scanBudget.seedExtensions > context.scanBudget.maxSeedExtensions) throw new Error(`Vector scan exceeds the ${context.scanBudget.maxSeedExtensions.toLocaleString()}-seed-extension budget. Narrow the input or use a less repetitive sequence.`);
+      }
       if (seedIndex > 0 && seedIndex % 500 === 0) {
         context.throwIfCancelled?.();
       }
@@ -335,6 +365,10 @@ function scanOrientedSequence(recordTitle, sequence, originalSequence, strand, r
         hit.percentIdentity >= thresholds.minimumPercentIdentity
       ) {
         rows.push(makeRow(recordTitle, sequence.length, originalSequence, hit, strand, referenceRecord));
+        if (context.scanBudget) {
+          context.scanBudget.candidateRows += 1;
+          if (context.scanBudget.candidateRows > context.scanBudget.maxCandidateRows) throw new Error(`Vector scan exceeds the ${context.scanBudget.maxCandidateRows.toLocaleString()}-candidate-hit budget.`);
+        }
       }
     }
   }

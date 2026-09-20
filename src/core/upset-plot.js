@@ -126,11 +126,11 @@ export function makeUpsetStyleSvg({
     const membership = row.membership ?? [];
     const dots = membership.map((present, index) => {
       const x = left + index * matrixColGap;
-      return `<circle cx="${x}" cy="${y}" r="5" fill="${present ? "#0f766e" : "#cbd5e1"}"></circle>`;
+      return `<circle class="${present ? "intersection-member" : "intersection-nonmember"}" cx="${x}" cy="${y}" r="5" fill="${present ? "#0f766e" : "#cbd5e1"}"></circle>`;
     }).join("");
     const presentIndexes = membership.map((present, index) => present ? index : -1).filter((index) => index >= 0);
     const connectors = presentIndexes.length > 1
-      ? `<line x1="${left + presentIndexes[0] * matrixColGap}" y1="${y}" x2="${left + presentIndexes[presentIndexes.length - 1] * matrixColGap}" y2="${y}" stroke="#0f766e" stroke-width="2"></line>`
+      ? `<line class="intersection-connector" x1="${left + presentIndexes[0] * matrixColGap}" y1="${y}" x2="${left + presentIndexes[presentIndexes.length - 1] * matrixColGap}" y2="${y}" stroke="#0f766e" stroke-width="2"></line>`
       : "";
     const bar = countScale.scale(row.count);
     const members = presentIndexes.map((index) => setLabels[index]).join(" + ") || "No sets";

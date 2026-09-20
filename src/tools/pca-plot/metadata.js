@@ -61,8 +61,7 @@ export const pcaPlotMetadata = {
           label: "Center and scale columns",
           defaultValue: true,
           help: "Scaling gives each selected variable equal variance before PCA, which is usually appropriate when columns use different units or ranges."
-        },
-        { id: "maxPointsDrawn", type: "number", label: "Maximum points drawn", defaultValue: 5000, min: 100, max: 20000, step: 100 }
+        }
       ]
     },
     {
@@ -84,6 +83,16 @@ export const pcaPlotMetadata = {
           { value: "variance-tsv", label: "Variance table" },
           { value: "report", label: "Summary report" }
         ] }
+      ]
+    },
+    {
+      id: "advancedLimits",
+      type: "group",
+      label: "Limits",
+      collapsible: true,
+      collapsed: true,
+      options: [
+        { id: "maxPointsDrawn", type: "number", label: "Maximum points drawn", defaultValue: 5000, min: 100, max: 20000, step: 100 }
       ]
     }
   ],

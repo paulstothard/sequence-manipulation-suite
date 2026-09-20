@@ -109,26 +109,6 @@ export const tableColumnComparisonMetadata = {
           help: "Used only when one selected column is numeric and the other is categorical."
         },
         {
-          id: "maxPointsDrawn",
-          type: "number",
-          label: "Maximum scatter points",
-          defaultValue: 5000,
-          min: 100,
-          max: 20000,
-          step: 100,
-          help: "Caps points drawn in numeric-vs-numeric plots. Tables and summaries still use all parsed rows within the tool limits."
-        },
-        {
-          id: "maxDotsDrawn",
-          type: "number",
-          label: "Maximum distribution dots",
-          defaultValue: 1000,
-          min: 0,
-          max: 10000,
-          step: 100,
-          help: "Caps individual dots drawn in numeric-vs-category plots. Distribution summaries still use all complete values."
-        },
-        {
           id: "title",
           type: "text",
           label: "Plot title",
@@ -162,6 +142,26 @@ export const tableColumnComparisonMetadata = {
       collapsible: true,
       collapsed: true,
       options: [
+        {
+          id: "maxPointsDrawn",
+          type: "number",
+          label: "Maximum scatter points",
+          defaultValue: 5000,
+          min: 100,
+          max: 20000,
+          step: 100,
+          help: "Caps points drawn in numeric-vs-numeric plots. Tables and summaries still use all parsed rows within the tool limits."
+        },
+        {
+          id: "maxDotsDrawn",
+          type: "number",
+          label: "Maximum distribution dots",
+          defaultValue: 1000,
+          min: 0,
+          max: 10000,
+          step: 100,
+          help: "Caps individual dots drawn in numeric-vs-category plots. Distribution summaries still use all complete values."
+        },
         {
           id: "maxCategories",
           type: "number",

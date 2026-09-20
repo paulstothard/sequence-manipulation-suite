@@ -2,6 +2,7 @@ import { createEditorSession } from './editor-session.js';
 import { addTimestampToFilename, downloadCanvasPng, downloadCanvasSvg, makeSafeFileStem } from "./canvas-export.js";
 import { geneticCodes } from "../core/genetic-code.js";
 import { makeSixFrameTranslations } from "../core/translation.js";
+import { traceTranslationArrow } from "../core/translation-arrow-geometry.js";
 import {
   allowsViewerInertia,
   createInertiaVelocityTracker,
@@ -445,7 +446,9 @@ function drawTranslationTracks(context, state, calls, plot, xForPosition, layout
     context.textAlign = "right";
     context.fillStyle = frame.strand === "+" ? theme.translationForwardText : theme.translationReverseText;
     context.fillText(frame.label, plot.left - 7, centerY);
-    for (const codon of frame.codons) {
+    const visibleCodons = frame.codons.filter((codon) =>
+      Math.max(firstVisible, codon.directStart) <= Math.min(lastVisible, codon.directEnd));
+    for (const codon of visibleCodons) {
       const segmentStart = Math.max(firstVisible, codon.directStart);
       const segmentEnd = Math.min(lastVisible, codon.directEnd);
       if (segmentStart > segmentEnd) continue;
@@ -457,8 +460,14 @@ function drawTranslationTracks(context, state, calls, plot, xForPosition, layout
       context.fillStyle = colors.fill;
       context.strokeStyle = theme.border;
       context.lineWidth = 0.7;
-      context.beginPath();
-      context.roundRect(left, top, Math.max(1, right - left), 16, 2);
+      context.lineJoin = "round";
+      const chevronCap = codon === visibleCodons[0] || codon === visibleCodons.at(-1);
+      if (chevronCap) {
+        traceTranslationArrow(context, left, top, Math.max(1, right - left), 16, frame.strand);
+      } else {
+        context.beginPath();
+        context.roundRect(left, top, Math.max(1, right - left), 16, 2);
+      }
       context.fill();
       context.stroke();
       if (codon.centerPosition >= firstVisible && codon.centerPosition <= lastVisible) {
@@ -640,11 +649,30 @@ function drawTrace(canvas, state) {
       context.fillRect(x - 6, plot.baseLabelY - 15, 12, plot.height + plot.top - plot.baseLabelY + 20);
     }
     if (isSelected) {
+      context.save();
       context.fillStyle = theme.selectedFill;
       context.strokeStyle = theme.selectedStroke;
-      context.lineWidth = 1;
-      context.fillRect(x - 8, plot.baseLabelY - 11, 16, 22);
-      context.strokeRect(x - 8, plot.baseLabelY - 11, 16, 22);
+      context.lineWidth = 1.5;
+      context.shadowColor = theme.selectedStroke;
+      context.shadowBlur = theme.dark ? 4 : 3;
+      context.beginPath();
+      if (typeof context.roundRect === "function") {
+        context.roundRect(x - 8, plot.baseLabelY - 11, 16, 22, 4);
+      } else {
+        context.moveTo(x - 4, plot.baseLabelY - 11);
+        context.lineTo(x + 4, plot.baseLabelY - 11);
+        context.quadraticCurveTo(x + 8, plot.baseLabelY - 11, x + 8, plot.baseLabelY - 7);
+        context.lineTo(x + 8, plot.baseLabelY + 7);
+        context.quadraticCurveTo(x + 8, plot.baseLabelY + 11, x + 4, plot.baseLabelY + 11);
+        context.lineTo(x - 4, plot.baseLabelY + 11);
+        context.quadraticCurveTo(x - 8, plot.baseLabelY + 11, x - 8, plot.baseLabelY + 7);
+        context.lineTo(x - 8, plot.baseLabelY - 7);
+        context.quadraticCurveTo(x - 8, plot.baseLabelY - 11, x - 4, plot.baseLabelY - 11);
+        context.closePath();
+      }
+      context.fill();
+      context.stroke();
+      context.restore();
     }
     context.fillStyle = isClipped ? theme.clipped : (theme.channelColors[call.base] ?? theme.channelColors.N);
     context.fillText(call.base, x, plot.baseLabelY);

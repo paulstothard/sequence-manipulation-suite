@@ -3,6 +3,8 @@ import {
   codonAdaptationIndexColumns
 } from "../../core/codon-adaptation-index.js";
 import { codonUsageReferences } from "../../reference-data/codon-usage/references.js";
+import { STREAMED_FASTA_SCAN_NOTE } from "../fasta-input-policy.js";
+import { makeFastaSourceInputOptions } from "../fasta-source-options.js";
 
 export const codonAdaptationIndexMetadata = {
   id: "codon-adaptation-index",
@@ -33,6 +35,7 @@ export const codonAdaptationIndexMetadata = {
   workerModule: "../tools/codon-adaptation-index/run.js",
   workerExport: "runCodonAdaptationIndex",
   options: [
+    ...makeFastaSourceInputOptions({ includeStreamedFile: true }),
     {
       id: "referenceId",
       type: "select",
@@ -42,9 +45,9 @@ export const codonAdaptationIndexMetadata = {
       help: "CAI depends strongly on the selected codon reference. Use a reference that matches the host or biological comparison you intend."
     },
     {
-      id: "methodNote",
+      id: "sourceNote",
       type: "note",
-      text: "CAI is the geometric mean of relative adaptiveness weights for codons in the selected reference. Ambiguous, stop, and zero-weight codons are counted but not scored.\n\nReferences:\n\nCodon adaptation index: Sharp and Li 1987."
+      text: `Each FASTA record is scored independently from its first base. ${STREAMED_FASTA_SCAN_NOTE}`
     },
     {
       type: "group",
@@ -62,6 +65,22 @@ export const codonAdaptationIndexMetadata = {
           ]
         }
       ]
+    },
+    {
+      type: "group",
+      label: "Limits",
+      collapsible: true,
+      collapsed: true,
+      options: [{
+        id: "streamingLimitsNote",
+        type: "note",
+        text: "Summary and report runs accept up to 10,000 records and 100 million accepted source characters. Per-codon output is limited to 250,000 rows. Materialized output is limited to 25 MiB."
+      }]
+    },
+    {
+      id: "methodNote",
+      type: "note",
+      text: "CAI is the geometric mean of relative adaptiveness weights for codons in the selected reference. Ambiguous, stop, and zero-weight codons are counted but not scored.\n\nReferences:\n\nCodon adaptation index: Sharp and Li 1987."
     }
   ]
 };

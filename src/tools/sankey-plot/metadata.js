@@ -41,16 +41,7 @@ export const sankeyPlotMetadata = {
         { id: "sourceColumn", type: "text", label: "Source column", defaultValue: "source", suggestionsFrom: "table-columns" },
         { id: "targetColumn", type: "text", label: "Target column", defaultValue: "target", suggestionsFrom: "table-columns" },
         { id: "valueColumn", type: "text", label: "Value column", defaultValue: "reads_million", suggestionsFrom: "table-numeric-columns" },
-        {
-          id: "maxFlows",
-          type: "number",
-          label: "Maximum flows",
-          defaultValue: 80,
-          min: 1,
-          max: 150,
-          step: 1,
-          help: "Only the largest positive flows are drawn and returned when this cap is reached; increase it only when labels remain readable."
-        },
+        { id: "valueUnit", type: "text", label: "Value unit (optional)", defaultValue: "", help: "Use a unit such as reads, million reads, or samples when the column name does not make it clear." },
         { id: "title", type: "text", label: "Plot title", defaultValue: "Read assignment flow" }
       ]
     },
@@ -62,6 +53,25 @@ export const sankeyPlotMetadata = {
           { value: "svg", label: "Sankey plot" },
           { value: "flow-tsv", label: "Flow table" }
         ] }
+      ]
+    },
+    {
+      id: "advancedLimits",
+      type: "group",
+      label: "Limits",
+      collapsible: true,
+      collapsed: true,
+      options: [
+        {
+          id: "maxFlows",
+          type: "number",
+          label: "Maximum flows",
+          defaultValue: 80,
+          min: 1,
+          max: 150,
+          step: 1,
+          help: "Only the largest positive flows are drawn and returned when this cap is reached; increase it only when labels remain readable."
+        }
       ]
     }
   ],

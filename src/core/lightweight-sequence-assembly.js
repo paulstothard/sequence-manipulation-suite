@@ -46,6 +46,7 @@ function normalizeOptions(options = {}) {
     minOverlap,
     maxMismatchPercent,
     tryReverseComplement: options.tryReverseComplement !== false,
+    limitReads: options.limitReads === true,
     maxReads: Math.max(2, Math.min(1000, Number.parseInt(options.maxReads, 10) || 100)),
     lineWidth: Math.max(10, Math.min(200, Number.parseInt(options.lineWidth, 10) || 60))
   };
@@ -245,11 +246,15 @@ function parseReads(input, options, warnings) {
     warnings.push("No DNA/RNA reads or contigs were provided.");
     return { reads: [], charactersRemoved: 0 };
   }
-  if (parsed.length > options.maxReads) {
+  if (!options.limitReads && parsed.length > 1000) {
+    throw new Error(`Assembly input has ${parsed.length.toLocaleString()} reads/contigs, above the supported maximum of 1,000. Reduce the input or enable the read limit in Limits to assemble the first reads only.`);
+  }
+  if (options.limitReads && parsed.length > options.maxReads) {
     warnings.push(`Only the first ${options.maxReads} reads/contigs were assembled; this tool is for small lab-scale assemblies.`);
   }
   let charactersRemoved = 0;
-  const reads = parsed.slice(0, options.maxReads).map((record, index) => {
+  const selected = options.limitReads ? parsed.slice(0, options.maxReads) : parsed;
+  const reads = selected.map((record, index) => {
     const cleaned = cleanDnaRnaSequence(record.sequence, { preserveCase: false, keepGaps: false });
     charactersRemoved += cleaned.removedCount;
     if (cleaned.removedCount > 0) {

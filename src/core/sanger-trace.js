@@ -8,6 +8,7 @@ import { alignPairwiseAffine } from "./pairwise-alignment.js";
 import { cleanDnaRnaSequence, complementDnaRnaSequence } from "./sequence.js";
 import { getGeneticCode } from "./genetic-code.js";
 import { makeSixFrameTranslations } from "./translation.js";
+import { translationArrowSvgPath } from "./translation-arrow-geometry.js";
 
 export const SANGER_TRACE_CHANNELS = ["A", "C", "G", "T"];
 export const SANGER_SESSION_SEPARATOR = "---SMS3-SANGER-SESSION-PART---";
@@ -2762,7 +2763,9 @@ function makeSangerTranslationTracksSvg({
   frames.forEach((frame, frameIndex) => {
     const y = top + frameIndex * SANGER_TRANSLATION_ROW_HEIGHT;
     parts.push(`<text class="sanger-translation-label" x="${(left - 8).toFixed(1)}" y="${(y + 12).toFixed(1)}" text-anchor="end" font-size="9" font-weight="700" fill="${frame.strand === "+" ? "#1d4ed8" : "#6d28d9"}">${escapeXml(frame.label)}</text>`);
-    for (const codon of frame.codons) {
+    const visibleCodons = frame.codons.filter((codon) =>
+      Math.max(visibleStart, codon.directStart) <= Math.min(visibleEnd, codon.directEnd));
+    for (const codon of visibleCodons) {
       const segmentStart = Math.max(visibleStart, codon.directStart);
       const segmentEnd = Math.min(visibleEnd, codon.directEnd);
       if (segmentStart > segmentEnd) {
@@ -2776,7 +2779,12 @@ function makeSangerTranslationTracksSvg({
         ? codon.aminoAcid
         : "";
       parts.push(`<g class="sanger-translation-codon" data-frame="${escapeXml(frame.frame)}" data-codon="${escapeXml(codon.codon)}" data-amino-acid="${escapeXml(codon.aminoAcid)}" data-start="${codon.directStart}" data-end="${codon.directEnd}" opacity="${clipped ? "0.42" : "1"}">`);
-      parts.push(`<rect x="${x1.toFixed(2)}" y="${y.toFixed(1)}" width="${Math.max(0.5, x2 - x1).toFixed(2)}" height="16" rx="2" fill="${sangerTranslationFill(frame, codon.aminoAcid)}" stroke="#cbd5e1" stroke-width="0.6"/>`);
+      const chevronCap = codon === visibleCodons[0] || codon === visibleCodons.at(-1);
+      if (chevronCap) {
+        parts.push(`<path d="${translationArrowSvgPath(x1, y, Math.max(0.5, x2 - x1), 16, frame.strand)}" fill="${sangerTranslationFill(frame, codon.aminoAcid)}" stroke="#cbd5e1" stroke-width="0.6" stroke-linejoin="round"/>`);
+      } else {
+        parts.push(`<rect x="${x1.toFixed(2)}" y="${y.toFixed(1)}" width="${Math.max(0.5, x2 - x1).toFixed(2)}" height="16" rx="2" fill="${sangerTranslationFill(frame, codon.aminoAcid)}" stroke="#cbd5e1" stroke-width="0.6"/>`);
+      }
       if (label) {
         parts.push(`<text x="${xForIndex(codon.centerPosition).toFixed(2)}" y="${(y + 11.5).toFixed(1)}" text-anchor="middle" font-size="9" font-weight="700" fill="${sangerTranslationText(frame, codon.aminoAcid)}">${escapeXml(label)}</text>`);
       }

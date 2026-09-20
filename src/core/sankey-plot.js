@@ -22,6 +22,90 @@ function niceNumber(value) {
   return Number(value.toFixed(3)).toString();
 }
 
+const detailedNumber = new Intl.NumberFormat("en-US", { maximumFractionDigits: 6 });
+
+function compactNumber(value) {
+  if (Math.abs(value) >= 1_000_000_000_000) return `${niceNumber(value / 1_000_000_000_000)}T`;
+  if (Math.abs(value) >= 1_000_000_000) return `${niceNumber(value / 1_000_000_000)}B`;
+  if (Math.abs(value) >= 1_000_000) return `${niceNumber(value / 1_000_000)}M`;
+  if (Math.abs(value) >= 1_000) return `${niceNumber(value / 1_000)}k`;
+  return niceNumber(value);
+}
+
+function valuePresentation(options = {}) {
+  const column = String(options.valueColumnLabel ?? options.valueColumn ?? "value").trim() || "value";
+  const normalized = column.toLowerCase().replace(/[\s-]+/g, "_");
+  const declaredUnit = String(options.valueUnit ?? "").trim();
+  const normalizedUnit = declaredUnit.toLowerCase().replace(/[\s-]+/g, "_");
+  if (/^(?:read|reads)_?(?:million|millions)$|^millions?_?(?:of_)?reads?$/.test(declaredUnit ? normalizedUnit : normalized)) {
+    return {
+      subtitle: "Values are millions of reads (M)",
+      label: (value) => `${niceNumber(value)}M`,
+      brief: (value) => `${niceNumber(value)}M`,
+      detail: (value) => `${detailedNumber.format(Math.round(value * 1_000_000))} reads (${niceNumber(value)}M)`
+    };
+  }
+  if (/^(?:read|reads)_?count$|^count_?(?:read|reads)$|^reads?$/.test(declaredUnit ? normalizedUnit : normalized)) {
+    return {
+      subtitle: "Values are read counts",
+      label: (value) => compactNumber(value),
+      brief: compactNumber,
+      detail: (value) => `${detailedNumber.format(value)} reads`
+    };
+  }
+  if (declaredUnit) {
+    return {
+      subtitle: `Values are ${declaredUnit}`,
+      label: compactNumber,
+      brief: compactNumber,
+      detail: (value) => `${detailedNumber.format(value)} ${declaredUnit}`
+    };
+  }
+  const columnLabel = column.replaceAll("_", " ");
+  return {
+    subtitle: `Values use the ${columnLabel} column`,
+    label: compactNumber,
+    brief: compactNumber,
+    detail: (value) => `${detailedNumber.format(value)} (${columnLabel} column)`
+  };
+}
+
+function flowPercent(value, total) {
+  if (!(total > 0)) return "0%";
+  return `${Number((100 * value / total).toFixed(1))}%`;
+}
+
+function branchSummary(rows, node, direction, presentation) {
+  const matching = rows.filter((row) => direction === "incoming" ? row.target === node.id : row.source === node.id);
+  if (matching.length === 0) return "";
+  const total = direction === "incoming" ? node.incoming : node.outgoing;
+  const branches = matching.slice(0, 3).map((row) => {
+    const other = direction === "incoming" ? row.source : row.target;
+    return `${other}: ${presentation.brief(row.value)} (${flowPercent(row.value, total)})`;
+  });
+  if (matching.length > 3) branches.push(`and ${matching.length - 3} more`);
+  return `${direction === "incoming" ? "Received from" : "Sent to"} ${branches.join(", ")}`;
+}
+
+function nodeInspectionText(node, rows, presentation) {
+  const unbalanced = node.incoming > 0 && node.outgoing > 0 &&
+    Math.abs(node.incoming - node.outgoing) > 0.000001;
+  return [
+    `${node.label}: ${presentation.detail(node.total)}`,
+    unbalanced ? `shown incoming ${presentation.brief(node.incoming)}, outgoing ${presentation.brief(node.outgoing)}; node size uses the larger flow` : "",
+    branchSummary(rows, node, "incoming", presentation),
+    branchSummary(rows, node, "outgoing", presentation)
+  ].filter(Boolean).join("; ");
+}
+
+function linkInspectionText(row, source, target, presentation) {
+  return [
+    `${row.source} → ${row.target}: ${presentation.detail(row.value)}`,
+    `${flowPercent(row.value, source.outgoing)} of shown outgoing flow from ${row.source}`,
+    `${flowPercent(row.value, target.incoming)} of shown incoming flow to ${row.target}`
+  ].join("; ");
+}
+
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -180,8 +264,8 @@ function estimateTextWidth(text) {
   return Math.min(260, Math.max(42, String(text).length * 6.7));
 }
 
-function labelCandidate(node, maxLevel, nodeWidth, margin, height) {
-  const labelText = `${node.label} ${niceNumber(node.total)}`;
+function labelCandidate(node, maxLevel, nodeWidth, margin, height, presentation) {
+  const labelText = `${node.label} ${presentation.label(node.total)}`;
   const textWidth = estimateTextWidth(labelText);
   let labelX;
   let labelY;
@@ -227,7 +311,8 @@ export function makeSankeyPlot(input, options = {}) {
     table,
     rows,
     warnings,
-    svg: renderSankeySvg(rows, warnings, options)
+    valueColumnLabel: columns.valueColumn.label,
+    svg: renderSankeySvg(rows, warnings, { ...options, valueColumnLabel: columns.valueColumn.label })
   };
 }
 
@@ -240,6 +325,7 @@ export function renderSankeySvg(rows, warnings = [], options = {}) {
   const plotTop = margin.top;
   const plotHeight = height - margin.top - margin.bottom;
   const title = String(options.title ?? "Sankey plot");
+  const presentation = valuePresentation(options);
   const nodes = nodeTotals(rows);
   const levels = assignLevels(rows, nodes);
   const maxLevel = Math.max(0, ...levels.values());
@@ -265,11 +351,11 @@ export function renderSankeySvg(rows, warnings = [], options = {}) {
   const stateById = makeOffsets(placedNodes);
 
   const nodeRects = placedNodes.map((node) =>
-    `<rect class="sankey-node" data-node="${escapeXml(node.id)}" data-value="${niceNumber(node.total)}" x="${node.x.toFixed(2)}" y="${node.y.toFixed(2)}" width="${nodeWidth}" height="${node.height.toFixed(2)}" rx="3" fill="${node.color}" fill-opacity="0.9"><title>${escapeXml(`${node.label}: ${niceNumber(node.total)}`)}</title></rect>`
+    `<rect class="sankey-node" data-node="${escapeXml(node.id)}" data-value="${niceNumber(node.total)}" x="${node.x.toFixed(2)}" y="${node.y.toFixed(2)}" width="${nodeWidth}" height="${node.height.toFixed(2)}" rx="3" fill="${node.color}" fill-opacity="0.9"><title>${escapeXml(nodeInspectionText(node, rows, presentation))}</title></rect>`
   ).join("");
 
   const labelCandidates = placedNodes
-    .map((node) => labelCandidate(node, maxLevel, nodeWidth, margin, height))
+    .map((node) => labelCandidate(node, maxLevel, nodeWidth, margin, height, presentation))
     .sort((left, right) => left.y - right.y);
 
   for (let pass = 0; pass < 8; pass += 1) {
@@ -324,13 +410,13 @@ export function renderSankeySvg(rows, warnings = [], options = {}) {
     sourceState.outOffset += thickness;
     targetState.inOffset += thickness;
     const color = sourceState.node.color;
-    linkLayouts.push(`<path class="sankey-link" data-source="${escapeXml(row.source)}" data-target="${escapeXml(row.target)}" data-value="${niceNumber(row.value)}" d="${flowRibbonPath({ x: sourceState.node.x, y0: sourceY0, y1: sourceY1, nodeWidth }, { x: targetState.node.x, y0: targetY0, y1: targetY1 })}" fill="${color}" fill-opacity="0.28"><title>${escapeXml(`${row.source} to ${row.target}: ${niceNumber(row.value)}`)}</title></path>`);
+    linkLayouts.push(`<path class="sankey-link" data-source="${escapeXml(row.source)}" data-target="${escapeXml(row.target)}" data-value="${niceNumber(row.value)}" d="${flowRibbonPath({ x: sourceState.node.x, y0: sourceY0, y1: sourceY1, nodeWidth }, { x: targetState.node.x, y0: targetY0, y1: targetY1 })}" fill="${color}" fill-opacity="0.28"><title>${escapeXml(linkInspectionText(row, sourceState.node, targetState.node, presentation))}</title></path>`);
   }
   const flowElements = linkLayouts.join("");
 
   const subtitle = rows.length === 0
     ? warnings[0] ?? "No positive flows to draw."
-    : `Link width and node height use the same value scale; labels show node totals.`;
+    : `${presentation.subtitle}; node labels show the larger of incoming or outgoing flow.`;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="sms3-sankey-svg" data-plot-backend="d3" data-plot-renderer="sms3-d3">
   <style>
     text{font-family:Inter,Arial,sans-serif;fill:#0f172a}.title{font-size:22px;font-weight:700}.subtitle{font-size:12.5px;fill:#475569}.node-label{font-size:11.5px;font-weight:500;paint-order:stroke;stroke:#f8fafc;stroke-width:1.1px;stroke-opacity:.65;stroke-linejoin:round}.sankey-link{mix-blend-mode:multiply;stroke:none}.sankey-node{shape-rendering:geometricPrecision}

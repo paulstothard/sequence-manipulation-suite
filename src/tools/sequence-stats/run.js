@@ -1,4 +1,5 @@
 import { parseSequenceInput } from "../../core/fasta.js";
+import { openCleanDnaRnaFastaSource } from "../../core/fasta-dna-record-source.js";
 import { cleanDnaRnaSequence, getDnaRnaStats } from "../../core/sequence.js";
 import { makeTableStream, makeTextStream, makeToolResult } from "../../core/workflow.js";
 import {
@@ -10,6 +11,7 @@ import {
 const COUNT_COLUMNS = sequenceStatsCountColumns;
 const TSV_COLUMNS = sequenceStatsTsvColumns;
 const TABLE_COLUMNS = sequenceStatsTableColumns;
+const MAX_MATERIALIZED_OUTPUT_CHARACTERS = 25 * 1024 * 1024;
 
 function formatPercent(value) {
   return Number.isFinite(value) ? value.toFixed(2) : "n/a";
@@ -103,6 +105,64 @@ function makeTsv(records) {
   return rows.join("\n");
 }
 
+function finalizeStats(stats) {
+  return {
+    ...stats,
+    gcPercent: stats.unambiguousBases > 0 ? (stats.gcCount / stats.unambiguousBases) * 100 : null,
+    gapCount: 0
+  };
+}
+
+function makeSequenceStatsResult(analyzedRecords, {
+  outputFormat = "report",
+  warnings = [],
+  recordsProcessed = analyzedRecords.length,
+  charactersRemoved = 0
+} = {}) {
+  const total = makeEmptyTotal();
+  for (const record of analyzedRecords) addStats(total, record.stats);
+  const displayedRecords = [...analyzedRecords];
+  if (displayedRecords.length > 1) {
+    displayedRecords.push({ title: "Total", stats: finalizeStats(total) });
+  }
+  const normalizedOutputFormat = outputFormat === "tsv" ? "tsv" : "report";
+  // Workflows may select either stream independently of the visible output
+  // format. Both remain bounded by the record cap and fixed table schema.
+  const reportOutput = makeReport(displayedRecords);
+  const tableRows = makeTableRows(displayedRecords);
+  const output = normalizedOutputFormat === "tsv" ? makeTsv(displayedRecords) : reportOutput;
+  if (output.length > MAX_MATERIALIZED_OUTPUT_CHARACTERS) {
+    throw new Error(`Sequence statistics output contains ${output.length.toLocaleString()} characters, above the current materialized-output limit of ${MAX_MATERIALIZED_OUTPUT_CHARACTERS.toLocaleString()}.`);
+  }
+
+  return makeToolResult({
+    output,
+    download: {
+      filename: `sequence-stats-dna-rna.${normalizedOutputFormat === "tsv" ? "tsv" : "txt"}`,
+      mimeType:
+        normalizedOutputFormat === "tsv"
+          ? "text/tab-separated-values;charset=utf-8"
+          : "text/plain;charset=utf-8"
+    },
+    warnings,
+    recordsProcessed,
+    basesProcessed: total.length,
+    charactersRemoved,
+    streams: {
+      report: makeTextStream(reportOutput, "text/plain"),
+      table: makeTableStream(TABLE_COLUMNS, tableRows, "sequence-stats-dna-rna"),
+      statsRecords: {
+        kind: "stats-records",
+        schema: "sequence-stats-dna-rna",
+        records: displayedRecords.map((record) => ({
+          title: record.title,
+          stats: record.stats
+        }))
+      }
+    }
+  });
+}
+
 export function runSequenceStatsDnaRna(input, options = {}) {
   const records = parseSequenceInput(input, "sequence");
   const warnings = [];
@@ -118,7 +178,6 @@ export function runSequenceStatsDnaRna(input, options = {}) {
   }
 
   const analyzedRecords = [];
-  const total = makeEmptyTotal();
   let charactersRemoved = 0;
 
   for (const record of records) {
@@ -141,49 +200,13 @@ export function runSequenceStatsDnaRna(input, options = {}) {
     const stats = getDnaRnaStats(cleaned.sequence);
     if (stats.gcPercent === null) warnings.push(`${record.title}: GC percent is undefined because there are no unambiguous A/C/G/T/U bases.`);
     analyzedRecords.push({ title: record.title, stats });
-    addStats(total, stats);
   }
 
-  if (analyzedRecords.length > 1) {
-    analyzedRecords.push({
-      title: "Total",
-      stats: {
-        ...total,
-        gcPercent: total.unambiguousBases > 0 ? (total.gcCount / total.unambiguousBases) * 100 : null
-      }
-    });
-  }
-
-  const outputFormat = options.outputFormat === "tsv" ? "tsv" : "report";
-  const reportOutput = makeReport(analyzedRecords);
-  const tableRows = makeTableRows(analyzedRecords);
-  const output = outputFormat === "tsv" ? makeTsv(analyzedRecords) : reportOutput;
-
-  return makeToolResult({
-    output,
-    download: {
-      filename: `sequence-stats-dna-rna.${outputFormat === "tsv" ? "tsv" : "txt"}`,
-      mimeType:
-        outputFormat === "tsv"
-          ? "text/tab-separated-values;charset=utf-8"
-          : "text/plain;charset=utf-8"
-    },
+  return makeSequenceStatsResult(analyzedRecords, {
+    outputFormat: options.outputFormat,
     warnings,
     recordsProcessed: records.length,
-    basesProcessed: total.length,
-    charactersRemoved,
-    streams: {
-      report: makeTextStream(reportOutput, "text/plain"),
-      table: makeTableStream(TABLE_COLUMNS, tableRows, "sequence-stats-dna-rna"),
-      statsRecords: {
-        kind: "stats-records",
-        schema: "sequence-stats-dna-rna",
-        records: analyzedRecords.map((record) => ({
-          title: record.title,
-          stats: record.stats
-        }))
-      }
-    }
+    charactersRemoved
   });
 }
 
@@ -191,7 +214,57 @@ export async function runSequenceStatsDnaRnaWorker(input, options = {}, context 
   context.reportProgress?.({ phase: "summarizing-sequences", progress: 0.1 });
   context.throwIfCancelled?.();
   await context.yieldIfNeeded?.();
-  const result = runSequenceStatsDnaRna(input, options);
+  const opened = await openCleanDnaRnaFastaSource(input, options, context);
+  const analyzedRecords = [];
+  const warnings = [];
+  let current = null;
+  let charactersRemoved = 0;
+
+  for await (const event of opened.events()) {
+    if (event.type === "record-start") {
+      current = { title: event.title, stats: makeEmptyTotal(), removedCount: 0 };
+    } else if (event.type === "sequence-chunk" && current) {
+      addStats(current.stats, getDnaRnaStats(event.text));
+    } else if (event.type === "record-end" && current) {
+      current.removedCount = event.removedCount;
+      charactersRemoved += event.removedCount;
+      const stats = finalizeStats(current.stats);
+      if (event.removedCount > 0) {
+        warnings.push(`${current.title}: removed ${event.removedCount} invalid or gap character(s).`);
+      }
+      if (stats.length === 0) {
+        warnings.push(`${current.title}: no DNA/RNA sequence characters were found.`);
+      }
+      if (stats.gcPercent === null) {
+        warnings.push(`${current.title}: GC percent is undefined because there are no unambiguous A/C/G/T/U bases.`);
+      }
+      analyzedRecords.push({ title: current.title, stats });
+      current = null;
+    }
+  }
+
+  warnings.push(...opened.warnings);
+  if (analyzedRecords.length === 0) {
+    const emptyWarning = opened.source.stats.inputProvided
+      ? "No DNA/RNA records were found."
+      : "No sequence input was provided.";
+    const result = makeToolResult({
+      output: "",
+      warnings: [emptyWarning, ...warnings],
+      recordsProcessed: 0,
+      basesProcessed: 0,
+      charactersRemoved
+    });
+    context.reportProgress?.({ phase: "finished", progress: 1 });
+    return result;
+  }
+
+  const result = makeSequenceStatsResult(analyzedRecords, {
+    outputFormat: options.outputFormat,
+    warnings,
+    recordsProcessed: analyzedRecords.length,
+    charactersRemoved
+  });
   context.reportProgress?.({ phase: "finished", progress: 1 });
   return result;
 }

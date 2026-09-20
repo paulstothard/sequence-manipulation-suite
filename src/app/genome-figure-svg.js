@@ -10,6 +10,7 @@ import {
   projectGenomeFigureRecords
 } from "../core/genome-figure-data.js";
 import { createStackedIntervalLayout } from "../core/viewer-track-layout.js";
+import { featureArrowHeadLength, featureArrowTerminalVisible, linearFeaturePolygon } from "../core/directional-feature-geometry.js";
 import { createSearchableViewerChoiceCombobox } from "./searchable-viewer-choice-ui.js";
 import { serializeSvgElement } from "./svg-export.js";
 
@@ -44,13 +45,17 @@ const CIRCULAR_LABEL_MARGIN = 16;
 const INSIDE_FEATURE_LABEL_FONT_SIZE = 9.5;
 const INSIDE_FEATURE_LABEL_HEIGHT = 11;
 const INSIDE_FEATURE_LABEL_PADDING = 18;
+const INSIDE_FEATURE_LABEL_LETTER_SPACING = 0.55;
+const CIRCULAR_INSIDE_LABEL_OPTICAL_OFFSET = 3.2;
+const CIRCULAR_INSIDE_LABEL_END_INSET = 0.006;
 const CIRCULAR_INNER_PLOT_RADIUS = 168;
 const CIRCULAR_PLOT_GAP = 16;
 const CIRCULAR_RULER_LABEL_CLASS = "genome-figure-axis-label genome-figure-axis-label-curved";
 const DEFAULT_TICK_DENSITY = 6;
 const DEFAULT_PLOT_SCALE_MODE = "fit";
-const DEFAULT_FEATURE_SLOT_GROUPING = "types";
-const DEFAULT_FEATURE_OPACITY = 76;
+const DEFAULT_FEATURE_SLOT_GROUPING = "rna";
+const DEFAULT_FEATURE_OPACITY = 100;
+const MIN_FEATURE_DISPLAY_WIDTH = 3;
 const FEATURE_FAMILY_SLOT_ORDER = ["gene", "CDS", "RNA", "repeat", "mobile", "misc"];
 const COMMON_PLOT_WINDOW_SIZES = [
   24, 50, 100, 200, 500, 1000, 2000, 5000, 10000
@@ -413,20 +418,23 @@ export function insideFeatureLabelContrastStyle(featureFill) {
 
 function appendFigureStyles(svg, palette) {
   const halo = palette.labelHalo || palette.paper;
+  svg.style.setProperty("--genome-figure-ink", palette.ink);
+  svg.style.setProperty("--genome-figure-muted", palette.muted);
+  svg.style.setProperty("--genome-figure-halo", halo);
   const style = svgEl("style");
   style.textContent = `
     .genome-figure-title {
-      fill: ${palette.ink};
+      fill: var(--genome-figure-ink);
       font: 700 28px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       letter-spacing: 0;
     }
     .genome-figure-subtitle {
-      fill: ${palette.muted};
+      fill: var(--genome-figure-muted);
       font: 14px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
     .genome-figure-subtitle,
     .genome-figure-axis-label,
-    .genome-figure-legend-text { fill: ${palette.muted}; }
+    .genome-figure-legend-text { fill: var(--genome-figure-muted); }
     .genome-figure-axis-label,
     .genome-figure-legend-text {
       font: 12px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -436,7 +444,7 @@ function appendFigureStyles(svg, palette) {
     }
     .genome-figure-legend-title,
     .genome-figure-plot-note,
-    .genome-figure-label-text { fill: ${palette.ink}; }
+    .genome-figure-label-text { fill: var(--genome-figure-ink); }
     .genome-figure-plot-note {
       font: 13px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
@@ -456,18 +464,19 @@ function appendFigureStyles(svg, palette) {
       pointer-events: none;
     }
     .genome-figure-inside-label {
-      fill: ${palette.ink};
+      fill: var(--genome-figure-ink);
       font: 500 ${INSIDE_FEATURE_LABEL_FONT_SIZE}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: ${INSIDE_FEATURE_LABEL_LETTER_SPACING}px;
       paint-order: stroke;
       pointer-events: none;
-      stroke: ${halo};
+      stroke: var(--genome-figure-halo);
       stroke-linejoin: round;
       stroke-opacity: 0.68;
       stroke-width: 1px;
     }
     .genome-figure-label-text-bare {
       paint-order: stroke;
-      stroke: ${halo};
+      stroke: var(--genome-figure-halo);
       stroke-linejoin: round;
       stroke-opacity: 0.94;
       stroke-width: 2.4px;
@@ -589,23 +598,6 @@ function colorForFeatureDisplay(feature, palette, paletteName, colorMode = "type
   return colorForFeature(featureColorKey(feature?.type || "misc", colorMode), palette, paletteName);
 }
 
-function featureLegendEntries(features, colorMode = "type") {
-  const entriesByKey = new Map();
-  for (const feature of features ?? []) {
-    const key = featureColorKey(feature.type || "misc", colorMode);
-    if (!entriesByKey.has(key)) {
-      entriesByKey.set(key, {
-        label: colorMode === "family" ? featureFamilyLabel(key) : key,
-        colorType: key,
-        types: []
-      });
-    }
-    const entry = entriesByKey.get(key);
-    if (feature.type && !entry.types.includes(feature.type)) entry.types.push(feature.type);
-  }
-  return [...entriesByKey.values()];
-}
-
 function angleFor(position, length) {
   return -Math.PI / 2 + ((position - 1) / Math.max(1, length)) * TAU;
 }
@@ -671,6 +663,29 @@ function annularPath(cx, cy, outerRadius, innerRadius, startAngle, endAngle) {
     `A ${outerRadius} ${outerRadius} 0 ${largeArc} 1 ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`,
     `L ${p3.x.toFixed(2)} ${p3.y.toFixed(2)}`,
     `A ${innerRadius} ${innerRadius} 0 ${largeArc} 0 ${p4.x.toFixed(2)} ${p4.y.toFixed(2)}`,
+    "Z"
+  ].join(" ");
+}
+
+function directionalAnnularPath(cx, cy, outerRadius, innerRadius, startAngle, endAngle, strand, headLength) {
+  if (!headLength) return annularPath(cx, cy, outerRadius, innerRadius, startAngle, endAngle);
+  const middleRadius = (outerRadius + innerRadius) / 2;
+  const headAngle = headLength / Math.max(1, middleRadius);
+  const shoulderStart = strand === "-" ? startAngle + headAngle : startAngle;
+  const shoulderEnd = strand === "+" ? endAngle - headAngle : endAngle;
+  const largeArc = shoulderEnd - shoulderStart > Math.PI ? 1 : 0;
+  const outerStart = point(cx, cy, outerRadius, shoulderStart);
+  const outerEnd = point(cx, cy, outerRadius, shoulderEnd);
+  const innerEnd = point(cx, cy, innerRadius, shoulderEnd);
+  const innerStart = point(cx, cy, innerRadius, shoulderStart);
+  const tip = point(cx, cy, middleRadius, strand === "+" ? endAngle : startAngle);
+  return [
+    `M ${outerStart.x.toFixed(2)} ${outerStart.y.toFixed(2)}`,
+    `A ${outerRadius} ${outerRadius} 0 ${largeArc} 1 ${outerEnd.x.toFixed(2)} ${outerEnd.y.toFixed(2)}`,
+    ...(strand === "+" ? [`L ${tip.x.toFixed(2)} ${tip.y.toFixed(2)}`] : []),
+    `L ${innerEnd.x.toFixed(2)} ${innerEnd.y.toFixed(2)}`,
+    `A ${innerRadius} ${innerRadius} 0 ${largeArc} 0 ${innerStart.x.toFixed(2)} ${innerStart.y.toFixed(2)}`,
+    ...(strand === "-" ? [`L ${tip.x.toFixed(2)} ${tip.y.toFixed(2)}`] : []),
     "Z"
   ].join(" ");
 }
@@ -1052,9 +1067,13 @@ function makeLinearRows(record, width, rowHeight = 420, firstRowY = 215) {
 
 function clipFeatureToRow(feature, row) {
   return (feature.parts?.length ? feature.parts : [{ start: feature.start, end: feature.end }])
-    .map((part) => ({
+    .map((part, partIndex) => ({
       start: Math.max(part.start, row.start),
-      end: Math.min(part.end, row.end)
+      end: Math.min(part.end, row.end),
+      sourceStart: part.start,
+      sourceEnd: part.end,
+      partIndex,
+      partCount: feature.parts?.length || 1
     }))
     .filter((part) => part.end >= part.start);
 }
@@ -1063,12 +1082,27 @@ function rowX(row, position) {
   return row.x + ((position - row.start) / Math.max(1, row.end - row.start + 1)) * row.width;
 }
 
-function makeStackedFeatureLayout(record, features, maxSlots = 12) {
-  return createStackedIntervalLayout(features ?? [], {
-    length: record.length,
-    maxSlots,
-    minGapUnits: Math.max(12, Math.round(record.length / 700))
-  });
+export function makeStackedFeatureLayout(record, features, maxSlots = 12, grouping = DEFAULT_FEATURE_SLOT_GROUPING) {
+  const groups = featureSlotGroups(features, grouping);
+  const layoutOptions = { length: record.length, minGapUnits: 12 };
+  const slotBudget = Math.max(maxSlots, groups.length);
+  const placements = [];
+  const hidden = [];
+  const packedGroups = [];
+  let slotCount = 0;
+  for (const [index, group] of groups.entries()) {
+    const groupFeatures = features.filter((feature) => slotGroupForFeature(feature, grouping).key === group.key);
+    const remainingGroups = groups.length - index - 1;
+    const groupLayout = createStackedIntervalLayout(groupFeatures, {
+      ...layoutOptions,
+      maxSlots: Math.max(1, slotBudget - slotCount - remainingGroups)
+    });
+    packedGroups.push({ ...group, startSlot: slotCount, slotCount: groupLayout.slotCount });
+    placements.push(...groupLayout.placements.map((placement) => ({ ...placement, slot: placement.slot + slotCount })));
+    hidden.push(...groupLayout.hidden.map((placement) => ({ ...placement, slot: slotCount })));
+    slotCount += groupLayout.slotCount;
+  }
+  return { placements, hidden, groups: packedGroups, slotCount: Math.max(1, slotCount), maxSlots: slotBudget };
 }
 
 function stackedLayoutCacheKey(record, maxSlots, state) {
@@ -1076,6 +1110,7 @@ function stackedLayoutCacheKey(record, maxSlots, state) {
     record.id || record.title || "record",
     record.length,
     maxSlots,
+    state.featureSlotGrouping,
     state.featureLayoutVersion || 0
   ].join(":");
 }
@@ -1084,14 +1119,67 @@ function getStackedFeatureLayout(record, features, maxSlots, state) {
   const key = stackedLayoutCacheKey(record, maxSlots, state);
   const cached = state.stackedLayoutCache?.get(key);
   if (cached) return cached;
-  const layout = makeStackedFeatureLayout(record, features, maxSlots);
+  const layout = makeStackedFeatureLayout(record, features, maxSlots, state.featureSlotGrouping);
   state.stackedLayoutCache?.set(key, layout);
   return layout;
 }
 
 function slotForFeature(layout, feature) {
-  const placement = layout?.placements?.find((item) => item.item === feature || item.item?.id === feature.id);
+  const matches = (item) => item.item === feature || item.item?.id === feature.id;
+  const placement = layout?.placements?.find(matches) ?? layout?.hidden?.find(matches);
   return placement?.slot ?? 0;
+}
+
+function packedGroupBandBounds(group, base, slotWidth, slotStep) {
+  const firstCenter = base + group.startSlot * slotStep;
+  const lastCenter = firstCenter + (group.slotCount - 1) * slotStep;
+  return {
+    start: firstCenter - slotWidth / 2 - 1,
+    end: lastCenter + slotWidth / 2 + 1
+  };
+}
+
+function drawCircularPackedGroupBands(svg, record, layout, geometry, state) {
+  const arcs = circularContigArcs(record);
+  for (const group of layout?.groups ?? []) {
+    const { start, end } = packedGroupBandBounds(group, geometry.featureBaseRadius, geometry.slotWidth, geometry.slotStep);
+    const radius = (start + end) / 2;
+    const attrs = {
+      fill: "none",
+      stroke: colorForFeature(featureColorKey(group.colorType, state.featureColorMode), state.palette, state.paletteName),
+      "stroke-width": end - start,
+      opacity: 0.09,
+      "pointer-events": "none",
+      "aria-hidden": "true",
+      "data-packed-group-key": group.key
+    };
+    if (!arcs.length) {
+      svg.append(svgEl("circle", { ...attrs, cx: geometry.cx, cy: geometry.cy, r: radius }));
+    } else {
+      for (const arc of arcs) {
+        svg.append(pathEl(polarPath(geometry.cx, geometry.cy, radius, arc.startAngle, arc.endAngle), attrs));
+      }
+    }
+  }
+}
+
+function drawLinearPackedGroupBands(svg, row, layout, axisY, slotWidth, slotStep, state) {
+  for (const group of layout?.groups ?? []) {
+    const { start, end } = packedGroupBandBounds(group, axisY + LINEAR_FEATURE_TOP_OFFSET, slotWidth, slotStep);
+    svg.append(svgEl("rect", {
+      x: row.x,
+      y: start,
+      width: row.width,
+      height: end - start,
+      rx: 3,
+      fill: colorForFeature(featureColorKey(group.colorType, state.featureColorMode), state.palette, state.paletteName),
+      opacity: 0.085,
+      "pointer-events": "none",
+      "aria-hidden": "true",
+      "data-packed-group-key": group.key,
+      "data-wrapped-row": row.index + 1
+    }));
+  }
 }
 
 function defaultFeatureTypeVisibility(type) {
@@ -1574,17 +1662,20 @@ export function getCircularInsideFeatureLabelPlacement({ cx, cy, radius, slotWid
   const centerRadius = Number(radius);
   if (!Number.isFinite(adjustedStart) || !Number.isFinite(adjustedEnd) || !Number.isFinite(centerRadius) || centerRadius <= 0) return null;
   while (adjustedEnd < adjustedStart) adjustedEnd += TAU;
-  const arcWidth = Math.abs(adjustedEnd - adjustedStart) * centerRadius;
-  const requiredWidth = estimateTextWidth(label, INSIDE_FEATURE_LABEL_FONT_SIZE) + INSIDE_FEATURE_LABEL_PADDING;
-  if (arcWidth <= requiredWidth) return null;
   const midAngle = (adjustedStart + adjustedEnd) / 2;
+  const reverse = Math.sin(midAngle) > 0;
+  const pathRadius = centerRadius + (reverse ? CIRCULAR_INSIDE_LABEL_OPTICAL_OFFSET : -CIRCULAR_INSIDE_LABEL_OPTICAL_OFFSET);
+  const arcWidth = Math.abs(adjustedEnd - adjustedStart) * centerRadius;
+  const textWidth = measuredTextWidth(label, `500 ${INSIDE_FEATURE_LABEL_FONT_SIZE}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`)
+    + Math.max(0, label.length - 1) * INSIDE_FEATURE_LABEL_LETTER_SPACING;
+  const requiredWidth = textWidth + INSIDE_FEATURE_LABEL_PADDING;
+  const availableHalfPathSpan = (adjustedEnd - adjustedStart) / 2 - CIRCULAR_INSIDE_LABEL_END_INSET;
+  if (availableHalfPathSpan <= 0 || availableHalfPathSpan * 2 * pathRadius < requiredWidth) return null;
   const labelPoint = point(cx, cy, centerRadius, midAngle);
-  const availableHalfPathSpan = Math.max(0.001, (adjustedEnd - adjustedStart) / 2 - 0.006);
   const halfPathSpan = Math.min(
-    Math.max(0.035, (requiredWidth / Math.max(1, centerRadius)) / 2),
+    Math.max(0.035, requiredWidth / (2 * pathRadius)),
     availableHalfPathSpan
   );
-  const reverse = Math.sin(midAngle) > 0;
   const pathStartAngle = reverse ? midAngle + halfPathSpan : midAngle - halfPathSpan;
   const pathEndAngle = reverse ? midAngle - halfPathSpan : midAngle + halfPathSpan;
   return {
@@ -1600,11 +1691,23 @@ export function getCircularInsideFeatureLabelPlacement({ cx, cy, radius, slotWid
     pathSweep: reverse ? 0 : 1,
     pathSpan: halfPathSpan * 2,
     arcWidth,
+    textWidth,
     requiredWidth,
     radius: centerRadius,
+    pathRadius,
     innerRadius: centerRadius - bandHeight / 2,
     outerRadius: centerRadius + bandHeight / 2
   };
+}
+
+function circularInsideLabelsOverlap(left, right) {
+  if (Math.abs(left.radius - right.radius) > 0.5) return false;
+  const angularDistance = Math.abs(Math.atan2(
+    Math.sin(left.angle - right.angle),
+    Math.cos(left.angle - right.angle)
+  ));
+  const centerDistance = angularDistance * left.radius;
+  return centerDistance < (left.textWidth + right.textWidth) / 2 + 6;
 }
 
 export function makeInsideFeatureLabelAttrs(x, y, options = {}) {
@@ -1634,14 +1737,15 @@ function drawCircularInsideFeatureLabel(svg, text, placement, pathId, options = 
   svg.append(pathEl(shortArcPath(
     placement.cx,
     placement.cy,
-    placement.radius,
+    placement.pathRadius,
     placement.pathStartAngle,
     placement.pathEndAngle,
     placement.pathSweep
   ), {
     id: labelPathId,
     "data-inside-feature-label-path": "true",
-    "data-radius": placement.radius.toFixed(2),
+    "data-radius": placement.pathRadius.toFixed(2),
+    "data-feature-center-radius": placement.radius.toFixed(2),
     "data-reversed": placement.reverse ? "true" : "false",
     fill: "none",
     stroke: "none",
@@ -1653,6 +1757,7 @@ function drawCircularInsideFeatureLabel(svg, text, placement, pathId, options = 
   textNode.removeAttribute("x");
   textNode.removeAttribute("y");
   textNode.removeAttribute("alignment-baseline");
+  textNode.setAttribute("dominant-baseline", "alphabetic");
   const textPath = svgEl("textPath", {
     href: `#${labelPathId}`,
     startOffset: "50%",
@@ -1717,74 +1822,69 @@ export function describeGenomeFigurePlotBin(plot, value, bounds, state = {}) {
 
 function drawLinearFeatureGlyph(svg, feature, left, y, widthPx, height, color, state, part = feature) {
   const opacity = clamp(Number(state.featureOpacity ?? DEFAULT_FEATURE_OPACITY) / 100, 0.2, 1);
+  const displayWidth = Math.max(MIN_FEATURE_DISPLAY_WIDTH, widthPx);
+  const displayLeft = left - (displayWidth - widthPx) / 2;
   const common = {
     class: "genome-figure-feature-glyph",
     fill: color,
-    stroke: "rgba(15, 23, 42, 0.28)",
+    stroke: "none",
     opacity,
     "data-feature-id": feature.id,
     "data-feature-contig": feature.contigId,
     "data-feature-part-start": part.start,
     "data-feature-part-end": part.end,
     "data-feature-part-span": part.end - part.start + 1,
-    "data-feature-width-px": widthPx
+    "data-feature-width-px": widthPx,
+    "data-feature-display-width-px": displayWidth
   };
-  if (state.featureGlyph !== "directional" || !["+", "-"].includes(feature.strand) || widthPx < 13) {
+  const terminalVisible = featureArrowTerminalVisible(part, feature.strand);
+  const headLength = state.featureGlyph === "directional"
+    ? featureArrowHeadLength(widthPx, height, feature.strand, terminalVisible)
+    : 0;
+  common["data-feature-arrow-head-px"] = headLength.toFixed(2);
+  if (!headLength) {
     svg.append(appendInspectionTitle(svgEl("rect", {
-      x: left,
+      x: displayLeft,
       y: y - height / 2,
-      width: Math.max(1.5, widthPx),
+      width: displayWidth,
       height,
       ...common
     }), describeGenomeFigureFeature(feature, part)));
     return;
   }
-  const right = left + widthPx;
-  const head = Math.min(15, Math.max(7, widthPx * 0.32));
-  const top = y - height / 2;
-  const bottom = y + height / 2;
-  const mid = y;
-  const points = feature.strand === "+"
-    ? [[left, top], [right - head, top], [right, mid], [right - head, bottom], [left, bottom]]
-    : [[right, top], [left + head, top], [left, mid], [left + head, bottom], [right, bottom]];
+  const points = linearFeaturePolygon(displayLeft, y - height / 2, displayWidth, height, feature.strand, headLength);
   svg.append(appendInspectionTitle(
     pathEl(`M ${points.map((point) => `${point[0].toFixed(1)} ${point[1].toFixed(1)}`).join(" L ")} Z`, common),
     describeGenomeFigureFeature(feature, part)
   ));
 }
 
-function drawCircularFeatureGlyph(svg, feature, cx, cy, radius, slotWidth, startAngle, endAngle, color, state, part = feature) {
+function drawCircularFeatureGlyph(svg, feature, cx, cy, radius, slotWidth, startAngle, endAngle, color, state, part = feature, partIndex = 0) {
   const opacity = clamp(Number(state.featureOpacity ?? DEFAULT_FEATURE_OPACITY) / 100, 0.2, 1);
   let adjustedEnd = endAngle;
   while (adjustedEnd < startAngle) adjustedEnd += TAU;
-  svg.append(appendInspectionTitle(pathEl(annularPath(cx, cy, radius + slotWidth / 2, radius - slotWidth / 2, startAngle, endAngle), {
+  const angleSpan = adjustedEnd - startAngle;
+  const displayAngleSpan = Math.max(angleSpan, MIN_FEATURE_DISPLAY_WIDTH / Math.max(1, radius));
+  const displayStart = startAngle - (displayAngleSpan - angleSpan) / 2;
+  const displayEnd = adjustedEnd + (displayAngleSpan - angleSpan) / 2;
+  const headLength = state.featureGlyph === "directional"
+    ? featureArrowHeadLength(angleSpan * radius, slotWidth, feature.strand,
+      featureArrowTerminalVisible({ ...part, partIndex, partCount: feature.parts?.length || 1 }, feature.strand))
+    : 0;
+  svg.append(appendInspectionTitle(pathEl(directionalAnnularPath(cx, cy, radius + slotWidth / 2, radius - slotWidth / 2, displayStart, displayEnd, feature.strand, headLength), {
     class: "genome-figure-feature-glyph",
     fill: color,
-    stroke: "rgba(15, 23, 42, 0.28)",
-    "stroke-width": 0.8,
+    stroke: "none",
     opacity,
     "data-feature-id": feature.id,
     "data-feature-contig": feature.contigId,
     "data-feature-part-start": part.start,
     "data-feature-part-end": part.end,
     "data-feature-part-span": part.end - part.start + 1,
-    "data-feature-angle-span": adjustedEnd - startAngle
+    "data-feature-angle-span": angleSpan,
+    "data-feature-display-arc-px": displayAngleSpan * radius,
+    "data-feature-arrow-head-px": headLength.toFixed(2)
   }), describeGenomeFigureFeature(feature, part)));
-  if (state.featureGlyph !== "directional" || !["+", "-"].includes(feature.strand)) return;
-  const arcWidth = Math.abs(adjustedEnd - startAngle) * radius;
-  if (arcWidth < 16) return;
-  const sign = feature.strand === "+" ? 1 : -1;
-  const tipAngle = feature.strand === "+" ? adjustedEnd : startAngle;
-  const baseAngle = tipAngle - sign * Math.min(0.05, Math.max(0.012, slotWidth / Math.max(1, radius) * 1.6));
-  const tip = point(cx, cy, radius, tipAngle);
-  const outerBase = point(cx, cy, radius + slotWidth / 2, baseAngle);
-  const innerBase = point(cx, cy, radius - slotWidth / 2, baseAngle);
-  svg.append(pathEl(`M ${outerBase.x.toFixed(1)} ${outerBase.y.toFixed(1)} L ${tip.x.toFixed(1)} ${tip.y.toFixed(1)} L ${innerBase.x.toFixed(1)} ${innerBase.y.toFixed(1)} Z`, {
-    fill: color,
-    stroke: "rgba(15, 23, 42, 0.25)",
-    "stroke-width": 0.6,
-    opacity: Math.min(0.95, opacity + 0.08)
-  }));
 }
 
 function circularPlotRadii(plots, plotBandHalfHeight) {
@@ -2044,6 +2144,7 @@ function renderLegend(svg, types, palette, paletteName, x, y, options = {}) {
   const columns = options.columns ?? 1;
   const columnWidth = options.columnWidth ?? 138;
   const rowHeight = options.rowHeight ?? 22;
+  const colorMode = options.colorMode ?? "type";
   const rows = Math.max(1, Math.ceil(types.length / columns));
   svg.append(svgEl("rect", {
     x: x - 14,
@@ -2054,14 +2155,29 @@ function renderLegend(svg, types, palette, paletteName, x, y, options = {}) {
     fill: palette.legendPanel || palette.paper,
     opacity: 1
   }));
-  svg.append(textEl("Legend", { x, y, class: "genome-figure-legend-title" }));
+  svg.append(textEl(options.title ?? "Legend", { x, y, class: "genome-figure-legend-title" }));
   for (const [index, entry] of types.entries()) {
     const legendEntry = normalizeSlotLegendEntry(entry);
     const cursorX = x + (index % columns) * columnWidth;
     const cursorY = y + 23 + Math.floor(index / columns) * rowHeight;
-    const color = colorForFeature(legendEntry.colorType, palette, paletteName);
-    svg.append(svgEl("rect", { x: cursorX, y: cursorY - 11, width: 25, height: 12, rx: 3, fill: color }));
-    svg.append(textEl(legendEntry.label, { x: cursorX + 34, y: cursorY, class: "genome-figure-legend-text" }));
+    const swatchTypes = legendEntry.types.length > 1 && colorMode === "type"
+      ? legendEntry.types
+      : [legendEntry.colorType];
+    swatchTypes.forEach((type, swatchIndex) => {
+      svg.append(svgEl("rect", {
+        x: cursorX + (25 * swatchIndex) / swatchTypes.length,
+        y: cursorY - 11,
+        width: 25 / swatchTypes.length,
+        height: 12,
+        fill: colorForFeature(featureColorKey(type, colorMode), palette, paletteName)
+      }));
+    });
+    svg.append(textEl(legendEntry.label, {
+      x: cursorX + 34,
+      y: cursorY,
+      class: "genome-figure-legend-text",
+      "data-feature-group-types": legendEntry.types.join(",")
+    }));
   }
 }
 
@@ -2511,6 +2627,15 @@ function renderCircularRecord(record, state) {
   for (const plot of plots) {
     renderCircularPlotBand(svg, record, plot, plotRadii[plot.id] ?? 220, plotBandHalfHeight, { ...state, cx, cy });
   }
+  if (stackedLayout) {
+    drawCircularPackedGroupBands(svg, record, stackedLayout, {
+      cx,
+      cy,
+      featureBaseRadius,
+      slotWidth,
+      slotStep
+    }, state);
+  }
   if (state.showSlotDividers) {
     drawCircularSlotDividers(svg, cx, cy, plotRadii, plotBandHalfHeight, featureBaseRadius, slotWidth, slotGap, layoutSlotCount, axisRadius, palette);
   }
@@ -2616,7 +2741,7 @@ function renderCircularRecord(record, state) {
     for (const [partIndex, part] of (feature.parts?.length ? feature.parts : [{ start: feature.start, end: feature.end }]).entries()) {
       const startAngle = circularAngleFor(record, part.start);
       const endAngle = circularAngleFor(record, part.end, { endEdge: true });
-      drawCircularFeatureGlyph(svg, feature, cx, cy, radius, slotWidth, startAngle, endAngle, color, state, part);
+      drawCircularFeatureGlyph(svg, feature, cx, cy, radius, slotWidth, startAngle, endAngle, color, state, part, partIndex);
       const labelPlacement = getCircularInsideFeatureLabelPlacement({
         cx,
         cy,
@@ -2626,7 +2751,9 @@ function renderCircularRecord(record, state) {
         endAngle,
         text: feature.label
       });
-      if (shouldUseInsideLabel(feature, labelCandidateIds, insideLabelIds) && labelPlacement) {
+      if (shouldUseInsideLabel(feature, labelCandidateIds, insideLabelIds)
+        && labelPlacement
+        && !insideLabelDraws.some((draw) => circularInsideLabelsOverlap(draw.placement, labelPlacement))) {
         insideLabelDraws.push({
           label: feature.label,
           placement: labelPlacement,
@@ -2667,7 +2794,12 @@ function renderCircularRecord(record, state) {
         colorMode: state.featureColorMode
       });
     } else {
-      renderLegend(svg, featureLegendEntries(features, state.featureColorMode).slice(0, 18), palette, state.paletteName, 88, legendY, { columns: 1, columnWidth: 130 });
+      renderLegend(svg, legendSlotGroups.slice(0, 18), palette, state.paletteName, 88, legendY, {
+        columns: 1,
+        columnWidth: 250,
+        colorMode: state.featureColorMode,
+        title: "Feature groups (inner to outer)"
+      });
     }
     renderPlotLegend(svg, plots, width - 400, legendY, state);
   }
@@ -2679,7 +2811,7 @@ function linearLegendBottom(slotGroups, features, plots, state) {
   const legendY = 52;
   const featureBottom = state.featureLayout === "type-slots"
     ? legendY - 24 + Math.min(14, slotGroups.length) * 20 + 42
-    : legendY - 24 + Math.max(1, Math.ceil(Math.min(18, featureLegendEntries(features, state.featureColorMode).length) / 2)) * 22 + 42;
+    : legendY - 24 + Math.max(1, Math.ceil(Math.min(18, slotGroups.length) / 2)) * 22 + 42;
   const plotRowHeight = state.plotScaleMode === "fit" ? 48 : 34;
   const plotBottom = plots.length
     ? legendY - 24 + plots.length * plotRowHeight + 44
@@ -2772,6 +2904,9 @@ function renderLinearRecord(record, state) {
     for (const [plotIndex, plot] of plots.entries()) {
       renderLinearPlotBand(svg, row, record, plot, plotTop + plotIndex * (plotBandWidth + LINEAR_PLOT_GAP), plotBandWidth, state);
     }
+    if (stackedLayout) {
+      drawLinearPackedGroupBands(svg, row, stackedLayout, axisY, state.slotWidth ?? 17, slotStep, state);
+    }
     if (state.showSlotDividers) {
       const slotStep = Math.max(13, Math.min(22, (state.slotWidth ?? 17) + 4));
       drawLinearSlotDividers(svg, row, axisY, plotTop, plots, state.slotWidth ?? 17, slotStep, linearSlotCount, palette);
@@ -2794,7 +2929,7 @@ function renderLinearRecord(record, state) {
         const left = Math.min(x1, x2);
         const widthPx = Math.abs(x2 - x1);
         const featureSlotWidth = state.slotWidth ?? 17;
-        drawLinearFeatureGlyph(svg, feature, left, y, Math.max(1.5, widthPx), featureSlotWidth, color, state, part);
+        drawLinearFeatureGlyph(svg, feature, left, y, widthPx, featureSlotWidth, color, state, part);
         if (shouldUseInsideLabel(feature, labelCandidateIds, insideLabelIds) && featureSlotWidth >= INSIDE_FEATURE_LABEL_HEIGHT + 2 && widthPx > estimateTextWidth(feature.label, INSIDE_FEATURE_LABEL_FONT_SIZE) + INSIDE_FEATURE_LABEL_PADDING) {
           insideLabelDraws.push({ label: feature.label, x: left + widthPx / 2, y, options: { featureFill: color } });
           insideLabelIds.add(feature.id);
@@ -2823,7 +2958,13 @@ function renderLinearRecord(record, state) {
         colorMode: state.featureColorMode
       });
     } else {
-      renderLegend(svg, featureLegendEntries(features, state.featureColorMode).slice(0, 18), palette, state.paletteName, width - 720, legendY, { columns: 2, columnWidth: 118, rowHeight: 22 });
+      renderLegend(svg, slotGroups.slice(0, 18), palette, state.paletteName, width - 720, legendY, {
+        columns: 2,
+        columnWidth: 150,
+        rowHeight: 22,
+        colorMode: state.featureColorMode,
+        title: "Feature groups (lower to upper)"
+      });
     }
     renderPlotLegend(svg, plots, width - 405, legendY, state);
   }
@@ -3311,11 +3452,11 @@ function installFigureEditor(panel, sourceRecords, figure, editorDocument) {
     visiblePlots: initialPlots,
     gcBaselineMode: "average",
     plotScaleMode: DEFAULT_PLOT_SCALE_MODE,
-    featureLayout: figure.featureLayout || "type-slots",
+    featureLayout: figure.featureLayout || "non-overlap",
     featureSlotGrouping: figure.featureSlotGrouping || DEFAULT_FEATURE_SLOT_GROUPING,
     featureColorMode: figure.featureColorMode || "type",
     featureOpacity: DEFAULT_FEATURE_OPACITY,
-    featureGlyph: "bands",
+    featureGlyph: figure.featureGlyph || "directional",
     labelDensity: figure.labelDensity || "medium",
     tickDensity: DEFAULT_TICK_DENSITY,
     visibleFeatureTypes: defaultVisibleTypes,
@@ -3378,12 +3519,16 @@ function installFigureEditor(panel, sourceRecords, figure, editorDocument) {
   const featureLayoutControl = makeSelect("Feature layout", [
     { value: "non-overlap", label: "Pack into lanes" },
     { value: "type-slots", label: "Group by type" }
-  ], state.featureLayout, "Pack into lanes assigns features to the first available lane so drawn feature glyphs do not collide. Group by type assigns lanes from feature type or slot grouping.");
+  ], state.featureLayout, "Pack into lanes assigns overlapping feature coordinates to separate lanes within each feature group. Group by type places each feature group in one lane.");
   const featureSlotGroupingControl = makeSelect("Feature slot grouping", [
     { value: "types", label: "Separate types" },
     { value: "rna", label: "RNA types together" },
     { value: "families", label: "Feature families" }
-  ], state.featureSlotGrouping, "Feature families groups related annotation types into broader lanes: CDS, RNA types, mobile elements, repeats, genes, and miscellaneous features.");
+  ], state.featureSlotGrouping, "Keep RNA types together, separate every type, or group related annotation types into broader lanes: CDS, RNA types, mobile elements, repeats, genes, and miscellaneous features. In packed layouts, pale tracks identify groups; solid marks show where features occur.");
+  const groupingSummary = document.createElement("output");
+  groupingSummary.className = "genome-figure-grouping-summary";
+  groupingSummary.setAttribute("aria-live", "polite");
+  featureSlotGroupingControl.label.append(groupingSummary);
   const featureColorControl = makeSelect("Feature colors", [
     { value: "type", label: "By feature type" },
     { value: "family", label: "By feature family" }
@@ -3528,6 +3673,7 @@ function installFigureEditor(panel, sourceRecords, figure, editorDocument) {
     const displayRecord = currentDisplayRecord();
     syncRegionControl();
     if (!displayRecord) {
+      groupingSummary.textContent = "No feature groups shown";
       const empty = document.createElement("p");
       empty.className = "dna-viewer-empty genome-figure-empty-selection";
       empty.textContent = "No sequences are selected. Choose one or more sequences in the Sequences controls.";
@@ -3535,6 +3681,19 @@ function installFigureEditor(panel, sourceRecords, figure, editorDocument) {
       currentSvg = null;
       syncEditor();
       return;
+    }
+    const groupingRecord = figure.layout === "circular"
+      ? state.circularGeometryRecord ?? displayRecord
+      : displayRecord;
+    const groupingFeatures = getVisibleFeatures(groupingRecord, state);
+    const groupCount = featureSlotGroups(groupingFeatures, state.featureSlotGrouping).length;
+    if (!groupCount) {
+      groupingSummary.textContent = "No feature groups shown";
+    } else if (state.featureLayout === "non-overlap") {
+      const packed = getStackedFeatureLayout(groupingRecord, groupingFeatures, figure.layout === "linear" ? 8 : 14, state);
+      groupingSummary.textContent = `${groupCount} group${groupCount === 1 ? "" : "s"} · ${packed.slotCount} packed lane${packed.slotCount === 1 ? "" : "s"}`;
+    } else {
+      groupingSummary.textContent = `${groupCount} group${groupCount === 1 ? "" : "s"} · one lane per group`;
     }
     currentSvg = figure.layout === "linear" ? renderLinearRecord(displayRecord, state) : renderCircularRecord(displayRecord, state);
     figureHost.append(currentSvg);
@@ -3860,6 +4019,7 @@ function installFigureEditor(panel, sourceRecords, figure, editorDocument) {
   });
   featureGlyphControl.select.addEventListener("change", () => {
     state.featureGlyph = featureGlyphControl.select.value;
+    state.figure.featureGlyph = state.featureGlyph;
     render();
   });
   featureOpacityControl.input.addEventListener("input", () => {
