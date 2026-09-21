@@ -14,9 +14,27 @@ export function serializeSvgElement(svgElement) {
     clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
   }
   for (const outline of clone.querySelectorAll("[data-sms3-inspection-outline]")) outline.remove();
+  for (const glow of clone.querySelectorAll("[data-sms3-inspection-glow-def]")) glow.remove();
+  for (const glow of clone.querySelectorAll("[data-sms3-inspection-glow-style]")) {
+    const { filter: [value, priority] } = JSON.parse(glow.getAttribute("data-sms3-inspection-glow-style"));
+    if (value) glow.style.setProperty("filter", value, priority);
+    else glow.style.removeProperty("filter");
+    glow.removeAttribute("data-sms3-inspection-glow-style");
+    if (!glow.getAttribute("style")) glow.removeAttribute("style");
+  }
   for (const active of clone.querySelectorAll("[data-sms3-inspection-active]")) {
     active.removeAttribute("data-sms3-inspection-active");
     active.style.removeProperty("--sms3-inspection-contrast");
+    const shadeStyle = active.getAttribute("data-sms3-inspection-shade-style");
+    if (shadeStyle) {
+      const original = JSON.parse(shadeStyle);
+      for (const property of ["fill", "filter"]) {
+        const [value, priority] = original[property];
+        if (value) active.style.setProperty(property, value, priority);
+        else active.style.removeProperty(property);
+      }
+      active.removeAttribute("data-sms3-inspection-shade-style");
+    }
     if (!active.getAttribute("style")) active.removeAttribute("style");
   }
   for (const mark of clone.querySelectorAll("[data-sms3-title-mark]")) {

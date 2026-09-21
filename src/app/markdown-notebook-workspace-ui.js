@@ -1,4 +1,5 @@
 import { createEditorSession, readEditorDocumentFile } from './editor-session.js';
+import { copyTextWithFeedback } from "./copy-feedback.js";
 import { STANDARD_BROWSER_FILE_BYTES } from '../core/tool-limit-options.js';
 import {
   buildMarkdownNotebook,
@@ -969,7 +970,7 @@ export function createMarkdownWorkspaceController({
       updateDraftSaveHint();
     });
     copyButton.addEventListener("click", async () => {
-      await navigator.clipboard.writeText(editor.value);
+      await copyTextWithFeedback(copyButton, editor.value);
       updateStatus("Copied Markdown");
       closeAllPopovers();
     });

@@ -1,4 +1,5 @@
 import { isViewerGeneratedCompositionTrack } from "./dna-viewer-composition-controls.js";
+import { showCopiedFeedback } from "./copy-feedback.js";
 
 const FEATURE_TYPE_COLORS = new Map([
   ["CDS", "#2563eb"],
@@ -738,7 +739,13 @@ export function renderRangePanel(panel, range, actions = {}) {
       const translationButton = document.createElement("button");
       translationButton.type = "button";
       translationButton.textContent = "Copy";
-      translationButton.addEventListener("click", () => actions.copyTranslation?.(frameSelect.value));
+      translationButton.addEventListener("click", async () => {
+        try {
+          if (await actions.copyTranslation?.(frameSelect.value) !== false) showCopiedFeedback(translationButton);
+        } catch {
+          // The clipboard rejected the copy; keep the original label.
+        }
+      });
       translationControl.append(translationText, frameSelect, translationButton);
       buttons.append(translationControl);
     }
@@ -830,7 +837,17 @@ function addAction(container, label, handler, enabled) {
   const button = document.createElement("button");
   button.type = "button";
   button.textContent = label;
-  button.addEventListener("click", handler);
+  if (label.startsWith("Copy ")) {
+    button.addEventListener("click", async () => {
+      try {
+        if (await handler() !== false) showCopiedFeedback(button);
+      } catch {
+        // The clipboard rejected the copy; keep the original label.
+      }
+    });
+  } else {
+    button.addEventListener("click", handler);
+  }
   container.append(button);
 }
 

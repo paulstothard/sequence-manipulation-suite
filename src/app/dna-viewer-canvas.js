@@ -1445,8 +1445,8 @@ function getLinearSequence(record, target) {
 }
 
 function copyViewerText(text) {
-  if (!text) return;
-  navigator.clipboard?.writeText(String(text));
+  if (!text || !navigator.clipboard?.writeText) return false;
+  return navigator.clipboard.writeText(String(text));
 }
 
 function makeRangeAnchor(target) {

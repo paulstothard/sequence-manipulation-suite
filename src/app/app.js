@@ -40,6 +40,7 @@ import { renderProteinStructureViewer } from "./protein-structure-viewer.js";
 import { renderSangerTraceViewer } from "./sanger-trace-viewer.js";
 import { createSangerTraceWorkspaceController } from "./sanger-trace-workspace-ui.js";
 import { downloadBlob, downloadText } from "./file-download.js";
+import { copyTextWithFeedback } from "./copy-feedback.js";
 import { readToolInputFileText } from "./input-file-readers.js";
 import { makeWarningsStream } from "../core/workflow.js";
 import { STANDARD_BROWSER_FILE_BYTES } from "../core/tool-limit-options.js";
@@ -4695,7 +4696,7 @@ function openFeedbackDialog(draft, title = "Send feedback") {
 async function copyPreparedFeedback() {
   const prepared = `To: ${siteConfig.feedbackEmail}\nSubject: ${elements.feedbackSubject.value}\n\n${elements.feedbackMessage.value}`;
   try {
-    await navigator.clipboard.writeText(prepared);
+    await copyTextWithFeedback(elements.feedbackCopy, prepared);
     elements.feedbackDialogStatus.textContent = `Copied. Send the message to ${siteConfig.feedbackEmail}.`;
   } catch {
     elements.feedbackMessage.focus();
@@ -5432,7 +5433,7 @@ function renderWorkflowStepInspector(result, workflowDefinition = getActiveWorkf
       copyButton.type = "button";
       copyButton.textContent = "Copy output";
       copyButton.addEventListener("click", async () => {
-        await navigator.clipboard.writeText(stepRawOutput);
+        await copyTextWithFeedback(copyButton, stepRawOutput);
         addWorkflowMessage(`Copied output from step ${index + 1}.`);
       });
       const downloadButton = document.createElement("button");
@@ -5930,7 +5931,7 @@ elements.workflowAppendStep.addEventListener("click", appendWorkflowStep);
 elements.runWorkflow.addEventListener("click", runSelectedWorkflow);
 elements.cancelWorkflow.addEventListener("click", cancelSelectedWorkflowRun);
 elements.workflowCopyOutput.addEventListener("click", async () => {
-  await navigator.clipboard.writeText(elements.workflowOutput.dataset.rawOutput || elements.workflowOutput.value);
+  await copyTextWithFeedback(elements.workflowCopyOutput, elements.workflowOutput.dataset.rawOutput || elements.workflowOutput.value);
 });
 
 elements.workflowDownloadOutput.addEventListener("click", () => {
@@ -6051,7 +6052,7 @@ elements.markdownLoadDraft.addEventListener("click", async () => {
   }
 });
 elements.markdownCopyInput.addEventListener("click", async () => {
-  await navigator.clipboard.writeText(elements.sequenceInput.value);
+  await copyTextWithFeedback(elements.markdownCopyInput, elements.sequenceInput.value);
   setMarkdownInputStatus("Copied Markdown");
 });
 elements.markdownDownloadInput.addEventListener("click", () => {
@@ -6078,7 +6079,7 @@ elements.dropZone.addEventListener("drop", async (event) => {
 });
 elements.runTool.addEventListener("click", runSelectedTool);
 elements.copyOutput.addEventListener("click", async () => {
-  await navigator.clipboard.writeText(elements.toolOutput.dataset.rawOutput || elements.toolOutput.value);
+  await copyTextWithFeedback(elements.copyOutput, elements.toolOutput.dataset.rawOutput || elements.toolOutput.value);
 });
 elements.outputSearch.addEventListener("input", () => queueOutputSearch("tool"));
 elements.outputSearchMode.addEventListener("change", () => renderOutputSearch("tool"));

@@ -6723,7 +6723,7 @@ legend {
   filter: none;
 }
 
-:is(.visual-output, .showcase-preview) svg [data-sms3-inspection-mark="intersection"][data-sms3-inspection-active="true"] :is(.intersection-member, .intersection-connector, .intersection-size-bar) {
+:is(.visual-output, .showcase-preview) svg [data-sms3-inspection-mark="intersection"][data-sms3-inspection-active="true"] :is(.intersection-member, .intersection-size-bar) {
   filter: drop-shadow(0 0 1.5px var(--sms3-inspection-contrast, #0f172a));
 }
 

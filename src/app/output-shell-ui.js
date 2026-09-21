@@ -1,4 +1,5 @@
 import { renderTreeViewer } from "./tree-viewer-ui.js";
+import { copyTextWithFeedback } from "./copy-feedback.js";
 import { renderPlateLayout } from "./plate-layout-ui.js";
 import { describeStream, describeViewerStream, describeWorkflowStreamChoice } from "./workflow-stream-labels.js";
 import { buildOutputDescriptionText, sha256Hex } from "./output-description.js";
@@ -438,7 +439,7 @@ function appendToolDescriptionActions(parent) {
   copy.type = "button";
   copy.textContent = "Copy description";
   copy.addEventListener("click", async () => {
-    await navigator.clipboard.writeText(state.currentToolDescription);
+    await copyTextWithFeedback(copy, state.currentToolDescription);
   });
   row.append(download, copy);
   parent.append(row);
@@ -1125,7 +1126,7 @@ function renderTableControls(scope, stream, columns, sortedRows, displayedRows, 
   copyVisible.title = `Copy ${visibleScopeText} as ${delimitedFormat}`;
   copyVisible.disabled = displayedRows.length === 0;
   copyVisible.addEventListener("click", async () => {
-    await navigator.clipboard.writeText(getVisibleTableText(scope, stream));
+    await copyTextWithFeedback(copyVisible, getVisibleTableText(scope, stream));
   });
   actions.append(copyVisible);
 
@@ -1173,7 +1174,7 @@ function renderTableControls(scope, stream, columns, sortedRows, displayedRows, 
     copyAll.title = `Copy ${fullRowsScopeText} as ${delimitedFormat}`;
     copyAll.disabled = sortedRows.length === 0;
     copyAll.addEventListener("click", async () => {
-      await navigator.clipboard.writeText(getFullTableText(scope, stream));
+      await copyTextWithFeedback(copyAll, getFullTableText(scope, stream));
     });
     actions.append(copyAll);
 
@@ -1505,7 +1506,7 @@ function renderMarkdownNotebook(container, notebook = {}) {
     }
   });
   copyButton.addEventListener("click", async () => {
-    await navigator.clipboard.writeText(editor.value);
+    await copyTextWithFeedback(copyButton, editor.value);
     setStatus("Copied Markdown");
   });
   downloadButton.addEventListener("click", () => {

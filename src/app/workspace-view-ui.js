@@ -6,6 +6,7 @@ import {
 } from "./workspace-storage.js";
 import { parseSequenceInput } from "../core/fasta.js";
 import { workspaceSamples } from "../examples/workspace-sample.js";
+import { showCopiedFeedback } from "./copy-feedback.js";
 
 const WORKSPACE_SELECTED_SEQUENCE_KEY = "sms3-workspace-selected-sequence-id";
 
@@ -162,14 +163,17 @@ export function createWorkspaceViewController({
   }
 
   async function copyText(text, successMessage) {
+    let copied = false;
     try {
       await navigator.clipboard.writeText(text);
       workspaceStatusMessage = successMessage;
+      copied = true;
     } catch {
       workspaceStatusMessage = "Clipboard access is unavailable in this browser.";
     }
     setStorageStatus(workspaceStatusMessage);
     render();
+    if (copied) showCopiedFeedback(body.querySelector(".workspace-management-button-row button:last-child"));
   }
 
   function renderEmptyState(parent) {

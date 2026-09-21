@@ -54,8 +54,8 @@ const TWO_PI = Math.PI * 2;
 const ICONS = {
   zoomIn: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.25"/><path d="m15.25 15.25 4.25 4.25"/><path d="M10.5 7.75v5.5M7.75 10.5h5.5"/></svg>',
   zoomOut: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.25"/><path d="m15.25 15.25 4.25 4.25"/><path d="M7.75 10.5h5.5"/></svg>',
-  rotateLeft: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.8 7.8h5.6V2.2"/><path d="M4.4 7.4A8.6 8.6 0 1 1 3.2 14"/></svg>',
-  rotateRight: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.2 7.8h-5.6V2.2"/><path d="M19.6 7.4A8.6 8.6 0 1 0 20.8 14"/></svg>',
+  rotateLeft: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 14A8.5 8.5 0 1 0 5.1 8.1"/><path d="M8.5 5.2 4.7 8.1 9 9.3"/></svg>',
+  rotateRight: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14A8.5 8.5 0 1 1 18.9 8.1"/><path d="M15.5 5.2 19.3 8.1 15 9.3"/></svg>',
   fitView: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4H4v4"/><path d="M16 4h4v4"/><path d="M20 16v4h-4"/><path d="M8 20H4v-4"/><circle cx="12" cy="12" r="2.6"/></svg>',
   pngFile: '<span class="dna-viewer-export-label">PNG</span><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3.25v8"/><path d="m6.9 8.55 3.1 3.1 3.1-3.1"/><path d="M4.25 15.75h11.5"/></svg>',
   svgFile: '<span class="dna-viewer-export-label">SVG</span><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3.25v8"/><path d="m6.9 8.55 3.1 3.1 3.1-3.1"/><path d="M4.25 15.75h11.5"/></svg>'
@@ -246,8 +246,8 @@ function getCircularSequence(record, target) {
 }
 
 function copyViewerText(text) {
-  if (!text) return;
-  navigator.clipboard?.writeText(String(text));
+  if (!text || !navigator.clipboard?.writeText) return false;
+  return navigator.clipboard.writeText(String(text));
 }
 
 function makeRangeAnchor(target) {

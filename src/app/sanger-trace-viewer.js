@@ -11,6 +11,7 @@ import {
 } from "./viewer-inertia.js";
 import { installCanvasVisualInspection } from "./visual-inspection.js";
 import { installCanvasPinchZoom } from "./viewer-pinch-zoom.js";
+import { copyTextWithFeedback } from "./copy-feedback.js";
 
 const CHANNELS = ["A", "C", "G", "T"];
 const CHANNEL_COLORS = {
@@ -1288,11 +1289,11 @@ function renderSingleSangerTraceViewer(container, data) {
   const getFasta = () => formatFasta(sequenceTitle(state), sequenceForState(state));
   const getFastq = () => makeFastq(sequenceTitle(state), displayedCalls(state));
   copyFasta.addEventListener("click", async () => {
-    await navigator.clipboard.writeText(getFasta());
+    await copyTextWithFeedback(copyFasta, getFasta());
     setStatus(panel, "Copied clipped FASTA.");
   }, listenerOptions);
   copyFastq.addEventListener("click", async () => {
-    await navigator.clipboard.writeText(getFastq());
+    await copyTextWithFeedback(copyFastq, getFastq());
     setStatus(panel, "Copied clipped FASTQ.");
   }, listenerOptions);
   downloadFasta.addEventListener("click", () => {

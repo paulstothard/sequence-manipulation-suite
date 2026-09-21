@@ -19,6 +19,7 @@ import { complementDnaRnaSequence } from "../core/sequence.js";
 import { makeSixFrameTranslations } from "../core/translation.js";
 import { formatFastaRecord } from "../core/fasta.js";
 import { downloadText } from "./file-download.js";
+import { copyTextWithFeedback } from "./copy-feedback.js";
 import {
   createViewerSearchControls,
   getViewerFeatureTypeStyle,
@@ -1188,7 +1189,8 @@ function makeFragmentTranslationDetails(product, geneticCode) {
   protein.spellcheck = false;
   protein.setAttribute("aria-label", "Fragment protein translation");
   proteinField.append(proteinHeading, protein);
-  const copy = makeButton("Copy protein", "", () => navigator.clipboard?.writeText(protein.value.replaceAll("\n", "")));
+  const copy = makeButton("Copy protein", "", () =>
+    copyTextWithFeedback(copy, protein.value.replaceAll("\n", "")));
   copy.classList.add("sequence-extractor-stack-copy-protein");
   const update = () => {
     const translation = translations.find((candidate) => candidate.frame === frameSelect.value) ?? translations[0];
@@ -2872,8 +2874,10 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
       item.append(sequenceDetails, translationDetails);
       const actions = document.createElement("div");
       actions.className = "sequence-extractor-actions";
+      const copyDna = makeButton("Copy DNA", "primary", () =>
+        copyTextWithFeedback(copyDna, entryProduct.sequence || ""));
       actions.append(
-        makeButton("Copy DNA", "primary", () => navigator.clipboard?.writeText(entryProduct.sequence || "")),
+        copyDna,
         makeButton("Download FASTA", "", () => {
           const name = safeFilename(entry.name || entryProduct.title || "sequence-extractor-product");
           downloadText(formatFastaRecord(name, entryProduct.sequence || "", 60), `${name}.fasta`, "text/x-fasta;charset=utf-8");

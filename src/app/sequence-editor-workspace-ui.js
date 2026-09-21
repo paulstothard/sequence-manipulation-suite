@@ -20,6 +20,7 @@ import {
   snapshotRenderedDnaViewer
 } from "./dna-viewer-canvas.js";
 import { downloadText } from "./file-download.js";
+import { copyTextWithFeedback, showCopiedFeedback } from "./copy-feedback.js";
 import {
   makeViewerSequenceInitialState,
   normalizeViewerSequenceChoices,
@@ -644,15 +645,23 @@ function renderSequenceEditorWorkspace(previousState = null) {
   }
   function runViewerSelectionAction(action, statusMessage = "") {
     if (typeof action !== "function") return;
-    action();
+    const result = action();
     if (statusMessage) {
       setEditorStatus(statusMessage);
     }
+    return result;
   }
   function renderSelectionActionButton(container, label, action, statusMessage = "") {
     if (typeof action !== "function") return;
     const button = createMarkdownWorkspaceButton(label);
-    button.addEventListener("click", () => runViewerSelectionAction(action, statusMessage));
+    button.addEventListener("click", async () => {
+      try {
+        const result = await runViewerSelectionAction(action, statusMessage);
+        if (label.startsWith("Copy ") && result !== false) showCopiedFeedback(button);
+      } catch (error) {
+        setEditorStatus(label.startsWith("Copy ") ? "Copy unavailable." : error?.message || "Action unavailable.");
+      }
+    });
     container.append(button);
   }
   function setActiveRangeAsEditTarget(selection = viewerSelection) {
@@ -908,10 +917,24 @@ function renderSequenceEditorWorkspace(previousState = null) {
     button.type = "button";
     button.setAttribute("role", "menuitem");
     button.textContent = label;
-    button.addEventListener("click", (event) => {
+    button.addEventListener("click", async (event) => {
       event.stopPropagation();
+      if (label.startsWith("Copy ")) {
+        try {
+          if (await handler() !== false) {
+            showCopiedFeedback(button);
+            setTimeout(() => {
+              if (contextMenu.contains(button)) hideSequenceEditorContextMenu();
+            }, 2200);
+            return;
+          }
+        } catch {
+          setEditorStatus("Copy unavailable.");
+        }
+      } else {
+        handler();
+      }
       hideSequenceEditorContextMenu();
-      handler();
     });
     contextMenu.append(button);
   }
@@ -1012,7 +1035,7 @@ function renderSequenceEditorWorkspace(previousState = null) {
       setEditorStatus("The selected item does not have copyable sequence.");
       return;
     }
-    await navigator.clipboard.writeText(text);
+    await copyTextWithFeedback(copySelectionButton, text);
     setEditorStatus(`Copied ${text.length.toLocaleString()} selected base${text.length === 1 ? "" : "s"}.`);
   }
   function downloadInspectorSelection() {
@@ -1037,10 +1060,11 @@ function renderSequenceEditorWorkspace(previousState = null) {
     const text = selection?.selectedSequence || "";
     if (!text) {
       setEditorStatus("The selected viewer item does not have copyable sequence.");
-      return;
+      return false;
     }
     await navigator.clipboard.writeText(text);
     setEditorStatus(`Copied ${text.length.toLocaleString()} selected base${text.length === 1 ? "" : "s"}.`);
+    return true;
   }
   function showSequenceEditorContextMenu(selection) {
     if (!selection?.target || !selection?.range) return;
@@ -1219,7 +1243,9 @@ function renderSequenceEditorWorkspace(previousState = null) {
   filenameInput.addEventListener("change", () => recordSettingChange("filename"));
   quickSequenceInput.addEventListener("input", () => renderSelectionEffects(getActiveEditorSelection()));
   coordinateOperation.addEventListener("change", refreshCoordinateEditControls);
-  useViewerSelectionButton.addEventListener("click", () => applyViewerSelectionToCoordinateControls());
+  useViewerSelectionButton.addEventListener("click", () => {
+    if (applyViewerSelectionToCoordinateControls()) showCopiedFeedback(useViewerSelectionButton);
+  });
   replaceSelectionButton.addEventListener("click", () => applyInspectorEdit("replace-range"));
   insertBeforeButton.addEventListener("click", () => applyInspectorEdit("insert-before"));
   insertAfterButton.addEventListener("click", () => applyInspectorEdit("insert-after"));
@@ -1273,7 +1299,7 @@ function renderSequenceEditorWorkspace(previousState = null) {
   });
   copyButton.addEventListener("click", async () => {
     const current = getPrepared();
-    await navigator.clipboard.writeText(current.fasta || "");
+    await copyTextWithFeedback(copyButton, current.fasta || "");
     setEditorStatus("Copied cleaned FASTA.");
   });
   downloadButton.addEventListener("click", () => {

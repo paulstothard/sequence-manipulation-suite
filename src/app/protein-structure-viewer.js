@@ -1,5 +1,6 @@
 import { addTimestampToFilename, makeSafeFileStem } from "./canvas-export.js";
 import { installCanvasVisualInspection } from "./visual-inspection.js";
+import { copyTextWithFeedback } from "./copy-feedback.js";
 import { PROTEIN_STRUCTURE_KEYBOARD_INSPECTION_LIMIT, PROTEIN_STRUCTURE_NEAREST_ATOM_PICK_LIMIT, PROTEIN_STRUCTURE_SEARCH_SUGGESTION_LIMIT } from "../core/viewer-limits.js";
 
 const BACKGROUND_COLORS = {
@@ -919,13 +920,13 @@ function renderSelectedDetails(detailsPanel, atom, conservationDetails, actions 
   copy.type = "button";
   copy.className = "protein-structure-copy-button";
   copy.textContent = "Copy details";
-  copy.addEventListener("click", () => actions.onCopy?.(lines.join("\n"), "Details copied"));
+  copy.addEventListener("click", () => actions.onCopy?.(lines.join("\n"), "Details copied", copy));
 
   const copyTsv = document.createElement("button");
   copyTsv.type = "button";
   copyTsv.className = "protein-structure-copy-button";
   copyTsv.textContent = "Copy residue TSV";
-  copyTsv.addEventListener("click", () => actions.onCopy?.(selectedResidueTsv(atom, conservationDetails), "Residue TSV copied"));
+  copyTsv.addEventListener("click", () => actions.onCopy?.(selectedResidueTsv(atom, conservationDetails), "Residue TSV copied", copyTsv));
 
   const focus = document.createElement("button");
   focus.type = "button";
@@ -1291,9 +1292,9 @@ export function renderProteinStructureViewer(container, payload = {}) {
       viewer.setView(payload.initialView.map(Number));
       viewer.render();
     }
-    const copyDetails = async (text, message = "Details copied") => {
+    const copyDetails = async (text, message = "Details copied", button) => {
       try {
-        await navigator.clipboard?.writeText(text);
+        await copyTextWithFeedback(button, text);
         status.textContent = message;
       } catch {
         status.textContent = "Copy unavailable";

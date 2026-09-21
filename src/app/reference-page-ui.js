@@ -6,6 +6,7 @@ import { appendShowcase as appendGeneratedShowcase } from "./showcase-page.js";
 import { getRestrictionOverhangLabel } from "./reference-page-data.js";
 import { makeRestrictionCutDiagram } from "./restriction-cut-diagram-ui.js";
 import { makeFragmentEndsVisual } from "./sequence-extractor-workspace-ui.js";
+import { copyTextWithFeedback } from "./copy-feedback.js";
 
 const CODON_BASE_ORDER = ["T", "C", "A", "G"];
 
@@ -1192,7 +1193,7 @@ export function createReferencePageController({
     formatSelect.addEventListener("change", updateFormat);
     copyButton.addEventListener("click", async () => {
       try {
-        await navigator.clipboard.writeText(formattedCitation.value);
+        await copyTextWithFeedback(copyButton, formattedCitation.value);
         copyStatus.textContent = "Copied";
       } catch {
         copyStatus.textContent = "Copy unavailable";

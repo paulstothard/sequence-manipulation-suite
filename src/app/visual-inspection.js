@@ -4,6 +4,8 @@ const TITLE_MARK_ATTRIBUTE = "data-sms3-title-mark";
 const ACTIVE_ATTRIBUTE = "data-sms3-inspection-active";
 const NEARBY_ATTRIBUTE = "data-sms3-inspection-nearby";
 const HIGHLIGHT_POLICY_ATTRIBUTE = "data-sms3-inspection-highlight";
+const SHADE_STYLE_ATTRIBUTE = "data-sms3-inspection-shade-style";
+const GLOW_STYLE_ATTRIBUTE = "data-sms3-inspection-glow-style";
 const PLOT_SVG_SELECTOR = "svg:is([data-plot-foundation], [data-plot-backend], [data-plot-renderer])";
 const GENOME_POSTER_SELECTOR = "svg.sms3-genome-comparison-poster";
 const PLOT_OUTLINE_ATTRIBUTE = "data-sms3-inspection-outline";
@@ -18,6 +20,7 @@ const EXPLICIT_MARK_SELECTOR = [
 ].join(",");
 
 let inspectionId = 0;
+let inspectionGlowId = 0;
 const MAX_KEYBOARD_TARGETS = 2000;
 const MAX_NEARBY_LINE_MARKS = 400;
 const NEARBY_LINE_HIT_RADIUS = 6;
@@ -138,6 +141,71 @@ function inspectionRgb(value) {
     channels: match.slice(1, 4).map(Number),
     alpha: match[4] === undefined ? 1 : Number(match[4])
   };
+}
+
+function inspectionShadeColor(rgb, brightness, saturation) {
+  const bright = rgb.channels.map((channel) => Math.min(255, channel * brightness));
+  const gray = bright[0] * 0.2126 + bright[1] * 0.7152 + bright[2] * 0.0722;
+  const channels = bright.map((channel) => Math.round(Math.max(0, Math.min(255, gray + (channel - gray) * saturation))));
+  return `rgba(${channels.join(", ")}, ${rgb.alpha})`;
+}
+
+function applyInspectionShade(mark, originalFill) {
+  if (!(mark instanceof SVGElement)) return;
+  const filter = getComputedStyle(mark).filter;
+  const match = /^brightness\(([\d.]+)\)(?:\s+saturate\(([\d.]+)\))?(.*)$/.exec(filter);
+  const rgb = inspectionRgb(originalFill);
+  if (!match || !rgb || rgb.alpha <= 0.01) return;
+  const brightness = Number(match[1]);
+  const saturation = match[2] === undefined ? 1 : Number(match[2]);
+  if (!Number.isFinite(brightness) || !Number.isFinite(saturation)) return;
+  const original = {
+    fill: [mark.style.getPropertyValue("fill"), mark.style.getPropertyPriority("fill")],
+    filter: [mark.style.getPropertyValue("filter"), mark.style.getPropertyPriority("filter")]
+  };
+  mark.setAttribute(SHADE_STYLE_ATTRIBUTE, JSON.stringify(original));
+  mark.style.setProperty("fill", inspectionShadeColor(rgb, brightness, saturation), "important");
+  mark.style.setProperty("filter", match[3].trim() || "none", "important");
+}
+
+function restoreInspectionShade(mark) {
+  const saved = mark?.getAttribute(SHADE_STYLE_ATTRIBUTE);
+  if (!saved) return;
+  const original = JSON.parse(saved);
+  for (const property of ["fill", "filter"]) {
+    const [value, priority] = original[property];
+    if (value) mark.style.setProperty(property, value, priority);
+    else mark.style.removeProperty(property);
+  }
+  mark.removeAttribute(SHADE_STYLE_ATTRIBUTE);
+}
+
+function applyInspectionGlow(mark) {
+  if (!(mark instanceof SVGElement) || !getComputedStyle(mark).filter.includes("drop-shadow(")) return;
+  const svg = mark.ownerSVGElement;
+  if (!svg) return;
+  const isOrf = Boolean(mark.closest('svg[data-sms3-plot="orf-overview"]'));
+  const color = isOrf ? "#b7791f" : getComputedStyle(mark).getPropertyValue(CONTRAST_PROPERTY).trim() || "#0f172a";
+  const id = `sms3-inspection-glow-${++inspectionGlowId}`;
+  const defs = document.createElementNS(SVG_NAMESPACE, "defs");
+  defs.setAttribute("data-sms3-inspection-glow-def", "");
+  defs.innerHTML = `<filter id="${id}" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"><feGaussianBlur in="SourceAlpha" stdDeviation="${isOrf ? 3 : 1.5}" result="blur"/><feFlood flood-color="${color}" flood-opacity="${isOrf ? 0.5 : 0.75}" result="color"/><feComposite in="color" in2="blur" operator="in" result="halo"/><feMerge><feMergeNode in="halo"/><feMergeNode in="SourceGraphic"/></feMerge></filter>`;
+  svg.append(defs);
+  mark.setAttribute(GLOW_STYLE_ATTRIBUTE, JSON.stringify({
+    filter: [mark.style.getPropertyValue("filter"), mark.style.getPropertyPriority("filter")],
+    id
+  }));
+  mark.style.setProperty("filter", `url(#${id})`, "important");
+}
+
+function restoreInspectionGlow(mark) {
+  const saved = mark?.getAttribute(GLOW_STYLE_ATTRIBUTE);
+  if (!saved) return;
+  const { filter: [value, priority], id } = JSON.parse(saved);
+  if (value) mark.style.setProperty("filter", value, priority);
+  else mark.style.removeProperty("filter");
+  mark.ownerSVGElement?.querySelector(`#${id}`)?.parentElement?.remove();
+  mark.removeAttribute(GLOW_STYLE_ATTRIBUTE);
 }
 
 function inspectionLuminance(rgb) {
@@ -702,12 +770,16 @@ export function installVisualInspection(container, {
     highlightedMark?.style.removeProperty(CONTRAST_PROPERTY);
     highlightedMark?.style.removeProperty(PLOT_STROKE_PROPERTY);
     highlightedMark?.style.removeProperty(PLOT_HALO_PROPERTY);
+    for (const glow of highlightedMark?.querySelectorAll(`[${GLOW_STYLE_ATTRIBUTE}]`) ?? []) restoreInspectionGlow(glow);
+    restoreInspectionGlow(highlightedMark);
+    restoreInspectionShade(highlightedMark);
     highlightedMark?.removeAttribute(ACTIVE_ATTRIBUTE);
     activeMark = mark;
     highlightedMark = mark && !markContainsDetailedInspection(mark) && markAllowsVisualHighlight(mark)
       ? mark
       : null;
     if (highlightedMark) {
+      const originalFill = getComputedStyle(highlightedMark).fill;
       const tag = highlightedMark.tagName?.toLowerCase();
       const plotHalo = highlightedMark.closest(PLOT_SVG_SELECTOR)
         && !highlightedMark.closest(GENOME_POSTER_SELECTOR)
@@ -717,6 +789,13 @@ export function installVisualInspection(container, {
         : inspectionContrast(highlightedMark);
       highlightedMark.style.setProperty(CONTRAST_PROPERTY, contrast);
       highlightedMark.setAttribute(ACTIVE_ATTRIBUTE, "true");
+      applyInspectionShade(highlightedMark, originalFill);
+      applyInspectionGlow(highlightedMark);
+      if (highlightedMark.getAttribute("data-sms3-inspection-mark") === "intersection") {
+        for (const child of highlightedMark.querySelectorAll(".intersection-member, .intersection-size-bar")) {
+          applyInspectionGlow(child);
+        }
+      }
       showPlotOutline(highlightedMark);
     }
   }
