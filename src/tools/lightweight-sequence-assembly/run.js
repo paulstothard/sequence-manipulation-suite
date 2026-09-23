@@ -19,7 +19,7 @@ export async function runLightweightSequenceAssembly(input, options = {}, contex
     ...options,
     tryReverseComplement: true
   }, context);
-  const outputFormat = OUTPUT_FORMATS.has(options.outputFormat) ? options.outputFormat : "report";
+  const outputFormat = OUTPUT_FORMATS.has(options.outputFormat) ? options.outputFormat : "fasta";
   const output =
     outputFormat === "fasta"
       ? makeAssemblyFasta(result, options.lineWidth)

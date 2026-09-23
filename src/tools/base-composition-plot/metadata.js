@@ -127,7 +127,7 @@ export const baseCompositionPlotMetadata = {
       defaultValue: "plot",
       choices: [
         { value: "report", label: "Summary report" },
-        { value: "tsv", label: "Table" },
+        { value: "tsv", label: "Table", resultView: { kind: "table", streamId: "table" } },
         { value: "plot", label: "Base composition plot" }
       ]
     },

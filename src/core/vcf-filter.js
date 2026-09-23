@@ -1,5 +1,6 @@
 import { streamTextLines } from "./compressed-text-reader.js";
 import { exportDelimitedTable } from "./table.js";
+import { effectiveToolLimit } from "./tool-limit-policy.js";
 
 export const vcfFilterVariantColumns = [
   { id: "chrom", label: "Chrom", type: "string" },
@@ -116,7 +117,7 @@ function makeOptions(options = {}) {
     maxMissingGenotypeRate: normalizeRate(options.maxMissingGenotypeRate, null),
     minSampleDepth: normalizeNumber(options.minSampleDepth, null),
     minSampleGq: normalizeNumber(options.minSampleGq, null),
-    maxVariants: normalizeMaxVariants(options.maxVariants),
+    maxVariants: effectiveToolLimit(options, "maxVariants", normalizeMaxVariants(options.maxVariants)),
     outputFormat: normalizeChoice(options.outputFormat, OUTPUT_FORMATS, "filtered-vcf"),
     sourceEngineLabel: String(options.sourceEngineLabel ?? "").trim()
   };

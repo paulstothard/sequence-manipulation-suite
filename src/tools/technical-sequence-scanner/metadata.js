@@ -166,10 +166,10 @@ export const technicalSequenceScannerMetadata = {
       id: "outputFormat",
       type: "radio",
       label: "Output format",
-      defaultValue: "report",
+      defaultValue: "svg-map",
       choices: [
         { value: "report", label: "Summary report" },
-        { value: "tsv", label: "Table" },
+        { value: "tsv", label: "Summary table", resultView: { kind: "table", streamId: "table" } },
         { value: "text-map", label: "Text annotation map" },
         { value: "svg-map", label: "Linear technical-sequence map" },
         { value: "interactive-viewer", label: "Linear DNA sequence viewer" },

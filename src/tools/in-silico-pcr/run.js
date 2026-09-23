@@ -16,7 +16,7 @@ import { makeTableStream, makeTextStream, makeToolResult } from "../../core/work
 const OUTPUT_FORMATS = new Set(["report", "tsv", "binding-sites-tsv", "fasta", "text-map", "svg-gel", "interactive-viewer", "interactive-circular-viewer"]);
 
 function normalizeOutputFormat(value) {
-  return OUTPUT_FORMATS.has(value) ? value : "report";
+  return OUTPUT_FORMATS.has(value) ? value : "svg-gel";
 }
 
 export async function runInSilicoPcr(input, options = {}, context = {}) {

@@ -1,6 +1,7 @@
 import { parseSequenceInput } from "./fasta.js";
 import { PROTEIN_AVERAGE_RESIDUE_MASSES, PROTEIN_MASS_WATER } from "./sequence.js";
 import proteases from "../reference-data/protein-digest/records.js";
+import { effectiveToolLimit } from "./tool-limit-policy.js";
 
 export { proteases };
 export const PROTEIN_DIGEST_LIMITS = Object.freeze({
@@ -35,8 +36,9 @@ export function normalizeDigestOptions(options = {}) {
   const enzyme = options.enzyme ?? "trypsin";
   if (!proteases.some(record => record.id === enzyme)) throw new Error("Choose a supported protease.");
   const missedCleavages = integerOption(options.missedCleavages, 0, 0, 5, "Missed cleavages");
-  const minLength = integerOption(options.minLength, 1, 1, PROTEIN_DIGEST_LIMITS.residues, "Minimum peptide length");
-  const maxLength = integerOption(options.maxLength, PROTEIN_DIGEST_LIMITS.residues, 1, PROTEIN_DIGEST_LIMITS.residues, "Maximum peptide length");
+  const maxInputResidues = effectiveToolLimit(options, "maxInputResidues", PROTEIN_DIGEST_LIMITS.residues);
+  const minLength = integerOption(options.minLength, 1, 1, maxInputResidues, "Minimum peptide length");
+  const maxLength = integerOption(options.maxLength, PROTEIN_DIGEST_LIMITS.residues, 1, maxInputResidues, "Maximum peptide length");
   if (maxLength < minLength) throw new Error("Maximum peptide length must be at least the minimum peptide length.");
   const massType = options.massType ?? "monoisotopic";
   if (!["monoisotopic", "average"].includes(massType)) throw new Error("Choose monoisotopic or average peptide mass.");
@@ -69,11 +71,16 @@ export function isProteinCleavageBoundary(sequence, b, enzyme) {
 // One generator owns the algorithm for both direct calls and cooperative worker runs.
 function* digestSteps(input, options) {
   const settings = normalizeDigestOptions(options);
+  const maxInputCharacters = effectiveToolLimit(options, "maxInputCharacters", PROTEIN_DIGEST_LIMITS.inputCharacters);
+  const maxProteinRecords = effectiveToolLimit(options, "maxProteinRecords", PROTEIN_DIGEST_LIMITS.records);
+  const maxInputResidues = effectiveToolLimit(options, "maxInputResidues", PROTEIN_DIGEST_LIMITS.residues);
+  const maxPeptides = effectiveToolLimit(options, "maxPeptides", PROTEIN_DIGEST_LIMITS.peptides);
+  const maxExportedResidues = effectiveToolLimit(options, "maxExportedResidues", PROTEIN_DIGEST_LIMITS.exportedResidues);
   const source = String(input ?? "");
-  if (source.length > PROTEIN_DIGEST_LIMITS.inputCharacters) throw new Error("Input exceeds 2 million characters. Digest a smaller batch of proteins.");
+  if (source.length > maxInputCharacters) throw new Error(`Input exceeds ${maxInputCharacters.toLocaleString()} characters. Digest a smaller batch of proteins.`);
   const parsed = parseSequenceInput(source, "protein");
   if (!parsed.length) throw new Error("Enter a protein sequence or FASTA records to digest.");
-  if (parsed.length > PROTEIN_DIGEST_LIMITS.records) throw new Error("Digest at most 1,000 protein records per run.");
+  if (parsed.length > maxProteinRecords) throw new Error(`Digest at most ${maxProteinRecords.toLocaleString()} protein records per run.`);
   const massTable = settings.massType === "average" ? PROTEIN_AVERAGE_RESIDUE_MASSES : PROTEIN_MONOISOTOPIC_RESIDUE_MASSES;
   const water = settings.massType === "average" ? PROTEIN_MASS_WATER : monoWater;
   const records = [], warnings = [];
@@ -91,7 +98,7 @@ function* digestSteps(input, options) {
     const invalidIndex = sequence.search(/[^ACDEFGHIKLMNPQRSTVWYBJXZUO]/);
     if (invalidIndex >= 0) throw new Error(`Record ${recordIndex + 1} (${record.title}): unsupported symbol ${JSON.stringify(sequence[invalidIndex])} at position ${invalidIndex + 1}. Remove gaps, internal stops, or non-protein symbols explicitly before digesting; coordinates are never silently shifted.`);
     totalResidues += sequence.length;
-    if (totalResidues > PROTEIN_DIGEST_LIMITS.residues) throw new Error("Digest at most 200,000 residues per run. Split the input into smaller batches.");
+    if (totalResidues > maxInputResidues) throw new Error(`Digest at most ${maxInputResidues.toLocaleString()} residues per run. Split the input into smaller batches.`);
     const prefixMass = new Float64Array(sequence.length + 1);
     const prefixUnknown = new Uint32Array(sequence.length + 1);
     const boundaries = [0];
@@ -111,9 +118,9 @@ function* digestSteps(input, options) {
         if (++candidates % 4096 === 0) yield { phase: "enumerating-peptides" };
         const start0 = boundaries[startBoundary], end = boundaries[startBoundary + missed + 1], length = end - start0;
         if (length < settings.minLength || length > settings.maxLength) continue;
-        if (++peptideCount > PROTEIN_DIGEST_LIMITS.peptides) throw new Error("Digest exceeds 50,000 peptides. Reduce missed cleavages, narrow the length range, or digest fewer proteins.");
+        if (++peptideCount > maxPeptides) throw new Error(`Digest exceeds ${maxPeptides.toLocaleString()} peptides. Reduce missed cleavages, narrow the length range, or digest fewer proteins.`);
         exportedResidues += length;
-        if (settings.outputFormat !== "svg-map" && exportedResidues > PROTEIN_DIGEST_LIMITS.exportedResidues) throw new Error("Peptide output exceeds 2 million residues. Reduce missed cleavages, narrow the length range, or digest fewer proteins.");
+        if (settings.outputFormat !== "svg-map" && exportedResidues > maxExportedResidues) throw new Error(`Peptide output exceeds ${maxExportedResidues === PROTEIN_DIGEST_LIMITS.exportedResidues ? "2 million" : maxExportedResidues.toLocaleString()} residues. Reduce missed cleavages, narrow the length range, or digest fewer proteins.`);
         peptides.push({
           peptide_id: `R${recordIndex + 1}-P${peptides.length + 1}`, start: start0 + 1, end, length,
           missed_cleavages: missed,

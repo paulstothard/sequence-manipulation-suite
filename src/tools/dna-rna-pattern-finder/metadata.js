@@ -72,14 +72,14 @@ export const dnaRnaPatternFinderMetadata = {
       id: "outputFormat",
       type: "radio",
       label: "Output format",
-      defaultValue: "report",
+      defaultValue: "svg-map",
       choices: [
         { value: "report", label: "Summary report" },
         { value: "text-map", label: "Pattern text map" },
         { value: "svg-map", label: "Linear pattern map" },
         { value: "interactive-viewer", label: "Linear DNA sequence viewer" },
         { value: "interactive-circular-viewer", label: "Circular DNA sequence viewer" },
-        { value: "tsv", label: "Table" }
+        { value: "tsv", label: "Summary table", resultView: { kind: "table", streamId: "table" } }
       ]
     },
     {

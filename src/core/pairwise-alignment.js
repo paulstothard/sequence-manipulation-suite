@@ -3,6 +3,7 @@ import { getGeneticCode, makeCodonMap } from "./genetic-code.js";
 import { makeAlignmentSvg } from "./alignment-svg.js";
 import { createBioWasmCli, requireBioWasmRuntime } from "./biowasm-runner.js";
 import { cleanDnaRnaSequence, cleanProteinSequence, complementDnaRnaSequence } from "./sequence.js";
+import { effectiveToolLimit } from "./tool-limit-policy.js";
 
 // Algorithms and scoring model:
 // - Global alignment follows Needleman and Wunsch, J Mol Biol. 1970;48:443-453.
@@ -189,12 +190,18 @@ function normalizeOptions(options = {}) {
     gapExtend: -Math.abs(score(options.gapExtend, 1)),
     lineWidth: Math.max(20, Math.min(120, Number.parseInt(options.lineWidth, 10) || 60)),
     scoringMatrix: options.scoringMatrix === "blosum62" ? "blosum62" : "identity",
-    maxAlignmentCells: Math.max(
-      1000,
-      Math.min(
-        MAX_ALIGNMENT_CELLS_OPTION,
-        Number.parseInt(options.maxAlignmentCells, 10) || pairwiseAlignmentDefaultLimits.maxAlignmentCells
-      )
+    maxAlignmentCells: effectiveToolLimit(
+      options,
+      "maxAlignmentCells",
+      options.maxAlignmentCells === Infinity
+        ? Infinity
+        : Math.max(
+          1000,
+          Math.min(
+            MAX_ALIGNMENT_CELLS_OPTION,
+            Number.parseInt(options.maxAlignmentCells, 10) || pairwiseAlignmentDefaultLimits.maxAlignmentCells
+          )
+        )
     )
   };
 }

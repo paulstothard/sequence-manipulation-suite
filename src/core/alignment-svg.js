@@ -27,6 +27,34 @@ function normalizeCellLimit(value) {
   return Math.max(1, parsed);
 }
 
+function estimateTextWidth(value, fontSize) {
+  return Array.from(String(value ?? "")).reduce((width, character) => {
+    if (/\s/u.test(character)) return width + fontSize * 0.34;
+    if (/[MW@#%&]/u.test(character)) return width + fontSize * 0.9;
+    if (/[ilI.,:;!'|]/u.test(character)) return width + fontSize * 0.34;
+    return width + fontSize * 0.6;
+  }, 0);
+}
+
+function wrapTextLines(value, maxWidth, fontSize) {
+  const text = String(value ?? "").trim();
+  if (!text || estimateTextWidth(text, fontSize) <= maxWidth) return text ? [text] : [];
+
+  const lines = [];
+  let line = "";
+  for (const word of text.split(/\s+/u)) {
+    const candidate = line ? `${line} ${word}` : word;
+    if (line && estimateTextWidth(candidate, fontSize) > maxWidth) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = candidate;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
 function coordinateWidthForRows(rows) {
   const maxLength = Math.max(...rows.map((row) => String(row.aligned ?? "").replace(/-/g, "").length), 1);
   const maxStart = Math.max(...rows.map((row) => Number(row.start ?? 1) || 1), 1);
@@ -79,15 +107,19 @@ export function makeAlignmentSvg({
   const endCoordinatePadding = 4;
   const blocks = Math.ceil(alignmentLength / blockWidth);
   const renderedBlockColumns = Math.min(blockWidth, alignmentLength);
-  const top = 58;
   const hasConsensus = consensus.length > 0;
   const blockGap = hasConsensus ? CONSENSUS_BLOCK_GAP_PX : ALIGNMENT_BLOCK_GAP_PX;
   const blockHeight = rows.length * rowHeight + (hasConsensus ? 20 : 0);
-  const footerLines = [legend, note, summary].filter(Boolean);
-  // Reserve a conservative em per character for DOM-independent SVG export.
-  // Caption extents matter even when the alignment contains only a few bases.
-  const captionWidth = Math.max(String(title).length * 18, ...footerLines.map(line => String(line).length * 12), 0) + 48;
-  const width = Math.max(captionWidth, left + renderedBlockColumns * cell + endCoordinatePadding + coordinatePixelWidth + 24);
+  const width = Math.max(760, left + renderedBlockColumns * cell + endCoordinatePadding + coordinatePixelWidth + 24);
+  const captionWidth = width - 48;
+  const titleLines = wrapTextLines(title, captionWidth, 18);
+  const titleLineHeight = 22;
+  const top = 58 + Math.max(0, titleLines.length - 1) * titleLineHeight;
+  const footerLines = [
+    ...wrapTextLines(legend, captionWidth, 12).map((text) => ({ className: "legend", text })),
+    ...wrapTextLines(note, captionWidth, 12).map((text) => ({ className: "note", text })),
+    ...wrapTextLines(summary, captionWidth, 12).map((text) => ({ className: "note", text }))
+  ];
   const footerLineHeight = 18;
   const footerTop = top + blocks * (blockHeight + blockGap) + 20;
   const height = footerTop + footerLines.length * footerLineHeight + 14;
@@ -105,7 +137,7 @@ export function makeAlignmentSvg({
     ".legend{font:12px system-ui,sans-serif;fill:#475569}",
     "</style>",
     '<rect width="100%" height="100%" fill="white"/>',
-    `<text class="title" x="24" y="30">${escapeXml(title)}</text>`
+    ...titleLines.map((line, index) => `<text class="title" x="24" y="${30 + index * titleLineHeight}">${escapeXml(line)}</text>`)
   ];
 
   const positions = rows.map((row) => Number(row.start ?? 1) || 1);
@@ -156,8 +188,7 @@ export function makeAlignmentSvg({
   }
 
   footerLines.forEach((line, index) => {
-    const className = index === 0 ? "legend" : "note";
-    parts.push(`<text class="${className}" x="24" y="${footerTop + index * footerLineHeight}">${escapeXml(line)}</text>`);
+    parts.push(`<text class="${line.className}" x="24" y="${footerTop + index * footerLineHeight}">${escapeXml(line.text)}</text>`);
   });
   parts.push("</svg>");
   return parts.join("\n");

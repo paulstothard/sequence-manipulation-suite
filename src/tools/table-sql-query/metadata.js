@@ -104,7 +104,7 @@ export const tableSqlQueryMetadata = {
           min: 1,
           max: 1000000,
           step: 1000,
-          help: "Caps rows read into the query engine so accidental large table pastes stay responsive."
+          help: "Caps rows read into the query engine."
         },
         {
           id: "maxOutputRows",

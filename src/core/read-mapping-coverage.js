@@ -14,6 +14,7 @@ import {
   renderLinePlotSvg
 } from "./plot-renderer.js";
 import { appVersion } from "../app-version.js";
+import { effectiveToolLimit } from "./tool-limit-policy.js";
 
 export const MAX_VIEWER_ALIGNED_READ_BASES = 100_000;
 
@@ -95,9 +96,9 @@ export function normalizeReadMappingCoverageOptions(options = {}) {
     minAlignedBases: parseInteger(options.minAlignedBases, 20, 1, 1_000_000),
     coverageWindowSize: parseInteger(options.coverageWindowSize, 0, 0, 10_000_000),
     outputFormat: OUTPUT_FORMATS.has(rawOutputFormat) ? rawOutputFormat : "coverage-plot",
-    maxReferenceBases: parseInteger(options.maxReferenceBases, 5_000_000, 100, 500_000_000),
-    maxReads: parseInteger(options.maxReads, 100_000, 1, 10_000_000),
-    maxReportedAlignments: parseInteger(options.maxReportedAlignments, 10_000, 1, 1_000_000),
+    maxReferenceBases: effectiveToolLimit(options, "maxReferenceBases", parseInteger(options.maxReferenceBases, 5_000_000, 100, 500_000_000)),
+    maxReads: effectiveToolLimit(options, "maxReads", parseInteger(options.maxReads, 100_000, 1, 10_000_000)),
+    maxReportedAlignments: effectiveToolLimit(options, "maxReportedAlignments", parseInteger(options.maxReportedAlignments, 10_000, 1, 1_000_000)),
     maxCoverageBins: parseInteger(options.maxCoverageBins, 800, 10, 100_000)
   };
 }

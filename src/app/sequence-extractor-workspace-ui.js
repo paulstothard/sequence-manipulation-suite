@@ -276,6 +276,15 @@ export function translationCodonPlacement(codonPositions, blockStart, blockEnd) 
   return placements.find((placement) => placement.containsCenter) ?? placements[0] ?? null;
 }
 
+export function translationSegmentShape(placement, translationStartPosition = null) {
+  const startPosition = Number(translationStartPosition);
+  return Number.isFinite(startPosition) &&
+    startPosition >= Number(placement?.visibleStart) &&
+    startPosition <= Number(placement?.visibleEnd)
+    ? "cds-start"
+    : "connected";
+}
+
 export function intervalPlacementForBlock(intervalStart, intervalEnd, blockStart, blockEnd) {
   const sourceStart = Number(intervalStart);
   const sourceEnd = Number(intervalEnd);
@@ -3094,7 +3103,7 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
     };
   }
 
-  function appendTranslationCodonSegments(cells, placements, target, aminoAcid, className, title) {
+  function appendTranslationCodonSegments(cells, placements, target, aminoAcid, className, title, options = {}) {
     const targetKey = `${target.kind}-${target.position}-${target.label}`;
     for (const placement of placements) {
       const button = makeButton("", className, () => selectTarget(target));
@@ -3121,21 +3130,11 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
       button.dataset.codonSegmentStart = String(placement.visibleStart);
       button.dataset.codonSegmentEnd = String(placement.visibleEnd);
       button.dataset.strand = target.strand;
+      button.dataset.translationShape = translationSegmentShape(placement, options.translationStartPosition);
       button.dataset.targetKey = targetKey;
       attachHoverInfo(button, target);
       cells.append(button);
     }
-  }
-
-  function markTranslationRowEnds(cells) {
-    const segments = Array.from(cells.querySelectorAll(".sequence-extractor-aa"));
-    if (segments.length === 0) return;
-    const first = segments.reduce((left, right) =>
-      Number(left.dataset.codonSegmentStart) <= Number(right.dataset.codonSegmentStart) ? left : right);
-    const last = segments.reduce((left, right) =>
-      Number(left.dataset.codonSegmentEnd) >= Number(right.dataset.codonSegmentEnd) ? left : right);
-    first.dataset.directionTip = "true";
-    last.dataset.directionTip = "true";
   }
 
   function makeFrameTranslationRow(record, blockStart, blockEnd, frameOffset, strand) {
@@ -3178,7 +3177,6 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
         `${aminoAcid}: ${codon}, bases ${directStart}-${directEnd}, computed frame ${frame}, genetic code ${selectedGeneticCode.id}`
       );
     }
-    markTranslationRowEnds(cells);
     row.append(label, cells);
     return row;
   }
@@ -3207,6 +3205,7 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
         if (item.strand === "-") codingPositions = codingPositions.reverse();
         const codonStart = Math.max(1, Math.min(3, Number(item.codonStart) || 1));
         codingPositions = codingPositions.slice(codonStart - 1);
+        const translationStartPosition = codingPositions[0];
         const recordTranslation = String(item.translation).replace(/\s+/g, "");
         for (let aminoAcidIndex = 0; aminoAcidIndex < recordTranslation.length; aminoAcidIndex += 1) {
           const codonPositions = codingPositions.slice(aminoAcidIndex * 3, aminoAcidIndex * 3 + 3);
@@ -3237,10 +3236,10 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
             target,
             aminoAcid,
             "sequence-extractor-aa sequence-extractor-cds-aa",
-            `${target.feature}: ${aminoAcid} from input CDS /translation; ${codon || "partial codon"}, bases ${directStart}-${directEnd}`
+            `${target.feature}: ${aminoAcid} from input CDS /translation; ${codon || "partial codon"}, bases ${directStart}-${directEnd}`,
+            { translationStartPosition: aminoAcidIndex === 0 ? translationStartPosition : null }
           );
         }
-        markTranslationRowEnds(cells);
         row.append(label, cells);
         return row;
       });

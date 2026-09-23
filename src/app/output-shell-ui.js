@@ -21,8 +21,8 @@ import {
 } from "../core/workspace-layers.js";
 import {
   alignTsv,
+  getDeclaredTableStream,
   getBaseMimeType,
-  isDelimitedDownload,
   tableRowsToCsv,
   tableRowsToTsv,
   tableStreamToTsv
@@ -58,6 +58,7 @@ import {
   snapshotRenderedDnaViewer
 } from "./dna-viewer-canvas.js";
 import { renderProteinViewer } from "./protein-viewer-canvas.js";
+import { renderProteinSequenceFigure } from "./protein-sequence-figure-ui.js";
 import { renderGenomeFigure } from "./genome-figure-svg.js";
 import { renderProteinStructureViewer } from "./protein-structure-viewer.js";
 import { renderSangerTraceViewer } from "./sanger-trace-viewer.js";
@@ -483,6 +484,7 @@ async function buildToolOutputDescription(result, inputText, options) {
     options: result.optionsUsed ? { ...options, ...result.optionsUsed } : options,
     formatLabel: getCurrentToolOutputFormatLabel(result),
     inputChecksum: checksum,
+    inputTextCharacters: String(inputText ?? "").length,
     appVersion: elements.appVersion?.textContent || ""
   });
 }
@@ -841,6 +843,12 @@ function getSelectedToolOutputFormat(tool = state.selectedTool) {
   const selected = elements.toolOptions.querySelector(`select[name="${option.id}"]`)?.value
     ?? elements.toolOptions.querySelector(`input[name="${option.id}"]:checked`)?.value;
   return selected ?? option.defaultValue;
+}
+
+function getSelectedToolOutputChoice(tool = state.selectedTool) {
+  const option = getOutputFormatOption(tool);
+  const selectedFormat = getSelectedToolOutputFormat(tool);
+  return (option?.choices ?? []).find((choice) => choice.value === selectedFormat) ?? null;
 }
 
 function getCurrentToolOutputFormatLabel(result) {
@@ -1671,7 +1679,7 @@ function renderVisualOutput(scope, svg, options = {}) {
     }
   }
   visualOutput._sms3PortableViewerSnapshot = null;
-  if (!svg && !options.viewer && !options.figure && !options.proteinStructure && !options.notebook && !options.sangerTrace && !options.sequenceEditor && !options.sequenceExtractor && !options.treeViewer && !options.plateLayout) {
+  if (!svg && !options.viewer && !options.figure && !options.proteinFigure && !options.proteinStructure && !options.notebook && !options.sangerTrace && !options.sequenceEditor && !options.sequenceExtractor && !options.treeViewer && !options.plateLayout) {
     visualOutput.hidden = true;
     visualOutput.textContent = "";
     return;
@@ -1680,7 +1688,9 @@ function renderVisualOutput(scope, svg, options = {}) {
   visualOutput.textContent = "";
   const heading = document.createElement("h4");
   heading.className = "visual-output-heading";
-  heading.textContent = options.plateLayout ? "Plate Layout Planner" : options.treeViewer ? "Tree Viewer" : options.figure
+  heading.textContent = options.plateLayout ? "Plate Layout Planner" : options.treeViewer ? "Tree Viewer" : options.proteinFigure
+    ? "Protein Sequence Figure"
+    : options.figure
     ? "Genome Figure"
     : options.sequenceExtractor
       ? "Interactive sequence extractor"
@@ -1750,6 +1760,11 @@ function renderVisualOutput(scope, svg, options = {}) {
     renderProteinStructureViewer(visualOutput, options.proteinStructure);
     return "";
   }
+  if (options.proteinFigure) {
+    renderProteinSequenceFigure(visualOutput, options.proteinFigure);
+    attachVisualInspection(visualOutput);
+    return "";
+  }
   if (options.figure) {
     renderGenomeFigure(visualOutput, options.figure, options.editorDocument);
     attachVisualInspection(visualOutput);
@@ -1811,7 +1826,7 @@ function renderVisualOutput(scope, svg, options = {}) {
 }
 
 function applyToolOutputChoice(choice) {
-  const hasVisualOutput = Boolean(choice.svg || choice.viewer || choice.figure || choice.proteinStructure || choice.notebook || choice.sangerTrace || choice.sequenceEditor || choice.sequenceExtractor || choice.treeViewer || choice.plateLayout);
+  const hasVisualOutput = Boolean(choice.svg || choice.viewer || choice.figure || choice.proteinFigure || choice.proteinStructure || choice.notebook || choice.sangerTrace || choice.sequenceEditor || choice.sequenceExtractor || choice.treeViewer || choice.plateLayout);
   const hasPrimaryOutput = Boolean(choice.text || choice.tableStream || hasVisualOutput);
   elements.toolOutput.dataset.rawOutput = choice.text;
   elements.toolOutput.value = choice.tableStream
@@ -1830,6 +1845,7 @@ function applyToolOutputChoice(choice) {
     renderer: choice.renderer,
     viewer: choice.viewer,
     figure: choice.figure,
+    proteinFigure: choice.proteinFigure,
     proteinStructure: choice.proteinStructure,
     notebook: choice.notebook,
     sangerTrace: choice.sangerTrace,
@@ -1852,7 +1868,7 @@ function applyToolOutputChoice(choice) {
   elements.toolOutput.hidden = Boolean(choice.tableStream || hasVisualOutput || !choice.text);
   setOutputSearchRowVisible("tool", Boolean(choice.tableStream || (!hasVisualOutput && choice.text)));
   updateOutputActions("tool", {
-    hidden: Boolean(choice.tableStream || choice.viewer || choice.figure || choice.proteinStructure || choice.notebook || choice.sangerTrace || choice.sequenceEditor || choice.sequenceExtractor || choice.treeViewer || choice.plateLayout || (!choice.text && !choice.svg)),
+    hidden: Boolean(choice.tableStream || choice.viewer || choice.figure || choice.proteinFigure || choice.proteinStructure || choice.notebook || choice.sangerTrace || choice.sequenceEditor || choice.sequenceExtractor || choice.treeViewer || choice.plateLayout || (!choice.text && !choice.svg)),
     mimeType: choice.download.mimeType,
     label: choice.label
   });
@@ -1888,9 +1904,12 @@ function getResultSequenceSearchDescriptor(result, choice, selectedFormat) {
 
 function renderGeneratedToolOutputChoice(result) {
   const selectedFormat = getSelectedToolOutputFormat(state.selectedTool) ?? "primary";
+  const selectedChoice = getSelectedToolOutputChoice(state.selectedTool);
   const download = result.download ?? { filename: "sms3-output.txt", mimeType: "text/plain" };
-  const isDelimitedOutput = isDelimitedDownload(selectedFormat, download);
-  const isXlsxOutput = getBaseMimeType(download.mimeType) === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  const baseMimeType = getBaseMimeType(download.mimeType);
+  const isDelimitedOutput = baseMimeType === "text/tab-separated-values" || baseMimeType === "text/csv";
+  const isXlsxOutput = baseMimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  const declaredTableStream = getDeclaredTableStream(result.streams, selectedChoice?.resultView);
   const svg = result.visual?.svg ?? (download.mimeType?.includes("svg") ? result.output : null);
   const workspaceLayerContext = workspaceInputSources.getToolLayerContext(state.selectedTool);
   const viewer = attachWorkspaceFeatureLayersToViewer(
@@ -1903,6 +1922,7 @@ function renderGeneratedToolOutputChoice(result) {
     state.workspaceFeatureLayers,
     workspaceLayerContext
   );
+  const proteinFigure = result.visual?.proteinFigure ?? null;
   const proteinStructure = result.visual?.proteinStructure ?? null;
   const notebook = result.visual?.notebook ?? null;
   const sangerTrace = result.visual?.sangerTrace ?? null;
@@ -1917,13 +1937,18 @@ function renderGeneratedToolOutputChoice(result) {
     label: getCurrentToolOutputFormatLabel(result),
     text: result.output,
     download,
-    tableStream: isDelimitedOutput || isXlsxOutput ? getDelimitedTableStream(result, selectedFormat) : null,
+    tableStream: selectedChoice?.resultView?.kind === "table"
+      ? declaredTableStream
+      : isDelimitedOutput || isXlsxOutput
+        ? getDelimitedTableStream(result, selectedFormat)
+        : null,
     svg,
     pngDownload: Boolean(result.visual?.pngDownload),
     plotSpec: result.visual?.plotSpec,
     renderer: result.visual?.renderer,
     viewer,
     figure,
+    proteinFigure,
     proteinStructure,
     notebook,
     sangerTrace,

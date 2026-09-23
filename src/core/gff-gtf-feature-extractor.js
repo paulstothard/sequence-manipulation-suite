@@ -2,6 +2,7 @@ import { parseUnsignedIntegerToken } from "./integer-token.js";
 import { createBioWasmCli, requireBioWasmRuntime } from "./biowasm-runner.js";
 import { parseSequenceInput } from "./fasta.js";
 import { exportDelimitedTable } from "./table.js";
+import { effectiveToolLimit } from "./tool-limit-policy.js";
 
 export const GFFREAD_VERSION = "0.12.7";
 
@@ -43,6 +44,7 @@ function outputFormatLabel(value) {
 }
 
 function parseInteger(value, fallback, min, max) {
+  if (value === Infinity) return Infinity;
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed)) return fallback;
   return Math.min(max, Math.max(min, parsed));
@@ -59,9 +61,9 @@ export function normalizeGffGtfFeatureExtractorOptions(options = {}) {
     inputFormat,
     outputFormat,
     featureTypes: String(options.featureTypes ?? "").trim(),
-    maxFeatures: parseInteger(options.maxFeatures, 50000, 1, 1000000),
-    maxOutputRecords: parseInteger(options.maxOutputRecords, 5000, 1, 1000000),
-    maxInputBases: parseInteger(options.maxInputBases, 20000000, 1000, 2000000000)
+    maxFeatures: effectiveToolLimit(options, "maxFeatures", parseInteger(options.maxFeatures, 50000, 1, 1000000)),
+    maxOutputRecords: effectiveToolLimit(options, "maxOutputRecords", parseInteger(options.maxOutputRecords, 5000, 1, 1000000)),
+    maxInputBases: effectiveToolLimit(options, "maxInputBases", parseInteger(options.maxInputBases, 20000000, 1000, 2000000000))
   };
 }
 
@@ -442,6 +444,19 @@ async function runGffread(annotationText, fastaText, format, options, context = 
   };
 }
 
+export function enforceGffOutputRecordLimit(outputs, maxOutputRecords) {
+  for (const [label, text] of [
+    ["Transcript FASTA", outputs.transcriptFasta],
+    ["CDS FASTA", outputs.cdsFasta],
+    ["Protein FASTA", outputs.proteinFasta]
+  ]) {
+    const count = parseSequenceInput(text, "sequence").length;
+    if (count > maxOutputRecords) {
+      throw new Error(`${label} contains ${count.toLocaleString()} records, exceeding the ${maxOutputRecords.toLocaleString()} output-record limit.`);
+    }
+  }
+}
+
 function makeReport({
   format,
   parsedFeatureCount,
@@ -517,6 +532,7 @@ export async function extractGffGtfFeatures(input, rawOptions = {}, context = {}
   const transcripts = groupTranscriptParts(parsed.features);
   const normalizedGff3 = makeNormalizedGff3(tableFeatures);
   const biowasm = await runGffread(annotationText, fastaText, parsed.format, options, context);
+  enforceGffOutputRecordLimit(biowasm, options.maxOutputRecords);
   const engine = biowasm.engine;
   const engineLabel = biowasm.engineLabel;
   const command = biowasm.command;

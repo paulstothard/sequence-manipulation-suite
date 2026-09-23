@@ -43,7 +43,7 @@ export const lightweightSequenceAssemblyMetadata = {
           id: "outputFormat",
           type: "radio",
           label: "Output format",
-          defaultValue: "report",
+          defaultValue: "fasta",
           choices: [
             { value: "report", label: "Assembly report" },
             { value: "fasta", label: "Consensus FASTA" },

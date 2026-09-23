@@ -57,7 +57,7 @@ export const tableCorrelationMatrixMetadata = {
       type: "group",
       label: "Output format",
       options: [
-        { id: "outputFormat", type: "radio", label: "Format", defaultValue: "matrix-tsv", choices: [
+        { id: "outputFormat", type: "radio", label: "Format", defaultValue: "correlation-heatmap-svg", choices: [
           { value: "matrix-tsv", label: "Matrix table" },
           { value: "correlation-heatmap-svg", label: "Pearson r heatmap" },
           { value: "spearman-heatmap-svg", label: "Spearman rho heatmap" },

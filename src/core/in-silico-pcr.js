@@ -3,6 +3,7 @@ import { formatFastaRecord, parseSequenceInput } from "./fasta.js";
 import { makeDnaViewerData } from "./dna-viewer-data.js";
 import { makeRestrictionGelSvg } from "./restriction-tools.js";
 import { cleanDnaRnaSequence, complementDnaRnaSequence } from "./sequence.js";
+import { effectiveToolLimit } from "./tool-limit-policy.js";
 
 export const pcrProductTableColumns = [
   { id: "template", label: "Template", type: "string" },
@@ -302,8 +303,8 @@ export function normalizePcrOptions(options = {}) {
     exactThreePrimeBases: Math.max(0, Math.min(12, Number.isFinite(exactThreePrimeBases) ? exactThreePrimeBases : 3)),
     minProductLength,
     maxProductLength,
-    maxBindingSitesPerTemplate: Math.max(1, Math.min(100000, Number.parseInt(options.maxBindingSitesPerTemplate, 10) || DEFAULT_MAX_BINDING_SITES_PER_TEMPLATE)),
-    maxProducts: Math.max(1, Math.min(100000, Number.parseInt(options.maxProducts, 10) || DEFAULT_MAX_PRODUCTS))
+    maxBindingSitesPerTemplate: effectiveToolLimit(options, "maxBindingSitesPerTemplate", Math.max(1, Math.min(100000, Number.parseInt(options.maxBindingSitesPerTemplate, 10) || DEFAULT_MAX_BINDING_SITES_PER_TEMPLATE))),
+    maxProducts: effectiveToolLimit(options, "maxProducts", Math.max(1, Math.min(100000, Number.parseInt(options.maxProducts, 10) || DEFAULT_MAX_PRODUCTS)))
   };
 }
 

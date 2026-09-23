@@ -15,6 +15,7 @@ import dnaRnaMotifs from "../../reference-data/motifs/dna-rna-motifs.js";
 import proteinMotifs from "../../reference-data/motifs/protein-motifs.js";
 import motifProvenance from "../../reference-data/motifs/provenance.js";
 import { MAX_PASTED_FASTA_CHARACTERS_FOR_RICH_OUTPUTS } from "../fasta-input-policy.js";
+import { applyDisabledFastaSourceLimits, effectiveToolLimit } from "../../core/tool-limit-policy.js";
 
 const DETAILED_REPORT_MATCH_THRESHOLD = 2000;
 const MAX_STREAMED_MOTIF_BASES = 50_000_000;
@@ -335,7 +336,7 @@ function getOutputFormat(options, config) {
   if (options.outputFormat === "text-map" || options.outputFormat === "svg-map") {
     return options.outputFormat;
   }
-  return options.outputFormat === "tsv" ? "tsv" : "report";
+  return options.outputFormat === "report" ? "report" : options.outputFormat === "tsv" ? "tsv" : "svg-map";
 }
 
 function buildMotifScannerOutput({ analyzedRecords, rows, selectedMotifs, recordsProcessed, sequenceLength, alphabet, title, options, config, warnings }) {
@@ -502,6 +503,9 @@ function runMotifScanner(input, options = {}, config) {
 }
 
 async function runStreamedDnaRnaMotifScanner(input, options, config, context) {
+  const maxWork = effectiveToolLimit(options, "motifScoring", MAX_MOTIF_WORK);
+  const maxCandidateHits = effectiveToolLimit(options, "motifCandidates", MAX_STREAMED_MOTIF_HITS);
+  const maxOutputCharacters = effectiveToolLimit(options, "motifOutput", MAX_MATERIALIZED_OUTPUT_CHARACTERS);
   const selectedMotifs = getSelectedMotifs(config.motifs, options);
   if (selectedMotifs.some((motif) => motif.syntax === "regex")) {
     throw new Error("Large FASTA motif scans support fixed-width exact, IUPAC, and PWM motifs. Regex motifs require bounded pasted input.");
@@ -514,10 +518,16 @@ async function runStreamedDnaRnaMotifScanner(input, options, config, context) {
   const maxWidth = Math.max(1, ...widths);
   if (maxWidth > 32_000) throw new Error("Selected motif exceeds the 32,000-base fixed-window scan limit.");
   const workPerBase = selectedMotifs.reduce((sum, motif, index) => sum + widths[index] * (options.strand === "forward" || motif.match?.strand !== "both" ? 1 : 2), 0);
-  const opened = await openCleanDnaRnaFastaSource(input, {
+  const sourceOptions = applyDisabledFastaSourceLimits({
     ...options,
     maxSourceBases: Math.min(MAX_STREAMED_MOTIF_BASES, Number(options.maxSourceBases) || MAX_STREAMED_MOTIF_BASES)
-  }, context);
+  }, {
+    maxSourceBases: "motifSource",
+    maxSourceRecords: "motifSource",
+    maxDecodedSourceBytes: "motifSource",
+    maxSourceBytes: "motifSource"
+  });
+  const opened = await openCleanDnaRnaFastaSource(input, sourceOptions, context);
   const analyzedRecords = [];
   const warnings = [];
   const motifOrder = new Map(selectedMotifs.map((motif, index) => [motif.id, index]));
@@ -534,22 +544,22 @@ async function runStreamedDnaRnaMotifScanner(input, options, config, context) {
     }
     if (event.type === "scan-segment") {
       work += (event.ownedEnd0 - event.ownedStart0) * workPerBase;
-      if (work > MAX_MOTIF_WORK) throw new Error(`Motif scan exceeds the ${MAX_MOTIF_WORK.toLocaleString()}-symbol scoring budget. Choose fewer motifs, one strand, or fewer records.`);
+      if (work > maxWork) throw new Error(`Motif scan exceeds the ${maxWork.toLocaleString()}-symbol scoring budget. Choose fewer motifs, one strand, or fewer records.`);
       if (selectedMotifs.length) {
         const scanned = await scanMotifRecordsWithContext({ title: current.title, sequence: event.text }, selectedMotifs, {
           alphabet: "dna-rna", strand: options.strand ?? "both", allowOverlaps: true,
           pwmThresholdPercent: options.pwmThresholdPercent,
-          maxMatches: MAX_STREAMED_MOTIF_HITS, failOnLimit: true
+          maxMatches: maxCandidateHits, failOnLimit: true
         }, context);
         for (const row of scanned.rows) {
           const start0 = event.segmentStart0 + row.start - 1;
           if (start0 < event.ownedStart0 || start0 >= event.ownedEnd0) continue;
           const retained = { ...row, start: start0 + 1, end: event.segmentStart0 + row.end };
           retainedRowCharacters += JSON.stringify(retained).length;
-          if (retainedRowCharacters > MAX_MATERIALIZED_OUTPUT_CHARACTERS) throw new Error("Motif hit table exceeds the 25 MiB materialized-output limit. Choose fewer motifs or records.");
+          if (retainedRowCharacters > maxOutputCharacters) throw new Error("Motif hit table exceeds the materialized-output limit. Choose fewer motifs or records.");
           current.rows.push(retained);
           candidateHits += 1;
-          if (candidateHits > MAX_STREAMED_MOTIF_HITS) throw new Error(`Motif scan exceeds the ${MAX_STREAMED_MOTIF_HITS.toLocaleString()}-candidate-hit limit. Raise the PWM threshold or choose fewer motifs.`);
+          if (candidateHits > maxCandidateHits) throw new Error(`Motif scan exceeds the ${maxCandidateHits.toLocaleString()}-candidate-hit limit. Raise the PWM threshold or choose fewer motifs.`);
         }
         warnings.push(...scanned.warnings);
       }
@@ -595,7 +605,7 @@ async function runStreamedDnaRnaMotifScanner(input, options, config, context) {
   const rows = analyzedRecords.flatMap((record) => record.rows);
   context.reportProgress?.({ phase: "building-output", progress: 0.95 });
   const materialized = buildMotifScannerOutput({ analyzedRecords, rows, selectedMotifs, recordsProcessed: analyzedRecords.length, sequenceLength, alphabet: "dna-rna", title: config.title, options, config, warnings });
-  if (Math.max(materialized.output.length, materialized.report.length) > MAX_MATERIALIZED_OUTPUT_CHARACTERS) throw new Error("Motif output exceeds the 25 MiB materialized-output limit. Choose fewer motifs or records.");
+  if (Math.max(materialized.output.length, materialized.report.length) > maxOutputCharacters) throw new Error("Motif output exceeds the materialized-output limit. Choose fewer motifs or records.");
   return makeToolResult({
     output: materialized.output,
     download: { filename: `${config.filenameBase}.${outputFormat === "tsv" ? "tsv" : outputFormat === "svg-map" ? "svg" : "txt"}`, mimeType: outputFormat === "tsv" ? "text/tab-separated-values" : outputFormat === "svg-map" ? "image/svg+xml;charset=utf-8" : "text/plain;charset=utf-8" },

@@ -21,7 +21,7 @@ import { makeLegacyReferenceScreenOptions } from "../reference-genome-runner.js"
 const OUTPUT_FORMATS = new Set(["report", "tsv", "offtarget-tsv", "guide-fasta", "context-text", "text-map", "svg-map", "interactive-viewer"]);
 
 function normalizeOutputFormat(value) {
-  return OUTPUT_FORMATS.has(value) ? value : "report";
+  return OUTPUT_FORMATS.has(value) ? value : "tsv";
 }
 
 function inputWithOptionalReference(input, options = {}) {

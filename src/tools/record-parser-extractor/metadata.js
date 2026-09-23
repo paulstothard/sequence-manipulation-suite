@@ -1,6 +1,10 @@
 import { flatfileFeatureColumns } from "../../core/flatfile-records.js";
+import { PROTEIN_SEQUENCE_FIGURE_LIMITS } from "../../core/protein-sequence-figure-data.js";
 
-function makeBaseWorkflowOutputs(viewerType = "dna-sequence-viewer", { includeGenomeFigure = false } = {}) {
+function makeBaseWorkflowOutputs(viewerType = "dna-sequence-viewer", {
+  includeGenomeFigure = false,
+  includeProteinFigure = false
+} = {}) {
   return [
     { id: "primary", kind: "text", mediaType: "text/plain" },
     { id: "report", kind: "text", mediaType: "text/plain" },
@@ -8,6 +12,12 @@ function makeBaseWorkflowOutputs(viewerType = "dna-sequence-viewer", { includeGe
     { id: "overview", kind: "text", mediaType: "image/svg+xml", label: "Feature map" },
     { id: "viewer", kind: "viewer", viewerType },
     ...(includeGenomeFigure ? [{ id: "figure", kind: "figure", figureType: "genome-figure", label: "Genome Figure" }] : []),
+    ...(includeProteinFigure ? [{
+      id: "proteinFigure",
+      kind: "figure",
+      figureType: "protein-sequence-figure",
+      label: "Protein sequence figure"
+    }] : []),
     { id: "featuresTsv", kind: "text", mediaType: "text/tab-separated-values" },
     { id: "table", kind: "table", schema: "flatfile-features", columns: flatfileFeatureColumns },
     { id: "selectedFeatureFasta", kind: "text", mediaType: "text/x-fasta", label: "Feature FASTA" },
@@ -106,6 +116,7 @@ const proteinOutputFormatOption = {
   defaultValue: "features-tsv",
   choices: [
     { value: "features-tsv", label: "Feature table" },
+    { value: "protein-sequence-figure", label: "Protein sequence figure" },
     { value: "linear-svg-map", label: "Linear protein feature map" },
     { value: "interactive-viewer", label: "Protein sequence viewer" },
     { value: "protein-fasta", label: "Whole protein FASTA" },
@@ -202,23 +213,46 @@ export const annotatedProteinRecordExtractorMetadata = {
   name: "Annotated Protein Record Extractor",
   category: "Annotated Records & Features",
   tags: ["protein", "FASTA", "GenPept", "UniProt", "annotation", "coordinates", "format conversion", "map"],
-  summary: "Extract residue-coordinate feature tables, maps, whole proteins, and feature sequences from UniProt or GenPept flatfile records.",
+  summary: "Extract residue-coordinate feature tables, publication-ready protein sequence figures, maps, whole proteins, and feature sequences from UniProt or GenPept flatfile records.",
   inputType: "UniProt or GenPept protein flatfile records",
-  outputType: "Protein feature table, linear protein map, protein sequence viewer, extracted FASTA, report",
+  outputType: "Protein feature table, publication-ready protein sequence figure, linear protein map, protein sequence viewer, extracted FASTA, report",
   runInWorker: true,
   workerModule: "../tools/record-parser-extractor/run.js",
   workerExport: "runAnnotatedProteinRecordExtractorWorker",
   workflow: {
     inputs: [{ id: "input", kind: "text", mediaType: "text/plain" }],
     outputs: [
-      ...makeBaseWorkflowOutputs("protein-sequence-viewer"),
+      ...makeBaseWorkflowOutputs("protein-sequence-viewer", { includeProteinFigure: true }),
       { id: "proteinRecords", kind: "sequence-records", alphabet: "protein", schema: "flatfile-protein-sequences" },
       { id: "proteinFasta", kind: "text", mediaType: "text/x-fasta" }
     ]
   },
   options: [
     ...makeFilterOptions({ includeStrand: false }),
-    proteinOutputFormatOption
+    proteinOutputFormatOption,
+    {
+      id: "advancedLimits",
+      type: "group",
+      label: "Limits",
+      collapsible: true,
+      collapsed: true,
+      options: [
+        {
+          id: "proteinFigureResidueLimit",
+          type: "limit-value",
+          label: "Protein sequence figure length",
+          value: `${PROTEIN_SEQUENCE_FIGURE_LIMITS.residuesPerRecord.toLocaleString()} residues per record`,
+          detail: "Only the publication figure has this fixed visual-output ceiling; larger proteins remain available to the viewer, table, report, and FASTA outputs."
+        },
+        {
+          id: "proteinFigureFeatureLimit",
+          type: "limit-value",
+          label: "Protein sequence figure annotations",
+          value: `${PROTEIN_SEQUENCE_FIGURE_LIMITS.featuresPerRecord.toLocaleString()} selected features per record`,
+          detail: "Only the publication figure has this fixed visual-density ceiling; feature filters can narrow the figure without changing the source record."
+        }
+      ]
+    }
   ]
 };
 

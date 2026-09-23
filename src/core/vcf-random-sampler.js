@@ -1,6 +1,7 @@
 import { streamTextLines } from "./compressed-text-reader.js";
 import { resolveRandom, randomInteger } from "./random-sequence.js";
 import { exportDelimitedTable } from "./table.js";
+import { effectiveToolLimit } from "./tool-limit-policy.js";
 
 export const vcfRandomSamplerColumns = [
   { id: "sample_order", label: "Sample order", type: "number" },
@@ -63,7 +64,7 @@ function normalizeOptions(options = {}) {
     biallelicOnly: options.biallelicOnly === true,
     maxMissingGenotypeRate: normalizeRate(options.maxMissingGenotypeRate),
     variantType: normalizeChoice(String(options.variantType ?? "any"), VARIANT_TYPES, "any"),
-    maxInputVariants: normalizeMaxInputVariants(options.maxInputVariants)
+    maxInputVariants: effectiveToolLimit(options, "maxInputVariants", normalizeMaxInputVariants(options.maxInputVariants))
   };
 }
 

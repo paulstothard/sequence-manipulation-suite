@@ -177,7 +177,12 @@ export function midpointRootTree(root) {
   if (nodes.some(node => node !== root && (node.length === null || node.length === undefined || !Number.isFinite(node.length) || node.length < 0))) {
     throw new Error("Midpoint rooting requires complete finite nonnegative branch lengths.");
   }
-  if (nodes.some(node => node.comments?.length || (node.children?.length && node.label))) {
+  const hasUnsafeComments = nodes.some((node) =>
+    node.comments?.some((comment) =>
+      node !== root || !["&R", "&U"].includes(typeof comment === "string" ? comment : comment.text)
+    )
+  );
+  if (hasUnsafeComments || nodes.some(node => node.children?.length && node.label)) {
     throw new Error("Midpoint rooting requires explicit interpretation of internal labels and comments; this renderer does not relocate unresolved support or annotations.");
   }
   const leaves = collectLeaves(root);

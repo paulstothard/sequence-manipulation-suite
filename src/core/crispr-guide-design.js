@@ -7,6 +7,7 @@ import {
 } from "./indexed-genomics/indexed-fasta-reader.js";
 import { cleanDnaRnaSequence, complementDnaRnaSequence, makeSequenceContext } from "./sequence.js";
 import { exportDelimitedTable } from "./table.js";
+import { effectiveToolLimit } from "./tool-limit-policy.js";
 
 export const crisprGuideDesignColumns = [
   { id: "rank", label: "Rank", type: "number" },
@@ -204,16 +205,16 @@ export function normalizeCrisprGuideDesignOptions(options = {}) {
     preferFivePrimeG: fivePrimeGPolicy === "flag",
     requireFivePrimeG: fivePrimeGPolicy === "require",
     allowAmbiguousCandidates: options.allowAmbiguousCandidates === true,
-    maxCandidatesPerRecord: clampInteger(options.maxCandidatesPerRecord, 50, 1, 2000),
+    maxCandidatesPerRecord: effectiveToolLimit(options, "maxCandidatesPerRecord", clampInteger(options.maxCandidatesPerRecord, 50, 1, 2000)),
     maxRecordLength: clampInteger(options.maxRecordLength, 500000, 100, 10000000),
     searchReferenceOffTargets: options.searchReferenceOffTargets === true,
     referenceInputMode,
     maxOffTargetMismatches: clampInteger(options.maxOffTargetMismatches, 2, 0, 5),
-    maxReferenceRecordLength: clampInteger(options.maxReferenceRecordLength, 500000, 100, 10000000),
-    maxIndexedReferenceBases: clampInteger(options.maxIndexedReferenceBases, 5000000, 1000, 50000000),
+    maxReferenceRecordLength: effectiveToolLimit(options, "maxReferenceRecordLength", clampInteger(options.maxReferenceRecordLength, 500000, 100, 10000000)),
+    maxIndexedReferenceBases: effectiveToolLimit(options, "maxIndexedReferenceBases", clampInteger(options.maxIndexedReferenceBases, 5000000, 1000, 50000000)),
     indexedReferenceChunkSize: clampInteger(options.indexedReferenceChunkSize, 200000, 10000, 1000000),
-    maxOffTargetMatchesPerGuide: clampInteger(options.maxOffTargetMatchesPerGuide, 25, 1, 500),
-    maxOffTargetRows: clampInteger(options.maxOffTargetRows, 1000, 1, 10000),
+    maxOffTargetMatchesPerGuide: effectiveToolLimit(options, "maxOffTargetMatchesPerGuide", clampInteger(options.maxOffTargetMatchesPerGuide, 25, 1, 500)),
+    maxOffTargetRows: effectiveToolLimit(options, "maxOffTargetRows", clampInteger(options.maxOffTargetRows, 1000, 1, 10000)),
     contextBases: clampInteger(options.contextBases, 20, 0, 200),
     lineWidth: clampInteger(options.lineWidth, 60, 10, 200),
     mapMaxCandidatesPerRecord: clampInteger(options.mapMaxCandidatesPerRecord, 80, 1, 500)

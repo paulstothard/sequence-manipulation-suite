@@ -6,10 +6,12 @@ import {
 import { openFastaRecordSource } from "../../core/fasta-record-source.js";
 import { makeBoundedTsv } from "../../core/bounded-text-builder.js";
 import { makeTableStream, makeTextStream, makeToolResult } from "../../core/workflow.js";
+import { applyDisabledFastaSourceLimits, effectiveToolLimit } from "../../core/tool-limit-policy.js";
 
 const TABLE_COLUMNS = fastaValidationTableColumns;
 
 function selectedOutputLimit(value) {
+  if (value === Infinity) return Infinity;
   const parsed = Number.parseInt(value, 10);
   return Number.isSafeInteger(parsed) && parsed > 0
     ? parsed
@@ -21,14 +23,23 @@ export async function runFastaValidatorNormalizer(input, options = {}, context =
   context.throwIfCancelled?.();
   await context.yieldIfNeeded?.();
 
-  const source = await openFastaRecordSource(input, options, context);
-  const result = await summarizeFastaSource(source, options, context);
+  const maxOutputCharacters = effectiveToolLimit(options, "fastaOutput", selectedOutputLimit(options.maxMaterializedOutputCharacters));
+  const sourceOptions = applyDisabledFastaSourceLimits({
+    ...options,
+    maxMaterializedOutputCharacters: maxOutputCharacters
+  }, {
+    maxSourceBytes: "fastaSourceFile",
+    maxDecodedSourceBytes: "fastaDecodedText",
+    maxSourceRecords: "fastaRecords",
+    maxSourceBases: "fastaRecords"
+  });
+  const source = await openFastaRecordSource(input, sourceOptions, context);
+  const result = await summarizeFastaSource(source, sourceOptions, context);
   context.reportProgress?.({ phase: "building-output", progress: 0.75 });
   context.throwIfCancelled?.();
   await context.yieldIfNeeded?.();
 
   const outputFormat = options.outputFormat ?? "report";
-  const maxOutputCharacters = selectedOutputLimit(options.maxMaterializedOutputCharacters);
   const tsv = outputFormat === "tsv"
     ? makeBoundedTsv(TABLE_COLUMNS, result.tableRows, maxOutputCharacters, "FASTA summary table output")
     : "";

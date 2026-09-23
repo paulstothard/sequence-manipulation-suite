@@ -1,6 +1,7 @@
 import { DEFAULT_ALIGNMENT_SVG_CELL_LIMIT } from "./alignment-svg.js";
 import { DEFAULT_MAX_DECODED_TEXT_BYTES } from "./compressed-text-reader.js";
 import { PROTEIN_STRUCTURE_KEYBOARD_INSPECTION_LIMIT, PROTEIN_STRUCTURE_NEAREST_ATOM_PICK_LIMIT, PROTEIN_STRUCTURE_SEARCH_SUGGESTION_LIMIT, PROTEIN_STRUCTURE_SUGGESTION_CHAR_LIMIT } from "./viewer-limits.js";
+import { DISABLED_TOOL_LIMIT_IDS_OPTION, normalizeDisabledToolLimitIds } from "./tool-limit-policy.js";
 
 const TECHNICAL_LIMIT_GROUP_IDS = new Set(["advancedLimits", "referenceMatchLimitsGroup"]);
 export const STANDARD_BROWSER_FILE_BYTES = 25 * 1024 * 1024;
@@ -91,7 +92,6 @@ export function getApplicableSharedToolLimits(metadata = {}) {
     limits.push(limit("sangerDecodedTextLimit", "Decoded text trace/reference import", `${DEFAULT_MAX_DECODED_TEXT_BYTES / 1048576} MiB`, "Applies to uploaded text traces and references."));
   }
   if (metadata?.id === "variant-consensus-builder") {
-    limits.push(limit("variantConsensusLoadedInputLimit", "Loaded reference FASTA or VCF text", "20,000,000 decoded bytes per file", "Applies to paste/upload mode. Indexed mode reads the selected region."));
     limits.push(limit("variantConsensusPreviewLimit", "Indexed VCF sample preview", "2,000,000 decoded bytes", "The sample chooser reads a preview of the indexed file."));
   }
   if (metadata?.id === "alignment-viewer") {
@@ -157,5 +157,15 @@ export function getFixedLimitOptionDefaults(metadata) {
 }
 
 export function applyFixedToolLimits(metadata, options = {}) {
-  return { ...options, ...getFixedLimitOptionDefaults(metadata) };
+  const applied = { ...options, ...getFixedLimitOptionDefaults(metadata) };
+  const disabledLimitIds = normalizeDisabledToolLimitIds(
+    metadata?.id,
+    options?.[DISABLED_TOOL_LIMIT_IDS_OPTION]
+  );
+  if (disabledLimitIds.length > 0) {
+    applied[DISABLED_TOOL_LIMIT_IDS_OPTION] = disabledLimitIds;
+  } else {
+    delete applied[DISABLED_TOOL_LIMIT_IDS_OPTION];
+  }
+  return applied;
 }

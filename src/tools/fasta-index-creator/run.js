@@ -6,6 +6,7 @@ import {
 } from "../../core/fasta-index-creator.js";
 import { exportDelimitedTable } from "../../core/table.js";
 import { makeTableStream, makeTextStream, makeToolResult } from "../../core/workflow.js";
+import { effectiveToolLimit } from "../../core/tool-limit-policy.js";
 
 const OUTPUT_FORMATS = new Set(["fai", "table", "report"]);
 
@@ -14,9 +15,9 @@ function normalizeOutputFormat(value) {
 }
 
 export async function runFastaIndexCreator(input, options = {}, context = {}) {
-  const maxInputCharacters = Number.isFinite(Number(options.maxInputCharacters))
+  const maxInputCharacters = effectiveToolLimit(options, "maxInputCharacters", Number.isFinite(Number(options.maxInputCharacters))
     ? Number(options.maxInputCharacters)
-    : 50000000;
+    : 50000000);
   if (String(input ?? "").length > maxInputCharacters) {
     throw new Error(`Input has ${String(input ?? "").length} characters, which exceeds the current FASTA index creator limit of ${maxInputCharacters}.`);
   }

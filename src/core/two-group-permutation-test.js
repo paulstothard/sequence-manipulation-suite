@@ -2,6 +2,7 @@ import { resolveRandom, randomInteger } from "./random-sequence.js";
 import { findColumn, parseDelimitedTable } from "./table.js";
 import { escapeXml } from "./plot-renderer.js";
 import { isNumericStatisticsColumn, parseStatisticsNumber } from "./statistics-utils.js";
+import { effectiveToolLimit } from "./tool-limit-policy.js";
 
 export const permutationTestResultColumns = [
   { id: "test", label: "Test", type: "string" },
@@ -262,7 +263,7 @@ export function runTwoGroupPermutationTest(input, options = {}, context = {}) {
   const combined = [...valuesA, ...valuesB];
   const groupSize = valuesA.length;
   const possible = combinationCount(combined.length, groupSize);
-  const maxExact = Math.max(1, Number.parseInt(options.maxExactPermutations ?? 10000, 10) || 10000);
+  const maxExact = effectiveToolLimit(options, "maxExactPermutations", Math.max(1, Number.parseInt(options.maxExactPermutations ?? 10000, 10) || 10000));
   const requestedIterations = Math.max(1, Math.min(100000, Number.parseInt(options.iterations ?? 5000, 10) || 5000));
   const useExact = possible <= maxExact;
   const { seed, random } = resolveRandom(options);

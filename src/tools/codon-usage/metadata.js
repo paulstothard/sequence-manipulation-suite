@@ -67,7 +67,7 @@ export const codonUsageMetadata = {
       id: "outputFormat",
       type: "radio",
       label: "Output format",
-      defaultValue: "table",
+      defaultValue: "plot",
       choices: [
         { value: "table", label: "Codon usage table" },
         { value: "plot", label: "Codon usage plot" },

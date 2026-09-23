@@ -16,7 +16,7 @@ export async function runOutlierDiagnostics(input, options = {}, context = {}) {
   await context.yieldIfNeeded?.();
 
   const result = calculateOutlierDiagnostics(input, options);
-  const outputFormat = OUTPUT_FORMATS.has(options.outputFormat) ? options.outputFormat : "outlier-tsv";
+  const outputFormat = OUTPUT_FORMATS.has(options.outputFormat) ? options.outputFormat : "plot-svg";
   const report = makeOutlierDiagnosticsReport(result);
   const outlierTsv = outlierRowsToTsv(outlierDiagnosticsColumns, result.rows);
   const summaryTsv = outlierRowsToTsv(outlierGroupSummaryColumns, result.summaries);

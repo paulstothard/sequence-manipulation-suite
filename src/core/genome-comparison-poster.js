@@ -3,6 +3,7 @@ import { cleanDnaRnaSequence, complementDnaRnaSequence } from "./sequence.js";
 import { exportDelimitedTable } from "./table.js";
 import { createBioWasmCli, requireBioWasmRuntime } from "./biowasm-runner.js";
 import { escapeXml } from "./plot-renderer.js";
+import { effectiveToolLimit } from "./tool-limit-policy.js";
 
 const MINIMAP2_VERSION = "2.22";
 const DEFAULT_SEED_SIZE = 14;
@@ -89,14 +90,20 @@ function normalizeOptions(options = {}) {
     minIdentityPercent,
     minMapq: clamp(Number.parseInt(options.minMapq, 10) || 0, 0, 255),
     includeReverseComplement: options.includeReverseComplement !== false,
-    maxBlocks: clamp(Number.parseInt(options.maxBlocks, 10) || DEFAULT_MAX_BLOCKS, 1, 1_000_000),
+    maxBlocks: effectiveToolLimit(options, "maxBlocks", options.maxBlocks === Infinity
+      ? Infinity
+      : clamp(Number.parseInt(options.maxBlocks, 10) || DEFAULT_MAX_BLOCKS, 1, 1_000_000)),
     maxComparisonGenomes: clamp(
       Number.parseInt(options.maxComparisonGenomes, 10) || MAX_GENOME_COMPARISON_POSTER_COMPARISONS,
       1,
       MAX_GENOME_COMPARISON_POSTER_COMPARISONS
     ),
-    maxReferenceLength: clamp(Number.parseInt(options.maxReferenceLength, 10) || 15_000_000, 100, 500_000_000),
-    maxComparisonLength: clamp(Number.parseInt(options.maxComparisonLength, 10) || 15_000_000, 100, 500_000_000)
+    maxReferenceLength: effectiveToolLimit(options, "maxReferenceLength", options.maxReferenceLength === Infinity
+      ? Infinity
+      : clamp(Number.parseInt(options.maxReferenceLength, 10) || 15_000_000, 100, 500_000_000)),
+    maxComparisonLength: effectiveToolLimit(options, "maxComparisonLength", options.maxComparisonLength === Infinity
+      ? Infinity
+      : clamp(Number.parseInt(options.maxComparisonLength, 10) || 15_000_000, 100, 500_000_000))
   };
 }
 

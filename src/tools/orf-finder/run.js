@@ -762,7 +762,7 @@ function isInteractiveViewerFormat(outputFormat) {
 
 function normalizeOutputFormat(outputFormat) {
   const outputFormats = new Set(["report", "tsv", "nucleotide-fasta", "protein-fasta", "svg-overview", "interactive-viewer", "interactive-circular-viewer"]);
-  return outputFormats.has(outputFormat) ? outputFormat : "report";
+  return outputFormats.has(outputFormat) ? outputFormat : "svg-overview";
 }
 
 function makeOrfViewerData(records, options = {}) {

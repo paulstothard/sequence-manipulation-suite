@@ -78,10 +78,10 @@ export const vectorContaminationScannerMetadata = {
       id: "outputFormat",
       type: "radio",
       label: "Output format",
-      defaultValue: "report",
+      defaultValue: "svg-map",
       choices: [
         { value: "report", label: "Summary report" },
-        { value: "tsv", label: "Table" },
+        { value: "tsv", label: "Table", resultView: { kind: "table", streamId: "table" } },
         { value: "text-map", label: "Text annotation map" },
         { value: "svg-map", label: "Linear contamination map" },
         { value: "interactive-viewer", label: "Linear DNA sequence viewer" },

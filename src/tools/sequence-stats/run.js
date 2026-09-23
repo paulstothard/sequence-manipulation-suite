@@ -2,6 +2,7 @@ import { parseSequenceInput } from "../../core/fasta.js";
 import { openCleanDnaRnaFastaSource } from "../../core/fasta-dna-record-source.js";
 import { cleanDnaRnaSequence, getDnaRnaStats } from "../../core/sequence.js";
 import { makeTableStream, makeTextStream, makeToolResult } from "../../core/workflow.js";
+import { applyDisabledFastaSourceLimits, effectiveToolLimit } from "../../core/tool-limit-policy.js";
 import {
   sequenceStatsCountColumns,
   sequenceStatsTableColumns,
@@ -114,10 +115,11 @@ function finalizeStats(stats) {
 }
 
 function makeSequenceStatsResult(analyzedRecords, {
-  outputFormat = "report",
+  outputFormat = "tsv",
   warnings = [],
   recordsProcessed = analyzedRecords.length,
-  charactersRemoved = 0
+  charactersRemoved = 0,
+  limitOptions = {}
 } = {}) {
   const total = makeEmptyTotal();
   for (const record of analyzedRecords) addStats(total, record.stats);
@@ -125,14 +127,15 @@ function makeSequenceStatsResult(analyzedRecords, {
   if (displayedRecords.length > 1) {
     displayedRecords.push({ title: "Total", stats: finalizeStats(total) });
   }
-  const normalizedOutputFormat = outputFormat === "tsv" ? "tsv" : "report";
+  const normalizedOutputFormat = outputFormat === "report" ? "report" : "tsv";
   // Workflows may select either stream independently of the visible output
   // format. Both remain bounded by the record cap and fixed table schema.
   const reportOutput = makeReport(displayedRecords);
   const tableRows = makeTableRows(displayedRecords);
   const output = normalizedOutputFormat === "tsv" ? makeTsv(displayedRecords) : reportOutput;
-  if (output.length > MAX_MATERIALIZED_OUTPUT_CHARACTERS) {
-    throw new Error(`Sequence statistics output contains ${output.length.toLocaleString()} characters, above the current materialized-output limit of ${MAX_MATERIALIZED_OUTPUT_CHARACTERS.toLocaleString()}.`);
+  const maxOutputCharacters = effectiveToolLimit(limitOptions, "sequenceStatsOutput", MAX_MATERIALIZED_OUTPUT_CHARACTERS);
+  if (output.length > maxOutputCharacters) {
+    throw new Error(`Sequence statistics output contains ${output.length.toLocaleString()} characters, above the current materialized-output limit of ${maxOutputCharacters.toLocaleString()}.`);
   }
 
   return makeToolResult({
@@ -206,7 +209,8 @@ export function runSequenceStatsDnaRna(input, options = {}) {
     outputFormat: options.outputFormat,
     warnings,
     recordsProcessed: records.length,
-    charactersRemoved
+    charactersRemoved,
+    limitOptions: options
   });
 }
 
@@ -214,7 +218,13 @@ export async function runSequenceStatsDnaRnaWorker(input, options = {}, context 
   context.reportProgress?.({ phase: "summarizing-sequences", progress: 0.1 });
   context.throwIfCancelled?.();
   await context.yieldIfNeeded?.();
-  const opened = await openCleanDnaRnaFastaSource(input, options, context);
+  const sourceOptions = applyDisabledFastaSourceLimits(options, {
+    maxSourceBytes: "sequenceStatsFile",
+    maxDecodedSourceBytes: "sequenceStatsDecoded",
+    maxSourceRecords: "sequenceStatsInput",
+    maxSourceBases: "sequenceStatsInput"
+  });
+  const opened = await openCleanDnaRnaFastaSource(input, sourceOptions, context);
   const analyzedRecords = [];
   const warnings = [];
   let current = null;
@@ -263,7 +273,8 @@ export async function runSequenceStatsDnaRnaWorker(input, options = {}, context 
     outputFormat: options.outputFormat,
     warnings,
     recordsProcessed: analyzedRecords.length,
-    charactersRemoved
+    charactersRemoved,
+    limitOptions: options
   });
   context.reportProgress?.({ phase: "finished", progress: 1 });
   return result;

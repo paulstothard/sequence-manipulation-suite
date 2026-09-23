@@ -17,6 +17,7 @@ import { renderTextAnnotationMapFromItems } from "../../core/text-annotation-map
 import { makeTableStream, makeTextStream, makeToolResult } from "../../core/workflow.js";
 import { restrictionEnzymeRecords } from "../../reference-data/restriction-enzymes/records.js";
 import { MAX_PASTED_FASTA_CHARACTERS_FOR_RICH_OUTPUTS } from "../fasta-input-policy.js";
+import { applyDisabledFastaSourceLimits, effectiveToolLimit } from "../../core/tool-limit-policy.js";
 
 const MAX_STREAMED_RESTRICTION_BASES = 50_000_000;
 const MAX_RESTRICTION_WORK = 1_000_000_000;
@@ -32,7 +33,7 @@ function normalizeOptions(options = {}) {
     geneticCode: String(options.geneticCode ?? "1"),
     minimumSites: Math.max(0, Number.parseInt(options.minimumSites ?? 1, 10) || 0),
     maximumSites: Math.max(1, Number.parseInt(options.maximumSites ?? 5, 10) || 5),
-    outputFormat: new Set(["report", "tsv", "text-map", "svg-map", "svg-line-map", ...viewerFormats]).has(options.outputFormat) ? options.outputFormat : "report"
+    outputFormat: new Set(["report", "tsv", "text-map", "svg-map", "svg-line-map", ...viewerFormats]).has(options.outputFormat) ? options.outputFormat : "svg-map"
   };
 }
 
@@ -68,7 +69,7 @@ function summarizeFragmentSizes(sequenceLength, hits, topology) {
     .join(",") || "none";
 }
 
-function makeSummaryRows(analyzedRecords, enzymes, options) {
+function makeSummaryRows(analyzedRecords, enzymes, options, maxRows = MAX_SUMMARY_ROWS) {
   const rows = [];
   for (const record of analyzedRecords) {
     record.summaryRows = [];
@@ -90,7 +91,7 @@ function makeSummaryRows(analyzedRecords, enzymes, options) {
       };
       rows.push(row);
       record.summaryRows.push(row);
-      if (rows.length > MAX_SUMMARY_ROWS) throw new Error(`Restriction summary exceeds the ${MAX_SUMMARY_ROWS.toLocaleString()}-row limit. Raise the minimum-sites filter or select fewer enzymes and records.`);
+      if (rows.length > maxRows) throw new Error(`Restriction summary exceeds the ${maxRows.toLocaleString()}-row limit. Raise the minimum-sites filter or select fewer enzymes and records.`);
     }
   }
   return rows;
@@ -223,13 +224,15 @@ export function runRestrictionSummary(input, options = {}, context = {}) {
     });
   }
 
-  return finishRestrictionSummary({ analyzedRecords, enzymes, normalized, warnings, basesProcessed, charactersRemoved, context });
+  return finishRestrictionSummary({ analyzedRecords, enzymes, normalized, warnings, basesProcessed, charactersRemoved, context, limitOptions: options });
 }
 
-function finishRestrictionSummary({ analyzedRecords, enzymes, normalized, warnings, basesProcessed, charactersRemoved, context }) {
+function finishRestrictionSummary({ analyzedRecords, enzymes, normalized, warnings, basesProcessed, charactersRemoved, context, limitOptions = {} }) {
   context.reportProgress?.({ phase: "building-output", progress: 0.85 });
   context.throwIfCancelled?.();
-  const rows = makeSummaryRows(analyzedRecords, enzymes, normalized);
+  const maxRows = effectiveToolLimit(limitOptions, "restrictionRows", MAX_SUMMARY_ROWS);
+  const maxOutputCharacters = effectiveToolLimit(limitOptions, "restrictionOutput", MAX_MATERIALIZED_OUTPUT_CHARACTERS);
+  const rows = makeSummaryRows(analyzedRecords, enzymes, normalized, maxRows);
   for (const record of analyzedRecords) {
     const shownEnzymes = new Set(record.summaryRows.map((row) => row.enzyme));
     record.shownHits = record.allHits.filter((hit) => shownEnzymes.has(hit.enzyme));
@@ -254,8 +257,8 @@ function finishRestrictionSummary({ analyzedRecords, enzymes, normalized, warnin
           : isInteractiveViewerFormat(normalized.outputFormat)
             ? JSON.stringify(viewer, null, 2)
             : report;
-  if (Math.max(output.length, report.length) > MAX_MATERIALIZED_OUTPUT_CHARACTERS) {
-    throw new Error("Restriction summary output exceeds the 25 MiB materialized-output limit. Select fewer enzymes or records.");
+  if (Math.max(output.length, report.length) > maxOutputCharacters) {
+    throw new Error("Restriction summary output exceeds the materialized-output limit. Select fewer enzymes or records.");
   }
 
   return makeToolResult({
@@ -306,11 +309,19 @@ export async function runRestrictionSummaryWorker(input, options = {}, context =
     throw new Error("Large FASTA sources support report, table, and single-line site map output. Sequence text maps, detailed maps, and viewers require bounded pasted input.");
   }
   const enzymes = selectRestrictionEnzymes(restrictionEnzymeRecords, normalized.enzymeIds);
+  const maxWork = effectiveToolLimit(options, "restrictionWork", MAX_RESTRICTION_WORK);
+  const maxStoredSites = effectiveToolLimit(options, "restrictionSites", MAX_RESTRICTION_SITES);
   const maxWidth = Math.max(...enzymes.map((enzyme) => Math.max(enzyme.recognition.length, Math.abs(enzyme.cutTop), Math.abs(enzyme.cutBottom)))) + 20;
-  const opened = await openCleanDnaRnaFastaSource(input, {
+  const sourceOptions = applyDisabledFastaSourceLimits({
     ...options,
     maxSourceBases: Math.min(MAX_STREAMED_RESTRICTION_BASES, Number(options.maxSourceBases) || MAX_STREAMED_RESTRICTION_BASES)
-  }, context);
+  }, {
+    maxSourceBases: "restrictionSource",
+    maxSourceRecords: "restrictionSource",
+    maxDecodedSourceBytes: "restrictionSource",
+    maxSourceBytes: "restrictionSource"
+  });
+  const opened = await openCleanDnaRnaFastaSource(input, sourceOptions, context);
   const analyzedRecords = [];
   const warnings = [];
   let current = null;
@@ -328,10 +339,10 @@ export async function runRestrictionSummaryWorker(input, options = {}, context =
     if (event.type === "scan-segment") {
       const ownedLength = event.ownedEnd0 - event.ownedStart0;
       work += ownedLength * enzymes.length;
-      if (work > MAX_RESTRICTION_WORK) throw new Error(`Restriction scan exceeds the ${MAX_RESTRICTION_WORK.toLocaleString()} enzyme-window work budget. Select fewer enzymes or records.`);
+      if (work > maxWork) throw new Error(`Restriction scan exceeds the ${maxWork.toLocaleString()} enzyme-window work budget. Select fewer enzymes or records.`);
       if (!current.prefix) current.prefix = event.text.slice(0, maxWidth);
       current.suffix = event.text.slice(-maxWidth);
-      const hits = findRestrictionSites(event.text, enzymes, context, { topology: "linear", maxHits: MAX_RESTRICTION_SITES });
+      const hits = findRestrictionSites(event.text, enzymes, context, { topology: "linear", maxHits: maxStoredSites });
       for (const hit of hits) {
         const start0 = event.segmentStart0 + hit.site_start - 1;
         if (start0 < event.ownedStart0 || start0 >= event.ownedEnd0) continue;
@@ -347,7 +358,7 @@ export async function runRestrictionSummaryWorker(input, options = {}, context =
         current.keys.add(key);
         current.allHits.push(shifted);
         storedSites += 1;
-        if (storedSites > MAX_RESTRICTION_SITES) throw new Error(`Restriction sites exceed the ${MAX_RESTRICTION_SITES.toLocaleString()}-site stored-result limit. Select fewer enzymes or records.`);
+        if (storedSites > maxStoredSites) throw new Error(`Restriction sites exceed the ${maxStoredSites.toLocaleString()}-site stored-result limit. Select fewer enzymes or records.`);
       }
       await context.yieldIfNeeded?.();
       continue;
@@ -361,7 +372,7 @@ export async function runRestrictionSummaryWorker(input, options = {}, context =
       if (normalized.topology === "circular" && event.length && current.prefix && current.suffix) {
         const bridge = current.suffix + current.prefix;
         const offset = event.length - current.suffix.length;
-        const bridgeHits = findRestrictionSites(bridge, enzymes, context, { topology: "linear", maxHits: MAX_RESTRICTION_SITES });
+        const bridgeHits = findRestrictionSites(bridge, enzymes, context, { topology: "linear", maxHits: maxStoredSites });
         for (const hit of bridgeHits) {
           if (hit.recognition.length > event.length) continue;
           const rawStart = hit.site_start + offset;
@@ -379,7 +390,7 @@ export async function runRestrictionSummaryWorker(input, options = {}, context =
             complement_cut_after: modulo(hit.complement_cut_after + offset, event.length)
           });
           storedSites += 1;
-          if (storedSites > MAX_RESTRICTION_SITES) throw new Error(`Restriction sites exceed the ${MAX_RESTRICTION_SITES.toLocaleString()}-site stored-result limit. Select fewer enzymes or records.`);
+          if (storedSites > maxStoredSites) throw new Error(`Restriction sites exceed the ${maxStoredSites.toLocaleString()}-site stored-result limit. Select fewer enzymes or records.`);
         }
       }
       current.allHits.sort((left, right) => left.site_start - right.site_start || left.cut_after - right.cut_after || left.enzyme.localeCompare(right.enzyme));
@@ -394,5 +405,5 @@ export async function runRestrictionSummaryWorker(input, options = {}, context =
   warnings.push(...opened.warnings);
   if (!analyzedRecords.length) return makeToolResult({ output: "", warnings: [opened.source.stats.inputProvided ? "No DNA/RNA records were found." : "No sequence input was provided.", ...warnings], recordsProcessed: 0, basesProcessed: 0, charactersRemoved });
   if (normalized.outputFormat === "svg-line-map" && storedSites > 5_000) throw new Error("Single-line restriction map exceeds the 5,000-site visual limit. Use report or table output.");
-  return finishRestrictionSummary({ analyzedRecords, enzymes, normalized, warnings, basesProcessed, charactersRemoved, context });
+  return finishRestrictionSummary({ analyzedRecords, enzymes, normalized, warnings, basesProcessed, charactersRemoved, context, limitOptions: options });
 }

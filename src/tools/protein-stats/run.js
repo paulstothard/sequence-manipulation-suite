@@ -234,7 +234,7 @@ export function runSequenceStatsProtein(input, options = {}) {
     });
   }
 
-  const outputFormat = options.outputFormat === "tsv" ? "tsv" : "report";
+  const outputFormat = options.outputFormat === "report" ? "report" : "tsv";
   const reportOutput = makeReport(analyzedRecords);
   const tableRows = analyzedRecords.map((record) => makeTableRow(record));
   const output = outputFormat === "tsv" ? makeTsv(analyzedRecords) : reportOutput;

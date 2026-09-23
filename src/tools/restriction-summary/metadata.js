@@ -82,10 +82,10 @@ export const restrictionSummaryMetadata = {
       id: "outputFormat",
       type: "radio",
       label: "Output format",
-      defaultValue: "report",
+      defaultValue: "svg-map",
       choices: [
         { value: "report", label: "Summary report" },
-        { value: "tsv", label: "Summary table" },
+        { value: "tsv", label: "Summary table", resultView: { kind: "table", streamId: "table" } },
         { value: "text-map", label: "Text annotation map" },
         { value: "svg-map", label: "Restriction site map" },
         { value: "svg-line-map", label: "Single-line site map" },

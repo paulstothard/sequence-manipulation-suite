@@ -1,5 +1,6 @@
 import { formatFastaRecord, parseSequenceInput } from "./fasta.js";
 import { cleanDnaRnaSequence, complementDnaRnaSequence } from "./sequence.js";
+import { effectiveToolLimit } from "./tool-limit-policy.js";
 
 export const MAX_ASSEMBLY_RECORDS = 1000;
 
@@ -240,14 +241,15 @@ function findBestReadPlacement(contig, read, options, context) {
   return best;
 }
 
-function parseReads(input, options, warnings) {
+function parseReads(input, options, warnings, limitOptions = options) {
   const parsed = parseSequenceInput(input, "sequence");
   if (parsed.length === 0) {
     warnings.push("No DNA/RNA reads or contigs were provided.");
     return { reads: [], charactersRemoved: 0 };
   }
-  if (parsed.length > MAX_ASSEMBLY_RECORDS) {
-    throw new Error(`Assembly input has ${parsed.length.toLocaleString()} reads/contigs, above the supported maximum of ${MAX_ASSEMBLY_RECORDS.toLocaleString()}. Reduce the input to run the assembly.`);
+  const maxAssemblyRecords = effectiveToolLimit(limitOptions, "maxAssemblyRecords", MAX_ASSEMBLY_RECORDS);
+  if (parsed.length > maxAssemblyRecords) {
+    throw new Error(`Assembly input has ${parsed.length.toLocaleString()} reads/contigs, above the supported maximum of ${maxAssemblyRecords.toLocaleString()}. Reduce the input to run the assembly.`);
   }
   let charactersRemoved = 0;
   const reads = parsed.map((record, index) => {
@@ -331,7 +333,7 @@ function makePlacementRows(contigs) {
 export function assembleLightweightSequences(input, options = {}, context = {}) {
   const normalized = normalizeOptions(options);
   const warnings = [];
-  const parsed = parseReads(input, normalized, warnings);
+  const parsed = parseReads(input, normalized, warnings, options);
   const reads = parsed.reads.sort((left, right) => right.sequence.length - left.sequence.length);
   const inputBasesProcessed = reads.reduce((sum, read) => sum + read.sequence.length, 0);
   const contigs = [];

@@ -2,6 +2,7 @@ import { createBioWasmCli, requireBioWasmRuntime } from "./biowasm-runner.js";
 import { axisRenderOptions, plotRowsToTsv, renderScatterSvg, stratifiedRowsForSvg } from "./plot-tools.js";
 import { isNumericStatisticsColumn, parseStatisticsNumber } from "./statistics-utils.js";
 import { findColumn, parseColumnList, parseDelimitedTable } from "./table.js";
+import { effectiveToolLimit } from "./tool-limit-policy.js";
 
 export const tsneEmbeddingColumns = [
   { id: "label", label: "Label", type: "string" },
@@ -101,7 +102,7 @@ export function prepareTsneInput(input, options = {}) {
     warnings.push("One or more requested numeric columns could not be found.");
   }
 
-  const maxNumericColumns = clampInteger(options.maxNumericColumns, MAX_COLUMNS_DEFAULT, 2, MAX_COLUMNS_MAX);
+  const maxNumericColumns = effectiveToolLimit(options, "maxNumericColumns", clampInteger(options.maxNumericColumns, MAX_COLUMNS_DEFAULT, 2, MAX_COLUMNS_MAX));
   if (columns.length > maxNumericColumns) {
     warnings.push(`Using the first ${maxNumericColumns.toLocaleString()} selected numeric column(s); increase Maximum numeric columns to include more.`);
     columns = columns.slice(0, maxNumericColumns);
@@ -129,7 +130,7 @@ export function prepareTsneInput(input, options = {}) {
     warnings.push(`Skipped ${skipped} row(s) with missing or nonnumeric selected t-SNE values.`);
   }
 
-  const maxRows = clampInteger(options.maxRows, MAX_ROWS_DEFAULT, 4, MAX_ROWS_MAX);
+  const maxRows = effectiveToolLimit(options, "maxRows", clampInteger(options.maxRows, MAX_ROWS_DEFAULT, 4, MAX_ROWS_MAX));
   const limitedRows = completeRows.slice(0, maxRows);
   if (completeRows.length > limitedRows.length) {
     warnings.push(`Using only the first ${limitedRows.length.toLocaleString()} complete row(s). Filter the input table if you need a different subset.`);

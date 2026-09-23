@@ -85,7 +85,7 @@ export const tableSummaryMetadata = {
           label: "Format",
           defaultValue: "summary-tsv",
           choices: [
-            { value: "summary-tsv", label: "Summary table" },
+            { value: "summary-tsv", label: "Summary table", resultView: { kind: "table", streamId: "summaryTable" } },
             { value: "report", label: "Summary report" }
           ]
         }

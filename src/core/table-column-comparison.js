@@ -7,6 +7,7 @@ import {
   normalizeStatisticsCell
 } from "./statistics-utils.js";
 import { escapeXml, makePlaceholderSvg } from "./plot-renderer.js";
+import { effectiveToolLimit } from "./tool-limit-policy.js";
 import {
   annotatePointCrowding,
   pointCrowdingFact,
@@ -952,7 +953,7 @@ export function analyzeTableColumnComparison(input, options = {}) {
     };
     return { ...fallback, report: makeReport(fallback) };
   }
-  const maxPairRows = normalizePositiveInteger(options.maxPairRows, 10000, 1, 1000000);
+  const maxPairRows = effectiveToolLimit(options, "maxPairRows", normalizePositiveInteger(options.maxPairRows, 10000, 1, 1000000));
   const maxCategories = normalizePositiveInteger(options.maxCategories, 20, 2, 100);
   const requestedType = COMPARISON_TYPES.has(options.comparisonType) ? options.comparisonType : "auto";
   const { columnA, columnB } = resolveColumns(table, options, warnings);

@@ -86,7 +86,7 @@ export const talenTargetFinderMetadata = {
           id: "outputFormat",
           type: "radio",
           label: "Output format",
-          defaultValue: "report",
+          defaultValue: "tsv",
           choices: [
             { value: "report", label: "Summary report" },
             { value: "tsv", label: "Target pair table" },
@@ -128,7 +128,7 @@ export const talenTargetFinderMetadata = {
           defaultValue: 200000,
           min: 100,
           step: 100,
-          help: "Maximum target-record length scanned. Larger genomic searches need more specialized indexed or chunked approaches."
+          help: "Maximum target-record length scanned."
         },
         {
           id: "maxCandidateWindows",
@@ -137,7 +137,7 @@ export const talenTargetFinderMetadata = {
           defaultValue: 2000000,
           min: 1000,
           step: 1000,
-          help: "Upper bound on half-site/spacer combinations evaluated per record to keep broad searches cancellable."
+          help: "Upper bound on half-site/spacer combinations evaluated per record."
         },
         {
           id: "maxReferenceRecordLength",

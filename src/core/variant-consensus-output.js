@@ -4,7 +4,7 @@ import { makeDnaViewerData } from './dna-viewer-data.js';
 export const CONSENSUS_TABLE_CHARACTERS = 20_000_000;
 export const CONSENSUS_VIEWER_MAX_RECORDS = 12;
 // Count the shared TSV encoder's output before allocating a potentially huge export.
-export async function checkConsensusTableSize(columns, rows, context = {}) {
+export async function checkConsensusTableSize(columns, rows, context = {}, maxCharacters = CONSENSUS_TABLE_CHARACTERS) {
   let characters = 0;
   const add = value => {
     const text = String(value ?? '');
@@ -20,7 +20,7 @@ export async function checkConsensusTableSize(columns, rows, context = {}) {
     if (i % 256 === 0) await checkpoint(context, 'checking-table-size', 0.92);
     columns.forEach(column => add(rows[i][column.id]));
     characters += columns.length; // row newline and field separators
-    if (characters > CONSENSUS_TABLE_CHARACTERS) throw new Error('Consensus table exceeds 20 million output characters. Narrow the region or choose FASTA/report output.');
+    if (characters > maxCharacters) throw new Error(`Consensus table exceeds ${maxCharacters === CONSENSUS_TABLE_CHARACTERS ? '20 million' : maxCharacters.toLocaleString('en-US')} output characters. Narrow the region or choose FASTA/report output.`);
   }
 }
 const columns = fields=>fields.map(([id,label,type='string'])=>({id,label,type}));

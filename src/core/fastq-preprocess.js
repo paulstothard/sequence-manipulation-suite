@@ -1,5 +1,6 @@
 import { createBioWasmCli, requireBioWasmRuntime } from "./biowasm-runner.js";
 import { exportDelimitedTable } from "./table.js";
+import { DISABLED_TOOL_LIMIT_IDS_OPTION, effectiveToolLimit } from "./tool-limit-policy.js";
 
 export const FASTP_VERSION = "0.20.1";
 
@@ -20,6 +21,7 @@ function clamp(value, min, max) {
 }
 
 function parseInteger(value, fallback, min, max) {
+  if (value === Infinity) return Infinity;
   const parsed = Number.parseInt(value, 10);
   return clamp(Number.isFinite(parsed) ? parsed : fallback, min, max);
 }
@@ -30,19 +32,32 @@ function parsePercent(value, fallback) {
 }
 
 export function normalizeFastqPreprocessOptions(options = {}) {
-  const rawOutputFormat = String(options.outputFormat ?? "report");
-  return {
-    readLayout: READ_LAYOUTS.has(options.readLayout) ? options.readLayout : "single",
+  const readLayout = READ_LAYOUTS.has(options.readLayout) ? options.readLayout : "single";
+  const defaultOutputFormat = readLayout === "paired" ? "interleaved-fastq" : "fastq";
+  const rawOutputFormat = String(options.outputFormat ?? defaultOutputFormat);
+  let outputFormat = OUTPUT_FORMATS.has(rawOutputFormat) ? rawOutputFormat : defaultOutputFormat;
+  if (readLayout === "paired" && outputFormat === "fastq") {
+    outputFormat = "interleaved-fastq";
+  }
+  if (readLayout === "single" && ["interleaved-fastq", "read1-fastq", "read2-fastq"].includes(outputFormat)) {
+    outputFormat = "fastq";
+  }
+  const normalized = {
+    readLayout,
     qualityCutoff: parseInteger(options.qualityCutoff, 20, 2, 40),
     maxLowQualityPercent: parsePercent(options.maxLowQualityPercent, 40),
     minimumLength: parseInteger(options.minimumLength, 30, 1, 10000),
     maximumNCount: parseInteger(options.maximumNCount, 5, 0, 1000),
     trimTailLowQuality: options.trimTailLowQuality !== false,
-    outputFormat: OUTPUT_FORMATS.has(rawOutputFormat) ? rawOutputFormat : "report",
-    maxReads: parseInteger(options.maxReads, 100000, 1, 10000000),
-    maxInputBases: parseInteger(options.maxInputBases, 100000000, 100, 2000000000),
-    maxInputBytes: parseInteger(options.maxInputBytes, 200000000, 100, 4000000000)
+    outputFormat,
+    maxReads: effectiveToolLimit(options, "maxReads", parseInteger(options.maxReads, 100000, 1, 10000000)),
+    maxInputBases: effectiveToolLimit(options, "maxInputBases", parseInteger(options.maxInputBases, 100000000, 100, 2000000000)),
+    maxInputBytes: effectiveToolLimit(options, "maxInputBytes", parseInteger(options.maxInputBytes, 200000000, 100, 4000000000))
   };
+  if (Array.isArray(options[DISABLED_TOOL_LIMIT_IDS_OPTION])) {
+    normalized[DISABLED_TOOL_LIMIT_IDS_OPTION] = options[DISABLED_TOOL_LIMIT_IDS_OPTION];
+  }
+  return normalized;
 }
 
 function checkCancelled(context, counter = 0, interval = 1024) {

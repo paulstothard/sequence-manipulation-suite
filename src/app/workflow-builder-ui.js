@@ -188,6 +188,18 @@ export function createWorkflowBuilderController({
 
     if (value.kind === "figure") {
       const rawText = JSON.stringify(value.figure ?? value, null, 2);
+      if ((value.figureType ?? value.figure?.figureType) === "protein-sequence-figure") {
+        return {
+          text: rawText,
+          rawText,
+          summary: `Workflow output: Protein sequence figure (${pluralize(value.figure?.records?.length ?? 0, "record")})`,
+          outputLabel: "Protein sequence figure",
+          isTsv: false,
+          proteinFigure: value.figure,
+          filename: "sms3-workflow-protein-sequence-figure.json",
+          mimeType: "application/json;charset=utf-8"
+        };
+      }
       return {
         text: rawText,
         rawText,

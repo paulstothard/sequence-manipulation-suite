@@ -71,7 +71,7 @@ export const barPlotMetadata = {
           min: 10,
           max: 2000,
           step: 10,
-          help: "The Bar TSV still contains all parsed bars; this only caps visual drawing for browser responsiveness."
+          help: "The bar table still contains all parsed bars; only the plot is capped."
         }
       ]
     }

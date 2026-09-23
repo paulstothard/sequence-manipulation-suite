@@ -33,7 +33,7 @@ export const primerOligoPropertiesMetadata = {
           id: "outputFormat",
           type: "radio",
           label: "Format",
-          defaultValue: "report",
+          defaultValue: "tsv",
           choices: [
             { value: "report", label: "Summary report" },
             { value: "tsv", label: "Property table" }

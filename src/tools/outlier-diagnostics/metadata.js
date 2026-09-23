@@ -64,7 +64,7 @@ export const outlierDiagnosticsMetadata = {
       type: "group",
       label: "Output format",
       options: [
-        { id: "outputFormat", type: "radio", label: "Format", defaultValue: "outlier-tsv", choices: [
+        { id: "outputFormat", type: "radio", label: "Format", defaultValue: "plot-svg", choices: [
           { value: "outlier-tsv", label: "Outlier table" },
           { value: "summary-tsv", label: "Group summary table" },
           { value: "plot-svg", label: "Outlier plot" },

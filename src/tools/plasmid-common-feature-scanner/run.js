@@ -221,7 +221,7 @@ export async function runPlasmidCommonFeatureScanner(input, options = {}, contex
   const scannedRecords = rowsByRecord(records, rows);
   const report = makeReport({ rows, references, recordsProcessed: records.length, basesProcessed });
   const tsv = makeTsv(rows);
-  const outputFormat = OUTPUT_FORMATS.has(options.outputFormat) ? options.outputFormat : "report";
+  const outputFormat = OUTPUT_FORMATS.has(options.outputFormat) ? options.outputFormat : "svg-map";
   const textMap = outputFormat === "text-map" ? makeTextMap(scannedRecords) : "";
   const svgMap = outputFormat === "svg-map" ? makeSvgMap(scannedRecords) : "";
   const viewer = outputFormat === "interactive-viewer" || outputFormat === "interactive-circular-viewer"

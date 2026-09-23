@@ -8,6 +8,7 @@ import {
 import { makeDnaViewerData, makeDnaViewerStream } from "../../core/dna-viewer-data.js";
 import { exportDelimitedTable } from "../../core/table.js";
 import { makeTableStream, makeTextStream, makeToolResult } from "../../core/workflow.js";
+import { effectiveToolLimit } from "../../core/tool-limit-policy.js";
 
 const OUTPUT_FORMATS = new Set(["fasta", "table-tsv", "interactive-viewer", "report"]);
 const SOURCE_MODES = new Set(["loaded", "indexed", "bgzf"]);
@@ -58,7 +59,11 @@ export async function runIndexedFastaRegionExtractor(input, options = {}, contex
   context.reportProgress?.({ phase: useIndexedSource ? "reading-index" : "reading-fasta", progress: 0.05 });
   context.throwIfCancelled?.();
   const outputFormat = OUTPUT_FORMATS.has(options.outputFormat) ? options.outputFormat : "fasta";
-  const maxBasesPerRegion = normalizePositiveInteger(options.maxBasesPerRegion, 1000000);
+  const maxBasesPerRegion = effectiveToolLimit(
+    options,
+    "maxBasesPerRegion",
+    normalizePositiveInteger(options.maxBasesPerRegion, 1000000)
+  );
   const result = useIndexedSource
     ? await readIndexedFastaRegions({
       ...(await resolveIndexedFastaRegionInput(input, options)),

@@ -397,6 +397,38 @@ export function createToolOptionsController({
         ? option.value.toLocaleString("en-US")
         : String(option.value ?? "");
       main.append(label, value);
+      if (option.limitOverride) {
+        row.classList.add("option-limit-value-disableable");
+        const toggle = document.createElement("label");
+        toggle.className = "option-limit-toggle";
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = true;
+        checkbox.dataset.limitId = option.id;
+        checkbox.setAttribute("aria-label", `Enforce ${option.label ?? option.id} limit`);
+        const toggleText = document.createElement("span");
+        toggleText.textContent = "Enforce";
+        toggle.append(checkbox, toggleText);
+        main.append(toggle);
+
+        const syncUnlockedOptions = () => {
+          row.classList.toggle("option-limit-value-disabled", !checkbox.checked);
+          for (const optionId of option.limitOverride.unlocksOptionIds ?? []) {
+            const control = document.getElementById(optionId);
+            if (!control) continue;
+            if (!control.dataset.enforcedMax && control.hasAttribute("max")) {
+              control.dataset.enforcedMax = control.getAttribute("max");
+            }
+            if (checkbox.checked) {
+              if (control.dataset.enforcedMax) control.setAttribute("max", control.dataset.enforcedMax);
+            } else {
+              control.removeAttribute("max");
+            }
+          }
+        };
+        checkbox.addEventListener("change", syncUnlockedOptions);
+        syncUnlockedOptions();
+      }
       row.append(main);
       if (option.detail) {
         const detail = document.createElement("p");
@@ -598,11 +630,16 @@ export function createToolOptionsController({
           if (!file) {
             return;
           }
-          if (file.size > STANDARD_BROWSER_FILE_BYTES) {
+          if (isLimitEnforced("standardFileUploadLimit") && file.size > STANDARD_BROWSER_FILE_BYTES) {
             addMessage(`${file.name}: file is larger than 25 MiB.`, "warning");
             return;
           }
-          input.value = await readToolInputFileText(file, { onMessage: addMessage });
+          input.value = await readToolInputFileText(file, {
+            onMessage: addMessage,
+            maxDecodedBytes: isLimitEnforced("decodedTextImportLimit") ? undefined : Infinity,
+            workbookMaxRows: isLimitEnforced("workbookImportLimit") ? undefined : Infinity,
+            workbookMaxCells: isLimitEnforced("workbookImportLimit") ? undefined : Infinity
+          });
           status.textContent = `${file.name} (${file.size.toLocaleString()} bytes)`;
           clearToolOutput();
           updateToolOptionSuggestions();
@@ -882,6 +919,18 @@ export function createToolOptionsController({
     popover.style.setProperty("--option-help-top", `${top}px`);
   }
 
+  function getDisabledToolLimitIds() {
+    return [...elements.toolOptions.querySelectorAll("input[data-limit-id]")]
+      .filter((input) => !input.checked)
+      .map((input) => input.dataset.limitId)
+      .filter(Boolean);
+  }
+
+  function isLimitEnforced(limitId) {
+    const checkbox = elements.toolOptions.querySelector(`input[data-limit-id="${limitId}"]`);
+    return checkbox?.checked !== false;
+  }
+
   function flattenOptions(options = []) {
     return options.flatMap((option) => option.type === "group" ? flattenOptions(option.options ?? []) : [option]);
   }
@@ -1101,6 +1150,8 @@ export function createToolOptionsController({
     getFilteredChoices,
     populateDependentSelect,
     normalizeDependentOptionValues,
-    wireDependentToolOptions
+    wireDependentToolOptions,
+    getDisabledToolLimitIds,
+    isLimitEnforced
   };
 }

@@ -14,7 +14,7 @@ export async function runSimpleLinearRegressionTool(input, options = {}, context
   context.throwIfCancelled?.();
   await context.yieldIfNeeded?.();
 
-  const outputFormat = OUTPUT_FORMATS.has(options.outputFormat) ? options.outputFormat : "result-tsv";
+  const outputFormat = OUTPUT_FORMATS.has(options.outputFormat) ? options.outputFormat : "plot-svg";
   const result = calculateSimpleLinearRegression(input, options);
   const resultTsv = simpleLinearRegressionRowsToTsv(result.rows);
   const fitTsv = simpleLinearRegressionFitRowsToTsv(result.fitRows);

@@ -141,7 +141,7 @@ export const tsnePlotMetadata = {
           min: 100,
           max: 20000,
           step: 100,
-          help: "The embedding table still contains all embedded rows; this only caps visual drawing for browser responsiveness."
+          help: "The embedding table still contains all embedded rows; only the plot is capped."
         }
       ]
     }

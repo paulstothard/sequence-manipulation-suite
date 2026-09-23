@@ -7,6 +7,7 @@ import {
   renderCategoricalBarPlotSvg
 } from "../../core/plot-renderer.js";
 import { cleanDnaRnaSequence } from "../../core/sequence.js";
+import { applyDisabledFastaSourceLimits, effectiveToolLimit } from "../../core/tool-limit-policy.js";
 import { makeTableStream, makeTextStream, makeToolResult } from "../../core/workflow.js";
 
 export const codonUsageTableColumns = [
@@ -204,7 +205,7 @@ function normalizeOptions(options = {}) {
   const outputFormats = new Set(["report", "table", "tsv", "plot", "svg-plot", "sms3-svg", "observable-svg"]);
   const outputFormat = outputFormats.has(options.outputFormat)
     ? options.outputFormat
-    : "table";
+    : "plot";
   return {
     geneticCode: getGeneticCode(options.geneticCode ?? "1").id,
     plotValue: Object.hasOwn(PLOT_VALUE_LABELS, options.plotValue) ? options.plotValue : "count",
@@ -266,7 +267,8 @@ function makeCodonUsageResult(analyzedInputRecords, normalizedOptions, {
   warnings = [],
   recordsProcessed = analyzedInputRecords.length,
   basesProcessed = 0,
-  charactersRemoved = 0
+  charactersRemoved = 0,
+  limitOptions = {}
 } = {}) {
   if (normalizedOptions.outputFormat === "plot" && recordsProcessed > CODON_USAGE_LIMITS.maxPlotRecords) {
     throw new Error(`Codon usage plots support at most ${CODON_USAGE_LIMITS.maxPlotRecords.toLocaleString()} input records per run. Choose the table or summary report for larger record collections.`);
@@ -288,8 +290,9 @@ function makeCodonUsageResult(analyzedInputRecords, normalizedOptions, {
   const plotSpec = isPlotOutput ? makeCodonPlotSpec(analyzedRecords, normalizedOptions) : null;
   const svgPlot = plotSpec ? renderCategoricalBarPlotSvg(plotSpec) : "";
   const output = isTableOutput ? makeTsv(allRows) : isPlotOutput ? svgPlot : reportOutput;
-  if (output.length > CODON_USAGE_LIMITS.maxMaterializedOutputCharacters) {
-    throw new Error(`Codon usage output contains ${output.length.toLocaleString()} characters, above the current materialized-output limit of ${CODON_USAGE_LIMITS.maxMaterializedOutputCharacters.toLocaleString()}.`);
+  const maxOutputCharacters = effectiveToolLimit(limitOptions, "codonUsageOutput", CODON_USAGE_LIMITS.maxMaterializedOutputCharacters);
+  if (output.length > maxOutputCharacters) {
+    throw new Error(`Codon usage output contains ${output.length.toLocaleString()} characters, above the current materialized-output limit of ${maxOutputCharacters.toLocaleString()}.`);
   }
 
   return makeToolResult({
@@ -387,7 +390,8 @@ export function runCodonUsage(input, options = {}) {
     warnings,
     recordsProcessed: records.length,
     basesProcessed,
-    charactersRemoved
+    charactersRemoved,
+    limitOptions: options
   });
 }
 
@@ -396,10 +400,16 @@ export async function runCodonUsageWorker(input, options = {}, context = {}) {
   context.throwIfCancelled?.();
   await context.yieldIfNeeded?.();
   const normalizedOptions = normalizeOptions(options);
-  const opened = await openCleanDnaRnaFastaSource(input, {
+  const sourceOptions = applyDisabledFastaSourceLimits({
     ...options,
     maxSourceRecords: Math.min(CODON_USAGE_LIMITS.maxRecords, Number(options.maxSourceRecords) || CODON_USAGE_LIMITS.maxRecords)
-  }, context);
+  }, {
+    maxSourceBases: "codonUsageInput",
+    maxSourceRecords: "codonUsageInput",
+    maxDecodedSourceBytes: "codonUsageInput",
+    maxSourceBytes: "codonUsageInput"
+  });
+  const opened = await openCleanDnaRnaFastaSource(input, sourceOptions, context);
   const analyzedRecords = [];
   const warnings = [];
   let basesProcessed = 0;
@@ -439,7 +449,8 @@ export async function runCodonUsageWorker(input, options = {}, context = {}) {
     warnings,
     recordsProcessed: analyzedRecords.length,
     basesProcessed,
-    charactersRemoved
+    charactersRemoved,
+    limitOptions: options
   });
   context.reportProgress?.({ phase: "finished", progress: 1 });
   return result;

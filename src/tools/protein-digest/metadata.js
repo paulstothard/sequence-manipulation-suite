@@ -65,12 +65,12 @@ export const proteinDigestMetadata = {
     {
       id: "advancedLimits", type: "group", label: "Limits", collapsible: true, collapsed: true,
       options: [
-        { type: "limit-value", label: "Input characters", value: PROTEIN_DIGEST_LIMITS.inputCharacters },
-        { type: "limit-value", label: "Protein records", value: PROTEIN_DIGEST_LIMITS.records },
-        { type: "limit-value", label: "Input residues", value: PROTEIN_DIGEST_LIMITS.residues },
-        { type: "limit-value", label: "Peptides", value: PROTEIN_DIGEST_LIMITS.peptides },
-        { type: "limit-value", label: "Exported peptide residues", value: PROTEIN_DIGEST_LIMITS.exportedResidues },
-        { type: "limit-value", label: "FASTA header characters", value: 500 },
+        { id: "maxInputCharacters", type: "limit-value", label: "Input characters", value: PROTEIN_DIGEST_LIMITS.inputCharacters },
+        { id: "maxProteinRecords", type: "limit-value", label: "Protein records", value: PROTEIN_DIGEST_LIMITS.records },
+        { id: "maxInputResidues", type: "limit-value", label: "Input residues", value: PROTEIN_DIGEST_LIMITS.residues },
+        { id: "maxPeptides", type: "limit-value", label: "Peptides", value: PROTEIN_DIGEST_LIMITS.peptides },
+        { id: "maxExportedResidues", type: "limit-value", label: "Exported peptide residues", value: PROTEIN_DIGEST_LIMITS.exportedResidues },
+        { id: "maxHeaderCharacters", type: "limit-value", label: "FASTA header characters", value: 500 },
         { type: "note", text: `Peptide maps support up to ${PROTEIN_DIGEST_LIMITS.mapRecords} proteins, ${PROTEIN_DIGEST_LIMITS.mapPeptides} peptides, and ${PROTEIN_DIGEST_LIMITS.mapResidues.toLocaleString()} input residues.` }
       ]
     },

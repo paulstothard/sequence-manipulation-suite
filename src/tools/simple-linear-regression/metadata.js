@@ -63,7 +63,7 @@ export const simpleLinearRegressionMetadata = {
       type: "group",
       label: "Output format",
       options: [
-        { id: "outputFormat", type: "radio", label: "Format", defaultValue: "result-tsv", choices: [
+        { id: "outputFormat", type: "radio", label: "Format", defaultValue: "plot-svg", choices: [
           { value: "result-tsv", label: "Result table" },
           { value: "fit-tsv", label: "Fitted/residual table" },
           { value: "plot-svg", label: "Regression plot" },

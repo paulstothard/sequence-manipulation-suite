@@ -3580,7 +3580,11 @@ function installFigureEditor(panel, sourceRecords, figure, editorDocument) {
     makeControlGroup("Theme", paletteControl.label, legendToggle.label),
     makeControlGroup("Sequences", contigOrderControl.label, contigVisibilityControl.wrapper),
     makeControlGroup("Ruler", ...(regionControl ? [regionControl.wrapper] : []), tickDensityControl.label),
-    makeControlGroup("Plots", plotControl, gcBaselineControl.label, plotScaleControl.label, plotWindowControl.label, plotWidthControl.label),
+    makeControlGroup("Plots", plotControl, gcBaselineControl.label, plotScaleControl.label, plotWindowControl.label, plotWidthControl.label)
+  );
+  const featureControls = document.createElement("div");
+  featureControls.className = "genome-figure-controls";
+  featureControls.append(
     makeControlGroup("Features", featureLayoutControl.label, featureSlotGroupingControl.label, featureColorControl.label, featureGlyphControl.label, featureOpacityControl.label, slotWidthControl.label, slotDividerToggle.label, featureTypeControl)
   );
   const editor = document.createElement("div");
@@ -3605,6 +3609,7 @@ function installFigureEditor(panel, sourceRecords, figure, editorDocument) {
   labelsPanel.append(labelsGroup, selectedLabelGroup);
   const tabs = makeSettingsTabs([
     { id: "appearance", label: "Appearance", content: figureControls },
+    { id: "features", label: "Features", content: featureControls },
     { id: "labels", label: "Labels", content: labelsPanel }
   ], "appearance");
   toolbar.append(tabs.wrapper);

@@ -7,6 +7,7 @@ import {
 } from "./indexed-genomics/indexed-fasta-reader.js";
 import { cleanDnaRnaSequence, complementDnaRnaSequence, makeSequenceContext } from "./sequence.js";
 import { exportDelimitedTable } from "./table.js";
+import { effectiveToolLimit } from "./tool-limit-policy.js";
 
 export const sirnaDesignTableColumns = [
   { id: "rank", label: "Rank", type: "number" },
@@ -290,17 +291,17 @@ export function normalizeSirnaDesignOptions(options = {}) {
     minGcPercent,
     maxGcPercent,
     skipFirstBases: clampInteger(options.skipFirstBases, 0, 0, 1000000),
-    maxCandidatesPerRecord: clampInteger(options.maxCandidatesPerRecord, 25, 1, 1000),
+    maxCandidatesPerRecord: effectiveToolLimit(options, "maxCandidatesPerRecord", clampInteger(options.maxCandidatesPerRecord, 25, 1, 1000)),
     maxRecordLength: clampInteger(options.maxRecordLength, 200000, 100, 5000000),
     includeOverhangs: options.includeOverhangs !== false,
     overhang: String(options.overhang ?? "UU").toUpperCase().replace(/[^ACGU]/g, "").slice(0, 4) || "UU",
     searchReferenceOffTargets: options.searchReferenceOffTargets === true,
     referenceInputMode,
     maxOffTargetMismatches: clampInteger(options.maxOffTargetMismatches, 2, 0, 5),
-    maxReferenceRecordLength: clampInteger(options.maxReferenceRecordLength, 200000, 100, 5000000),
-    maxIndexedReferenceBases: clampInteger(options.maxIndexedReferenceBases, 1000000, 1000, 10000000),
-    maxOffTargetMatchesPerCandidate: clampInteger(options.maxOffTargetMatchesPerCandidate, 25, 1, 500),
-    maxOffTargetRows: clampInteger(options.maxOffTargetRows, 1000, 1, 10000),
+    maxReferenceRecordLength: effectiveToolLimit(options, "maxReferenceRecordLength", clampInteger(options.maxReferenceRecordLength, 200000, 100, 5000000)),
+    maxIndexedReferenceBases: effectiveToolLimit(options, "maxIndexedReferenceBases", clampInteger(options.maxIndexedReferenceBases, 1000000, 1000, 10000000)),
+    maxOffTargetMatchesPerCandidate: effectiveToolLimit(options, "maxOffTargetMatchesPerCandidate", clampInteger(options.maxOffTargetMatchesPerCandidate, 25, 1, 500)),
+    maxOffTargetRows: effectiveToolLimit(options, "maxOffTargetRows", clampInteger(options.maxOffTargetRows, 1000, 1, 10000)),
     contextBases: clampInteger(options.contextBases, 20, 0, 100),
     lineWidth: clampInteger(options.lineWidth, 60, 10, 200)
   };

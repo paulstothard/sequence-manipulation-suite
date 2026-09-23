@@ -427,6 +427,7 @@ async function materializeSelectedRecords(source, records, normalized, outputFor
 }
 
 function normalizePositiveLimit(value, fallback) {
+  if (value === Infinity) return Infinity;
   const parsed = Number.parseInt(value, 10);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
 }

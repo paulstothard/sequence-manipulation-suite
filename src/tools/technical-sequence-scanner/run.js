@@ -8,6 +8,7 @@ import { makeDnaViewerData, makeDnaViewerStream } from "../../core/dna-viewer-da
 import { renderSequenceMap } from "../../core/sequence-map-renderer.js";
 import { renderTextAnnotationMapFromItems } from "../../core/text-annotation-map.js";
 import { makeTableStream, makeTextStream, makeToolResult } from "../../core/workflow.js";
+import { applyDisabledFastaSourceLimits, effectiveToolLimit } from "../../core/tool-limit-policy.js";
 
 export const technicalSequenceTableColumns = [
   ...motifMatchTableColumns,
@@ -724,7 +725,9 @@ function makeReport({ rows, selectedRecords, recordsProcessed, basesProcessed, p
 }
 
 async function runStreamedTechnicalSequenceScanner(input, options, context, technicalSequences, provenance) {
-  const outputFormat = options.outputFormat ?? "report";
+  const maxCandidateHits = effectiveToolLimit(options, "technicalCandidateHitLimit", MAX_STREAMED_TECHNICAL_HITS);
+  const maxOutputCharacters = effectiveToolLimit(options, "technicalOutputLimit", MAX_MATERIALIZED_OUTPUT_CHARACTERS);
+  const outputFormat = options.outputFormat ?? "svg-map";
   if (!["report", "tsv", "svg-map"].includes(outputFormat)) throw new Error("Large FASTA technical scans support report, table, and linear map output. Text maps and sequence viewers require bounded pasted input.");
   const usesCustomSequences = options.sequenceClass === "custom";
   const custom = usesCustomSequences ? parseCustomSequences(options.customSequences ?? "") : [];
@@ -738,10 +741,17 @@ async function runStreamedTechnicalSequenceScanner(input, options, context, tech
   const scanFull = mode === "full" || mode === "full-or-partial";
   const scanMismatch = mode === "mismatch-tolerant";
   const scanPartial = mode === "partial-ends" || mode === "full-or-partial";
-  const fullWorkLimit = scanMismatch ? MAX_STREAMED_TECHNICAL_MISMATCH_WORK : MAX_STREAMED_TECHNICAL_FULL_WORK;
+  const fullWorkLimit = effectiveToolLimit(options, "technicalComparisonLimits", scanMismatch ? MAX_STREAMED_TECHNICAL_MISMATCH_WORK : MAX_STREAMED_TECHNICAL_FULL_WORK);
+  const partialWorkLimit = effectiveToolLimit(options, "technicalComparisonLimits", MAX_STREAMED_TECHNICAL_PARTIAL_WORK);
   const partialWorkPerRecord = scanPartial ? selectedRecords.reduce((sum, record) => sum + record.pattern.length * Math.max(0, record.pattern.length - 1) * (options.strand === "forward" ? 1 : 2), 0) : 0;
   const workPerBase = (scanFull || scanMismatch) ? selectedRecords.reduce((sum, record) => sum + record.pattern.length * (options.strand === "forward" ? 1 : 2), 0) : 0;
-  const opened = await openCleanDnaRnaFastaSource(input, { ...options, maxSourceBases: Math.min(MAX_STREAMED_TECHNICAL_BASES, Number(options.maxSourceBases) || MAX_STREAMED_TECHNICAL_BASES) }, context);
+  const sourceOptions = applyDisabledFastaSourceLimits({ ...options, maxSourceBases: Math.min(MAX_STREAMED_TECHNICAL_BASES, Number(options.maxSourceBases) || MAX_STREAMED_TECHNICAL_BASES) }, {
+    maxSourceBases: "technicalLargeSourceLimitNote",
+    maxSourceRecords: "technicalLargeSourceLimitNote",
+    maxDecodedSourceBytes: "technicalLargeSourceLimitNote",
+    maxSourceBytes: "technicalLargeSourceLimitNote"
+  });
+  const opened = await openCleanDnaRnaFastaSource(input, sourceOptions, context);
   const scannedRecords = [];
   let current = null;
   let basesProcessed = 0;
@@ -768,16 +778,16 @@ async function runStreamedTechnicalSequenceScanner(input, options, context, tech
       work += (event.ownedEnd0 - event.ownedStart0) * workPerBase;
       if (work > fullWorkLimit) throw new Error(`Technical-sequence scan exceeds the ${fullWorkLimit.toLocaleString()}-symbol ${scanMismatch ? "mismatch" : "full-match"} comparison budget. Choose fewer technical sequences or fewer input records.`);
       if (scanFull || scanMismatch) {
-        const result = await scanTechnicalRecord({ title: current.title, sequence: event.text }, selectedRecords, { ...options, allowOverlaps: true, matchMode: scanMismatch ? "mismatch-tolerant" : "full", maxMatches: MAX_STREAMED_TECHNICAL_HITS, failOnLimit: true }, context);
+        const result = await scanTechnicalRecord({ title: current.title, sequence: event.text }, selectedRecords, { ...options, allowOverlaps: true, matchMode: scanMismatch ? "mismatch-tolerant" : "full", maxMatches: maxCandidateHits, failOnLimit: true }, context);
         for (const row of result.rows) {
           const start0 = event.segmentStart0 + row.start - 1;
           if (start0 < event.ownedStart0 || start0 >= event.ownedEnd0) continue;
           const retained = { ...row, start: start0 + 1, end: event.segmentStart0 + row.end };
           retainedRowCharacters += JSON.stringify(retained).length;
-          if (retainedRowCharacters > MAX_MATERIALIZED_OUTPUT_CHARACTERS) throw new Error("Technical-sequence hit table exceeds the 25 MiB materialized-output limit.");
+          if (retainedRowCharacters > maxOutputCharacters) throw new Error("Technical-sequence hit table exceeds the materialized-output limit.");
           current.rows.push(retained);
           candidateHits += 1;
-          if (candidateHits > MAX_STREAMED_TECHNICAL_HITS) throw new Error(`Technical-sequence scan exceeds the ${MAX_STREAMED_TECHNICAL_HITS.toLocaleString()}-candidate-hit limit. Narrow the selected sequences or use stricter matching.`);
+          if (candidateHits > maxCandidateHits) throw new Error(`Technical-sequence scan exceeds the ${maxCandidateHits.toLocaleString()}-candidate-hit limit. Narrow the selected sequences or use stricter matching.`);
         }
       }
       await context.yieldIfNeeded?.();
@@ -791,7 +801,7 @@ async function runStreamedTechnicalSequenceScanner(input, options, context, tech
       if (!event.length) warnings.push(`${current.title}: no DNA/RNA sequence characters were found.`);
       if (scanPartial) {
         partialWork += partialWorkPerRecord;
-        if (partialWork > MAX_STREAMED_TECHNICAL_PARTIAL_WORK) throw new Error(`Technical-sequence scan exceeds the ${MAX_STREAMED_TECHNICAL_PARTIAL_WORK.toLocaleString()}-symbol terminal-comparison budget. Choose fewer technical sequences or records.`);
+        if (partialWork > partialWorkLimit) throw new Error(`Technical-sequence scan exceeds the ${partialWorkLimit.toLocaleString()}-symbol terminal-comparison budget. Choose fewer technical sequences or records.`);
         for (const motif of selectedRecords) {
           const partialOptions = { ...options, minimumPartialLength: options.minimumPartialLength ?? 12 };
           const prefixRows = scanPartialEndsForSequence(current.title, current.prefix, motif, partialOptions, context).filter((row) => row.start === 1);
@@ -807,10 +817,10 @@ async function runStreamedTechnicalSequenceScanner(input, options, context, tech
             const localEnd = chosen.start === 1 ? chosen.end : chosen.end - (event.length - current.suffix.length);
             const retained = { ...chosen, ...makeSequenceContext(contextSequence, localStart, localEnd) };
             retainedRowCharacters += JSON.stringify(retained).length;
-            if (retainedRowCharacters > MAX_MATERIALIZED_OUTPUT_CHARACTERS) throw new Error("Technical-sequence hit table exceeds the 25 MiB materialized-output limit.");
+            if (retainedRowCharacters > maxOutputCharacters) throw new Error("Technical-sequence hit table exceeds the materialized-output limit.");
             current.rows.push(retained);
             candidateHits += 1;
-            if (candidateHits > MAX_STREAMED_TECHNICAL_HITS) throw new Error(`Technical-sequence scan exceeds the ${MAX_STREAMED_TECHNICAL_HITS.toLocaleString()}-candidate-hit limit.`);
+            if (candidateHits > maxCandidateHits) throw new Error(`Technical-sequence scan exceeds the ${maxCandidateHits.toLocaleString()}-candidate-hit limit.`);
           }
         }
       }
@@ -846,7 +856,7 @@ async function runStreamedTechnicalSequenceScanner(input, options, context, tech
   const tsv = makeTsv(rows);
   const svgMap = outputFormat === "svg-map" ? makeSvgMap(scannedRecords) : "";
   const output = outputFormat === "tsv" ? tsv : outputFormat === "svg-map" ? svgMap : report;
-  if (Math.max(report.length, output.length) > MAX_MATERIALIZED_OUTPUT_CHARACTERS) throw new Error("Technical-sequence output exceeds the 25 MiB materialized-output limit.");
+  if (Math.max(report.length, output.length) > maxOutputCharacters) throw new Error("Technical-sequence output exceeds the materialized-output limit.");
   return makeToolResult({ output, download: { filename: `technical-sequence-scanner.${outputFormat === "tsv" ? "tsv" : outputFormat === "svg-map" ? "svg" : "txt"}`, mimeType: outputFormat === "tsv" ? "text/tab-separated-values" : outputFormat === "svg-map" ? "image/svg+xml;charset=utf-8" : "text/plain;charset=utf-8" }, warnings, recordsProcessed: scannedRecords.length, basesProcessed, charactersRemoved, streams: { report: makeTextStream(report, "text/plain"), ...(svgMap ? { overview: makeTextStream(svgMap, "image/svg+xml") } : {}), table: makeTableStream(technicalSequenceTableColumns, rows, "technical-sequence-scanner") }, visual: svgMap ? { svg: svgMap } : undefined });
 }
 
@@ -936,7 +946,7 @@ export async function runTechnicalSequenceScanner(input, options = {}, context =
     provenance
   });
   const tsv = makeTsv(rows);
-  const outputFormat = ["tsv", "text-map", "svg-map", "interactive-viewer", "interactive-circular-viewer"].includes(options.outputFormat) ? options.outputFormat : "report";
+  const outputFormat = ["report", "tsv", "text-map", "svg-map", "interactive-viewer", "interactive-circular-viewer"].includes(options.outputFormat) ? options.outputFormat : "svg-map";
   const textMap = outputFormat === "text-map" ? makeTextMap(scannedRecords) : "";
   const svgMap = outputFormat === "svg-map" ? makeSvgMap(scannedRecords) : "";
   const viewer = isInteractiveViewerFormat(outputFormat) ? makeTechnicalSequenceViewerData(scannedRecords, { outputFormat }) : null;

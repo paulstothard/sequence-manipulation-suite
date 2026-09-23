@@ -1,5 +1,6 @@
 import { detectDelimiter, parseDelimitedRows } from "./table.js";
 import { twoTailedPValue } from "./hypothesis-tests.js";
+import { effectiveToolLimit } from "./tool-limit-policy.js";
 
 // Formula and interpretation sources:
 // Pfaffl (2001), https://doi.org/10.1093/nar/29.9.e45
@@ -54,7 +55,14 @@ export function qpcrSettings(options = {}) {
     outputFormat: choose(options.outputFormat ?? "plot", ["plot", "groups", "samples", "technical", "reactions", "report"], "output format"),
     plotScale: choose(options.plotScale ?? "log2", ["log2", "fold"], "plot scale"),
     plotTarget: label(options.plotTarget ?? "", "Plot target", false),
-    maxReactions: number(options.maxReactions ?? QPCR_LIMITS.reactions, "Maximum reactions", 1, QPCR_LIMITS.reactions, true)
+    maxReactions: effectiveToolLimit(options, "maxReactions", number(options.maxReactions ?? QPCR_LIMITS.reactions, "Maximum reactions", 1, QPCR_LIMITS.reactions, true)),
+    maxInputCharacters: effectiveToolLimit(options, "maxInputCharacters", QPCR_LIMITS.characters),
+    maxColumns: effectiveToolLimit(options, "maxInputTable", QPCR_LIMITS.columns),
+    maxCells: effectiveToolLimit(options, "maxInputTable", QPCR_LIMITS.cells),
+    maxSamples: effectiveToolLimit(options, "maxAnalysisDimensions", QPCR_LIMITS.samples),
+    maxTargets: effectiveToolLimit(options, "maxAnalysisDimensions", QPCR_LIMITS.targets),
+    maxConditions: effectiveToolLimit(options, "maxAnalysisDimensions", QPCR_LIMITS.conditions),
+    maxSampleResults: effectiveToolLimit(options, "maxSampleResults", QPCR_LIMITS.sampleResults)
   };
 }
 // 97.5th percentile from the shared small-tail Student t implementation, with
@@ -93,14 +101,14 @@ export async function analyzeQpcr(input, options = {}, context = {}) {
   await checkpoint(context, "reading-cq-table", 0.02);
   const source = String(input ?? "").replace(/^\ufeff/, "");
   if (!source.trim()) throw new Error("Enter a Cq table with sample, target, condition, and cq columns.");
-  if (source.length > QPCR_LIMITS.characters) throw new Error(`Input exceeds ${QPCR_LIMITS.characters.toLocaleString("en-US")} characters.`);
+  if (source.length > settings.maxInputCharacters) throw new Error(`Input exceeds ${settings.maxInputCharacters.toLocaleString("en-US")} characters.`);
   const { delimiter } = detectDelimiter(source);
   const parsed = parseDelimitedRows(source, delimiter);
   if (parsed.warnings.length) throw new Error(`Invalid Cq table: ${parsed.warnings[0]}`);
   const rows = parsed.rows;
   if (rows.length < 2) throw new Error("The Cq table needs a header and at least one reaction.");
   if (rows.length - 1 > settings.maxReactions) throw new Error(`Input exceeds the maximum of ${settings.maxReactions} reactions.`);
-  if (rows[0].length > QPCR_LIMITS.columns || rows.reduce((n, r) => n + r.length, 0) > QPCR_LIMITS.cells) throw new Error("Input exceeds 32 columns or 500,000 cells. Keep the columns needed for Cq analysis.");
+  if (rows[0].length > settings.maxColumns || rows.reduce((n, r) => n + r.length, 0) > settings.maxCells) throw new Error(`Input exceeds ${settings.maxColumns.toLocaleString("en-US")} columns or ${settings.maxCells.toLocaleString("en-US")} cells. Keep the columns needed for Cq analysis.`);
   const header = rows[0].map(s => s.trim().toLowerCase());
   if (header.some(s => !s) || new Set(header).size !== header.length) throw new Error("Column names must be non-empty and unique (case-insensitive).");
   const cqNames = ["cq", "ct", "cp"].filter(s => header.includes(s));
@@ -154,13 +162,13 @@ export async function analyzeQpcr(input, options = {}, context = {}) {
   }
   if (!sampleConditions.size) throw new Error("No biological sample reactions were found; negative controls are not expression samples.");
   const conditions = [...new Set(sampleConditions.values())], targetList = sorted(targets), samples = sorted(sampleConditions.keys());
-  if (samples.length > QPCR_LIMITS.samples || targets.size > QPCR_LIMITS.targets || conditions.length > QPCR_LIMITS.conditions) throw new Error("Analysis supports at most 2,000 biological samples, 64 assays and 24 conditions.");
+  if (samples.length > settings.maxSamples || targets.size > settings.maxTargets || conditions.length > settings.maxConditions) throw new Error(`Analysis supports at most ${settings.maxSamples.toLocaleString("en-US")} biological samples, ${settings.maxTargets.toLocaleString("en-US")} assays and ${settings.maxConditions.toLocaleString("en-US")} conditions.`);
   for (const [target, runs] of targetRuns) if (runs.size > 1) throw new Error(`${target} spans multiple or unspecified runs. Analyze one run per assay; this tool does not perform inter-run calibration.`);
   for (const ref of settings.referenceGenes) if (!targets.has(ref)) throw new Error(`Reference gene ${ref} is not present among sample reactions. Gene names are case-sensitive.`);
   if (!conditions.includes(settings.calibrator)) throw new Error(`Calibrator condition ${settings.calibrator} was not found. Condition names are case-sensitive.`);
   const genes = targetList.filter(t => !settings.referenceGenes.includes(t));
   if (!genes.length) throw new Error("No target genes remain after selecting the reference genes.");
-  if (samples.length * genes.length > QPCR_LIMITS.sampleResults) throw new Error("Analysis exceeds 50,000 sample/target results. Analyze fewer targets or samples together.");
+  if (samples.length * genes.length > settings.maxSampleResults) throw new Error(`Analysis exceeds ${settings.maxSampleResults.toLocaleString("en-US")} sample/target results. Analyze fewer targets or samples together.`);
   for (const target of targetList) {
     if (settings.method === "efficiency" && !efficiencies.has(target)) throw new Error(`Provide efficiency (%) for ${target}, or explicitly choose ΔΔCq (100% efficiency).`);
   }

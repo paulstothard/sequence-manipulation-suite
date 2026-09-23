@@ -91,7 +91,7 @@ export const twoGroupPermutationTestMetadata = {
       type: "group",
       label: "Output format",
       options: [
-        { id: "outputFormat", type: "radio", label: "Format", defaultValue: "report", choices: [
+        { id: "outputFormat", type: "radio", label: "Format", defaultValue: "svg", choices: [
           { value: "report", label: "Summary report" },
           { value: "result-tsv", label: "Result table" },
           { value: "null-tsv", label: "Null distribution table" },

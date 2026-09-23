@@ -2,6 +2,7 @@ import { parseDnaRnaSequenceOrFlatfile } from "./dna-input-records.js";
 import { formatFastaRecord } from "./fasta.js";
 import { cleanDnaRnaSequence, complementDnaRnaSequence } from "./sequence.js";
 import { exportDelimitedTable } from "./table.js";
+import { effectiveToolLimit } from "./tool-limit-policy.js";
 
 export const pcrPrimerDesignTableColumns = [
   { id: "rank", label: "Rank", type: "number" },
@@ -417,8 +418,8 @@ export function normalizePcrPrimerDesignOptions(options = {}) {
     maxThreePrimeComplementRun: clampInteger(options.maxThreePrimeComplementRun, 5, 1, 20),
     maxHairpinStem: clampInteger(options.maxHairpinStem, 5, 1, 20),
     returnCount: clampInteger(options.returnCount, 10, 1, 5000),
-    maxTemplateLength: clampInteger(options.maxTemplateLength, 20000, 100, 1000000),
-    maxPairsToEvaluate: clampInteger(options.maxPairsToEvaluate, 250000, 1000, 5000000),
+    maxTemplateLength: effectiveToolLimit(options, "maxTemplateLength", clampInteger(options.maxTemplateLength, 20000, 100, 1000000)),
+    maxPairsToEvaluate: effectiveToolLimit(options, "maxPairsToEvaluate", clampInteger(options.maxPairsToEvaluate, 250000, 1000, 5000000)),
     targetRegion: String(options.targetRegion ?? "").trim(),
     excludedRegions: String(options.excludedRegions ?? "").trim(),
     lineWidth: clampInteger(options.lineWidth, 60, 10, 200)

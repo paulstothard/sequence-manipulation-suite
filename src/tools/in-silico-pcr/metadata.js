@@ -58,7 +58,7 @@ export const inSilicoPcrMetadata = {
       id: "outputFormat",
       type: "radio",
       label: "Output format",
-      defaultValue: "report",
+      defaultValue: "svg-gel",
       choices: [
         { value: "report", label: "Summary report" },
         { value: "tsv", label: "Product table" },
@@ -77,7 +77,7 @@ export const inSilicoPcrMetadata = {
       collapsible: true,
       collapsed: true,
       options: [
-        { id: "maxBindingSitesPerTemplate", type: "number", label: "Maximum binding sites per template", defaultValue: 5000, min: 1, max: 100000, step: 100, help: "Stops very broad or degenerate primer searches before they create misleadingly huge tables. A warning is shown when the cap is reached." },
+        { id: "maxBindingSitesPerTemplate", type: "number", label: "Maximum binding sites per template", defaultValue: 5000, min: 1, max: 100000, step: 100, help: "Stops binding-site enumeration at this count. A warning is shown when the cap is reached." },
         { id: "maxProducts", type: "number", label: "Maximum products", defaultValue: 1000, min: 1, max: 100000, step: 100, help: "Stops product enumeration after this many candidate amplicons. A warning is shown when the cap is reached." }
       ]
     },

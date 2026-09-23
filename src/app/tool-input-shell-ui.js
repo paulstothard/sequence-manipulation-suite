@@ -1,5 +1,6 @@
 import { wrapFastaText } from "../core/fasta.js";
 import { applyFixedToolLimits } from "../core/tool-limit-options.js";
+import { DISABLED_TOOL_LIMIT_IDS_OPTION } from "../core/tool-limit-policy.js";
 import { EDITOR_TOOLS } from "./editor-session.js";
 import { createTableInputPreview } from "./table-input-preview-ui.js";
 
@@ -673,7 +674,9 @@ export function createToolInputShellController({
   }
 
   function getOptions() {
-    const values = {};
+    const values = {
+      [DISABLED_TOOL_LIMIT_IDS_OPTION]: helpers.getDisabledToolLimitIds?.() ?? []
+    };
     const getOptionRoot = (option) => option.placement === "input" ? elements.inputPanel : elements.toolOptions;
 
     for (const option of flattenOptions(state.selectedTool.metadata.options ?? [])) {

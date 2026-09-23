@@ -1,6 +1,7 @@
 import { parseUnsignedIntegerToken } from "./integer-token.js";
 import { createBioWasmCli, requireBioWasmRuntime } from "./biowasm-runner.js";
 import { exportDelimitedTable } from "./table.js";
+import { effectiveToolLimit } from "./tool-limit-policy.js";
 
 const BEDTOOLS_VERSION = "2.31.0";
 const SPLIT_SEPARATOR = "---";
@@ -58,10 +59,10 @@ export function normalizeGenomicIntervalOptions(options = {}) {
     minReciprocalOverlapPercent: parseNumber(options.minReciprocalOverlapPercent, 0, 0, 100),
     mergeGapBp: parseInteger(options.mergeGapBp, 0, 0, 1_000_000_000),
     outputFormat,
-    maxQueryIntervals: parseInteger(options.maxQueryIntervals, 100_000, 1, 10_000_000),
-    maxReferenceIntervals: parseInteger(options.maxReferenceIntervals, 100_000, 1, 10_000_000),
-    maxOutputRows: parseInteger(options.maxOutputRows, 50_000, 1, 5_000_000),
-    maxInputCharacters: parseInteger(options.maxInputCharacters, 20_000_000, 1000, 2_000_000_000)
+    maxQueryIntervals: effectiveToolLimit(options, "maxQueryIntervals", parseInteger(options.maxQueryIntervals, 100_000, 1, 10_000_000)),
+    maxReferenceIntervals: effectiveToolLimit(options, "maxReferenceIntervals", parseInteger(options.maxReferenceIntervals, 100_000, 1, 10_000_000)),
+    maxOutputRows: effectiveToolLimit(options, "maxOutputRows", parseInteger(options.maxOutputRows, 50_000, 1, 5_000_000)),
+    maxInputCharacters: effectiveToolLimit(options, "maxInputCharacters", parseInteger(options.maxInputCharacters, 20_000_000, 1000, 2_000_000_000))
   };
 }
 

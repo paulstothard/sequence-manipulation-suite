@@ -127,7 +127,7 @@ function makeOptions({ alphabet, kmerLabel, kmerDefault, kmerMin, kmerMax, seque
           id: "outputFormat",
           type: "radio",
           label: "Output format",
-          defaultValue: "report",
+          defaultValue: "reciprocal-tsv",
           choices: [
             { value: "report", label: "Summary report" },
             { value: "reciprocal-tsv", label: "Reciprocal best-match table" },

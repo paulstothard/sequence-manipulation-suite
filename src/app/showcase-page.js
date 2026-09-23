@@ -1,10 +1,12 @@
 import { renderPlateSvg } from "../core/plate-layout-svg.js";
 import { renderObservablePlotPreview } from "./plot-preview-ui.js";
+import { renderProteinSequenceFigure } from "./protein-sequence-figure-ui.js";
 import { renderSequenceExtractorWorkspace } from "./sequence-extractor-workspace-ui.js";
 import { installVisualInspection } from "./visual-inspection.js";
 import { renderTreeViewer } from "./tree-viewer-ui.js";
 import { alignmentViewerReferenceExample } from "../examples/alignment-viewer-example.js";
 import { vcfExtractorReferenceExample } from "../examples/vcf-extractor-example.js";
+import { rerootTree } from "../../packages/tree-viewer/src/core/reroot.js";
 
 const SHOWCASE_VISUAL_INCLUDE = /\b(plot|map|gel|figure|heatmap|cloud|sankey|venn|upset|tree|chromatogram|diagram|poster)\b|\bcolored alignment\b|\bdot plot\b|svg/i;
 const SHOWCASE_VIEWER_INCLUDE = /\bviewer\b|\binteractive-viewer\b/i;
@@ -76,6 +78,31 @@ const SHOWCASE_TOOL_OPTION_OVERRIDES = new Map([
     }
   }]
 ]);
+const SHOWCASE_TREE_OUTGROUPS = new Map([
+  ["phylogeny-builder", "Mus_musculus"],
+  ["multiple-align-dna-rna", "Mus_musculus"],
+  ["multiple-align-protein", "Mus_musculus"]
+]);
+
+export async function makeShowcaseTreeViewerPreset(item, treeViewer) {
+  const outgroupLabel = SHOWCASE_TREE_OUTGROUPS.get(item?.toolId);
+  if (!outgroupLabel || !treeViewer?.document?.trees?.length) {
+    return treeViewer;
+  }
+  const document = structuredClone(treeViewer.document);
+  const tree = document.trees[0];
+  const outgroup = tree.nodes.find((node) => node.label.includes(outgroupLabel));
+  if (!outgroup || outgroup.id === tree.root.nodeId) {
+    return treeViewer;
+  }
+  await rerootTree(tree, { edgeChildId: outgroup.id });
+  Object.assign(document.presentation[tree.id], {
+    layout: "rectangular",
+    metric: "cladogram",
+    labelAlignment: "aligned"
+  });
+  return { ...treeViewer, document };
+}
 
 function makeShowcaseStatus(text, className = "") {
   const status = document.createElement("p");
@@ -522,7 +549,7 @@ async function renderShowcaseCard(card, item, token, context) {
       sharedInspection = true;
     } else if (result.visual?.treeViewer) {
       preview.classList.add("showcase-preview-viewer");
-      renderTreeViewer(preview, result.visual.treeViewer);
+      renderTreeViewer(preview, await makeShowcaseTreeViewerPreset(item, result.visual.treeViewer));
     } else if (plotPreview) {
       preview.append(plotPreview);
       preview.querySelectorAll("svg").forEach(normalizeShowcaseSvg);
@@ -540,6 +567,10 @@ async function renderShowcaseCard(card, item, token, context) {
     } else if (result.visual?.proteinStructure) {
       preview.classList.add("showcase-preview-viewer");
       context.renderProteinStructureViewer?.(preview, result.visual.proteinStructure);
+    } else if (result.visual?.proteinFigure) {
+      renderProteinSequenceFigure(preview, result.visual.proteinFigure);
+      preview.querySelectorAll("svg").forEach(normalizeShowcaseSvg);
+      sharedInspection = true;
     } else if (result.visual?.figure) {
       context.renderGenomeFigure(preview, result.visual.figure);
       preview.querySelectorAll("svg").forEach(normalizeShowcaseSvg);

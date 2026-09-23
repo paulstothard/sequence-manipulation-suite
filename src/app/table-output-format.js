@@ -18,6 +18,14 @@ export function isDelimitedDownload(format = "", download = {}) {
   );
 }
 
+export function getDeclaredTableStream(streams = {}, resultView = null) {
+  if (resultView?.kind !== "table" || !resultView.streamId) {
+    return null;
+  }
+  const stream = streams[resultView.streamId];
+  return stream?.kind === "table" && Array.isArray(stream.rows) ? stream : null;
+}
+
 export function alignTsv(tsv) {
   const rows = String(tsv ?? "")
     .split(/\r?\n/)

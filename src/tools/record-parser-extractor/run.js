@@ -14,6 +14,10 @@ import {
   makeGenomeFigureStream
 } from "../../core/genome-figure-data.js";
 import { makeProteinViewerData, makeProteinViewerStream } from "../../core/protein-viewer-data.js";
+import {
+  makeProteinSequenceFigureData,
+  makeProteinSequenceFigureStream
+} from "../../core/protein-sequence-figure-data.js";
 import { makeTableStream, makeTextStream, makeToolResult } from "../../core/workflow.js";
 
 function escapeTsvValue(value) {
@@ -228,6 +232,10 @@ function isGenomeFigureFormat(format) {
   return format === "linear-genome-figure" || format === "circular-genome-figure";
 }
 
+function isProteinSequenceFigureFormat(format) {
+  return format === "protein-sequence-figure";
+}
+
 function mapLayoutForFormat(format) {
   return format === "circular-svg-map" ? "circular" : "linear";
 }
@@ -354,7 +362,6 @@ function makeFeatureTextMap(records) {
 function makeGenomeFigureOutput(records, format, context = {}) {
   const prepared = makeGenomeFigureDataFromFlatfileRecords(records, {
     layout: genomeFigureLayoutForFormat(format),
-    featureLayout: "type-slots",
     labelDensity: "medium"
   }, context);
   if (prepared.figure.records.length === 0) {
@@ -371,6 +378,19 @@ function makeGenomeFigureOutput(records, format, context = {}) {
       `Bases: ${prepared.basesProcessed}`,
       `Features available in table stream: ${prepared.rows.length}`,
       "Use the editable figure panel to adjust theme, plots, feature layout, labels, and export PNG/SVG."
+    ].join("\n")
+  };
+}
+
+function makeProteinSequenceFigureOutput(records) {
+  const figure = makeProteinSequenceFigureData(records);
+  return {
+    figure,
+    output: [
+      "Protein sequence figure prepared",
+      `Records: ${figure.records.length}`,
+      `Residues: ${figure.records.reduce((sum, record) => sum + record.sequence.length, 0)}`,
+      "Use the figure controls to change residue labels, coloring, palette, annotations, and the displayed protein, then export the current view as PNG or SVG."
     ].join("\n")
   };
 }
@@ -483,8 +503,8 @@ function addGuardrailWarnings(warnings, input, records, filteredRecords, format)
     warnings.push(`Parsed ${featureCount} features; use filters before generating maps or feature-derived FASTA for dense records.`);
   }
   const filteredFeatureCount = filteredRecords.reduce((sum, record) => sum + record.features.length, 0);
-  if ((isSvgMapFormat(format) || isGenomeFigureFormat(format) || format === "text-map") && filteredFeatureCount > 500) {
-    warnings.push(`Selected map or figure contains ${filteredFeatureCount} features; dense labels may be summarized or omitted by the renderer.`);
+  if ((isSvgMapFormat(format) || isGenomeFigureFormat(format) || isProteinSequenceFigureFormat(format) || format === "text-map") && filteredFeatureCount > 500) {
+    warnings.push(`Selected map or figure contains ${filteredFeatureCount} features; dense labels may be abbreviated, so use feature filters when a clearer visual is needed.`);
   }
 }
 
@@ -518,6 +538,12 @@ function makeDownload(format, text, recordClass = "all") {
     return {
       output: text,
       download: { filename: `${stem}.genome-figure-report.txt`, mimeType: "text/plain;charset=utf-8" }
+    };
+  }
+  if (isProteinSequenceFigureFormat(format)) {
+    return {
+      output: text,
+      download: { filename: `${stem}.protein-sequence-figure-report.txt`, mimeType: "text/plain;charset=utf-8" }
     };
   }
   if (format === "interactive-viewer" || format === "interactive-circular-viewer") {
@@ -573,6 +599,7 @@ function normalizeFormat(options, recordClass) {
     "features-tsv",
     "protein-fasta",
     "selected-feature-fasta",
+    "protein-sequence-figure",
     "linear-svg-map",
     "text-map",
     "interactive-viewer",
@@ -655,6 +682,12 @@ function runAnnotatedRecordExtractor(input, options = {}, context = {}, recordCl
       warnings.push("No DNA sequence records were available for Genome Figure output.");
     }
   }
+  const proteinFigure = isProteinSequenceFigureFormat(format)
+    ? makeProteinSequenceFigureOutput(filteredRecords)
+    : null;
+  if (proteinFigure && proteinFigure.figure.records.length === 0) {
+    warnings.push("No protein sequence records were available for Protein sequence figure output.");
+  }
   context.throwIfCancelled?.();
   const selectedText = format === "whole-fasta"
     ? wholeFasta
@@ -672,6 +705,8 @@ function runAnnotatedRecordExtractor(input, options = {}, context = {}, recordCl
         ? textMap
       : isGenomeFigureFormat(format)
         ? genomeFigure.output
+      : isProteinSequenceFigureFormat(format)
+        ? proteinFigure.output
       : isSvgMapFormat(format)
         ? svgMap
       : format === "interactive-viewer" || format === "interactive-circular-viewer"
@@ -710,6 +745,7 @@ function runAnnotatedRecordExtractor(input, options = {}, context = {}, recordCl
       ...(isSvgMapFormat(format) ? { overview: makeTextStream(svgMap, "image/svg+xml") } : {}),
       ...(viewer ? { viewer: recordClass === "protein" ? makeProteinViewerStream(viewer) : makeDnaViewerStream(viewer) } : {}),
       ...(genomeFigure ? { figure: makeGenomeFigureStream(genomeFigure.figure) } : {}),
+      ...(proteinFigure ? { proteinFigure: makeProteinSequenceFigureStream(proteinFigure.figure) } : {}),
       ...(format === "features-tsv" ? { featuresTsv: makeTextStream(featuresTsv, "text/tab-separated-values") } : {}),
       table: makeTableStream(flatfileFeatureColumns, featureRows, "flatfile-features"),
       ...(recordClass !== "protein" ? { wholeSequenceRecords: {
@@ -743,6 +779,8 @@ function runAnnotatedRecordExtractor(input, options = {}, context = {}, recordCl
         ? { viewer }
       : genomeFigure
         ? { figure: genomeFigure.figure }
+      : proteinFigure
+        ? { proteinFigure: proteinFigure.figure }
         : undefined
   });
 }

@@ -155,14 +155,14 @@ IIIIIIIIIIIIIIIIIIIIIIIIIIII!!!!`,
           type: "radio",
           label: "Output format",
           dependsOn: "readLayout",
-          defaultValue: "report",
+          defaultValue: "fastq",
           choices: [
-            { value: "report", label: "Trimming report", always: true },
-            { value: "table", label: "Summary table", always: true },
             { value: "fastq", label: "Trimmed FASTQ", dependsOnValue: "single" },
             { value: "interleaved-fastq", label: "Interleaved paired FASTQ", dependsOnValue: "paired" },
             { value: "read1-fastq", label: "Read 1 trimmed FASTQ", dependsOnValue: "paired" },
-            { value: "read2-fastq", label: "Read 2 trimmed FASTQ", dependsOnValue: "paired" }
+            { value: "read2-fastq", label: "Read 2 trimmed FASTQ", dependsOnValue: "paired" },
+            { value: "report", label: "Trimming report", always: true },
+            { value: "table", label: "Summary table", always: true, resultView: { kind: "table", streamId: "table" } }
           ]
         }
       ]
@@ -197,7 +197,7 @@ IIIIIIIIIIIIIIIIIIIIIIIIIIII!!!!`,
           defaultValue: 200000000,
           min: 100,
           max: 4000000000,
-          help: "Reject larger local files before starting a worker run. This keeps browser-local trimming bounded; use command-line tools for production-scale FASTQ preprocessing."
+          help: "Rejects larger local files before starting a worker run. Use command-line tools for larger FASTQ preprocessing jobs."
         }
       ]
     },

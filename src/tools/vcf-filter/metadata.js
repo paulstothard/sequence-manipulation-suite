@@ -398,7 +398,7 @@ export const vcfFilterMetadata = {
           min: 1,
           max: 100000,
           step: 1000,
-          help: "Caps materialized filtered VCF rows and table rows so accidental whole-genome scans stay responsive."
+          help: "Caps materialized filtered VCF rows and table rows."
         }
       ]
     },

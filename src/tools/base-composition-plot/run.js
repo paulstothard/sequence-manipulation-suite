@@ -7,6 +7,7 @@ import {
   renderLinePlotSvg
 } from "../../core/plot-renderer.js";
 import { cleanDnaRnaSequence } from "../../core/sequence.js";
+import { applyDisabledFastaSourceLimits, effectiveToolLimit } from "../../core/tool-limit-policy.js";
 import { makeTableStream, makeTextStream, makeToolResult } from "../../core/workflow.js";
 import { baseCompositionPlotTableColumns } from "./metadata.js";
 
@@ -488,13 +489,15 @@ function makeBaseCompositionResult({
   positionAxis,
   showLegend,
   pointMarkers,
-  outputFormat
+  outputFormat,
+  limitOptions = {}
 }) {
+  const maxOutputCharacters = effectiveToolLimit(limitOptions, "compositionOutput", MAX_MATERIALIZED_OUTPUT_CHARACTERS);
   const tableRows = analyzedRecords.flatMap((record) => record.rows);
   const windowSettings = { windowMode, windowSize, stepSize };
   const reportOutput = makeReport(analyzedRecords, metric, windowSettings);
-  if (reportOutput.length > MAX_MATERIALIZED_OUTPUT_CHARACTERS) {
-    throw new Error(`Base composition report exceeds the ${MAX_MATERIALIZED_OUTPUT_CHARACTERS.toLocaleString()}-character materialized-output limit.`);
+  if (reportOutput.length > maxOutputCharacters) {
+    throw new Error(`Base composition report exceeds the ${maxOutputCharacters.toLocaleString()}-character materialized-output limit.`);
   }
   const isSvgOutput = outputFormat === "plot";
   const svgRenderer = "observable-plot";
@@ -521,8 +524,8 @@ function makeBaseCompositionResult({
     ]);
   }
   const output = outputFormat === "report" ? reportOutput : outputFormat === "tsv" ? makeTsv(tableRows) : svgPlot;
-  if (output.length > MAX_MATERIALIZED_OUTPUT_CHARACTERS) {
-    throw new Error(`Base composition output exceeds the ${MAX_MATERIALIZED_OUTPUT_CHARACTERS.toLocaleString()}-character materialized-output limit. Increase the step size or select fewer records.`);
+  if (output.length > maxOutputCharacters) {
+    throw new Error(`Base composition output exceeds the ${maxOutputCharacters.toLocaleString()}-character materialized-output limit. Increase the step size or select fewer records.`);
   }
 
   return makeToolResult({
@@ -629,7 +632,8 @@ export function runBaseCompositionPlot(input, options = {}) {
     positionAxis: normalizedOptions.positionAxis,
     showLegend: normalizedOptions.showLegend,
     pointMarkers: normalizedOptions.pointMarkers,
-    outputFormat: normalizedOptions.outputFormat
+    outputFormat: normalizedOptions.outputFormat,
+    limitOptions: options
   });
 }
 
@@ -637,7 +641,13 @@ export async function runBaseCompositionPlotWorker(input, options = {}, context 
   context.reportProgress?.({ phase: "reading-record-lengths", progress: 0.05 });
   const warnings = [];
   const normalizedOptions = normalizeBaseCompositionOptions(options);
-  const opened = await openCleanDnaRnaFastaSource(input, options, context);
+  const sourceOptions = applyDisabledFastaSourceLimits(options, {
+    maxSourceBases: "compositionInput",
+    maxSourceRecords: "compositionInput",
+    maxDecodedSourceBytes: "compositionInput",
+    maxSourceBytes: "compositionInput"
+  });
+  const opened = await openCleanDnaRnaFastaSource(input, sourceOptions, context);
   const recordLengths = [];
   let currentLength = 0;
   for await (const event of opened.events({ trackStats: false })) {
@@ -656,8 +666,9 @@ export async function runBaseCompositionPlotWorker(input, options = {}, context 
   }
   const windowSettings = resolveWindowSettings(normalizedOptions, recordLengths);
   const estimatedRows = estimateWindowRowCount(recordLengths, windowSettings.windowSize, windowSettings.stepSize);
-  if (estimatedRows > MAX_WINDOW_ROWS) {
-    throw new Error(`Base composition would produce ${estimatedRows.toLocaleString()} windows, above the ${MAX_WINDOW_ROWS.toLocaleString()}-row limit. Increase the step size or select fewer records.`);
+  const maxWindowRows = effectiveToolLimit(options, "compositionWindows", MAX_WINDOW_ROWS);
+  if (estimatedRows > maxWindowRows) {
+    throw new Error(`Base composition would produce ${estimatedRows.toLocaleString()} windows, above the ${maxWindowRows.toLocaleString()}-row limit. Increase the step size or select fewer records.`);
   }
 
   context.reportProgress?.({ phase: "scanning-windows", progress: 0.25 });
@@ -707,6 +718,7 @@ export async function runBaseCompositionPlotWorker(input, options = {}, context 
     positionAxis: normalizedOptions.positionAxis,
     showLegend: normalizedOptions.showLegend,
     pointMarkers: normalizedOptions.pointMarkers,
-    outputFormat: normalizedOptions.outputFormat
+    outputFormat: normalizedOptions.outputFormat,
+    limitOptions: options
   });
 }

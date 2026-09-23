@@ -6,6 +6,13 @@ function escapeXml(value) {
     .replace(/"/g, "&quot;");
 }
 
+function svgIdPart(value) {
+  return String(value ?? "")
+    .replace(/[^A-Za-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48) || "record";
+}
+
 function truncateLabel(value, maxLength = 30) {
   const text = String(value ?? "").replace(/\s+/g, " ").trim();
   return text.length > maxLength ? `${text.slice(0, maxLength - 1)}...` : text;
@@ -86,6 +93,12 @@ function describeArc(centerX, centerY, radius, startAngle, endAngle) {
   const end = polarToCartesian(centerX, centerY, radius, startAngle);
   const largeArc = endAngle - startAngle <= 180 ? "0" : "1";
   return `M ${start.x.toFixed(2)} ${start.y.toFixed(2)} A ${radius} ${radius} 0 ${largeArc} 0 ${end.x.toFixed(2)} ${end.y.toFixed(2)}`;
+}
+
+function describeShortArc(centerX, centerY, radius, startAngle, endAngle, sweep) {
+  const start = polarToCartesian(centerX, centerY, radius, startAngle);
+  const end = polarToCartesian(centerX, centerY, radius, endAngle);
+  return `M ${start.x.toFixed(2)} ${start.y.toFixed(2)} A ${radius} ${radius} 0 0 ${sweep} ${end.x.toFixed(2)} ${end.y.toFixed(2)}`;
 }
 
 function estimateTextWidth(text, fontSize = 13, widthFactor = 0.58) {
@@ -770,17 +783,6 @@ function labelAnchorForAngle(angle) {
   return "middle";
 }
 
-function inwardAxisLabelAnchorForAngle(angle) {
-  const normalized = ((angle % 360) + 360) % 360;
-  if (normalized > 20 && normalized < 160) {
-    return "end";
-  }
-  if (normalized > 200 && normalized < 340) {
-    return "start";
-  }
-  return "middle";
-}
-
 function circularLabelZoneForAngle(angle) {
   const normalized = ((angle % 360) + 360) % 360;
   if (normalized >= 330 || normalized <= 30) {
@@ -937,7 +939,7 @@ function circularMinorAxisTicks(sequenceLength, majorTicks) {
   return ticks;
 }
 
-function renderCircularAxis(centerX, centerY, axisRadius, sequenceLength) {
+function renderCircularAxis(centerX, centerY, axisRadius, sequenceLength, idPrefix) {
   const parts = [`<circle class="circle-axis" cx="${centerX}" cy="${centerY}" r="${axisRadius}" fill="none"></circle>`];
   const majorTicks = circularAxisTicks(sequenceLength);
   const minorTicks = circularMinorAxisTicks(sequenceLength, majorTicks);
@@ -951,10 +953,17 @@ function renderCircularAxis(centerX, centerY, axisRadius, sequenceLength) {
     const angle = ((tick.position - 1) / sequenceLength) * 360;
     const inner = polarToCartesian(centerX, centerY, axisRadius - 8, angle);
     const outer = polarToCartesian(centerX, centerY, axisRadius + 8, angle);
-    const label = polarToCartesian(centerX, centerY, axisRadius - 28, angle);
-    const anchor = inwardAxisLabelAnchorForAngle(angle);
+    const labelRadius = axisRadius - 17;
+    const textWidth = estimateTextWidth(tick.label, 10.5) + 8;
+    const halfSpanRadians = Math.max(0.035, Math.min(0.18, textWidth / Math.max(1, labelRadius) / 2));
+    const halfSpanDegrees = halfSpanRadians * 180 / Math.PI;
+    const reverse = Math.sin((angle - 90) * Math.PI / 180) > 0;
+    const startAngle = reverse ? angle + halfSpanDegrees : angle - halfSpanDegrees;
+    const endAngle = reverse ? angle - halfSpanDegrees : angle + halfSpanDegrees;
+    const pathId = `${idPrefix}-axis-label-${tick.position}`;
     parts.push(`<line class="axis-tick" x1="${inner.x.toFixed(2)}" y1="${inner.y.toFixed(2)}" x2="${outer.x.toFixed(2)}" y2="${outer.y.toFixed(2)}"></line>`);
-    parts.push(`<text class="axis-label axis-label-circular" x="${label.x.toFixed(2)}" y="${label.y.toFixed(2)}" text-anchor="${anchor}" dominant-baseline="middle">${escapeXml(tick.label)}</text>`);
+    parts.push(`<path class="axis-label-path" id="${pathId}" d="${describeShortArc(centerX, centerY, labelRadius, startAngle, endAngle, reverse ? 0 : 1)}" data-axis-label-position="${tick.position}" data-axis-label-radius="${labelRadius}" fill="none" stroke="none" pointer-events="none"></path>`);
+    parts.push(`<text class="axis-label axis-label-circular" data-axis-label-position="${tick.position}" dominant-baseline="middle"><textPath href="#${pathId}" startOffset="50%" text-anchor="middle">${escapeXml(tick.label)}</textPath></text>`);
   }
   return parts.join("\n");
 }
@@ -976,7 +985,7 @@ function renderCircularLabelLeader(label) {
   return `<polyline class="label-leader" points="${points}"></polyline>`;
 }
 
-function renderCircularRecord(record, styles, classes) {
+function renderCircularRecord(record, styles, classes, recordIndex) {
   const sequenceLength = Math.max(0, Number(record.length) || 0);
   const centerX = 550;
   const centerY = 362;
@@ -998,7 +1007,13 @@ function renderCircularRecord(record, styles, classes) {
   if (drawable.some((feature) => feature.parts.length > 1)) {
     parts.push(`<text class="axis-note" x="32" y="74">Joined or origin-spanning locations are drawn as separate arcs.</text>`);
   }
-  parts.push(renderCircularAxis(centerX, centerY, axisRadius, sequenceLength));
+  parts.push(renderCircularAxis(
+    centerX,
+    centerY,
+    axisRadius,
+    sequenceLength,
+    `sequence-map-${recordIndex}-${svgIdPart(record.title)}-${sequenceLength}`
+  ));
   drawable.forEach((feature) => {
     const style = styleForFeature(feature, styles);
     const radius = featureRadii.get(feature) ?? ringBase;
@@ -1096,9 +1111,9 @@ export function renderSequenceMap({ title = "Feature map", records = [], styles 
     width = 1100;
     let rowTop = 62;
     const parts = [];
-    for (const record of drawableRecords) {
+    for (const [recordIndex, record] of drawableRecords.entries()) {
       if (shouldRenderCircular(record)) {
-        const rendered = renderCircularRecord(record, styles, classes);
+        const rendered = renderCircularRecord(record, styles, classes, recordIndex);
         parts.push(`<g transform="translate(0 ${rowTop})">`);
         parts.push(rendered.svg);
         parts.push("</g>");

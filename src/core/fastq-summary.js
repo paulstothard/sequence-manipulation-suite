@@ -4,6 +4,7 @@ import {
 } from "./plot-renderer.js";
 import { streamTextLines } from "./compressed-text-reader.js";
 import { exportDelimitedTable } from "./table.js";
+import { DISABLED_TOOL_LIMIT_IDS_OPTION, effectiveToolLimit } from "./tool-limit-policy.js";
 
 export const fastqSummaryColumns = [
   { id: "metric", label: "Metric", type: "string" },
@@ -62,27 +63,31 @@ function looksLikeWorkerContext(value) {
 }
 
 export function normalizeFastqSummaryOptions(options = {}) {
-  return {
-    maxReads: clampInteger(options.maxReads, defaultFastqSummaryLimits.maxReads, 1, 10000000),
-    maxInputCharacters: clampInteger(
+  const normalized = {
+    maxReads: effectiveToolLimit(options, "maxReads", clampInteger(options.maxReads, defaultFastqSummaryLimits.maxReads, 1, 10000000)),
+    maxInputCharacters: effectiveToolLimit(options, "maxInputCharacters", clampInteger(
       options.maxInputCharacters,
       defaultFastqSummaryLimits.maxInputCharacters,
       100,
       2000000000
-    ),
+    )),
     maxPerBasePositions: clampInteger(
       options.maxPerBasePositions,
       defaultFastqSummaryLimits.maxPerBasePositions,
       1,
       100000
     ),
-    maxDuplicateSequences: clampInteger(
+    maxDuplicateSequences: effectiveToolLimit(options, "maxDuplicateSequences", clampInteger(
       options.maxDuplicateSequences,
       defaultFastqSummaryLimits.maxDuplicateSequences,
       0,
       1000000
-    )
+    ))
   };
+  if (Array.isArray(options[DISABLED_TOOL_LIMIT_IDS_OPTION])) {
+    normalized[DISABLED_TOOL_LIMIT_IDS_OPTION] = options[DISABLED_TOOL_LIMIT_IDS_OPTION];
+  }
+  return normalized;
 }
 
 function checkCancelled(context, counter = 0, interval = 1024) {

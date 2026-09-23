@@ -1,3 +1,5 @@
+import { effectiveToolLimit } from './tool-limit-policy.js';
+
 // VCF GT/PS: https://samtools.github.io/hts-specs/VCFv4.5.pdf
 // Independent reference: https://samtools.github.io/bcftools/bcftools.html#consensus
 // SMS3 deliberately validates phase blocks, missing calls and conflicts before edits.
@@ -31,10 +33,23 @@ export function consensusSettings(options = {}) {
     filter: choice('filterPolicy', ['pass','pass-or-unfiltered','all'], 'pass-or-unfiltered'),
     unsupported: choice('unsupportedPolicy', ['error','skip'], 'error'),
     outputFormat: choice('outputFormat', ['fasta','viewer','audit','coordinates','map','report'], 'fasta'),
-    maxVariants: integer('maxVariants', CONSENSUS_LIMITS.variants, CONSENSUS_LIMITS.variants) };
+    maxVariants: effectiveToolLimit(options, 'maxVariants', integer('maxVariants', CONSENSUS_LIMITS.variants, CONSENSUS_LIMITS.variants)),
+    maxInputCharacters: effectiveToolLimit(options, 'maxInputCharacters', CONSENSUS_LIMITS.characters),
+    maxReferenceBases: effectiveToolLimit(options, 'maxReferenceBases', CONSENSUS_LIMITS.bases),
+    maxOutputBases: effectiveToolLimit(options, 'maxOutputBases', CONSENSUS_LIMITS.outputBases),
+    maxSamples: effectiveToolLimit(options, 'maxSamplesAndContigs', CONSENSUS_LIMITS.samples),
+    maxContigs: effectiveToolLimit(options, 'maxSamplesAndContigs', CONSENSUS_LIMITS.contigs),
+    maxIdentifierLength: effectiveToolLimit(options, 'maxIdentifierLength', CONSENSUS_LIMITS.idLength),
+    maxPhaseBlocks: effectiveToolLimit(options, 'maxPhaseBlocks', CONSENSUS_LIMITS.phaseBlocks),
+    maxOutputRecords: effectiveToolLimit(options, 'maxOutputRecords', CONSENSUS_LIMITS.outputRecords),
+    maxTableCharacters: effectiveToolLimit(options, 'maxTableCharacters', 20_000_000) };
 }
-export async function parseConsensusFasta(text, context = {}) {
-  if (typeof text !== 'string' || text.length > CONSENSUS_LIMITS.characters) throw new Error('Reference FASTA exceeds the 20 million character limit.');
+export async function parseConsensusFasta(text, context = {}, settings = {}) {
+  const maxInputCharacters = settings.maxInputCharacters ?? CONSENSUS_LIMITS.characters;
+  const maxIdentifierLength = settings.maxIdentifierLength ?? CONSENSUS_LIMITS.idLength;
+  const maxContigs = settings.maxContigs ?? CONSENSUS_LIMITS.contigs;
+  const maxReferenceBases = settings.maxReferenceBases ?? CONSENSUS_LIMITS.bases;
+  if (typeof text !== 'string' || text.length > maxInputCharacters) throw new Error(`Reference FASTA exceeds the ${maxInputCharacters.toLocaleString('en-US')} character limit.`);
   const records = new Map(); let current, bases = 0;
   const lines = text.replace(/\r\n?/g,'\n').split('\n');
   for (let i=0;i<lines.length;i++) {
@@ -42,14 +57,14 @@ export async function parseConsensusFasta(text, context = {}) {
     const line = lines[i]; if (!line.trim()) continue;
     if (line.startsWith('>')) {
       const id = line.slice(1).trim().split(/\s/)[0];
-      if (!id || id.length>CONSENSUS_LIMITS.idLength || /[\x00-\x20\x7f]/.test(id) || records.has(id)) throw new Error(`Empty, overlong (maximum 200 characters) or duplicate reference ID: ${id}`);
-      if(records.size>=CONSENSUS_LIMITS.contigs) throw new Error('Too many reference contigs (maximum 2,000).');
+      if (!id || id.length>maxIdentifierLength || /[\x00-\x20\x7f]/.test(id) || records.has(id)) throw new Error(`Empty, overlong (maximum ${maxIdentifierLength.toLocaleString('en-US')} characters) or duplicate reference ID: ${id}`);
+      if(records.size>=maxContigs) throw new Error(`Too many reference contigs (maximum ${maxContigs.toLocaleString('en-US')}).`);
       current = { id, chunks: [], start: 1 }; records.set(id,current);
     } else {
       if (!current) throw new Error('Reference input must be FASTA with a >contig header.');
       if (!DNA.test(line)) throw new Error(`Reference ${current.id}: invalid sequence characters, gaps or embedded whitespace. Correct the FASTA; bases are never removed.`);
       bases += line.length;
-      if (bases>CONSENSUS_LIMITS.bases) throw new Error('Loaded reference exceeds 5 million bases. Use indexed FASTA with a bounded region.');
+      if (bases>maxReferenceBases) throw new Error(`Loaded reference exceeds ${maxReferenceBases.toLocaleString('en-US')} bases. Use indexed FASTA with a bounded region.`);
       current.chunks.push(line.toUpperCase());
     }
   }
@@ -64,7 +79,7 @@ export function parseConsensusGt(gt, altCount, location) {
   return { alleles, phased: gt.includes('|'), missing: alleles.includes(null), ploidy: alleles.length };
 }
 export async function parseConsensusVcf(text, settings, context = {}) {
-  if(typeof text!=='string'||text.length>CONSENSUS_LIMITS.characters) throw new Error('VCF exceeds the 20 million character limit. Use indexed VCF for a bounded region.');
+  if(typeof text!=='string'||text.length>settings.maxInputCharacters) throw new Error(`VCF exceeds the ${settings.maxInputCharacters.toLocaleString('en-US')} character limit. Use indexed VCF for a bounded region.`);
   const lines=text.replace(/\r\n?/g,'\n').split('\n');
   let samples=null, sampleIndex, selected, version=false; const records=[];
   for(let i=0;i<lines.length;i++) {
@@ -77,8 +92,8 @@ export async function parseConsensusVcf(text, settings, context = {}) {
       const fields=line.split('\t');
       if(fields.slice(0,9).join('\t')!=='#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT') throw new Error('VCF requires the standard nine columns followed by sample columns.');
       samples=fields.slice(9);
-      if(!samples.length||samples.some(s=>!s||s.length>CONSENSUS_LIMITS.idLength||/[\x00-\x20\x7f]/.test(s))||new Set(samples).size!==samples.length) throw new Error('VCF requires unique sample names (up to 200 characters, without whitespace) and sample genotypes.');
-      if(samples.length>CONSENSUS_LIMITS.samples) throw new Error('VCF exceeds 2,000 samples.');
+      if(!samples.length||samples.some(s=>!s||s.length>settings.maxIdentifierLength||/[\x00-\x20\x7f]/.test(s))||new Set(samples).size!==samples.length) throw new Error(`VCF requires unique sample names (up to ${settings.maxIdentifierLength.toLocaleString('en-US')} characters, without whitespace) and sample genotypes.`);
+      if(samples.length>settings.maxSamples) throw new Error(`VCF exceeds ${settings.maxSamples.toLocaleString('en-US')} samples.`);
       selected=settings.sample || (samples.length===1?samples[0]:''); sampleIndex=samples.indexOf(selected);
       if(sampleIndex<0) throw new Error(selected?`Sample "${selected}" was not found in the VCF header.`:'Select one sample from this multi-sample VCF.');
       continue;
@@ -88,7 +103,7 @@ export async function parseConsensusVcf(text, settings, context = {}) {
     const f=line.split('\t');
     if(f.length!==9+samples.length) throw new Error(`VCF line ${i+1}: column count does not match the sample header.`);
     if(!/^[1-9]\d*$/.test(f[1])||!Number.isSafeInteger(Number(f[1]))) throw new Error(`VCF line ${i+1}: invalid position.`);
-    if(!f[0]||f[0].length>CONSENSUS_LIMITS.idLength||/[\x00-\x20\x7f]/.test(f[0])) throw new Error('VCF contig IDs must be 1–200 characters without whitespace.');
+    if(!f[0]||f[0].length>settings.maxIdentifierLength||/[\x00-\x20\x7f]/.test(f[0])) throw new Error(`VCF contig IDs must be 1–${settings.maxIdentifierLength.toLocaleString('en-US')} characters without whitespace.`);
     const pos=Number(f[1]), ref=f[3].toUpperCase(), alts=f[4]==='.'?[]:f[4].split(',').map(a=>a.toUpperCase());
     if(!/^[ACGTN]+$/.test(ref)) throw new Error(`VCF line ${i+1}: REF must contain A, C, G, T or N.`);
     if(settings.chromosome && f[0]!==settings.chromosome) continue;
@@ -166,7 +181,7 @@ export async function buildConsensus(references, parsed, s, context = {}) {
     if(s.mode!=='consensus') {
       const unphased=het.find(r=>!r.phased); if(unphased) throw new Error(`${reference.id}:${unphased.pos}: unphased heterozygous GT ${unphased.gt} cannot define a haplotype.`);
       const blocks=[...new Set(het.map(r=>r.ps))];
-      if(blocks.length>CONSENSUS_LIMITS.phaseBlocks) throw new Error('More than 200 phase blocks on one contig. Narrow the region.');
+      if(blocks.length>s.maxPhaseBlocks) throw new Error(`More than ${s.maxPhaseBlocks.toLocaleString('en-US')} phase blocks on one contig. Narrow the region.`);
       if(blocks.includes('implicit')) warnings.push(`${reference.id}: phased GT without PS is interpreted as one implicit phase set.`);
       if(blocks.length>1&&s.phasePolicy==='continuous') throw new Error(`${reference.id}: ${blocks.length} disconnected phase sets. Choose Separate phase blocks or restrict the region to one block.`);
       if(blocks.length>0&&s.phasePolicy==='blocks') {
@@ -192,7 +207,7 @@ export async function buildConsensus(references, parsed, s, context = {}) {
           if(needSequence) parts.push(seq===null?reference.sequence.slice(a-first+1,b-first+1):seq);
           if(needCoordinates&&length+b-a>0) coordinates.push({sample:parsed.sample,sequence_id:title,chrom:reference.id,path,phase_set:segment.block,reference_start0:a,reference_end0:b,output_start0:out,output_end0:out+length,kind,vcf_line:line});
           out+=length;
-          if(out+totalBases>CONSENSUS_LIMITS.outputBases) throw new Error('Consensus exceeds 10 million output bases. Narrow the region.');
+          if(out+totalBases>s.maxOutputBases) throw new Error(`Consensus exceeds ${s.maxOutputBases.toLocaleString('en-US')} output bases. Narrow the region.`);
         };
         for(let i=0;i<rows.length;i++) {
           if(i%256===0) await checkpoint(context,'applying-variants',0.55);
@@ -211,7 +226,7 @@ export async function buildConsensus(references, parsed, s, context = {}) {
           if(needViewer) viewerSites.push({sample:parsed.sample,sequence_id:title,chrom:r.chrom,pos:r.pos,ref:r.ref,alt:r.alts.join(','),gt:r.gt,phase_set:r.phased?r.ps:'',path,status:choice.status,reason:choice.reason,sourceLine:r.line,referenceStart0:changes?edit.start:r.pos-1,referenceEnd0:changes?edit.end:r.pos-1+r.ref.length,selectedAlt:choice.alt,editedAlt:changes?edit.alt:choice.alt,changes});
         }
         append(cursor,segment.end,null,'unchanged'); totalBases+=out;totalEdits+=edits;
-        if(outputs.length>=CONSENSUS_LIMITS.outputRecords) throw new Error('More than 4,000 output sequences. Select fewer contigs or phase blocks.');
+        if(outputs.length>=s.maxOutputRecords) throw new Error(`More than ${s.maxOutputRecords.toLocaleString('en-US')} output sequences. Select fewer contigs or phase blocks.`);
         outputs.push({title,chrom:reference.id,start:segment.start,end:segment.end,path,phaseSet:segment.block,length:out,edits,...(needSequence?{sequence:parts.join('')}:{})});
       }
     }

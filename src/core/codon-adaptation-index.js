@@ -157,6 +157,9 @@ function parseCodingRecords(input) {
 export function calculateCodonAdaptationIndex(input, references, options = {}) {
   const reference = getCodonUsageReference(references, options.referenceId);
   const records = parseCodingRecords(input);
+  if (Number.isFinite(options.maxRecords) && records.length > options.maxRecords) {
+    throw new Error(`CAI input contains ${records.length.toLocaleString()} records, above the current limit of ${options.maxRecords.toLocaleString()}.`);
+  }
   const includeCodonRows = options.includeCodonRows !== false;
   const warnings = [];
   const rows = [];

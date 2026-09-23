@@ -50,10 +50,10 @@ export const sequenceStatsProteinMetadata = {
           id: "outputFormat",
           type: "radio",
           label: "Output format",
-          defaultValue: "report",
+          defaultValue: "tsv",
           choices: [
             { value: "report", label: "Summary report" },
-            { value: "tsv", label: "Table" }
+            { value: "tsv", label: "Summary table", resultView: { kind: "table", streamId: "table" } }
           ]
         }
       ]

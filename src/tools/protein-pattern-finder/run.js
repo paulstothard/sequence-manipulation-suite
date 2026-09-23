@@ -4,6 +4,7 @@ import { cleanProteinSequence, makeSequenceContext } from "../../core/sequence.j
 import { makeProteinViewerData, makeProteinViewerStream } from "../../core/protein-viewer-data.js";
 import { renderSequenceMap } from "../../core/sequence-map-renderer.js";
 import { renderTextAnnotationMapFromItems } from "../../core/text-annotation-map.js";
+import { effectiveToolLimit } from "../../core/tool-limit-policy.js";
 import { makeTableStream, makeTextStream, makeToolResult } from "../../core/workflow.js";
 
 export const proteinPatternFinderTableColumns = [
@@ -305,11 +306,12 @@ export function runProteinPatternFinder(input, options = {}, context = {}) {
 
   context.throwIfCancelled?.();
   context.reportProgress?.({ phase: "building-output", progress: 0.9 });
-  const outputFormat = ["tsv", "text-map", "svg-map", "interactive-viewer"].includes(options.outputFormat) ? options.outputFormat : "report";
+  const outputFormat = ["report", "tsv", "text-map", "svg-map", "interactive-viewer"].includes(options.outputFormat) ? options.outputFormat : "svg-map";
   const totalMatches = analyzedRecords.reduce((sum, record) => sum + record.matches.length, 0);
-  if (totalMatches > PROTEIN_PATTERN_MATCHED_REGION_RECORD_THRESHOLD) {
+  const maxMatchedRegionRecords = effectiveToolLimit(options, "proteinPatternRegions", PROTEIN_PATTERN_MATCHED_REGION_RECORD_THRESHOLD);
+  if (totalMatches > maxMatchedRegionRecords) {
     warnings.push(
-      `Matched-region sequence stream was capped at ${PROTEIN_PATTERN_MATCHED_REGION_RECORD_THRESHOLD} of ${totalMatches} matches to avoid duplicating a very large hit set. Use the table output for all coordinates.`
+      `Matched-region sequence stream was capped at ${maxMatchedRegionRecords === PROTEIN_PATTERN_MATCHED_REGION_RECORD_THRESHOLD ? String(maxMatchedRegionRecords) : maxMatchedRegionRecords.toLocaleString()} of ${totalMatches} matches to avoid duplicating a very large hit set. Use the table output for all coordinates.`
     );
   }
   if (outputFormat === "report" && totalMatches > DETAILED_REPORT_MATCH_THRESHOLD) {
@@ -323,7 +325,7 @@ export function runProteinPatternFinder(input, options = {}, context = {}) {
     );
   }
   const tableRows = makeRows(analyzedRecords);
-  const matchedRegions = makeMatchedRegionRecords(analyzedRecords, PROTEIN_PATTERN_MATCHED_REGION_RECORD_THRESHOLD);
+  const matchedRegions = makeMatchedRegionRecords(analyzedRecords, maxMatchedRegionRecords);
   const reportOutput = outputFormat === "report" && totalMatches > DETAILED_REPORT_MATCH_THRESHOLD
     ? makeSummaryReport(analyzedRecords, pattern, options)
     : makeReport(analyzedRecords, pattern, options);

@@ -6,7 +6,33 @@ export const outputDescriptionConfig = {
 };
 
 function isFileLike(value) {
-  return typeof File !== "undefined" && value instanceof File;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  if (typeof File !== "undefined" && value instanceof File) {
+    return true;
+  }
+  if (typeof Blob !== "undefined" && value instanceof Blob) {
+    return true;
+  }
+  return typeof value.name === "string"
+    && Number.isFinite(Number(value.size))
+    && (
+      typeof value.text === "string"
+      || typeof value.stream === "function"
+      || typeof value.arrayBuffer === "function"
+      || "lastModified" in value
+    );
+}
+
+function formatFileLikeValue(value) {
+  const name = String(value.name || "local file");
+  const size = Number(value.size);
+  if (!Number.isFinite(size)) {
+    return name;
+  }
+  const roundedSize = Math.max(0, Math.round(size));
+  return `${name} (${roundedSize.toLocaleString("en-US")} ${roundedSize === 1 ? "byte" : "bytes"})`;
 }
 
 function formatOptionValue(value) {
@@ -15,6 +41,9 @@ function formatOptionValue(value) {
   }
   if (value === null) {
     return "null";
+  }
+  if (isFileLike(value)) {
+    return formatFileLikeValue(value);
   }
   if (Array.isArray(value)) {
     return `[${value.map(formatOptionValue).join(", ")}]`;
@@ -36,7 +65,6 @@ export function stableOptionsSummary(options = {}) {
 
 function stableOptionEntries(options = {}) {
   return Object.entries(options)
-    .filter(([, value]) => !isFileLike(value))
     .sort(([left], [right]) => left.localeCompare(right));
 }
 
@@ -91,6 +119,7 @@ export function buildOutputDescriptionText({
   options = {},
   formatLabel,
   inputChecksum = "",
+  inputTextCharacters = null,
   appVersion = "",
   config = outputDescriptionConfig
 }) {
@@ -120,11 +149,26 @@ export function buildOutputDescriptionText({
 
   appendSection(lines, "Options", optionLines.length > 0 ? optionLines : ["Default settings used."]);
 
-  appendSection(lines, "Input", [
-    inputChecksum
-      ? `SHA-256: ${inputChecksum}`
-      : "SHA-256: not calculated for this run."
-  ]);
+  const hasTextCharacterCount = Number.isInteger(inputTextCharacters) && inputTextCharacters >= 0;
+  const inputLines = [];
+  if (hasTextCharacterCount) {
+    inputLines.push(`Text input characters: ${inputTextCharacters.toLocaleString("en-US")}`);
+  }
+  if (inputChecksum) {
+    inputLines.push(`Text input SHA-256: ${inputChecksum}`);
+  } else if (hasTextCharacterCount && inputTextCharacters === 0) {
+    inputLines.push("Text input SHA-256: not applicable because no text input was used.");
+  } else if (
+    hasTextCharacterCount
+    && inputTextCharacters > config.checksumMaxInputCharacters
+  ) {
+    inputLines.push(
+      `Text input SHA-256: not calculated because the text input exceeded ${config.checksumMaxInputCharacters.toLocaleString("en-US")} characters.`
+    );
+  } else {
+    inputLines.push("Text input SHA-256: not available for this run.");
+  }
+  appendSection(lines, "Input", inputLines);
 
   appendSection(lines, "References", [
     ...formatCitationLines(tool?.citations ?? []),

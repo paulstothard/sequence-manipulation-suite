@@ -16,11 +16,12 @@ import { renderSequenceMap } from "../../core/sequence-map-renderer.js";
 import { renderTextAnnotationMapFromItems } from "../../core/text-annotation-map.js";
 import { makeTableStream, makeTextStream, makeToolResult } from "../../core/workflow.js";
 import { loadReferenceGenomeRecords } from "../reference-genome-runner.js";
+import { effectiveToolLimit } from "../../core/tool-limit-policy.js";
 
 const OUTPUT_FORMATS = new Set(["report", "tsv", "rvd-tsv", "context-text", "halfsite-fasta", "text-map", "svg-map", "interactive-viewer"]);
 
 function normalizeOutputFormat(value) {
-  return OUTPUT_FORMATS.has(value) ? value : "report";
+  return OUTPUT_FORMATS.has(value) ? value : "tsv";
 }
 
 function rowsByRecord(result) {
@@ -209,8 +210,8 @@ export async function runTalenTargetFinder(input, options = {}, context = {}) {
   await context.yieldIfNeeded?.();
 
   const reference = await loadReferenceGenomeRecords(options, {
-    loadedRecordLimit: Number.parseInt(options.maxReferenceRecordLength, 10) || 500000,
-    indexedBaseLimit: Number.parseInt(options.maxIndexedReferenceBases, 10) || 5000000
+    loadedRecordLimit: effectiveToolLimit(options, "maxReferenceRecordLength", Number.parseInt(options.maxReferenceRecordLength, 10) || 500000),
+    indexedBaseLimit: effectiveToolLimit(options, "maxIndexedReferenceBases", Number.parseInt(options.maxIndexedReferenceBases, 10) || 5000000)
   }, context);
   const result = await designTalenTargets(input, {
     ...options,

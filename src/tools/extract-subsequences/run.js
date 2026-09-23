@@ -3,6 +3,7 @@ import {
   cleanSequence,
   complementDnaRnaSequence
 } from "../../core/sequence.js";
+import { effectiveToolLimit } from "../../core/tool-limit-policy.js";
 import { makeTableStream, makeTextStream, makeToolResult } from "../../core/workflow.js";
 
 export const extractSubsequencesTableColumns = [
@@ -257,6 +258,7 @@ export async function runExtractSubsequences(input, options = {}, context = {}) 
   const resultGrouping = options.resultGrouping === "joined" ? "joined" : "separate";
   const shouldReverseComplement = alphabet === "dna-rna" && options.reverseComplement === true;
   const preserveCase = options.preserveCase !== false;
+  const maxOutputRecords = effectiveToolLimit(options, "outputRecordLimitNote", EXTRACT_SUBSEQUENCES_MAX_OUTPUT_RECORDS);
 
   if (coordinateSpec.errors.length > 0) {
     warnings.push(...coordinateSpec.errors);
@@ -348,7 +350,7 @@ export async function runExtractSubsequences(input, options = {}, context = {}) 
       }
     } else {
       for (const [segmentIndex, segment] of outputSegments.entries()) {
-        if (extractedRecords.length >= EXTRACT_SUBSEQUENCES_MAX_OUTPUT_RECORDS) {
+        if (extractedRecords.length >= maxOutputRecords) {
           outputLimitHit = true;
           continue;
         }
@@ -377,7 +379,7 @@ export async function runExtractSubsequences(input, options = {}, context = {}) 
   }
 
   if (outputLimitHit) {
-    warnings.push(`Output was limited to ${EXTRACT_SUBSEQUENCES_MAX_OUTPUT_RECORDS.toLocaleString()} FASTA records/table rows. Use joined output or fewer coordinates for very dense extraction.`);
+    warnings.push(`Output was limited to ${maxOutputRecords.toLocaleString()} FASTA records/table rows. Use joined output or fewer coordinates for very dense extraction.`);
   }
   if (extractedRecords.length > LARGE_OUTPUT_RECORDS) {
     warnings.push(`This run produced ${extractedRecords.length.toLocaleString()} FASTA records/table rows; browser table display may be large.`);

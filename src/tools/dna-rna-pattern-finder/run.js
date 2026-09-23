@@ -6,6 +6,7 @@ import { findPatternMatches, makePatternRegex } from "../../core/pattern.js";
 import { cleanDnaRnaSequence, complementDnaRnaSequence, makeSequenceContext } from "../../core/sequence.js";
 import { renderSequenceMap } from "../../core/sequence-map-renderer.js";
 import { renderTextAnnotationMapFromItems } from "../../core/text-annotation-map.js";
+import { applyDisabledFastaSourceLimits, effectiveToolLimit } from "../../core/tool-limit-policy.js";
 import { makeTableStream, makeTextStream, makeToolResult } from "../../core/workflow.js";
 import { MAX_PASTED_FASTA_CHARACTERS_FOR_RICH_OUTPUTS } from "../fasta-input-policy.js";
 
@@ -388,11 +389,12 @@ export function runDnaRnaPatternFinder(input, options = {}, context = {}) {
 
   context.throwIfCancelled?.();
   context.reportProgress?.({ phase: "building-output", progress: 0.9 });
-  const outputFormat = ["tsv", "text-map", "svg-map", "interactive-viewer", "interactive-circular-viewer"].includes(options.outputFormat) ? options.outputFormat : "report";
+  const outputFormat = ["report", "tsv", "text-map", "svg-map", "interactive-viewer", "interactive-circular-viewer"].includes(options.outputFormat) ? options.outputFormat : "svg-map";
   const totalMatches = analyzedRecords.reduce((sum, record) => sum + record.matches.length, 0);
-  if (totalMatches > DNA_RNA_PATTERN_MATCHED_REGION_RECORD_THRESHOLD) {
+  const matchedRegionLimit = effectiveToolLimit(options, "patternRegionStream", DNA_RNA_PATTERN_MATCHED_REGION_RECORD_THRESHOLD);
+  if (totalMatches > matchedRegionLimit) {
     warnings.push(
-      `Matched-region sequence stream was capped at ${DNA_RNA_PATTERN_MATCHED_REGION_RECORD_THRESHOLD} of ${totalMatches} matches to avoid duplicating a very large hit set. Use the table output for all coordinates.`
+      `Matched-region sequence stream was capped at ${matchedRegionLimit} of ${totalMatches} matches to avoid duplicating a very large hit set. Use the table output for all coordinates.`
     );
   }
   if (outputFormat === "report" && totalMatches > DETAILED_REPORT_MATCH_THRESHOLD) {
@@ -406,7 +408,7 @@ export function runDnaRnaPatternFinder(input, options = {}, context = {}) {
     );
   }
   const tableRows = makeRows(analyzedRecords);
-  const matchedRegions = makeMatchedRegionRecords(analyzedRecords, DNA_RNA_PATTERN_MATCHED_REGION_RECORD_THRESHOLD);
+  const matchedRegions = makeMatchedRegionRecords(analyzedRecords, matchedRegionLimit);
   const reportOutput = outputFormat === "report" && totalMatches > DETAILED_REPORT_MATCH_THRESHOLD
     ? makeSummaryReport(analyzedRecords, pattern, options)
     : makeReport(analyzedRecords, pattern, options);
@@ -480,15 +482,25 @@ async function runStreamedDnaRnaPatternFinder(input, options, context) {
   const pattern = String(options.pattern ?? "").trim();
   if (!pattern) return makeToolResult({ output: "", warnings: ["No DNA/RNA pattern was provided."], recordsProcessed: 0, basesProcessed: 0, charactersRemoved: 0 });
   if (options.patternMode === "regex") throw new Error("Large FASTA sources support plain-text and IUPAC patterns. JavaScript regex requires a bounded pasted input.");
-  if (pattern.length > MAX_STREAMED_PATTERN_LENGTH) throw new Error(`Pattern length exceeds the ${MAX_STREAMED_PATTERN_LENGTH.toLocaleString()}-base large-source limit.`);
-  const outputFormat = options.outputFormat ?? "report";
+  const maxPatternLength = effectiveToolLimit(options, "patternLength", MAX_STREAMED_PATTERN_LENGTH);
+  const maxWork = effectiveToolLimit(options, "patternWork", MAX_STREAMED_PATTERN_WORK);
+  const maxMatches = effectiveToolLimit(options, "patternHits", MAX_STREAMED_PATTERN_MATCHES);
+  const maxOutputCharacters = effectiveToolLimit(options, "patternOutput", MAX_MATERIALIZED_OUTPUT_CHARACTERS);
+  const maxMatchedRegions = effectiveToolLimit(options, "patternRegionStream", DNA_RNA_PATTERN_MATCHED_REGION_RECORD_THRESHOLD);
+  if (pattern.length > maxPatternLength) throw new Error(`Pattern length exceeds the ${maxPatternLength.toLocaleString()}-base large-source limit.`);
+  const outputFormat = options.outputFormat ?? "svg-map";
   if (!["report", "tsv", "svg-map"].includes(outputFormat)) {
     throw new Error("Large FASTA sources support report, table, and linear map output. Text maps and sequence viewers require a bounded pasted input.");
   }
-  const sourceOptions = {
+  const sourceOptions = applyDisabledFastaSourceLimits({
     ...options,
     maxSourceBases: Math.min(MAX_STREAMED_PATTERN_BASES, Number(options.maxSourceBases) || MAX_STREAMED_PATTERN_BASES)
-  };
+  }, {
+    maxSourceBases: "patternSource",
+    maxSourceRecords: "patternSource",
+    maxDecodedSourceBytes: "patternSource",
+    maxSourceBytes: "patternSource"
+  });
   const opened = await openCleanDnaRnaFastaSource(input, sourceOptions, context);
   const records = [];
   const warnings = [];
@@ -510,7 +522,7 @@ async function runStreamedDnaRnaPatternFinder(input, options, context) {
     if (event.type === "scan-segment") {
       const ownedLength = event.ownedEnd0 - event.ownedStart0;
       work += ownedLength * pattern.length * (both ? 2 : 1);
-      if (work > MAX_STREAMED_PATTERN_WORK) throw new Error(`Pattern scan exceeds the ${MAX_STREAMED_PATTERN_WORK.toLocaleString()}-symbol comparison budget. Use a shorter pattern, one strand, or fewer records.`);
+      if (work > maxWork) throw new Error(`Pattern scan exceeds the ${maxWork.toLocaleString()}-symbol comparison budget. Use a shorter pattern, one strand, or fewer records.`);
       const add = (match, strand, localStart0, localEnd0) => {
         const start0 = event.segmentStart0 + localStart0;
         if (start0 < event.ownedStart0 || start0 >= event.ownedEnd0) return;
@@ -524,10 +536,10 @@ async function runStreamedDnaRnaPatternFinder(input, options, context) {
           context: contextDetails
         };
         retainedRowCharacters += JSON.stringify(retained).length;
-        if (retainedRowCharacters > MAX_MATERIALIZED_OUTPUT_CHARACTERS) throw new Error("Pattern hit table exceeds the 25 MiB materialized-output limit. Narrow the pattern or choose fewer records.");
+        if (retainedRowCharacters > maxOutputCharacters) throw new Error("Pattern hit table exceeds the materialized-output limit. Narrow the pattern or choose fewer records.");
         current.matches.push(retained);
         totalMatches += 1;
-        if (totalMatches > MAX_STREAMED_PATTERN_MATCHES) throw new Error(`Pattern matches exceed the ${MAX_STREAMED_PATTERN_MATCHES.toLocaleString()}-hit limit. Narrow the pattern or select fewer records.`);
+        if (totalMatches > maxMatches) throw new Error(`Pattern matches exceed the ${maxMatches.toLocaleString()}-hit limit. Narrow the pattern or select fewer records.`);
       };
       for (const match of findPatternMatches(event.text, pattern, searchOptions, context)) {
         add(match, "+", match.start - 1, match.end);
@@ -566,7 +578,7 @@ async function runStreamedDnaRnaPatternFinder(input, options, context) {
   warnings.push(...opened.warnings);
   if (!records.length) return makeToolResult({ output: "", warnings: [opened.source.stats.inputProvided ? "No DNA/RNA records were found." : "No sequence input was provided.", ...warnings], recordsProcessed: 0, basesProcessed: 0, charactersRemoved });
   totalMatches = records.reduce((sum, record) => sum + record.matches.length, 0);
-  if (totalMatches > DNA_RNA_PATTERN_MATCHED_REGION_RECORD_THRESHOLD) warnings.push(`Matched-region sequence stream was capped at ${DNA_RNA_PATTERN_MATCHED_REGION_RECORD_THRESHOLD} of ${totalMatches} matches. Table output retains all coordinates.`);
+  if (totalMatches > maxMatchedRegions) warnings.push(`Matched-region sequence stream was capped at ${maxMatchedRegions} of ${totalMatches} matches. Table output retains all coordinates.`);
   if (outputFormat === "report" && totalMatches > DETAILED_REPORT_MATCH_THRESHOLD) warnings.push(`Detailed report rows were summarized because this run found ${totalMatches} matches. Use table output for the full hit table.`);
   if (outputFormat === "svg-map" && totalMatches > DNA_RNA_PATTERN_SVG_MAP_MATCH_THRESHOLD) warnings.push(`SVG match map was capped at ${DNA_RNA_PATTERN_SVG_MAP_MATCH_THRESHOLD} of ${totalMatches} matches.`);
   const tableRows = records.flatMap((record) => record.matches.map((match, index) => ({
@@ -581,8 +593,8 @@ async function runStreamedDnaRnaPatternFinder(input, options, context) {
         `Total matches: ${totalMatches}`].join("\n").trimEnd();
   const svgMap = outputFormat === "svg-map" ? makeSvgMap(records, pattern) : "";
   const output = outputFormat === "tsv" ? makeTsv(tableRows) : outputFormat === "svg-map" ? svgMap : reportOutput;
-  if (Math.max(output.length, reportOutput.length) > MAX_MATERIALIZED_OUTPUT_CHARACTERS) throw new Error("Pattern output exceeds the 25 MiB materialized-output limit. Narrow the pattern or select fewer records.");
-  const matchedRegions = makeMatchedRegionRecords(records, DNA_RNA_PATTERN_MATCHED_REGION_RECORD_THRESHOLD);
+  if (Math.max(output.length, reportOutput.length) > maxOutputCharacters) throw new Error("Pattern output exceeds the materialized-output limit. Narrow the pattern or select fewer records.");
+  const matchedRegions = makeMatchedRegionRecords(records, maxMatchedRegions);
   return makeToolResult({
     output,
     download: { filename: `dna-rna-pattern-finder.${outputFormat === "tsv" ? "tsv" : outputFormat === "svg-map" ? "svg" : "txt"}`, mimeType: outputFormat === "tsv" ? "text/tab-separated-values" : outputFormat === "svg-map" ? "image/svg+xml;charset=utf-8" : "text/plain;charset=utf-8" },

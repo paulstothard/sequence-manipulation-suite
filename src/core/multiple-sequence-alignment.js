@@ -6,6 +6,7 @@ import { createBioWasmCli, requireBioWasmRuntime } from "./biowasm-runner.js";
 import { makeHeatmapPlotSpec, makeObservablePlotConfig, renderHeatmapPlotSvg } from "./plot-renderer.js";
 import { renderPhylogramSvg } from "./tree-svg.js";
 import { cleanDnaRnaSequence, cleanProteinSequence } from "./sequence.js";
+import { effectiveToolLimit } from "./tool-limit-policy.js";
 
 export const multipleAlignmentTableColumns = [
   { id: "alignment_position", label: "Alignment position", type: "number" },
@@ -63,6 +64,7 @@ function cleanForAlphabet(record, alphabet) {
 }
 
 function normalizeLimitInteger(value, fallback, min, max) {
+  if (value === Infinity) return Infinity;
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed)) {
     return fallback;
@@ -86,18 +88,23 @@ function normalizeOptions(options = {}) {
     mismatchScore: score(options.mismatchScore, -4),
     similarScore: score(options.similarScore, 1),
     lineWidth: Math.max(20, Math.min(120, Number.parseInt(options.lineWidth, 10) || 60)),
-    maxTotalSymbols: normalizeLimitInteger(
+    maxAlignmentRecords: effectiveToolLimit(
+      options,
+      "maxAlignmentRecords",
+      options.maxAlignmentRecords === Infinity ? Infinity : MAX_MSA_SEQUENCES
+    ),
+    maxTotalSymbols: effectiveToolLimit(options, "maxTotalSymbols", normalizeLimitInteger(
       options.maxTotalSymbols,
       multipleAlignmentDefaultLimits.maxTotalSymbols,
       1000,
       MAX_MSA_TOTAL_SYMBOLS_OPTION
-    ),
-    maxAlignmentCells: normalizeLimitInteger(
+    )),
+    maxAlignmentCells: effectiveToolLimit(options, "maxAlignmentCells", normalizeLimitInteger(
       options.maxAlignmentCells,
       pairwiseAlignmentDefaultLimits.maxAlignmentCells,
       1000,
       pairwiseAlignmentDefaultLimits.maxAlignmentCells * 10
-    )
+    ))
   };
 }
 
@@ -172,8 +179,8 @@ function prepareRecords(input, alphabet, options = {}) {
   if (records.length < 2) {
     warnings.push("Provide at least two FASTA records for multiple sequence alignment.");
   }
-  if (records.length > MAX_MSA_SEQUENCES) {
-    throw new Error(`Multiple alignment has ${records.length.toLocaleString()} records, above the supported maximum of ${MAX_MSA_SEQUENCES.toLocaleString()}. Reduce the input to run the alignment.`);
+  if (records.length > options.maxAlignmentRecords) {
+    throw new Error(`Multiple alignment has ${records.length.toLocaleString()} records, above the supported maximum of ${options.maxAlignmentRecords.toLocaleString()}. Reduce the input to run the alignment.`);
   }
   const totalSymbols = records.reduce((sum, record) => sum + record.sequence.length, 0);
   if (totalSymbols > options.maxTotalSymbols) {
@@ -514,8 +521,8 @@ function prepareCodingDnaRecords(input, rawOptions = {}) {
   if (records.length < 2) {
     warnings.push("Provide at least two coding DNA/RNA FASTA records with at least one complete codon each.");
   }
-  if (records.length > MAX_MSA_SEQUENCES) {
-    throw new Error(`Multiple coding DNA alignment has ${records.length.toLocaleString()} records, above the supported maximum of ${MAX_MSA_SEQUENCES.toLocaleString()}. Reduce the input to run the alignment.`);
+  if (records.length > options.maxAlignmentRecords) {
+    throw new Error(`Multiple coding DNA alignment has ${records.length.toLocaleString()} records, above the supported maximum of ${options.maxAlignmentRecords.toLocaleString()}. Reduce the input to run the alignment.`);
   }
   const totalCodons = records.reduce((sum, record) => sum + record.codons.length, 0);
   const totalSymbols = totalCodons * 3;
@@ -962,7 +969,7 @@ export function buildNeighborJoiningTree(alignment) {
 
   if (active.length === 2) {
     const distance = getClusterDistance(distances, active[0], active[1]) / 2;
-    return `(${clusters.get(active[0]).newick}:${formatBranchLength(distance)},${clusters.get(active[1]).newick}:${formatBranchLength(distance)});`;
+    return `[&U](${clusters.get(active[0]).newick}:${formatBranchLength(distance)},${clusters.get(active[1]).newick}:${formatBranchLength(distance)});`;
   }
 
   while (active.length > 3) {
@@ -1017,7 +1024,7 @@ export function buildNeighborJoiningTree(alignment) {
   const firstLength = Math.max(0, (firstSecond + firstThird - secondThird) / 2);
   const secondLength = Math.max(0, (firstSecond + secondThird - firstThird) / 2);
   const thirdLength = Math.max(0, (firstThird + secondThird - firstSecond) / 2);
-  return `(${clusters.get(first).newick}:${formatBranchLength(firstLength)},${clusters.get(second).newick}:${formatBranchLength(secondLength)},${clusters.get(third).newick}:${formatBranchLength(thirdLength)});`;
+  return `[&U](${clusters.get(first).newick}:${formatBranchLength(firstLength)},${clusters.get(second).newick}:${formatBranchLength(secondLength)},${clusters.get(third).newick}:${formatBranchLength(thirdLength)});`;
 }
 
 function makeDistanceTsv(distanceRows) {

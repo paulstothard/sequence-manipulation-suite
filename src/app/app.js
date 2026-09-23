@@ -182,6 +182,7 @@ const SEQUENCE_EDITOR_TOOL_ID = "sequence-editor";
 const SEQUENCE_EXTRACTOR_TOOL_ID = "sequence-extractor";
 const PROTEIN_STRUCTURE_VIEWER_TOOL_ID = "protein-structure-viewer";
 const PROTEIN_CONSERVATION_STRUCTURE_VIEWER_TOOL_ID = "protein-conservation-structure-viewer";
+const SHOWCASE_REFERENCE_ID = "sms3-showcase";
 const toolWorkerClient = new ToolWorkerClient();
 
 const elements = {
@@ -196,6 +197,7 @@ const elements = {
   toolList: document.querySelector("#toolList"),
   homeView: document.querySelector("#homeView"),
   homeLink: document.querySelector("#homeLink"),
+  showcaseLink: document.querySelector("#showcaseLink"),
   homeBody: document.querySelector("#homeBody"),
   referenceList: document.querySelector("#referenceList"),
   toolView: document.querySelector("#toolView"),
@@ -525,6 +527,20 @@ const toolOptionsUi = createToolOptionsController({
   }
 });
 
+function selectedToolLimitIsEnforced(limitId) {
+  return toolOptionsUi.isLimitEnforced(limitId);
+}
+
+function selectedToolTextReadOptions(onMessage = addMessage) {
+  const workbookLimitEnforced = selectedToolLimitIsEnforced("workbookImportLimit");
+  return {
+    onMessage,
+    maxDecodedBytes: selectedToolLimitIsEnforced("decodedTextImportLimit") ? undefined : Infinity,
+    workbookMaxRows: workbookLimitEnforced ? undefined : Infinity,
+    workbookMaxCells: workbookLimitEnforced ? undefined : Infinity
+  };
+}
+
 const workflowBuilder = createWorkflowBuilderController({
   elements,
   state,
@@ -560,7 +576,8 @@ const toolInputShell = createToolInputShellController({
     flattenOptions,
     getDefaultOptionValues: toolOptionsUi.getDefaultOptionValues,
     serializeRuleListControl,
-    serializeValueListControl
+    serializeValueListControl,
+    getDisabledToolLimitIds: toolOptionsUi.getDisabledToolLimitIds
   },
   callbacks: {
     clearToolOutput,
@@ -753,7 +770,7 @@ function renderHomeView() {
   const start = document.createElement("p");
   start.className = "home-start";
   const showcase = document.createElement("a");
-  showcase.href = "#reference=sms3-showcase";
+  showcase.href = `#reference=${SHOWCASE_REFERENCE_ID}`;
   showcase.textContent = "SMS3 showcase";
   start.append("Browse example outputs in the ", showcase, ", or choose a tool from the sidebar to work with your own data.");
 
@@ -772,6 +789,10 @@ function renderActiveView() {
   elements.workspaceView.hidden = state.activeView !== "workspace";
   elements.workflowView.hidden = state.activeView !== "workflow";
   elements.homeLink.classList.toggle("active", state.activeView === "home");
+  elements.showcaseLink.classList.toggle(
+    "active",
+    state.activeView === "reference" && state.selectedReference === SHOWCASE_REFERENCE_ID
+  );
   elements.feedbackLink.classList.toggle("active", state.activeView === "feedback");
   elements.workspaceLink.classList.toggle("active", state.activeView === "workspace");
   elements.workflowLink.classList.toggle("active", state.activeView === "workflow");
@@ -781,21 +802,31 @@ function scrollWorkspaceToTop() {
   window.scrollTo({ top: 0, left: 0, behavior: "auto" });
 }
 
-function scrollActiveToolIntoSidebarView() {
+function scrollSidebarItemIntoView(item) {
   const scroller = elements.toolList.closest(".tool-nav-scroll");
-  const activeTool = elements.toolList.querySelector("button.tool-link.active");
-  if (!scroller || !activeTool) {
+  if (!scroller || !item) {
     return;
   }
   window.requestAnimationFrame(() => {
     const scrollerRect = scroller.getBoundingClientRect();
-    const activeRect = activeTool.getBoundingClientRect();
+    const activeRect = item.getBoundingClientRect();
     const targetOffset =
       activeRect.top -
       scrollerRect.top -
-      (scroller.clientHeight - activeTool.offsetHeight) / 2;
+      (scroller.clientHeight - item.offsetHeight) / 2;
     scroller.scrollTop += targetOffset;
   });
+}
+
+function scrollActiveToolIntoSidebarView() {
+  scrollSidebarItemIntoView(elements.toolList.querySelector("button.tool-link.active"));
+}
+
+function scrollActiveReferenceIntoSidebarView(referenceId) {
+  const activeReference = referenceId === SHOWCASE_REFERENCE_ID
+    ? elements.showcaseLink
+    : elements.referenceList.querySelector("button.reference-link.active");
+  scrollSidebarItemIntoView(activeReference);
 }
 
 function selectHome({ updateHash = true } = {}) {
@@ -844,7 +875,7 @@ function selectTool(tool, { updateHash = true, revealInToolList = false, recover
   }).catch(() => {});
 }
 
-function selectReference(referenceId, { updateHash = true } = {}) {
+function selectReference(referenceId, { updateHash = true, revealInSidebar = false } = {}) {
   retireWorkflowRun();
   state.selectedReference = referenceId;
   state.activeView = "reference";
@@ -852,6 +883,9 @@ function selectReference(referenceId, { updateHash = true } = {}) {
   renderActiveView();
   renderReferenceList();
   renderToolList();
+  if (revealInSidebar) {
+    scrollActiveReferenceIntoSidebarView(referenceId);
+  }
   renderSelectedReference();
 
   if (updateHash) {
@@ -971,7 +1005,7 @@ function applyRouteFromHash() {
   }
 
   if (referenceId && referenceTopics.some((topic) => topic.id === referenceId)) {
-    selectReference(referenceId, { updateHash: false });
+    selectReference(referenceId, { updateHash: false, revealInSidebar: true });
     return true;
   }
 
@@ -1241,14 +1275,16 @@ function renderSplitInputPanel(tool) {
       if (!panel.multipleFiles && files.length > 1) {
         files.splice(1);
       }
-      const oversized = files.find((file) => file.size > STANDARD_BROWSER_FILE_BYTES);
+      const oversized = selectedToolLimitIsEnforced("standardFileUploadLimit")
+        ? files.find((file) => file.size > STANDARD_BROWSER_FILE_BYTES)
+        : null;
       if (oversized) {
         addMessage(`${oversized.name}: file is larger than 25 MiB.`, "warning");
         return;
       }
       const texts = [];
       for (const file of files) {
-        texts.push(await readToolInputFileText(file, { onMessage: addMessage }));
+        texts.push(await readToolInputFileText(file, selectedToolTextReadOptions()));
       }
       textarea.value = texts.join("\n");
       tableInputPreview?.refresh({ preferPreview: true });
@@ -1786,11 +1822,11 @@ function createAlignmentViewerReferenceTextSection({ inputKey, label, dropLabel,
     if (!file) {
       return;
     }
-    if (file.size > STANDARD_BROWSER_FILE_BYTES) {
+    if (selectedToolLimitIsEnforced("standardFileUploadLimit") && file.size > STANDARD_BROWSER_FILE_BYTES) {
       addMessage(`${file.name}: file is larger than 25 MiB.`, "warning");
       return;
     }
-    textarea.value = await readToolInputFileText(file, { onMessage: addMessage });
+    textarea.value = await readToolInputFileText(file, selectedToolTextReadOptions());
     clearToolOutput();
     updateInputActionButtons();
     updateToolOptionSuggestions();
@@ -2405,11 +2441,11 @@ function createReadMappingInputSlot({
 
   const loadFile = async (file) => {
     if (!file) return;
-    if (file.size > STANDARD_BROWSER_FILE_BYTES) {
+    if (selectedToolLimitIsEnforced("standardFileUploadLimit") && file.size > STANDARD_BROWSER_FILE_BYTES) {
       addMessage(`${file.name}: file is larger than 25 MiB.`, "warning");
       return;
     }
-    textarea.value = await readToolInputFileText(file, { onMessage: addMessage });
+    textarea.value = await readToolInputFileText(file, selectedToolTextReadOptions());
     clearToolOutput();
     updateInputActionButtons();
     updateToolOptionSuggestions();
@@ -3197,11 +3233,11 @@ function createBiologicalRecordInputSection({ key, panel, index, value }) {
       return;
     }
     if (key === "annotation" && await tryOpenEditorDocumentFile(file)) return;
-    if (file.size > STANDARD_BROWSER_FILE_BYTES) {
+    if (selectedToolLimitIsEnforced("standardFileUploadLimit") && file.size > STANDARD_BROWSER_FILE_BYTES) {
       addMessage(`${file.name}: file is larger than 25 MiB.`, "warning");
       return;
     }
-    textarea.value = await readToolInputFileText(file, { onMessage: addMessage });
+    textarea.value = await readToolInputFileText(file, selectedToolTextReadOptions());
     clearToolOutput();
     updateInputActionButtons();
     updateToolOptionSuggestions();
@@ -3415,11 +3451,11 @@ function createInSilicoPcrTextPane({
     if (!file) {
       return;
     }
-    if (file.size > STANDARD_BROWSER_FILE_BYTES) {
+    if (selectedToolLimitIsEnforced("standardFileUploadLimit") && file.size > STANDARD_BROWSER_FILE_BYTES) {
       addMessage(`${file.name}: file is larger than 25 MiB.`, "warning");
       return;
     }
-    textarea.value = await readToolInputFileText(file, { onMessage: addMessage });
+    textarea.value = await readToolInputFileText(file, selectedToolTextReadOptions());
     clearToolOutput();
     updateInputActionButtons();
     updateToolOptionSuggestions();
@@ -5593,7 +5629,7 @@ async function runSelectedWorkflow() {
       stepCount: result.steps.length
     };
     renderWorkflowView();
-    const hasWorkflowVisual = Boolean(formatted.svg || formatted.viewer || formatted.figure || formatted.sequenceExtractor || formatted.treeViewer || formatted.plateLayout);
+    const hasWorkflowVisual = Boolean(formatted.svg || formatted.viewer || formatted.figure || formatted.proteinFigure || formatted.sequenceExtractor || formatted.treeViewer || formatted.plateLayout);
     elements.workflowOutput.value = formatted.text;
     elements.workflowOutput.dataset.rawOutput = formatted.rawText;
     elements.workflowOutput.dataset.filename = formatted.filename ?? "sms3-workflow-output.txt";
@@ -5606,6 +5642,7 @@ async function runSelectedWorkflow() {
     renderVisualOutput("workflow", formatted.svg, {
       viewer: formatted.viewer,
       figure: formatted.figure,
+      proteinFigure: formatted.proteinFigure,
       sequenceExtractor: formatted.sequenceExtractor,
       treeViewer: formatted.treeViewer,
       plateLayout: formatted.plateLayout,
@@ -5614,7 +5651,7 @@ async function runSelectedWorkflow() {
     elements.workflowOutput.hidden = Boolean(formatted.tableStream || hasWorkflowVisual);
     setOutputSearchRowVisible("workflow", Boolean(formatted.tableStream || (!hasWorkflowVisual && formatted.text)));
     updateOutputActions("workflow", {
-      hidden: Boolean(formatted.tableStream || formatted.plateLayout),
+      hidden: Boolean(formatted.tableStream || formatted.plateLayout || formatted.proteinFigure),
       mimeType: formatted.mimeType,
       label: formatted.outputLabel
     });
@@ -5751,7 +5788,7 @@ async function loadInputFile(file) {
     return;
   }
 
-  if (file.size > STANDARD_BROWSER_FILE_BYTES) {
+  if (selectedToolLimitIsEnforced("standardFileUploadLimit") && file.size > STANDARD_BROWSER_FILE_BYTES) {
     addMessage(`${file.name}: file is larger than 25 MiB.`, "warning");
     return;
   }
@@ -5759,7 +5796,10 @@ async function loadInputFile(file) {
   try {
     workspaceInputSources.setToolSourceMode(state.selectedTool?.metadata?.id, "paste");
     const importMessages = [];
-    elements.sequenceInput.value = await readToolInputFileText(file, { onMessage: (...args) => importMessages.push(args) });
+    elements.sequenceInput.value = await readToolInputFileText(
+      file,
+      selectedToolTextReadOptions((...args) => importMessages.push(args))
+    );
     state.inputImport = { toolId: state.selectedTool.metadata.id, text: elements.sequenceInput.value,
       warnings: importMessages.filter(([, level]) => level === "warning").map(([message]) => message) };
     if (isMarkdownNotebookSelected()) {
@@ -5853,6 +5893,9 @@ for (const homeLink of [elements.appSuiteHomeLink, elements.appHomeLink]) {
 }
 elements.homeLink.addEventListener("click", () => {
   selectHome();
+});
+elements.showcaseLink.addEventListener("click", () => {
+  selectReference(SHOWCASE_REFERENCE_ID, { revealInSidebar: true });
 });
 elements.workflowLink.addEventListener("click", () => {
   selectWorkflow();

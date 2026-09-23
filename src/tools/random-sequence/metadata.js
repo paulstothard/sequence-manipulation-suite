@@ -63,7 +63,7 @@ const fastaReportTableOutputOptions = [
     choices: [
       { value: "fasta", label: "FASTA" },
       { value: "report", label: "Summary report" },
-      { value: "tsv", label: "Table" }
+      { value: "tsv", label: "Table", resultView: { kind: "table", streamId: "table" } }
     ]
   }
 ];

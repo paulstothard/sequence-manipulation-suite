@@ -3,6 +3,7 @@ import { cleanDnaRnaSequence } from "./sequence.js";
 import { generateRandomSeed } from "./random-sequence.js";
 import { exportDelimitedTable } from "./table.js";
 import { createBioWasmCli, requireBioWasmRuntime } from "./biowasm-runner.js";
+import { effectiveToolLimit } from "./tool-limit-policy.js";
 
 // WGSIM by Heng Li: https://github.com/lh3/wgsim
 // Browser build and execution: https://biowasm.com/documentation
@@ -48,7 +49,11 @@ function normalizeSeed(seed) {
 }
 
 export function normalizeReadSimulatorOptions(options = {}) {
-  const maxReads = parsePositiveInteger(options.maxReads, 5000, 1, 1_000_000);
+  const maxReads = effectiveToolLimit(
+    options,
+    "maxReads",
+    parsePositiveInteger(options.maxReads, 5000, 1, 1_000_000)
+  );
   const readCount = parsePositiveInteger(options.readCount, 20, 1, maxReads);
   const readLength = parsePositiveInteger(options.readLength, 100, 20, 2000);
   const insertSize = parsePositiveInteger(options.insertSize, 300, readLength, 100_000);
@@ -69,7 +74,11 @@ export function normalizeReadSimulatorOptions(options = {}) {
     seed: normalizeSeed(options.seed),
     outputFormat: OUTPUT_FORMATS.has(rawOutputFormat) ? rawOutputFormat : "fastq",
     maxReads,
-    maxReferenceLength: parsePositiveInteger(options.maxReferenceLength, 1_000_000, 100, 500_000_000)
+    maxReferenceLength: effectiveToolLimit(
+      options,
+      "maxReferenceLength",
+      parsePositiveInteger(options.maxReferenceLength, 1_000_000, 100, 500_000_000)
+    )
   };
 }
 

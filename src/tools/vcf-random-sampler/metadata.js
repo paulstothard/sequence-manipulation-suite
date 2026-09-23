@@ -140,7 +140,7 @@ export const vcfRandomSamplerMetadata = {
           min: 1,
           max: 5000000,
           step: 1000,
-          help: "Caps the number of VCF variant records scanned before sampling so accidental whole-genome pastes stay responsive."
+          help: "Caps the number of VCF variant records scanned before sampling."
         }
       ]
     }

@@ -1,7 +1,7 @@
 import { readTextFile } from './compressed-text-reader.js';
 import { parseFaiIndex } from './indexed-genomics/indexed-fasta-reader.js';
 import { runBcftoolsIndexedRegion, runSamtoolsFaidx } from './indexed-genomics/biowasm-hts.js';
-import { CONSENSUS_LIMITS, parseConsensusFasta, parseConsensusVcf, consensusSettings } from './variant-consensus.js';
+import { parseConsensusFasta, parseConsensusVcf, consensusSettings } from './variant-consensus.js';
 export const CONSENSUS_SEPARATOR = '##SMS3_VARIANTS##';
 export async function loadConsensusInput(input, options = {}, context = {}) {
   const s=consensusSettings(options), parts=String(input??'').split(new RegExp(`^${CONSENSUS_SEPARATOR}$`,'m'));
@@ -9,11 +9,11 @@ export async function loadConsensusInput(input, options = {}, context = {}) {
   let [fasta='',vcf='']=parts;
   const vcfMode=options.consensusVcfMode??'loaded', refMode=options.consensusRefMode??'loaded';
   if(!['loaded','indexed'].includes(vcfMode)||!['loaded','indexed','bgzf'].includes(refMode)) throw new Error('Invalid reference or VCF source mode.');
-  const read=file=>readTextFile(file,{maxDecodedBytes:CONSENSUS_LIMITS.characters,signal:context.signal});
+  const read=file=>readTextFile(file,{maxDecodedBytes:s.maxInputCharacters,signal:context.signal});
   const warnings=[];
   if(vcfMode==='indexed'||refMode!=='loaded') {
     if(!s.chromosome||s.end===null) throw new Error('Indexed input requires a reference / chromosome and explicit start and end positions.');
-    if(s.end-s.start+1>CONSENSUS_LIMITS.bases) throw new Error('Indexed region exceeds 5 million reference bases.');
+    if(s.end-s.start+1>s.maxReferenceBases) throw new Error(`Indexed region exceeds ${s.maxReferenceBases.toLocaleString('en-US')} reference bases.`);
   }
   if(vcfMode==='loaded') {
     if(options.consensusVcfFile) vcf=await read(options.consensusVcfFile);
@@ -27,7 +27,7 @@ export async function loadConsensusInput(input, options = {}, context = {}) {
   let references;
   if(refMode==='loaded') {
     if(options.consensusRefFile) fasta=await read(options.consensusRefFile);
-    references=await parseConsensusFasta(fasta,context);
+    references=await parseConsensusFasta(fasta,context,s);
   } else {
     if(!options.consensusRefFile||!options.consensusFaiFile) throw new Error('Choose reference FASTA and its matching FAI index.');
     if(refMode==='bgzf'&&!options.consensusGziFile) throw new Error('BGZF reference requires matching FAI and GZI indexes.');
@@ -39,9 +39,9 @@ export async function loadConsensusInput(input, options = {}, context = {}) {
     // Include complete overlapping REF spans, including anchors before the requested interval.
     let lo=s.start, hi=s.end;
     for(const r of parsed.records) {lo=Math.min(lo,r.pos);hi=Math.max(hi,r.pos+r.ref.length-1);}
-    if(hi>ref.length||hi-lo+1>CONSENSUS_LIMITS.bases) throw new Error('Expanded REF-validation span is outside the reference or exceeds 5 million bases.');
+    if(hi>ref.length||hi-lo+1>s.maxReferenceBases) throw new Error(`Expanded REF-validation span is outside the reference or exceeds ${s.maxReferenceBases.toLocaleString('en-US')} bases.`);
     const text=await runSamtoolsFaidx({fastaFile:options.consensusRefFile,faiText,gziFile:refMode==='bgzf'?options.consensusGziFile:null,isBgzip:refMode==='bgzf',regions:[`${s.chromosome}:${lo}-${hi}`]},context);
-    const extracted=await parseConsensusFasta(text,context);
+    const extracted=await parseConsensusFasta(text,context,s);
     if(extracted.size!==1) throw new Error('Indexed reference did not return exactly one region.');
     const sequence=[...extracted.values()][0].sequence;
     if(sequence.length!==hi-lo+1) throw new Error('Indexed reference length differs from the requested span. Check the FASTA/index pairing.');

@@ -9,6 +9,11 @@ export async function makeAlignmentTreeViewerResult(prepared, sourceName, contex
   context.reportProgress?.({ phase: "building-tree", progress: 0.85 });
   const newick = buildNeighborJoiningTree(prepared.alignment);
   const { document, diagnostics } = await parseTreeDocument(newick, { sourceName }, context);
+  for (const tree of document.trees) {
+    document.presentation[tree.id].layout = "unrooted";
+    document.presentation[tree.id].metric = "phylogram";
+    document.presentation[tree.id].labelAlignment = "at-tip";
+  }
   context.throwIfCancelled?.();
   const treeDocument = makeTreeDocumentStream(document);
   context.reportProgress?.({ phase: "finished", progress: 1 });

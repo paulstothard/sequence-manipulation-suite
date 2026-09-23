@@ -15,7 +15,7 @@ import { makeTableStream, makeTextStream, makeToolResult } from "../../core/work
 const OUTPUT_FORMATS = new Set(["report", "reciprocal-tsv", "candidates-tsv", "unmatched-tsv", "heatmap-svg"]);
 
 function normalizeOutputFormat(value) {
-  return OUTPUT_FORMATS.has(value) ? value : "report";
+  return OUTPUT_FORMATS.has(value) ? value : "reciprocal-tsv";
 }
 
 async function runSequenceSetReciprocalBestMatch(input, options = {}, context = {}, config) {

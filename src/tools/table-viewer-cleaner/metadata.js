@@ -202,7 +202,7 @@ export const tableViewerCleanerMetadata = {
           label: "Format",
           defaultValue: "tsv",
           choices: [
-            { value: "tsv", label: "Table" },
+            { value: "tsv", label: "Table", resultView: { kind: "table", streamId: "table" } },
             { value: "csv", label: "CSV output" },
             { value: "report", label: "Summary report" }
           ]

@@ -58,7 +58,7 @@ export const fastaIndexCreatorMetadata = {
           defaultValue: 50000000,
           min: 100,
           max: 2000000000,
-          help: "Refuse pasted or loaded FASTA text above this size so browser-local indexing remains bounded and cancellable."
+          help: "Rejects pasted or loaded FASTA text above this size."
         }
       ]
     },

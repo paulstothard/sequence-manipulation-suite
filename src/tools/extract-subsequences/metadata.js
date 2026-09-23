@@ -62,7 +62,7 @@ const outputOptions = [
     defaultValue: "fasta",
     choices: [
       { value: "fasta", label: "FASTA records" },
-      { value: "tsv", label: "Table" }
+      { value: "tsv", label: "Table", resultView: { kind: "table", streamId: "table" } }
     ]
   }
 ];

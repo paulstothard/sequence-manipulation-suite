@@ -54,6 +54,9 @@ const SANGER_SVG_TEXT_STYLE = `<style>
 .sanger-svg text[font-family*="ui-monospace"],.sanger-svg .sanger-align-cell,.sanger-svg .sanger-align-marker,.sanger-svg .sanger-align-coord{font-family:Inter,"Segoe UI",Arial,sans-serif;font-weight:600;letter-spacing:.045em}
 .sanger-svg .sanger-align-title,.sanger-svg .sanger-align-section{font-family:Inter,"Segoe UI",Arial,sans-serif;font-weight:650}
 .sanger-svg .sanger-align-label,.sanger-svg .sanger-align-subtitle,.sanger-svg .sanger-align-footer{font-family:Inter,"Segoe UI",Arial,sans-serif;font-weight:400}
+.sanger-svg text.sanger-difference-context-base{font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",Menlo,monospace;font-weight:600;letter-spacing:0}
+.sanger-svg text.sanger-difference-context-base.is-emphasized{font-weight:750}
+.sanger-svg .sanger-difference-gap{stroke:#475569;stroke-linecap:round;shape-rendering:geometricPrecision}
 </style>`;
 
 function sangerInspectionShadeSvg(x, y, width, height) {
@@ -1826,9 +1829,15 @@ ${marker}
 function makePositionedMonospaceText(text, options) {
   const { x, y, charWidth, fontSize = 13, fill = "#172026", boldIndex = -1 } = options;
   return Array.from(text).map((char, index) => {
-    const weight = index === boldIndex ? "800" : "500";
     const charX = x + index * charWidth + charWidth / 2;
-    return `<text x="${charX.toFixed(1)}" y="${y}" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="${fontSize}" font-weight="${weight}" fill="${fill}">${escapeXml(char)}</text>`;
+    if (char === "-") {
+      const gapHalfWidth = charWidth * 0.31;
+      const gapY = y - fontSize * 0.31;
+      const strokeWidth = index === boldIndex ? 2.2 : 1.6;
+      return `<line class="sanger-difference-gap" x1="${(charX - gapHalfWidth).toFixed(1)}" x2="${(charX + gapHalfWidth).toFixed(1)}" y1="${gapY.toFixed(1)}" y2="${gapY.toFixed(1)}" stroke-width="${strokeWidth}"/>`;
+    }
+    const emphasisClass = index === boldIndex ? " is-emphasized" : "";
+    return `<text class="sanger-difference-context-base${emphasisClass}" x="${charX.toFixed(1)}" y="${y}" text-anchor="middle" font-size="${fontSize}" fill="${fill}">${escapeXml(char)}</text>`;
   }).join("");
 }
 
@@ -1866,7 +1875,7 @@ export function makeSangerDifferenceReviewSvg(session, options = {}) {
     return parts.join("");
   }
 
-  const charWidth = 8.4;
+  const charWidth = 9.2;
   rows.forEach((row, index) => {
     const y = 82 + index * cardHeight;
     const relationFill = row.relation === "gap" ? "#fee2e2" : "#fef3c7";
@@ -1874,6 +1883,10 @@ export function makeSangerDifferenceReviewSvg(session, options = {}) {
     const alignment = findReferenceAlignmentForDifference(session, row);
     const context = makeDifferenceContext(alignment, row, 13);
     const traceResult = findTraceResultForDifference(session, row);
+    const contextX = left + 92;
+    const contextLength = context ? Math.max(context.reference.length, context.query.length) : 0;
+    const contextRight = contextX + contextLength * charWidth;
+    const evidenceX = Math.min(width - 360, Math.max(left + 420, contextRight + 40));
     const differenceInspection = `${row.query_name}; ${row.relation}; reference ${row.reference_base} at ${row.reference_position || "gap"}; query ${row.query_base} at ${row.query_position || "gap"}; alignment column ${row.alignment_column}; ${row.orientation}`;
     parts.push(`<g class="sanger-difference-card" data-index="${index + 1}"><title>${escapeXml(differenceInspection)}</title>`);
     parts.push(`<rect x="${left}" y="${y}" width="${cardWidth}" height="${cardHeight - 14}" rx="7" fill="#ffffff" stroke="#d8e1ea"/>`);
@@ -1881,7 +1894,6 @@ export function makeSangerDifferenceReviewSvg(session, options = {}) {
     parts.push(`<text x="${left + 16}" y="${y + 22}" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#172026">${escapeXml(row.query_type)} ${escapeXml(row.query_name)}</text>`);
     parts.push(`<text x="${left + 16}" y="${y + 42}" font-family="system-ui, sans-serif" font-size="11" fill="#475569">${escapeXml(row.orientation)}; reference ${escapeXml(row.reference_position || "gap")} ${escapeXml(row.reference_base)} vs query ${escapeXml(row.query_position || "gap")} ${escapeXml(row.query_base)}; ${escapeXml(row.relation)}; Q ${positionQualityLabel(row.quality)}</text>`);
     if (context) {
-      const contextX = left + 92;
       parts.push(makeHighlightedContextLine(context.reference, context.markerIndex, {
         x: contextX,
         y: y + 72,
@@ -1902,7 +1914,6 @@ export function makeSangerDifferenceReviewSvg(session, options = {}) {
     } else {
       parts.push(`<text x="${left + 16}" y="${y + 80}" font-family="system-ui, sans-serif" font-size="12" fill="#64748b">Alignment context was not available for this row.</text>`);
     }
-    const evidenceX = Math.max(left + 610, width - 430);
     parts.push(`<text x="${evidenceX}" y="${y + 22}" font-family="system-ui, sans-serif" font-size="11" font-weight="700" fill="#334155">Trace evidence</text>`);
     if (traceResult) {
       parts.push(makeMiniTraceEvidenceSvg(traceResult, row, {

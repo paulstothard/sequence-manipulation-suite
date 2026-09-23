@@ -61,6 +61,7 @@ export const TOOL_LIMIT_NOTE_PRESENTATIONS = {
     row("patternWork", "Large FASTA scan work", "500 million symbol comparisons"),
     row("patternHits", "Large FASTA candidate hits", "100,000"),
     row("patternRegionStream", "Matched-region stream", "5,000 records"),
+    row("patternOutput", "Materialized output", "25 MiB"),
     row("patternLinearMap", "Linear pattern map", "5,000 matches shown"),
     row("patternBoundedInput", "Text maps, viewers, and JavaScript regex", richOutputPastedInput)
   ]],

@@ -1,5 +1,6 @@
 import { convertTableDataFormat, tableToDelimited } from "./table-data-format-converter.js";
 import { findColumn, parseDelimitedTable } from "./table.js";
+import { effectiveToolLimit } from "./tool-limit-policy.js";
 
 const INPUT_FORMATS = new Set(["auto", "csv", "tsv", "json"]);
 const OUTPUT_FORMATS = new Set(["table", "csv", "json", "report"]);
@@ -618,8 +619,8 @@ function makeReport(result) {
 }
 
 export function runTableSqlQueryCore(input, options = {}, context = {}) {
-  const maxInputRows = normalizePositiveInteger(options.maxInputRows, 50000, 1000000);
-  const maxOutputRows = normalizePositiveInteger(options.maxOutputRows, 10000, 1000000);
+  const maxInputRows = effectiveToolLimit(options, "maxInputRows", normalizePositiveInteger(options.maxInputRows, 50000, 1000000));
+  const maxOutputRows = effectiveToolLimit(options, "maxOutputRows", normalizePositiveInteger(options.maxOutputRows, 10000, 1000000));
   const warnings = [];
   const parsed = coerceTableInput(input, options);
   warnings.push(...parsed.warnings);

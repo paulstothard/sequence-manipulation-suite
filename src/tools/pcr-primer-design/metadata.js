@@ -140,7 +140,7 @@ export const pcrPrimerDesignMetadata = {
       id: "outputFormat",
       type: "radio",
       label: "Output format",
-      defaultValue: "report",
+      defaultValue: "tsv",
       choices: [
         { value: "report", label: "Summary report" },
         { value: "tsv", label: "Candidate table" },
@@ -157,7 +157,7 @@ export const pcrPrimerDesignMetadata = {
       collapsible: true,
       collapsed: true,
       options: [
-        { id: "maxTemplateLength", type: "number", label: "Maximum template length", defaultValue: 20000, min: 100, step: 100, help: "Current browser primer design enumerates local candidates. Larger templates should be narrowed before design." },
+        { id: "maxTemplateLength", type: "number", label: "Maximum template length", defaultValue: 20000, min: 100, step: 100, help: "Templates above this length are rejected; narrow the template before design." },
         { id: "maxPairsToEvaluate", type: "number", label: "Maximum evaluated pairs", defaultValue: 250000, min: 1000, step: 1000 },
         {
           id: "maxReferenceRecordLength",

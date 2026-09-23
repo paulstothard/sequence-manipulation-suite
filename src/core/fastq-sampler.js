@@ -1,6 +1,7 @@
 import { streamTextLines } from "./compressed-text-reader.js";
 import { resolveRandom, randomInteger } from "./random-sequence.js";
 import { exportDelimitedTable } from "./table.js";
+import { DISABLED_TOOL_LIMIT_IDS_OPTION, effectiveToolLimit } from "./tool-limit-policy.js";
 
 export const fastqSamplerColumns = [
   { id: "sample_order", label: "Sample order", type: "number" },
@@ -20,12 +21,16 @@ function clampInteger(value, fallback, min, max) {
 }
 
 export function normalizeFastqSamplerOptions(options = {}) {
-  return {
+  const normalized = {
     readLayout: LAYOUTS.has(options.readLayout) ? options.readLayout : "single",
     sampleSize: clampInteger(options.sampleSize, 1000, 0, 1000000),
-    maxInputReads: clampInteger(options.maxInputReads, 5000000, 1, 100000000),
-    maxOutputBytes: clampInteger(options.maxOutputBytes, 200000000, 1000, 2000000000)
+    maxInputReads: effectiveToolLimit(options, "maxInputReads", clampInteger(options.maxInputReads, 5000000, 1, 100000000)),
+    maxOutputBytes: effectiveToolLimit(options, "maxOutputBytes", clampInteger(options.maxOutputBytes, 200000000, 1000, 2000000000))
   };
+  if (Array.isArray(options[DISABLED_TOOL_LIMIT_IDS_OPTION])) {
+    normalized[DISABLED_TOOL_LIMIT_IDS_OPTION] = options[DISABLED_TOOL_LIMIT_IDS_OPTION];
+  }
+  return normalized;
 }
 
 function checkCancelled(context, counter = 0, interval = 2048) {

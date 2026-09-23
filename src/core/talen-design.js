@@ -2,6 +2,7 @@ import { formatFastaRecord, parseSequenceInput } from "./fasta.js";
 import { parseFlatfileRecords } from "./flatfile-records.js";
 import { cleanDnaRnaSequence, complementDnaRnaSequence, makeSequenceContext } from "./sequence.js";
 import { exportDelimitedTable } from "./table.js";
+import { effectiveToolLimit } from "./tool-limit-policy.js";
 
 export const talenTargetColumns = [
   { id: "rank", label: "Rank", type: "number" },
@@ -207,9 +208,9 @@ function normalizeOptions(options = {}) {
     requireFivePrimeT: options.requireFivePrimeT !== false,
     allowAmbiguousTargets: options.allowAmbiguousTargets === true,
     guanineRvd,
-    maxPairsPerRecord: clampInteger(options.maxPairsPerRecord, 100, 1, 2000),
-    maxRecordLength: clampInteger(options.maxRecordLength, 200000, 100, 10000000),
-    maxCandidateWindows: clampInteger(options.maxCandidateWindows, 2000000, 1000, 50000000),
+    maxPairsPerRecord: effectiveToolLimit(options, "maxPairsPerRecord", clampInteger(options.maxPairsPerRecord, 100, 1, 2000)),
+    maxRecordLength: effectiveToolLimit(options, "maxRecordLength", clampInteger(options.maxRecordLength, 200000, 100, 10000000)),
+    maxCandidateWindows: effectiveToolLimit(options, "maxCandidateWindows", clampInteger(options.maxCandidateWindows, 2000000, 1000, 50000000)),
     contextBases: clampInteger(options.contextBases, 20, 0, 200),
     mapMaxPairsPerRecord: clampInteger(options.mapMaxPairsPerRecord, 30, 1, 500)
   };

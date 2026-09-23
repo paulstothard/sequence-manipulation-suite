@@ -85,7 +85,7 @@ export const volcanoPlotMetadata = {
           min: 100,
           max: 20000,
           step: 100,
-          help: "The Point TSV still contains all parsed points; this only caps visual drawing for browser responsiveness."
+          help: "The point table still contains all parsed points; only the plot is capped."
         }
       ]
     }

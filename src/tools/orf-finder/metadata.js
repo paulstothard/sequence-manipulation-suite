@@ -102,10 +102,10 @@ export const orfFinderMetadata = {
       id: "outputFormat",
       type: "radio",
       label: "Output format",
-      defaultValue: "report",
+      defaultValue: "svg-overview",
       choices: [
         { value: "report", label: "Summary report" },
-        { value: "tsv", label: "Table" },
+        { value: "tsv", label: "Summary table", resultView: { kind: "table", streamId: "table" } },
         { value: "nucleotide-fasta", label: "Nucleotide FASTA" },
         { value: "protein-fasta", label: "Protein FASTA" },
         { value: "svg-overview", label: "ORF overview plot" },

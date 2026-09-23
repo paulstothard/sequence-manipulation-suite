@@ -20,6 +20,7 @@ export const FASTA_RECORD_SOURCE_LIMITS = Object.freeze({
 });
 
 function boundedInteger(value, fallback, { min = 1, max = Number.MAX_SAFE_INTEGER } = {}) {
+  if (value === Infinity) return Infinity;
   const parsed = Number.parseInt(value, 10);
   return Number.isSafeInteger(parsed) ? Math.max(min, Math.min(max, parsed)) : fallback;
 }

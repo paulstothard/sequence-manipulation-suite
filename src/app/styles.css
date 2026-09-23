@@ -158,6 +158,7 @@ button {
   .sequence-extractor-output,
   .dna-viewer-output,
   .protein-viewer-output,
+  .protein-sequence-figure-output,
   .genome-figure-output,
   .protein-structure-viewer,
   .sanger-trace-panel,
@@ -173,6 +174,7 @@ button {
   .sequence-extractor-output,
   .dna-viewer-output,
   .protein-viewer-output,
+  .protein-sequence-figure-output,
   .genome-figure-output,
   .protein-structure-viewer,
   .sanger-trace-panel,
@@ -184,6 +186,7 @@ button {
   .sequence-extractor-output,
   .dna-viewer-output,
   .protein-viewer-output,
+  .protein-sequence-figure-output,
   .genome-figure-output,
   .protein-structure-viewer,
   .sanger-trace-panel,
@@ -198,6 +201,7 @@ button {
   .sequence-extractor-output,
   .dna-viewer-output,
   .protein-viewer-output,
+  .protein-sequence-figure-output,
   .genome-figure-output,
   .protein-structure-viewer,
   .sanger-trace-panel,
@@ -215,6 +219,7 @@ button {
   .sequence-extractor-output,
   .dna-viewer-output,
   .protein-viewer-output,
+  .protein-sequence-figure-output,
   .genome-figure-output,
   .protein-structure-viewer,
   .sanger-trace-panel,
@@ -230,6 +235,7 @@ button {
   .sequence-extractor-output,
   .dna-viewer-output,
   .protein-viewer-output,
+  .protein-sequence-figure-output,
   .genome-figure-output,
   .protein-structure-viewer,
   .sanger-trace-panel,
@@ -245,6 +251,7 @@ button {
   .sequence-extractor-output,
   .dna-viewer-output,
   .protein-viewer-output,
+  .protein-sequence-figure-output,
   .genome-figure-output,
   .protein-structure-viewer,
   .sanger-trace-panel,
@@ -260,6 +267,7 @@ button {
   .sequence-extractor-output,
   .dna-viewer-output,
   .protein-viewer-output,
+  .protein-sequence-figure-output,
   .genome-figure-output,
   .protein-structure-viewer,
   .sanger-trace-panel,
@@ -277,6 +285,7 @@ button {
   .sequence-extractor-output,
   .dna-viewer-output,
   .protein-viewer-output,
+  .protein-sequence-figure-output,
   .genome-figure-output,
   .protein-structure-viewer,
   .sanger-trace-panel,
@@ -292,6 +301,7 @@ button {
   .sequence-extractor-output,
   .dna-viewer-output,
   .protein-viewer-output,
+  .protein-sequence-figure-output,
   .genome-figure-output,
   .protein-structure-viewer,
   .sanger-trace-panel,
@@ -303,6 +313,7 @@ button {
   .sequence-extractor-output,
   .dna-viewer-output,
   .protein-viewer-output,
+  .protein-sequence-figure-output,
   .genome-figure-output,
   .protein-structure-viewer,
   .sanger-trace-panel,
@@ -319,6 +330,7 @@ button {
   .sequence-extractor-output,
   .dna-viewer-output,
   .protein-viewer-output,
+  .protein-sequence-figure-output,
   .genome-figure-output,
   .protein-structure-viewer,
   .sanger-trace-panel,
@@ -4056,6 +4068,7 @@ legend {
 
 .option-limit-value-main {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 0.12rem;
 }
 
@@ -4065,6 +4078,7 @@ legend {
 }
 
 .option-limit-value-main > span {
+  grid-column: 1;
   font-size: 0.78rem;
   font-weight: 600;
 }
@@ -4074,10 +4088,55 @@ legend {
 }
 
 .option-limit-value-main > strong {
+  grid-column: 1;
   color: var(--text);
   font-size: 0.9rem;
   font-variant-numeric: tabular-nums;
   font-weight: 700;
+}
+
+.option-limit-toggle {
+  align-items: center;
+  align-self: center;
+  display: inline-flex;
+  gap: 0.35rem;
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  margin-left: 0.65rem;
+  white-space: nowrap;
+}
+
+.option-limit-toggle > input {
+  margin: 0;
+}
+
+.option-limit-toggle > span {
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.option-limit-value-disabled .option-limit-value-main > strong {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.option-limit-value-disabled .option-limit-detail::after {
+  color: var(--text);
+  content: " Limit disabled for the next run.";
+  font-weight: 600;
+}
+
+@media (max-width: 420px) {
+  .option-limit-value-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .option-limit-toggle {
+    grid-column: 1;
+    grid-row: auto;
+    margin: 0.25rem 0 0;
+  }
 }
 
 .option-limit-detail {
@@ -7047,7 +7106,8 @@ legend {
 }
 
 .dna-viewer-output,
-.protein-viewer-output {
+.protein-viewer-output,
+.protein-sequence-figure-output {
   --viewer-surface: var(--app-output-surface);
   --viewer-surface-soft: var(--app-output-surface-soft);
   --viewer-surface-strong: var(--app-output-surface-strong);
@@ -7070,6 +7130,133 @@ legend {
   color-scheme: var(--app-output-color-scheme);
   background: var(--viewer-surface);
   color: var(--viewer-text);
+}
+
+.protein-figure-workspace {
+  background: var(--viewer-surface-soft);
+  border-radius: 0 0 8px 8px;
+  color: var(--viewer-text);
+  overflow: hidden;
+}
+
+.protein-figure-toolbar {
+  align-items: end;
+  background: var(--viewer-surface);
+  border-bottom: 1px solid var(--viewer-border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.65rem;
+  padding: 0.55rem 0.7rem;
+}
+
+.protein-figure-toolbar-title {
+  margin-right: auto;
+  min-width: 10.5rem;
+}
+
+.protein-figure-toolbar-title strong,
+.protein-figure-toolbar-title span {
+  display: block;
+}
+
+.protein-figure-toolbar-title strong {
+  color: var(--viewer-text);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.protein-figure-toolbar-title span {
+  color: var(--viewer-muted);
+  font-size: 0.67rem;
+  margin-top: 0.08rem;
+}
+
+.protein-figure-field {
+  color: var(--viewer-muted);
+  display: grid;
+  font-size: 0.65rem;
+  font-weight: 700;
+  gap: 0.12rem;
+  min-width: 6.4rem;
+}
+
+.protein-figure-field select {
+  background: var(--viewer-surface);
+  border: 1px solid var(--viewer-border-strong);
+  border-radius: 6px;
+  color: var(--viewer-text);
+  font: inherit;
+  font-size: 0.73rem;
+  min-height: 1.9rem;
+  padding: 0.18rem 1.65rem 0.18rem 0.45rem;
+}
+
+.protein-figure-field select:focus-visible {
+  outline: 2px solid var(--viewer-focus);
+  outline-offset: 1px;
+}
+
+.protein-figure-downloads {
+  flex-wrap: nowrap;
+}
+
+.protein-figure-paper {
+  background: var(--viewer-surface-soft);
+  padding: 0.65rem;
+}
+
+.protein-figure-svg-host {
+  background: #ffffff;
+  border: 1px solid #d3dce1;
+  box-shadow: 0 2px 9px rgb(15 23 42 / 0.07);
+  margin: 0 auto;
+  max-width: 70rem;
+  min-width: 0;
+  padding: 0.85rem 1rem 0.72rem;
+}
+
+.protein-sequence-figure-svg {
+  display: block;
+  font-family: Arial, Helvetica, "Liberation Sans", sans-serif;
+  height: auto;
+  overflow: visible;
+  shape-rendering: geometricPrecision;
+  text-rendering: geometricPrecision;
+  width: 100%;
+}
+
+.protein-figure-empty {
+  color: var(--viewer-muted);
+  margin: 0;
+  padding: 0.8rem;
+}
+
+@media (max-width: 560px) {
+  .protein-figure-toolbar {
+    align-items: stretch;
+    gap: 0.4rem;
+  }
+
+  .protein-figure-toolbar-title {
+    flex-basis: 100%;
+  }
+
+  .protein-figure-field {
+    flex: 1 1 6.5rem;
+    min-width: 0;
+  }
+
+  .protein-figure-downloads {
+    margin-left: auto;
+  }
+
+  .protein-figure-paper {
+    padding: 0.4rem;
+  }
+
+  .protein-figure-svg-host {
+    padding: 0.7rem 0.45rem 0.6rem;
+  }
 }
 
 .dna-viewer-panel {
@@ -8449,7 +8636,7 @@ legend {
   border-radius: 8px;
   display: grid;
   gap: 0.2rem;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   padding: 0.18rem;
 }
 
@@ -8459,11 +8646,11 @@ legend {
   border-radius: 6px;
   color: var(--gf-muted);
   font: inherit;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 800;
   line-height: 1.2;
   min-height: 1.85rem;
-  padding: 0.34rem 0.45rem;
+  padding: 0.34rem 0.2rem;
 }
 
 .genome-figure-tab[aria-selected="true"] {
@@ -9651,8 +9838,8 @@ legend {
 .interactive-sequence-viewer-workspace {
   align-items: start;
   display: grid;
-  gap: 0.9rem;
-  grid-template-columns: minmax(0, 1fr) clamp(18rem, 24vw, 23rem);
+  gap: 0.9rem 1rem;
+  grid-template-columns: minmax(0, 1fr) clamp(17.5rem, 21vw, 20rem);
   min-width: 0;
 }
 
@@ -9672,6 +9859,7 @@ legend {
   color: var(--viewer-text, #172026);
   display: flex;
   flex-direction: column;
+  margin: 0.5rem 0.25rem 0 0;
   max-height: min(760px, calc(100vh - 10rem));
   min-width: 0;
   overflow: hidden;
@@ -9741,6 +9929,7 @@ legend {
   }
 
   .interactive-sequence-viewer-inspector {
+    margin: 0;
     max-height: none;
     position: static;
   }
@@ -11159,20 +11348,25 @@ legend {
 .sequence-extractor-translation-row .sequence-extractor-aa::before {
   content: "";
   position: absolute;
-  inset: 2px 1px;
+  inset: 2px 0;
   background: color-mix(in srgb, currentColor 20%, transparent);
-  border-radius: 2px;
   pointer-events: none;
 }
 
-.sequence-extractor-translation-row .sequence-extractor-aa[data-direction-tip="true"][data-strand="+"]::before {
+.sequence-extractor-translation-row .sequence-extractor-aa[data-strand="+"]::before {
   clip-path: polygon(0 0, calc(100% - 5px) 0, 100% 50%, calc(100% - 5px) 100%, 0 100%, 5px 50%);
-  border-radius: 0;
 }
 
-.sequence-extractor-translation-row .sequence-extractor-aa[data-direction-tip="true"][data-strand="-"]::before {
+.sequence-extractor-translation-row .sequence-extractor-aa[data-strand="-"]::before {
   clip-path: polygon(5px 0, 100% 0, calc(100% - 5px) 50%, 100% 100%, 5px 100%, 0 50%);
-  border-radius: 0;
+}
+
+.sequence-extractor-cds-translation-row .sequence-extractor-cds-aa[data-translation-shape="cds-start"][data-strand="+"]::before {
+  clip-path: polygon(0 0, calc(100% - 5px) 0, 100% 50%, calc(100% - 5px) 100%, 0 100%);
+}
+
+.sequence-extractor-cds-translation-row .sequence-extractor-cds-aa[data-translation-shape="cds-start"][data-strand="-"]::before {
+  clip-path: polygon(5px 0, 100% 0, 100% 100%, 5px 100%, 0 50%);
 }
 
 .sequence-extractor-aa-label {

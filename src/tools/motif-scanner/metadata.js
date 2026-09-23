@@ -77,10 +77,10 @@ const dnaRnaOutputOptions = [
     id: "outputFormat",
     type: "radio",
     label: "Output format",
-    defaultValue: "report",
+    defaultValue: "svg-map",
     choices: [
       { value: "report", label: "Summary report" },
-      { value: "tsv", label: "Table" },
+      { value: "tsv", label: "Summary table", resultView: { kind: "table", streamId: "table" } },
       { value: "text-map", label: "Motif text map" },
       { value: "svg-map", label: "Linear motif map" },
       { value: "interactive-viewer", label: "Linear DNA sequence viewer" },
@@ -94,10 +94,10 @@ const proteinOutputOptions = [
     id: "outputFormat",
     type: "radio",
     label: "Output format",
-    defaultValue: "report",
+    defaultValue: "svg-map",
     choices: [
       { value: "report", label: "Summary report" },
-      { value: "tsv", label: "Table" },
+      { value: "tsv", label: "Summary table", resultView: { kind: "table", streamId: "table" } },
       { value: "text-map", label: "Motif text map" },
       { value: "svg-map", label: "Linear motif map" },
       { value: "interactive-viewer", label: "Protein sequence viewer" }

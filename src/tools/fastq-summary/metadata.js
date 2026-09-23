@@ -113,7 +113,7 @@ FFFFFFFFFFFFFFFF`,
           defaultValue: "report",
           choices: [
             { value: "report", label: "Summary report" },
-            { value: "tsv", label: "Summary table" },
+            { value: "tsv", label: "Summary table", resultView: { kind: "table", streamId: "table" } },
             { value: "per-base-quality-tsv", label: "Per-base quality table" },
             { value: "length-distribution-tsv", label: "Read length distribution table" },
             { value: "gc-distribution-tsv", label: "Read GC distribution table" },
@@ -143,7 +143,7 @@ FFFFFFFFFFFFFFFF`,
           defaultValue: 100000,
           min: 1,
           max: 10000000,
-          help: "Stop after this many reads so a browser-local QC run stays cancellable and bounded."
+          help: "Stops after this many reads."
         },
         {
           id: "maxInputCharacters",
@@ -170,7 +170,7 @@ FFFFFFFFFFFFFFFF`,
           defaultValue: 50000,
           min: 0,
           max: 1000000,
-          help: "Caps exact duplicate and overrepresented-read tracking, which can otherwise grow with every unique read."
+          help: "Caps exact duplicate and overrepresented-read tracking."
         }
       ]
     },

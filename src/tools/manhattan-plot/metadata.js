@@ -96,7 +96,7 @@ export const manhattanPlotMetadata = {
           min: 1000,
           max: 20000,
           step: 1000,
-          help: "The Point table contains all parsed markers; this only caps visual drawing for browser responsiveness."
+          help: "The point table contains all parsed markers; only the plot is capped."
         }
       ]
     }

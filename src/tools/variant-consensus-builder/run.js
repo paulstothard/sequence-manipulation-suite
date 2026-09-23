@@ -18,7 +18,7 @@ export async function runVariantConsensus(input,options={},context={}) {
     output=JSON.stringify(viewer,null,2);extension='json';mimeType='application/json';visual={viewer};streams.viewer=makeDnaViewerStream(viewer);
   } else if(format==='audit'||format==='coordinates') {
     const columns=format==='audit'?consensusAuditColumns:consensusCoordinateColumns,rows=a[format];
-    await checkConsensusTableSize(columns, rows, context);
+    await checkConsensusTableSize(columns, rows, context, a.settings.maxTableCharacters);
     output=exportDelimitedTable(columns,rows);extension='tsv';mimeType='text/tab-separated-values';streams[format]=makeTableStream(columns,rows,`variant-consensus-${format}`);
   } else if(format==='map') {
     output=renderConsensusMap(a);extension='svg';mimeType='image/svg+xml';visual={svg:output,pngDownload:true};streams.map=makeTextStream(output,mimeType);

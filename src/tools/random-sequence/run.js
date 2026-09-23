@@ -17,6 +17,7 @@ import {
 import { getCodonUsageReference } from "../../core/codon-reference.js";
 import { getCodonsForCode } from "../../core/genetic-code.js";
 import { makeTableStream, makeTextStream, makeToolResult } from "../../core/workflow.js";
+import { effectiveToolLimit } from "../../core/tool-limit-policy.js";
 import { codonUsageReferences } from "../../reference-data/codon-usage/references.js";
 
 export const randomMutationTableColumns = [
@@ -278,7 +279,7 @@ function normalizeProbabilityPercent(value) {
   return Math.max(0, Math.min(100, numeric));
 }
 
-function resolveMutationSettings(options, records, protectedPositions, warnings) {
+function resolveMutationSettings(options, records, protectedPositions, warnings, maxMutationsPerRecord = RANDOM_MAX_MUTATIONS_PER_RECORD) {
   const mutationMode = options.mutationMode === "probability" ? "probability" : "counts";
   const insertionLength = clampPositiveInteger(options.insertionLength, 1);
   const deletionLength = clampPositiveInteger(options.deletionLength, 1);
@@ -291,7 +292,7 @@ function resolveMutationSettings(options, records, protectedPositions, warnings)
   let requestedRows = records.length * (requestedSubstitutionCount + requestedInsertionCount + requestedDeletionCount);
 
   if (mutationMode === "counts") {
-    let remaining = RANDOM_MAX_MUTATIONS_PER_RECORD;
+    let remaining = maxMutationsPerRecord;
     substitutionCount = Math.min(substitutionCount, remaining);
     remaining -= substitutionCount;
     insertionCount = Math.min(insertionCount, remaining);
@@ -299,9 +300,9 @@ function resolveMutationSettings(options, records, protectedPositions, warnings)
     deletionCount = Math.min(deletionCount, remaining);
     const requestedTotal = requestedSubstitutionCount + requestedInsertionCount + requestedDeletionCount;
     const limitedTotal = substitutionCount + insertionCount + deletionCount;
-    if (requestedTotal > RANDOM_MAX_MUTATIONS_PER_RECORD) {
+    if (requestedTotal > maxMutationsPerRecord) {
       warnings.push(
-        `Requested ${requestedTotal.toLocaleString()} mutation events per record; limited to ${RANDOM_MAX_MUTATIONS_PER_RECORD.toLocaleString()} per record to keep browser output responsive.`
+        `Requested ${requestedTotal.toLocaleString()} mutation events per record; limited to ${maxMutationsPerRecord.toLocaleString()} per record to keep browser output responsive.`
       );
     }
     requestedRows = records.length * limitedTotal;
@@ -430,12 +431,16 @@ export async function runRandomSequenceGenerator(input, options = {}, context = 
   const workflowAlphabet = generatedAlphabet === "protein" ? "protein" : "dna-rna";
   const { seed, random } = resolveRandom(options);
   const warnings = [];
+  const maxRecords = effectiveToolLimit(options, "generatedRecords", RANDOM_MAX_GENERATED_RECORDS);
+  const maxCharacters = effectiveToolLimit(options, "generatedCharacters", RANDOM_MAX_GENERATED_CHARACTERS);
   const { count: sequenceCount, length: sequenceLength } = resolveOutputCountAndLength({
     requestedCount: options.sequenceCount,
     requestedLength: options.sequenceLength,
     warnings,
     countLabel: "sequence count",
-    lengthLabel: generatedAlphabet === "protein" ? "residues" : "bases"
+    lengthLabel: generatedAlphabet === "protein" ? "residues" : "bases",
+    maxRecords,
+    maxCharacters
   });
   const alphabet = generatedAlphabet === "protein"
     ? makeProteinAlphabet(options)
@@ -504,6 +509,8 @@ export async function runRandomSequenceGenerator(input, options = {}, context = 
 export async function runRandomCodingDna(input, options = {}, context = {}) {
   const { seed, random } = resolveRandom(options);
   const warnings = [];
+  const maxRecords = effectiveToolLimit(options, "generatedRecords", RANDOM_MAX_GENERATED_RECORDS);
+  const maxCharacters = effectiveToolLimit(options, "generatedCharacters", RANDOM_MAX_GENERATED_CHARACTERS);
   const requestedCodonCount = clampPositiveInteger(options.codonCount, 30);
   const { count: sequenceCount, length: codonCount } = resolveOutputCountAndLength({
     requestedCount: options.sequenceCount,
@@ -511,7 +518,8 @@ export async function runRandomCodingDna(input, options = {}, context = {}) {
     warnings,
     countLabel: "sequence count",
     lengthLabel: "codons",
-    maxCharacters: Math.floor(RANDOM_MAX_GENERATED_CHARACTERS / 3)
+    maxRecords,
+    maxCharacters: Math.floor(maxCharacters / 3)
   });
   const codingOptions = { ...options, codonCount };
   let codonReferenceDetail = "Internal codon model: equal probability across sense codons";
@@ -642,12 +650,16 @@ export async function runSampleSequence(input, options = {}, context = {}) {
     const outputRecords = [];
     const sampleSource = options.sampleSource === "per-record" ? "per-record" : "combined";
     const requestedSamples = clampPositiveInteger(options.samplesPerRecord ?? options.sampleCount, 1);
+    const maxRecords = effectiveToolLimit(options, "generatedRecords", RANDOM_MAX_GENERATED_RECORDS);
+    const maxCharacters = effectiveToolLimit(options, "generatedCharacters", RANDOM_MAX_GENERATED_CHARACTERS);
     const { count: sampleCount, length: sampleLength } = resolveOutputCountAndLength({
       requestedCount: sampleSource === "combined" ? requestedSamples : requestedSamples * records.length,
       requestedLength: options.sampleLength,
       warnings,
       countLabel: "sample count",
-      lengthLabel: alphabet === "protein" ? "residues" : "bases"
+      lengthLabel: alphabet === "protein" ? "residues" : "bases",
+      maxRecords,
+      maxCharacters
     });
     context.reportProgress?.({ phase: "sampling-records", progress: 0.1 });
     if (sampleSource === "combined") {
@@ -705,7 +717,8 @@ export async function runMutateSequence(input, options = {}, context = {}) {
     const outputRecords = [];
     const rows = [];
     const protectedPositions = resolveProtectedPositions(alphabet, options);
-    const mutationSettings = resolveMutationSettings(options, records, protectedPositions, warnings);
+    const maxMutationEvents = effectiveToolLimit(options, "mutationEvents", RANDOM_MAX_MUTATIONS_PER_RECORD);
+    const mutationSettings = resolveMutationSettings(options, records, protectedPositions, warnings, maxMutationEvents);
 
     context.reportProgress?.({ phase: "mutating-records", progress: 0.1 });
     await context.yieldIfNeeded?.();
@@ -728,13 +741,13 @@ export async function runMutateSequence(input, options = {}, context = {}) {
       const result = await mutateSequenceCooperatively(record.sequence, {
         ...options,
         ...mutationSettings,
-        maxEvents: RANDOM_MAX_MUTATIONS_PER_RECORD,
+        maxEvents: maxMutationEvents,
         alphabetValues: replacementAlphabetValues(alphabet, { ...options, sourceSequence: record.sequence }),
         protectedStart: protectedPositions.protectedStart,
         protectedEnd: protectedPositions.protectedEnd
       }, random, context);
       if (result.eventsLimited) {
-        warnings.push(`${record.title}: mutation events were limited to ${RANDOM_MAX_MUTATIONS_PER_RECORD.toLocaleString()} rows for browser responsiveness.`);
+        warnings.push(`${record.title}: mutation events were limited to ${maxMutationEvents.toLocaleString()} rows for browser responsiveness.`);
       }
       if (mutationSettings.mutationMode === "counts" && result.rows.length < requestedCountEvents) {
         warnings.push(`${record.title}: ${requestedCountEvents.toLocaleString()} mutation events were requested, but ${result.rows.length.toLocaleString()} were possible with the selected protected termini and deletion settings.`);
@@ -804,9 +817,10 @@ export async function runRandomRegions(input, options = {}, context = {}) {
     const outputRecords = [];
     const rows = [];
     const requestedRegionCount = clampNonnegativeInteger(options.regionCount, 0);
-    const regionCount = Math.min(requestedRegionCount, RANDOM_MAX_REGION_ROWS);
-    if (requestedRegionCount > RANDOM_MAX_REGION_ROWS) {
-      warnings.push(`Requested ${requestedRegionCount.toLocaleString()} random regions per record; limited to ${RANDOM_MAX_REGION_ROWS.toLocaleString()} per record to keep table output responsive.`);
+    const maxRegionRows = effectiveToolLimit(options, "sampledRegions", RANDOM_MAX_REGION_ROWS);
+    const regionCount = Math.min(requestedRegionCount, maxRegionRows);
+    if (requestedRegionCount > maxRegionRows) {
+      warnings.push(`Requested ${requestedRegionCount.toLocaleString()} random regions per record; limited to ${maxRegionRows.toLocaleString()} per record to keep table output responsive.`);
     }
     const expectedRows = regionCount * records.length;
     if (expectedRows > LARGE_RANDOM_REGION_ROWS) {
@@ -870,11 +884,12 @@ export async function runRandomDnaFragmenter(input, options = {}, context = {}) 
   return runInputSequenceTool(input, { ...options, alphabet: "dna-rna" }, async ({ records, warnings, charactersRemoved, seed, random }) => {
     const outputRecords = [];
     const rows = [];
+    const maxFragmentsPerRecord = effectiveToolLimit(options, "randomFragments", RANDOM_MAX_FRAGMENTS_PER_RECORD);
     const requestedFragments = options.fragmentMode === "target-size"
       ? Math.ceil(records.reduce((sum, record) => sum + record.sequence.length, 0) / Math.max(1, clampPositiveInteger(options.targetSize, 100) - clampNonnegativeInteger(options.overlapLength, 0)))
       : clampPositiveInteger(options.fragmentCount, 1) * records.length;
-    if (requestedFragments > RANDOM_MAX_FRAGMENTS_PER_RECORD * records.length) {
-      warnings.push(`Requested fragment settings can generate more than ${RANDOM_MAX_FRAGMENTS_PER_RECORD.toLocaleString()} fragments per record; settings were limited where needed.`);
+    if (requestedFragments > maxFragmentsPerRecord * records.length) {
+      warnings.push(`Requested fragment settings can generate more than ${maxFragmentsPerRecord.toLocaleString()} fragments per record; settings were limited where needed.`);
     }
     if (requestedFragments > LARGE_RANDOM_FRAGMENT_ROWS) {
       warnings.push(`This run can generate about ${requestedFragments.toLocaleString()} fragment table rows; TSV and table display may be large.`);
@@ -884,8 +899,8 @@ export async function runRandomDnaFragmenter(input, options = {}, context = {}) 
       context.throwIfCancelled?.();
       const result = randomDnaFragments(record, {
         ...options,
-        fragmentCount: Math.min(clampPositiveInteger(options.fragmentCount, 1), RANDOM_MAX_FRAGMENTS_PER_RECORD),
-        maxFragments: RANDOM_MAX_FRAGMENTS_PER_RECORD
+        fragmentCount: Math.min(clampPositiveInteger(options.fragmentCount, 1), maxFragmentsPerRecord),
+        maxFragments: maxFragmentsPerRecord
       }, random, seed);
       outputRecords.push(...result.outputRecords.map((fragment) => ({
         title: fragment.title,

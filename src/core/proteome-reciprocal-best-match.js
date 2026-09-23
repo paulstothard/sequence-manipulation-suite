@@ -4,6 +4,7 @@ import {
   createPairwiseAlignmentRunner,
   PAIRWISE_ALIGNMENT_ENGINES
 } from "./pairwise-alignment.js";
+import { effectiveToolLimit } from "./tool-limit-policy.js";
 import { makeHeatmapPlotSpec, renderHeatmapPlotSvg } from "./plot-renderer.js";
 import { cleanDnaRnaSequence, cleanProteinSequence } from "./sequence.js";
 import { exportDelimitedTable } from "./table.js";
@@ -93,7 +94,8 @@ const SEQUENCE_SET_CONFIGS = {
         mode: options.alignmentMode,
         gapOpen: options.gapOpen,
         gapExtend: options.gapExtend,
-        alignmentEngine: options.verificationEngine
+        alignmentEngine: options.verificationEngine,
+        ...(options.maxSequenceLength === Infinity ? { maxAlignmentCells: Infinity } : {})
       };
     },
     describeGapLine(options) {
@@ -131,7 +133,8 @@ const SEQUENCE_SET_CONFIGS = {
         mismatchScore: options.mismatchScore,
         gapOpen: options.gapOpen,
         gapExtend: options.gapExtend,
-        alignmentEngine: options.verificationEngine
+        alignmentEngine: options.verificationEngine,
+        ...(options.maxSequenceLength === Infinity ? { maxAlignmentCells: Infinity } : {})
       };
     },
     describeGapLine(options) {
@@ -486,9 +489,9 @@ export function normalizeSequenceSetReciprocalBestMatchOptions(options = {}, alp
     kmerSize: Math.trunc(clampNumber(options.kmerSize, config.defaultKmerSize, config.minKmerSize, config.maxKmerSize)),
     minSharedKmers: Math.trunc(clampNumber(options.minSharedKmers, 1, 0, 10000)),
     topCandidatesPerProtein: Math.trunc(clampNumber(options.topCandidatesPerProtein, 5, 1, 50)),
-    maxPairwiseAlignments: Math.trunc(clampNumber(options.maxPairwiseAlignments, 500, 1, 10000)),
-    maxProteinsPerProteome: Math.trunc(clampNumber(options.maxProteinsPerProteome, 500, 1, 5000)),
-    maxSequenceLength: Math.trunc(clampNumber(options.maxSequenceLength, config.defaultMaxSequenceLength, 10, 20000)),
+    maxPairwiseAlignments: effectiveToolLimit(options, "maxPairwiseAlignments", Math.trunc(clampNumber(options.maxPairwiseAlignments, 500, 1, 10000))),
+    maxProteinsPerProteome: effectiveToolLimit(options, "maxProteinsPerProteome", Math.trunc(clampNumber(options.maxProteinsPerProteome, 500, 1, 5000))),
+    maxSequenceLength: effectiveToolLimit(options, "maxSequenceLength", Math.trunc(clampNumber(options.maxSequenceLength, config.defaultMaxSequenceLength, 10, 20000))),
     minIdentityPercent: clampNumber(options.minIdentityPercent, 0, 0, 100),
     minCoveragePercent: clampNumber(options.minCoveragePercent, 0, 0, 100),
     nearTiePercent: clampNumber(options.nearTiePercent, 5, 0, 100),

@@ -1192,9 +1192,9 @@ export function createReferencePageController({
 
     formatSelect.addEventListener("change", updateFormat);
     copyButton.addEventListener("click", async () => {
+      copyStatus.textContent = "";
       try {
         await copyTextWithFeedback(copyButton, formattedCitation.value);
-        copyStatus.textContent = "Copied";
       } catch {
         copyStatus.textContent = "Copy unavailable";
       }

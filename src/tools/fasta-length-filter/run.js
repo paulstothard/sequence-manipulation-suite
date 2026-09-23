@@ -6,6 +6,7 @@ import {
 import { makeBoundedTsv } from "../../core/bounded-text-builder.js";
 import { openFastaRecordSource } from "../../core/fasta-record-source.js";
 import { makeTableStream, makeTextStream, makeToolResult } from "../../core/workflow.js";
+import { applyDisabledFastaSourceLimits, effectiveToolLimit } from "../../core/tool-limit-policy.js";
 
 const OUTPUT_FORMATS = new Set(["filtered-fasta", "removed-fasta", "report", "tsv"]);
 
@@ -14,6 +15,7 @@ function normalizeOutputFormat(value) {
 }
 
 function selectedOutputLimit(value) {
+  if (value === Infinity) return Infinity;
   const parsed = Number.parseInt(value, 10);
   return Number.isSafeInteger(parsed) && parsed > 0
     ? parsed
@@ -25,15 +27,25 @@ export async function runFastaLengthFilter(input, options = {}, context = {}) {
   context.throwIfCancelled?.();
   await context.yieldIfNeeded?.();
 
-  const source = await openFastaRecordSource(input, { ...options, allowRawSequence: true }, context);
-  const result = await filterFastaRecordSource(source, options, context);
+  const maxOutputCharacters = effectiveToolLimit(options, "filterOutput", selectedOutputLimit(options.maxMaterializedOutputCharacters));
+  const sourceOptions = applyDisabledFastaSourceLimits({
+    ...options,
+    allowRawSequence: true,
+    maxMaterializedOutputCharacters: maxOutputCharacters
+  }, {
+    maxSourceBytes: "filterSourceFile",
+    maxDecodedSourceBytes: "filterDecodedText",
+    maxSourceRecords: "filterRecords",
+    maxSourceBases: "filterRecords"
+  });
+  const source = await openFastaRecordSource(input, sourceOptions, context);
+  const result = await filterFastaRecordSource(source, sourceOptions, context);
 
   context.reportProgress?.({ phase: "building-output", progress: 0.75 });
   context.throwIfCancelled?.();
   await context.yieldIfNeeded?.();
 
   const outputFormat = normalizeOutputFormat(options.outputFormat);
-  const maxOutputCharacters = selectedOutputLimit(options.maxMaterializedOutputCharacters);
   const tsv = outputFormat === "tsv"
     ? makeBoundedTsv(fastaLengthFilterTableColumns, result.tableRows, maxOutputCharacters, "FASTA decision table output")
     : "";

@@ -54,11 +54,11 @@ export const qpcrAnalysisMetadata = {
     ] },
     { type: "group", label: "Limits", collapsible: true, collapsed: true, options: [
       { id: "maxReactions", type: "number", label: "Input reactions", defaultValue: QPCR_LIMITS.reactions, min: 1, max: QPCR_LIMITS.reactions, step: 1 },
-      { type: "limit-value", label: "Input text", value: `${QPCR_LIMITS.characters.toLocaleString("en-US")} characters` },
-      { type: "limit-value", label: "Input table", value: `${QPCR_LIMITS.columns} columns and ${QPCR_LIMITS.cells.toLocaleString("en-US")} cells` },
-      { type: "limit-value", label: "Analysis dimensions", value: `${QPCR_LIMITS.samples.toLocaleString("en-US")} biological samples, ${QPCR_LIMITS.targets} assays, ${QPCR_LIMITS.conditions} conditions` },
-      { type: "limit-value", label: "Sample/target results", value: QPCR_LIMITS.sampleResults },
-      { type: "limit-value", label: "Expression plot", value: `${QPCR_LIMITS.plotPoints.toLocaleString("en-US")} points, ${QPCR_LIMITS.plotTargets} targets, ${QPCR_LIMITS.plotConditions} conditions, ${QPCR_LIMITS.plotGroups} groups`, detail: "For larger analyses, choose a table output or fewer targets." },
+      { id: "maxInputCharacters", type: "limit-value", label: "Input text", value: `${QPCR_LIMITS.characters.toLocaleString("en-US")} characters` },
+      { id: "maxInputTable", type: "limit-value", label: "Input table", value: `${QPCR_LIMITS.columns} columns and ${QPCR_LIMITS.cells.toLocaleString("en-US")} cells` },
+      { id: "maxAnalysisDimensions", type: "limit-value", label: "Analysis dimensions", value: `${QPCR_LIMITS.samples.toLocaleString("en-US")} biological samples, ${QPCR_LIMITS.targets} assays, ${QPCR_LIMITS.conditions} conditions` },
+      { id: "maxSampleResults", type: "limit-value", label: "Sample/target results", value: QPCR_LIMITS.sampleResults },
+      { id: "qpcrPlotLimit", type: "limit-value", label: "Expression plot", value: `${QPCR_LIMITS.plotPoints.toLocaleString("en-US")} points, ${QPCR_LIMITS.plotTargets} targets, ${QPCR_LIMITS.plotConditions} conditions, ${QPCR_LIMITS.plotGroups} groups`, detail: "For larger analyses, choose a table output or fewer targets." },
       { type: "note", text: "Runs above an input or analysis bound stop with an error. For larger plots, choose a table output or fewer targets." }
     ] },
     { id: "methodNote", type: "note", text: "Relative expression from Cq tables. Use validated assay efficiencies and reference genes. Raw amplification curves, absolute quantification and inter-run calibration are not analyzed here." },

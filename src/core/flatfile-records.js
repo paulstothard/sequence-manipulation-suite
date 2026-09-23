@@ -284,24 +284,35 @@ function parseEmblRecord(recordText) {
 
 function parseUniprotFeatures(recordText) {
   const features = [];
+  let current = null;
   for (const line of recordText.split(/\r?\n/)) {
     if (!line.startsWith("FT")) {
       continue;
     }
-    const match = line.match(/^FT\s+(\S+)\s+(?:(\d+)\.\.(\d+)|(\d+)\s+(\d+))(?:\s+(.+))?$/);
-    if (!match) {
+    const key = line.slice(5, 21).trim();
+    const value = line.slice(21).trim();
+    if (key) {
+      if (current) features.push(current);
+      const legacy = value.match(/^([<>]?\d+)\s+([<>]?\d+)(?:\s+(.+))?$/);
+      const modern = value.match(/^([<>]?\d+(?:\.\.[<>]?\d+)?)(?:\s+(.+))?$/);
+      if (!legacy && !modern) {
+        current = null;
+        continue;
+      }
+      const location = legacy ? `${legacy[1]}..${legacy[2]}` : modern[1];
+      const description = normalizeHeaderValue(legacy ? legacy[3] : modern[2]);
+      current = {
+        key,
+        locationLines: [location],
+        qualifiers: description ? { product: [description] } : {}
+      };
       continue;
     }
-    const start = match[2] ?? match[4];
-    const end = match[3] ?? match[5];
-    features.push({
-      key: match[1],
-      locationLines: [`${start}..${end}`],
-      qualifiers: {
-        product: [normalizeHeaderValue(match[6] ?? "")]
-      }
-    });
+    if (!current || !value) continue;
+    if (value.startsWith("/")) addQualifier(current.qualifiers, value);
+    else if (Object.keys(current.qualifiers).length > 0) appendQualifierContinuation(current.qualifiers, value);
   }
+  if (current) features.push(current);
   return features;
 }
 

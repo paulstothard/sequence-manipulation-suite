@@ -1,4 +1,5 @@
 import { getApplicableSharedToolLimits, isTechnicalLimitsGroup } from "../core/tool-limit-options.js";
+import { getToolLimitPolicy } from "../core/tool-limit-policy.js";
 import { presentToolLimitNote } from "./tool-limit-note-presentations.js";
 
 export { isTechnicalLimitsGroup };
@@ -27,7 +28,12 @@ function describeCondition(visibleWhen, optionById) {
   return `${source?.label ?? visibleWhen.option} is ${labels.join(" or ")}`;
 }
 
-function limitDisplayOption(option, groupCondition, optionById) {
+function withLimitPolicy(option, metadata) {
+  const policy = getToolLimitPolicy(metadata?.id, option.id);
+  return policy ? { ...option, limitOverride: policy } : option;
+}
+
+function limitDisplayOption(option, groupCondition, optionById, metadata) {
   const ownCondition = option.visibleWhen;
   const groupScope = describeCondition(groupCondition, optionById);
   const additionalCondition = ownCondition && JSON.stringify(ownCondition) !== JSON.stringify(groupCondition)
@@ -37,7 +43,7 @@ function limitDisplayOption(option, groupCondition, optionById) {
     ? additionalCondition
     : [groupScope, additionalCondition].filter(Boolean).join(" and ");
   const details = [option.detail ?? option.help, scope ? `Applies when ${scope}.` : ""].filter(Boolean);
-  return {
+  return withLimitPolicy({
     ...option,
     type: "limit-value",
     ...(ownCondition ? { displayId: `limit-display-${option.id}` } : {}),
@@ -45,11 +51,11 @@ function limitDisplayOption(option, groupCondition, optionById) {
     label: option.label ?? option.id,
     value: option.type === "limit-value" ? option.value : option.defaultValue,
     detail: details.join(" ")
-  };
+  }, metadata);
 }
 
-// Tool metadata retains the fixed ceilings used by runners and workflows.
-// The visible Limits disclosure contains values, never editable controls.
+// Tool metadata retains the enforced values used by runners and workflows.
+// Audited resource ceilings may also expose an enforce/disable checkbox.
 export function prepareToolOptionsForDisplay(options = [], metadata = {}) {
   const groups = options.filter(isTechnicalLimitsGroup);
   const optionById = new Map(flattenOptions(options).filter((option) => option.id).map((option) => [option.id, option]));
@@ -57,7 +63,7 @@ export function prepareToolOptionsForDisplay(options = [], metadata = {}) {
   const toolLimits = groups.flatMap((group) => {
     const scope = describeCondition(group.visibleWhen, optionById);
     return (group.options ?? []).flatMap((option) => {
-      if (option.type !== "note") return [limitDisplayOption(option, group.visibleWhen, optionById)];
+      if (option.type !== "note") return [limitDisplayOption(option, group.visibleWhen, optionById, metadata)];
       const presentation = presentToolLimitNote(metadata.id, noteIndex++);
       const rows = presentation ?? [{
         id: option.id ?? `limit-note-${noteIndex}`,
@@ -65,13 +71,13 @@ export function prepareToolOptionsForDisplay(options = [], metadata = {}) {
         label: "Limit details",
         value: option.text ?? ""
       }];
-      return rows.map((row) => ({
+      return rows.map((row) => withLimitPolicy({
         ...row,
         detail: [row.detail, scope ? `Applies when ${scope}.` : ""].filter(Boolean).join(" ")
-      }));
+      }, metadata));
     });
   });
-  const sharedLimits = getApplicableSharedToolLimits(metadata);
+  const sharedLimits = getApplicableSharedToolLimits(metadata).map((row) => withLimitPolicy(row, metadata));
   const disclosure = {
     id: groups[0]?.id && !groups[0].visibleWhen ? groups[0].id : "limitsDisclosure",
     type: "group",

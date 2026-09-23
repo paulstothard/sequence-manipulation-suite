@@ -14,7 +14,7 @@ export async function runTableCorrelationMatrix(input, options = {}, context = {
   context.throwIfCancelled?.();
   await context.yieldIfNeeded?.();
 
-  const outputFormat = OUTPUT_FORMATS.has(options.outputFormat) ? options.outputFormat : "matrix-tsv";
+  const outputFormat = OUTPUT_FORMATS.has(options.outputFormat) ? options.outputFormat : "correlation-heatmap-svg";
   const result = calculateTableCorrelationMatrix(input, options);
   const report = makeCorrelationReport(result);
   const tsv = correlationRowsToTsv(result.rows);

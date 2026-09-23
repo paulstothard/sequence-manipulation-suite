@@ -172,7 +172,7 @@ GGGGGGGGGGGGGGGG`,
           defaultValue: 200000000,
           min: 1000,
           max: 2000000000,
-          help: "Rejects sampled FASTQ output above this size so browser-local downloads remain bounded."
+          help: "Rejects sampled FASTQ output above this size."
         }
       ]
     },

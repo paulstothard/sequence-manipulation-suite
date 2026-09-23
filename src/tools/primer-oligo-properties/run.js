@@ -8,7 +8,7 @@ import { makeTableStream, makeTextStream, makeToolResult } from "../../core/work
 const OUTPUT_FORMATS = new Set(["report", "tsv"]);
 
 function normalizeOutputFormat(value) {
-  return OUTPUT_FORMATS.has(value) ? value : "report";
+  return OUTPUT_FORMATS.has(value) ? value : "tsv";
 }
 
 export async function runPrimerOligoProperties(input, options = {}, context = {}) {

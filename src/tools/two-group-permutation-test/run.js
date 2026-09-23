@@ -14,7 +14,7 @@ export async function runTwoGroupPermutationTestTool(input, options = {}, contex
   await context.yieldIfNeeded?.();
 
   const result = runTwoGroupPermutationTest(input, options, context);
-  const outputFormat = OUTPUT_FORMATS.has(options.outputFormat) ? options.outputFormat : "report";
+  const outputFormat = OUTPUT_FORMATS.has(options.outputFormat) ? options.outputFormat : "svg";
   const resultTsv = rowsToTsv(permutationTestResultColumns, result.resultRows);
   const nullTsv = rowsToTsv(permutationNullDistributionColumns, result.nullRows);
   const output =

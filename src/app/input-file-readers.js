@@ -78,7 +78,9 @@ export function worksheetToDelimitedText(worksheet, {
 
 export async function readWorkbookFileAsDelimitedText(file, {
   ExcelJS = globalThis.ExcelJS,
-  onMessage = () => {}
+  onMessage = () => {},
+  maxRows = WORKBOOK_IMPORT_ROW_LIMIT,
+  maxCells = WORKBOOK_IMPORT_CELL_LIMIT
 } = {}) {
   if (!ExcelJS?.Workbook) {
     throw new Error("Excel workbook reading is unavailable because ExcelJS did not load.");
@@ -100,14 +102,17 @@ export async function readWorkbookFileAsDelimitedText(file, {
   } else if (workbook.worksheets.length > 1) {
     onMessage(`${file.name}: loaded worksheet ${worksheetName}.`);
   }
-  return worksheetToDelimitedText(worksheet);
+  return worksheetToDelimitedText(worksheet, { maxRows, maxCells });
 }
 
 export async function readToolInputFileText(file, {
   ExcelJS = globalThis.ExcelJS,
   encodeBase64,
   onMessage = () => {},
-  readText = readTextFile
+  readText = readTextFile,
+  maxDecodedBytes,
+  workbookMaxRows,
+  workbookMaxCells
 } = {}) {
   if (/\.(ab1|abi|abif|scf)$/i.test(file.name)) {
     const buffer = await file.arrayBuffer();
@@ -124,7 +129,7 @@ export async function readToolInputFileText(file, {
     );
   }
   if (/\.xlsx$/i.test(file.name)) {
-    return readWorkbookFileAsDelimitedText(file, { ExcelJS, onMessage });
+    return readWorkbookFileAsDelimitedText(file, { ExcelJS, onMessage, maxRows: workbookMaxRows, maxCells: workbookMaxCells });
   }
-  return readText(file);
+  return readText(file, maxDecodedBytes === undefined ? {} : { maxDecodedBytes });
 }

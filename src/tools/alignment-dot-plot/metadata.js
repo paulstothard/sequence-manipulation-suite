@@ -45,7 +45,7 @@ function makeOutputOptions() {
           min: 100,
           max: 500000,
           step: 100,
-          help: "Dense or repetitive inputs can produce very large match tables and slow visual output. Extra matches are counted and reported as omitted."
+          help: "Extra matches are counted and reported as omitted."
         }
       ]
     }

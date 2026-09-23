@@ -11,6 +11,7 @@ import {
 } from "../../core/vector-contamination-scanner.js";
 import { makeTableStream, makeTextStream, makeToolResult } from "../../core/workflow.js";
 import { MAX_PASTED_FASTA_CHARACTERS_FOR_RICH_OUTPUTS } from "../fasta-input-policy.js";
+import { applyDisabledFastaSourceLimits, effectiveToolLimit } from "../../core/tool-limit-policy.js";
 
 export const VECTOR_CONTAMINATION_SVG_MAP_HIT_THRESHOLD = 5000;
 const MAX_STREAMED_VECTOR_BASES = 10_000_000;
@@ -238,14 +239,24 @@ function makeVectorViewerData(analyzedRecords, options = {}) {
 }
 
 async function runStreamedVectorContaminationScanner(input, options, context, index, summary, provenance) {
-  const outputFormat = OUTPUT_FORMATS.has(options.outputFormat) ? options.outputFormat : "report";
+  const maxQueryWindows = effectiveToolLimit(options, "vectorWindows", MAX_VECTOR_QUERY_WINDOWS);
+  const maxSeedExtensions = effectiveToolLimit(options, "vectorSeedExtensions", MAX_VECTOR_SEED_EXTENSIONS);
+  const maxCandidateRows = effectiveToolLimit(options, "vectorCandidates", MAX_VECTOR_CANDIDATE_ROWS);
+  const maxOutputCharacters = effectiveToolLimit(options, "vectorOutput", MAX_MATERIALIZED_OUTPUT_CHARACTERS);
+  const outputFormat = OUTPUT_FORMATS.has(options.outputFormat) ? options.outputFormat : "svg-map";
   if (!["report", "tsv", "svg-map"].includes(outputFormat)) throw new Error("Large FASTA vector scans support report, table, and linear map output. Text maps and sequence viewers require bounded pasted input.");
   const maxReferenceLength = Math.max(1, ...index.records.map((record) => record.sequence.length));
   if (maxReferenceLength + 20 > 65_536) throw new Error("Bundled vector references exceed the fixed-window scan length for large FASTA sources.");
-  const opened = await openCleanDnaRnaFastaSource(input, { ...options, maxSourceBases: Math.min(MAX_STREAMED_VECTOR_BASES, Number(options.maxSourceBases) || MAX_STREAMED_VECTOR_BASES) }, context);
+  const sourceOptions = applyDisabledFastaSourceLimits({ ...options, maxSourceBases: Math.min(MAX_STREAMED_VECTOR_BASES, Number(options.maxSourceBases) || MAX_STREAMED_VECTOR_BASES) }, {
+    maxSourceBases: "vectorSource",
+    maxSourceRecords: "vectorSource",
+    maxDecodedSourceBytes: "vectorSource",
+    maxSourceBytes: "vectorSource"
+  });
+  const opened = await openCleanDnaRnaFastaSource(input, sourceOptions, context);
   const analyzedRecords = [];
   const warnings = [];
-  const scanBudget = { queryWindows: 0, seedExtensions: 0, candidateRows: 0, maxQueryWindows: MAX_VECTOR_QUERY_WINDOWS, maxSeedExtensions: MAX_VECTOR_SEED_EXTENSIONS, maxCandidateRows: MAX_VECTOR_CANDIDATE_ROWS };
+  const scanBudget = { queryWindows: 0, seedExtensions: 0, candidateRows: 0, maxQueryWindows, maxSeedExtensions, maxCandidateRows };
   let current = null;
   let basesProcessed = 0;
   let charactersRemoved = 0;
@@ -256,13 +267,13 @@ async function runStreamedVectorContaminationScanner(input, options, context, in
       continue;
     }
     if (event.type === "scan-segment") {
-      const result = scanVectorContaminationRecord({ title: current.title, sequence: event.text }, index, { ...options, maxHitsPerRecord: MAX_VECTOR_CANDIDATE_ROWS }, { ...context, scanBudget });
+      const result = scanVectorContaminationRecord({ title: current.title, sequence: event.text }, index, { ...options, maxHitsPerRecord: maxCandidateRows }, { ...context, scanBudget });
       for (const row of result.rows) {
         const start0 = event.segmentStart0 + row.query_start - 1;
         if (start0 < event.ownedStart0 || start0 >= event.ownedEnd0) continue;
         const retained = { ...row, query_start: start0 + 1, query_end: event.segmentStart0 + row.query_end };
         retainedRowCharacters += JSON.stringify(retained).length;
-        if (retainedRowCharacters > MAX_MATERIALIZED_OUTPUT_CHARACTERS) throw new Error("Vector candidate-hit table exceeds the 25 MiB materialized-output limit.");
+        if (retainedRowCharacters > maxOutputCharacters) throw new Error("Vector candidate-hit table exceeds the materialized-output limit.");
         current.candidateRows.push(retained);
       }
       await context.yieldIfNeeded?.();
@@ -274,7 +285,8 @@ async function runStreamedVectorContaminationScanner(input, options, context, in
       charactersRemoved += event.removedCount;
       if (event.removedCount) warnings.push(`${current.title}: removed ${event.removedCount} non-DNA/RNA character(s).`);
       if (!event.length) warnings.push(`${current.title}: no DNA/RNA sequence characters were found.`);
-      const cappedHits = Math.max(1, Math.min(1000, Number(options.maxHitsPerRecord) || 50));
+      const enforcedHitsPerRecord = Math.max(1, Math.min(1000, Number(options.maxHitsPerRecord) || 50));
+      const cappedHits = effectiveToolLimit(options, "maxHitsPerRecord", enforcedHitsPerRecord);
       const merged = deduplicateMergeAndSortRows(current.candidateRows, cappedHits);
       current.rows = merged.rows;
       current.hitsOmitted = merged.hitsOmitted;
@@ -294,7 +306,7 @@ async function runStreamedVectorContaminationScanner(input, options, context, in
   const tsv = formatTsv(rows);
   const svgMap = outputFormat === "svg-map" ? makeSvgMap(analyzedRecords) : "";
   const output = outputFormat === "tsv" ? tsv : outputFormat === "svg-map" ? svgMap : report;
-  if (Math.max(output.length, report.length) > MAX_MATERIALIZED_OUTPUT_CHARACTERS) throw new Error("Vector-scan output exceeds the 25 MiB materialized-output limit.");
+  if (Math.max(output.length, report.length) > maxOutputCharacters) throw new Error("Vector-scan output exceeds the materialized-output limit.");
   return makeToolResult({ output, download: { filename: `vector-contamination-scanner.${outputFormat === "tsv" ? "tsv" : outputFormat === "svg-map" ? "svg" : "txt"}`, mimeType: outputFormat === "tsv" ? "text/tab-separated-values" : outputFormat === "svg-map" ? "image/svg+xml" : "text/plain;charset=utf-8" }, warnings, recordsProcessed: analyzedRecords.length, basesProcessed, charactersRemoved, streams: { report: makeTextStream(report, "text/plain"), table: makeTableStream(vectorContaminationTableColumns, rows, "vector-contamination-scanner"), ...(svgMap ? { overview: makeTextStream(svgMap, "image/svg+xml") } : {}) }, visual: svgMap ? { svg: svgMap } : undefined });
 }
 
@@ -373,7 +385,7 @@ export async function runVectorContaminationScanner(input, options = {}, context
     }))
   });
   const tsv = formatTsv(rows);
-  const outputFormat = OUTPUT_FORMATS.has(options.outputFormat) ? options.outputFormat : "report";
+  const outputFormat = OUTPUT_FORMATS.has(options.outputFormat) ? options.outputFormat : "svg-map";
   if (outputFormat === "svg-map" && rows.length > VECTOR_CONTAMINATION_SVG_MAP_HIT_THRESHOLD) {
     warnings.push(`Linear contamination map output is capped at ${VECTOR_CONTAMINATION_SVG_MAP_HIT_THRESHOLD.toLocaleString()} shown hits. Use the table for complete hit coordinates.`);
   }

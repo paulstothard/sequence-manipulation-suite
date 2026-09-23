@@ -17,7 +17,7 @@ function normalizeOutputFormat(value, layout) {
     }
     return value;
   }
-  return "report";
+  return layout === "paired" ? "interleaved-fastq" : "fastq";
 }
 
 function selectedOutput(result, outputFormat) {

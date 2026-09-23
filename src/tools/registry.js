@@ -355,6 +355,10 @@ import {
   multipleAlignDnaRnaExample,
   multipleAlignProteinExample
 } from "../examples/multiple-alignment-examples.js";
+import {
+  multipleAlignCodingDnaExample,
+  pairwiseAlignCodingDnaExample
+} from "../examples/coding-alignment-examples.js";
 import { alignmentViewerExample } from "../examples/alignment-viewer-example.js";
 import { vcfExtractorExample } from "../examples/vcf-extractor-example.js";
 import { genomeFigureExample } from "../examples/genome-figure-example.js";
@@ -738,7 +742,7 @@ GGGGCCACCATGGCTAGGAGGTTTTATAWAAGGCCAATAAAGGGTATAATTTGACA`
   {
     metadata: multipleAlignCodingDnaMetadata,
     run: runMultipleAlignCodingDna,
-    example: multipleAlignDnaRnaExample
+    example: multipleAlignCodingDnaExample
   },
   {
     metadata: phylogenyBuilderMetadata,
@@ -2197,10 +2201,7 @@ ATGGCTGCTGGTGGTAAATTTCCCAAAGGTTCTTCTGAAATCGACGCTGCTGGTGGTAAATTTCCCAAATAA`
   {
     metadata: pairwiseAlignCodingDnaMetadata,
     run: runPairwiseAlignCodingDna,
-    example: `>coding sequence one
-ATGGCTGCTGCTGGTGGTAAATTTCCCAAAGGTTCTTCTGAAATCGATGCTGCTGGTGGTAAATTTCCCAAAGCT
->coding sequence two
-ATGGCTGCTGGTGGTAAATTTCCCAAAGGTTCTTCTGAAATCGACGCTGCTGGTGGTAAATTTCCCAAAGCT`
+    example: pairwiseAlignCodingDnaExample
   },
   {
     metadata: pairwiseAlignProteinMetadata,
