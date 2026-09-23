@@ -666,7 +666,21 @@ export function installVisualInspection(container, {
     for (const mark of marks) {
       let rect = mark.getBoundingClientRect();
       try {
-        const box = mark.getBBox();
+        const renderedBox = mark.getBBox();
+        // WebKit collapses both dimensions of a zero-height SVG rect, including
+        // its otherwise valid x position and width. Reconstruct that local box
+        // from the rect attributes so its plotted baseline remains inspectable.
+        const rectBox = mark.tagName?.toLowerCase() === "rect"
+          ? {
+              x: Number(mark.getAttribute("x") ?? 0),
+              y: Number(mark.getAttribute("y") ?? 0),
+              width: Number(mark.getAttribute("width") ?? 0),
+              height: Number(mark.getAttribute("height") ?? 0)
+            }
+          : null;
+        const box = rectBox && Object.values(rectBox).every(Number.isFinite)
+          ? rectBox
+          : renderedBox;
         const matrix = mark.getScreenCTM();
         if (matrix) {
           const corners = [

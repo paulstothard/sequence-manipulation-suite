@@ -1212,10 +1212,6 @@ export function shouldUseCircularFeatureLabelFallback(trackType, hasSlotLayout, 
     width >= 8;
 }
 
-export function shouldCurveCircularFeatureLabel(trackType, hasSlotLayout) {
-  return trackType === "digest-fragments" || Boolean(hasSlotLayout);
-}
-
 export function chooseCircularArcLabelPlacement(
   cx,
   cy,
@@ -1358,6 +1354,7 @@ function drawTicks(ctx, cx, cy, radius, state, record, arc, pxPerBp, options = {
   const tickScale = options.tickScale ?? 1;
   const step = circularMajorTickStep(state, record, pxPerBp);
   const minorStep = minorTickStep(step);
+  const labelStats = { curved: 0, straight: 0 };
   if (minorStep && minorStep * pxPerBp >= 14 && state.viewSpan / minorStep <= 180) {
     for (const tick of getVisibleRulerTicks(minorStep, record.length, state, false)) {
       if (tick.label % step === 0) continue;
@@ -1391,21 +1388,37 @@ function drawTicks(ctx, cx, cy, radius, state, record, arc, pxPerBp, options = {
         type: "Coordinate",
         position: tick.label
       });
-      if (labelStyle === "tangential") {
-        drawTangentialText(ctx, labelText, cx, cy, radius + labelOffset, angle, {
+      if (labelStyle === "curved") {
+        const availableAngle = Math.min(
+          Math.abs(arc.arcAngle),
+          (step / Math.max(1, state.viewSpan)) * Math.abs(arc.arcAngle)
+        );
+        const drewCurved = drawCurvedText(ctx, labelText, cx, cy, radius + labelOffset, angle, availableAngle, {
           font: "11px system-ui, sans-serif",
           fill: theme.text,
-          align: "center"
+          paddingPx: 8
         });
+        if (drewCurved) {
+          labelStats.curved += 1;
+        } else {
+          drawTangentialText(ctx, labelText, cx, cy, radius + labelOffset, angle, {
+            font: "11px system-ui, sans-serif",
+            fill: theme.text,
+            align: "center"
+          });
+          labelStats.straight += 1;
+        }
       } else {
         ctx.font = "11px system-ui, sans-serif";
         ctx.fillStyle = theme.text;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillText(labelText, labelPoint.x, labelPoint.y);
+        labelStats.straight += 1;
       }
     }
   }
+  return labelStats;
 }
 
 function drawPointTrack(ctx, track, cx, cy, radius, state, record, arc, pxPerBp, options = {}) {
@@ -1863,7 +1876,7 @@ function drawIntervalTrack(ctx, track, cx, cy, outerRadius, innerRadius, state, 
         angle: labelPlacement.angle,
         availableAngle: labelPlacement.availableAngle,
         options: labelOptions,
-        curved: shouldCurveCircularFeatureLabel(track.type, Boolean(slotLayout)),
+        curved: true,
         tangentialFallback: track.type !== "digest-fragments"
       });
       continue;
@@ -2363,9 +2376,9 @@ function drawCircularViewer(ctx, canvas, status, record, state) {
   }
 
   drawArc(ctx, cx, cy, rulerRadius, arc.startAngle, arc.startAngle + arc.arcAngle, theme.axis, 2.4);
-  drawTicks(ctx, cx, cy, rulerRadius, state, record, arc, pxPerBp, {
+  const rulerLabelStats = drawTicks(ctx, cx, cy, rulerRadius, state, record, arc, pxPerBp, {
     labelOffset: OUTER_RULER_LABEL_OFFSET,
-    labelStyle: "tangential",
+    labelStyle: "curved",
     theme
   });
   if (showInnerRuler) {
@@ -2407,6 +2420,8 @@ function drawCircularViewer(ctx, canvas, status, record, state) {
     canvas.dataset.circularFeatureLabelsStraight = String(labels.drawnStraight);
     canvas.dataset.circularFeatureLabelsInsideCandidates = String(labels.insideCandidates);
     canvas.dataset.circularFeatureLabelsFallbackCandidates = String(labels.fallbackCandidates);
+    canvas.dataset.circularRulerLabelsCurved = String(rulerLabelStats.curved);
+    canvas.dataset.circularRulerLabelsStraight = String(rulerLabelStats.straight);
     canvas.dataset.sms3InspectionReady = "true";
   }
   canvas.setAttribute("aria-busy", "false");

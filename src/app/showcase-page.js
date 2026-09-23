@@ -278,7 +278,7 @@ function chooseShowcaseFocusRange(record, targetSpan) {
 
 function showcaseViewerTargetSpan(record) {
   if (record?.alphabet === "protein") {
-    return 70;
+    return 48;
   }
   return recordHasAlignedReadDetails(record) ? 42 : 48;
 }

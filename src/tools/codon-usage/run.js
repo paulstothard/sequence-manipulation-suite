@@ -258,6 +258,7 @@ function makeCodonPlotSpec(analyzedRecords, options) {
     series: rowRecords.map((record) => ({ id: record.title, label: record.title })),
     bars,
     yDomain: [0, yMax],
+    barLayout: "stacked",
     showLegend: options.showLegend,
     notes: ["Codons are shown in the same genetic-code table order used by SMS3 reference data."]
   });

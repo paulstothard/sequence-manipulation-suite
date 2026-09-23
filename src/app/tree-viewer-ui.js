@@ -170,6 +170,7 @@ export function renderTreeViewer(host, payload, editorDocument) {
         document: editorDocument?.state?.document ?? payload.document,
         mode: "style",
         allowOpenTree: false,
+        initialSettingsOpen: false,
         figureExportDpi: 96 * getPngExportScale(),
         theme:
           document.documentElement.dataset.theme === "dark" ? "dark" : "light",

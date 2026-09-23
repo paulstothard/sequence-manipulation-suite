@@ -1,4 +1,4 @@
-import { shouldShowPointMarkersForSeries } from "../core/plot-renderer.js";
+import { makeCategoricalBarRows, shouldShowPointMarkersForSeries } from "../core/plot-renderer.js";
 import { fitSideLegendLabel, sideLegendLayout } from "../core/plot-side-legend.js";
 
 function addObservablePlotLegend(svg, plotSpec, plotTop) {
@@ -238,16 +238,24 @@ function addObservableHeatmapAnnotations(svg, plotSpec) {
   svg.append(group);
 }
 
+function usesCodonCategoryLabels(plotSpec) {
+  return plotSpec?.kind === "categorical-bar-plot" &&
+    (plotSpec.categories ?? []).some((category) => category.group) &&
+    (plotSpec.categories ?? []).every((category) => /^[ACGTU]{3}$/u.test(category.label));
+}
+
 function addCategoricalAminoAcidLabels(svg, plotSpec) {
-  if (plotSpec?.kind !== "categorical-bar-plot") {
-    return;
-  }
+  if (!usesCodonCategoryLabels(plotSpec)) return;
   const namespace = "http://www.w3.org/2000/svg";
   const categoriesByLabel = new Map((plotSpec.categories ?? []).map((category) => [category.label, category]));
   const tickGroup = svg.querySelector('g[aria-label="x-axis tick label"]');
   const tickTexts = [...(tickGroup?.querySelectorAll("text") ?? [])];
   if (tickTexts.length === 0) {
     return;
+  }
+  for (const tickText of tickTexts) {
+    tickText.setAttribute("font-family", "Inter, Arial, sans-serif");
+    tickText.setAttribute("font-size", "9");
   }
   const height = Number(svg.getAttribute("height")) || plotSpec.height || 548;
   const group = document.createElementNS(namespace, "g");
@@ -277,6 +285,22 @@ function addCategoricalAminoAcidLabels(svg, plotSpec) {
 
   if (group.childNodes.length > 0) {
     tickGroup.append(group);
+  }
+}
+
+function polishCategoricalBarMarks(svg, plotSpec) {
+  if (!usesCodonCategoryLabels(plotSpec)) return;
+  for (const bar of svg.querySelectorAll('g[aria-label="bar"] rect')) {
+    bar.setAttribute("shape-rendering", "geometricPrecision");
+    bar.setAttribute("stroke", "none");
+  }
+}
+
+function polishLineMarks(svg) {
+  for (const line of svg.querySelectorAll('g[aria-label="line"] path')) {
+    line.setAttribute("pointer-events", "none");
+    line.setAttribute("stroke-linecap", "round");
+    line.setAttribute("stroke-linejoin", "round");
   }
 }
 
@@ -412,16 +436,7 @@ export function renderObservablePlotPreview(plotSpec) {
       return svg;
     }
     if (plotSpec.kind === "categorical-bar-plot") {
-      const rows = plotSpec.bars.map((bar) => {
-        const category = plotSpec.categories.find((item) => item.id === bar.category);
-        const series = plotSpec.series.find((item) => item.id === bar.series);
-        return {
-          category: category?.label ?? bar.category,
-          series: series?.label ?? bar.series,
-          value: bar.value,
-          title: bar.title
-        };
-      });
+      const rows = makeCategoricalBarRows(plotSpec);
       if (rows.length === 0 || !window.Plot.barY) {
         return null;
       }
@@ -456,7 +471,9 @@ export function renderObservablePlotPreview(plotSpec) {
         marks: [
           window.Plot.barY(rows, {
             x: "category",
-            y: "value",
+            ...(plotSpec.barLayout === "stacked"
+              ? { y1: "y1", y2: "y2" }
+              : { y: "value" }),
             fill: "series",
             title: "title",
             inset: 0.5
@@ -474,8 +491,10 @@ export function renderObservablePlotPreview(plotSpec) {
       svg.setAttribute("data-plot-renderer", "observable-plot");
       svg.setAttribute("data-sms3-plot-kind", "categorical-bar-plot");
       svg.setAttribute("data-sms3-plot-width-mode", plotSpec.barWidthMode ?? "compact");
+      svg.setAttribute("data-sms3-bar-layout", plotSpec.barLayout ?? "grouped");
       svg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
       lockPlotSvgToLightCanvas(svg);
+      polishCategoricalBarMarks(svg, plotSpec);
       addObservablePlotLegend(svg, plotSpec, topMargin);
       if (!horizontalCategoryLabels) {
         addCategoricalAminoAcidLabels(svg, plotSpec);
@@ -544,6 +563,19 @@ export function renderObservablePlotPreview(plotSpec) {
             title: "title"
           }
         )),
+        ...series.flatMap((item) => {
+          const itemMarkerRows = markerRows.filter((row) => row.series === item.label);
+          return itemMarkerRows.length > 0
+            ? [dotMark(itemMarkerRows, {
+                x: "x",
+                y: "y",
+                fill: item.color ?? "#2563eb",
+                stroke: "none",
+                title: "title",
+                r: 2.5
+              })]
+            : [];
+        }),
         ...series.map((item) => lineMark(
           rows.filter((row) => row.series === item.label),
           {
@@ -552,15 +584,10 @@ export function renderObservablePlotPreview(plotSpec) {
             stroke: item.color ?? "#2563eb",
             strokeWidth: item.strokeWidth ?? 2.2,
             strokeDasharray: item.strokeDasharray,
-            title: "title"
+            strokeLinecap: "round",
+            strokeLinejoin: "round"
           }
         )),
-        ...series.flatMap((item) => {
-          const itemMarkerRows = markerRows.filter((row) => row.series === item.label);
-          return itemMarkerRows.length > 0
-            ? [dotMark(itemMarkerRows, { x: "x", y: "y", fill: item.color ?? "#2563eb", title: "title", r: 2.5 })]
-            : [];
-        }),
         ...(inspectionRows.length > 0
           ? [dotMark(inspectionRows, {
               x: "x",
@@ -584,6 +611,7 @@ export function renderObservablePlotPreview(plotSpec) {
     svg.setAttribute("data-plot-renderer", "observable-plot");
     svg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
     lockPlotSvgToLightCanvas(svg);
+    polishLineMarks(svg);
     addObservablePlotLegend(svg, plotSpec, topMargin);
     return svg;
   } catch {

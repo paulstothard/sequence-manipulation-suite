@@ -6765,6 +6765,10 @@ legend {
   filter: drop-shadow(0 0 1.5px var(--sms3-inspection-contrast, #0f172a));
 }
 
+:is(.visual-output, .showcase-preview) svg .gel-band-inspection-mark[data-sms3-inspection-active="true"] {
+  filter: none !important;
+}
+
 :is(.visual-output, .showcase-preview) svg.sanger-svg [data-sanger-inspection-target][data-sms3-inspection-active="true"],
 :is(.visual-output, .showcase-preview) svg.sanger-svg .sanger-difference-card[data-sms3-inspection-active="true"] {
   filter: none !important;
@@ -9730,6 +9734,11 @@ legend {
   padding: 0.45rem 0.65rem;
 }
 
+.dna-viewer-search:has(+ .interactive-sequence-viewer-workspace) {
+  border-bottom: 1px solid var(--viewer-border, #e2e8f0);
+  border-radius: 0 0 8px 8px;
+}
+
 .dna-viewer-search label {
   align-items: center;
   color: var(--viewer-text, #334155);
@@ -9840,6 +9849,7 @@ legend {
   display: grid;
   gap: 0.9rem 1rem;
   grid-template-columns: minmax(0, 1fr) clamp(17.5rem, 21vw, 20rem);
+  margin-top: 0.5rem;
   min-width: 0;
 }
 
@@ -9859,7 +9869,7 @@ legend {
   color: var(--viewer-text, #172026);
   display: flex;
   flex-direction: column;
-  margin: 0.5rem 0.25rem 0 0;
+  margin: 0 0.25rem 0 0;
   max-height: min(760px, calc(100vh - 10rem));
   min-width: 0;
   overflow: hidden;

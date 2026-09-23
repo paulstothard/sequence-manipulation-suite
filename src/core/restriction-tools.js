@@ -256,6 +256,20 @@ function deterministicRange(seed, min, max) {
   return min + makeStableFraction(seed) * (max - min);
 }
 
+function gelPaintPrefix(title) {
+  const source = String(title ?? "gel").trim() || "gel";
+  const slug = source
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/gu, "-")
+    .replace(/^-+|-+$/gu, "") || "gel";
+  let hash = 2166136261;
+  for (const character of source) {
+    hash ^= character.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `sms3-gel-${slug}-${(hash >>> 0).toString(36)}`;
+}
+
 function restrictionCutClassName(enzyme) {
   const source = String(enzyme ?? "site").trim();
   const slug = source
@@ -418,6 +432,14 @@ export function makeRestrictionGelSvg(records, options = {}) {
   const note = options.note || (options.poolLinearMolecules
     ? "Pooled lane assumes equal molecule counts; separate lanes explain each input. Qualitative bands, not predicted PCR yield."
     : "Qualitative schematic gel: apparent-size migration, mass-scaled intensity, merged overlapping bands.");
+  const paintPrefix = gelPaintPrefix(title);
+  const paintIds = {
+    bandBlur: `${paintPrefix}-band-blur`,
+    bandHaloBlur: `${paintPrefix}-band-halo-blur`,
+    openBandBlur: `${paintPrefix}-open-band-blur`,
+    background: `${paintPrefix}-background`,
+    wellGlow: `${paintPrefix}-well-glow`
+  };
   const laneCount = records.length + 1;
   const ladderLabelGutter = 74;
   const margin = { top: 96, right: 30, bottom: 54, left: 58 };
@@ -595,13 +617,13 @@ export function makeRestrictionGelSvg(records, options = {}) {
     });
   };
   const parts = [
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}">`,
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-sms3-gel-paint-prefix="${paintPrefix}">`,
     "<defs>",
-    '<filter id="bandBlur" x="-30%" y="-95%" width="160%" height="290%"><feGaussianBlur stdDeviation="1.35"/></filter>',
-    '<filter id="bandHaloBlur" x="-60%" y="-220%" width="220%" height="540%"><feGaussianBlur stdDeviation="4.2"/></filter>',
-    '<filter id="openBandBlur" x="-45%" y="-150%" width="190%" height="400%"><feGaussianBlur stdDeviation="2.7"/></filter>',
-    '<linearGradient id="gelBackground" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#101c35"/><stop offset="0.55" stop-color="#172a4c"/><stop offset="1" stop-color="#203862"/></linearGradient>',
-    '<radialGradient id="wellGlow" cx="50%" cy="40%" r="65%"><stop offset="0" stop-color="#4b6f9e" stop-opacity="0.45"/><stop offset="1" stop-color="#14233e" stop-opacity="0"/></radialGradient>',
+    `<filter id="${paintIds.bandBlur}" x="-30%" y="-95%" width="160%" height="290%"><feGaussianBlur stdDeviation="1.35"/></filter>`,
+    `<filter id="${paintIds.bandHaloBlur}" x="-60%" y="-220%" width="220%" height="540%"><feGaussianBlur stdDeviation="4.2"/></filter>`,
+    `<filter id="${paintIds.openBandBlur}" x="-45%" y="-150%" width="190%" height="400%"><feGaussianBlur stdDeviation="2.7"/></filter>`,
+    `<linearGradient id="${paintIds.background}" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#101c35"/><stop offset="0.55" stop-color="#172a4c"/><stop offset="1" stop-color="#203862"/></linearGradient>`,
+    `<radialGradient id="${paintIds.wellGlow}" cx="50%" cy="40%" r="65%"><stop offset="0" stop-color="#4b6f9e" stop-opacity="0.45"/><stop offset="1" stop-color="#14233e" stop-opacity="0"/></radialGradient>`,
     "</defs>",
     "<style>",
     ".title{font:700 18px system-ui,sans-serif;fill:#18202a}",
@@ -609,19 +631,19 @@ export function makeRestrictionGelSvg(records, options = {}) {
     ".lane-label{font:600 11px system-ui,sans-serif;fill:#24313d;text-anchor:middle}",
     ".size-label{font:10px system-ui,sans-serif;fill:#d7e8ff;text-anchor:end}",
     ".gel-note{font:11px system-ui,sans-serif;fill:#53616d}",
-    ".band-halo{fill:#89dfff;filter:url(#bandHaloBlur)}",
-    ".band-core{fill:#ffffff;filter:url(#bandBlur)}",
-    ".band{fill:#c9efff;filter:url(#bandBlur)}",
-    ".band-open{filter:url(#openBandBlur)}",
-    ".ladder-band{fill:#e7f8ff;filter:url(#bandBlur)}",
-    ".ladder-core{fill:#ffffff;filter:url(#bandBlur)}",
+    `.band-halo{fill:#89dfff;filter:url(#${paintIds.bandHaloBlur})}`,
+    `.band-core{fill:#ffffff;filter:url(#${paintIds.bandBlur})}`,
+    `.band{fill:#c9efff;filter:url(#${paintIds.bandBlur})}`,
+    `.band-open{filter:url(#${paintIds.openBandBlur})}`,
+    `.ladder-band{fill:#e7f8ff;filter:url(#${paintIds.bandBlur})}`,
+    `.ladder-core{fill:#ffffff;filter:url(#${paintIds.bandBlur})}`,
     ".gel-speckle{fill:#a7dfff;opacity:0.035}",
     "</style>",
     `<rect x="0" y="0" width="${width}" height="${height}" fill="white"/>`,
     `<text class="title" x="24" y="34">${escapeXml(title)}</text>`,
     `<text class="subtitle" x="24" y="54">${escapeXml(subtitle)}</text>`,
-    `<rect x="${margin.left}" y="${margin.top}" width="${gelWidth - margin.left - margin.right}" height="${gelHeight}" rx="8" fill="url(#gelBackground)"/>`,
-    `<rect x="${margin.left}" y="${margin.top}" width="${gelWidth - margin.left - margin.right}" height="${gelHeight}" rx="8" fill="url(#wellGlow)" opacity="0.65"/>`,
+    `<rect x="${margin.left}" y="${margin.top}" width="${gelWidth - margin.left - margin.right}" height="${gelHeight}" rx="8" fill="url(#${paintIds.background})"/>`,
+    `<rect x="${margin.left}" y="${margin.top}" width="${gelWidth - margin.left - margin.right}" height="${gelHeight}" rx="8" fill="url(#${paintIds.wellGlow})" opacity="0.65"/>`,
     `<rect class="gel-speckle" x="${margin.left + 8}" y="${margin.top + 30}" width="${gelWidth - margin.left - margin.right - 16}" height="${gelHeight - 46}" rx="6"/>`
   ];
 

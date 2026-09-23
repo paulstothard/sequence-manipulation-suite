@@ -319,6 +319,7 @@ export function renderReverseTranslateProbabilitySvg(records, options = {}) {
   const rowLabelGap = 36;
   const residueLabelGap = 12;
   const showCodons = residueWidth >= 20;
+  const codonTextWidth = Math.min(16, Math.max(13, residueWidth - 4));
   const probabilityScale = getD3()?.scaleLinear?.().domain([0, 1]).range([0, barHeight]);
   const left = 112;
   const right = 34;
@@ -405,7 +406,7 @@ export function renderReverseTranslateProbabilitySvg(records, options = {}) {
         parts.push(`<text class="residue" x="${centerX.toFixed(2)}" y="${barTop - residueLabelGap}">${escapeXml(row.residue)}</text>`);
       }
       if (showCodons) {
-        parts.push(`<text class="codon" x="${centerX.toFixed(2)}" y="${axisY + 34}">${escapeXml(row.codon)}</text>`);
+        parts.push(`<text class="codon" x="${centerX.toFixed(2)}" y="${axisY + 34}" textLength="${codonTextWidth}" lengthAdjust="spacing">${escapeXml(row.codon)}</text>`);
       }
 
       (row.base_probabilities ?? []).forEach((positionProbability, positionIndex) => {

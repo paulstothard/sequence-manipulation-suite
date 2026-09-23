@@ -135,6 +135,7 @@ export function makeCategoricalBarPlotSpec({
   showLegend = true,
   xTickLabelMode = "split-codon",
   barWidthMode = "compact",
+  barLayout = "grouped",
   barFillOpacity = 1,
   notes = []
 }) {
@@ -151,6 +152,7 @@ export function makeCategoricalBarPlotSpec({
     showLegend,
     xTickLabelMode,
     barWidthMode,
+    barLayout: barLayout === "stacked" ? "stacked" : "grouped",
     barFillOpacity,
     categories: categories.map((item, index) => ({
       id: item.id ?? item.label ?? `category-${index + 1}`,
@@ -170,6 +172,47 @@ export function makeCategoricalBarPlotSpec({
     })),
     notes
   };
+}
+
+export function makeCategoricalBarRows(spec) {
+  const categoriesById = new Map((spec.categories ?? []).map((category) => [category.id, category]));
+  const seriesById = new Map((spec.series ?? []).map((series) => [series.id, series]));
+  if (spec.barLayout !== "stacked") {
+    return (spec.bars ?? []).map((bar) => {
+      const category = categoriesById.get(bar.category);
+      const series = seriesById.get(bar.series);
+      const numericValue = Number(bar.value ?? 0);
+      const value = Number.isFinite(numericValue) ? numericValue : 0;
+      return {
+        category: category?.label ?? bar.category,
+        series: series?.label ?? bar.series,
+        value,
+        y1: 0,
+        y2: value,
+        title: bar.title
+      };
+    });
+  }
+  const barsByKey = new Map((spec.bars ?? []).map((bar) => [`${bar.category}\t${bar.series}`, bar]));
+  return (spec.categories ?? []).flatMap((category) => {
+    let stackOffset = 0;
+    return (spec.series ?? []).map((series) => {
+      const bar = barsByKey.get(`${category.id}\t${series.id}`);
+      const numericValue = Number(bar?.value ?? 0);
+      const value = Number.isFinite(numericValue) ? numericValue : 0;
+      const y1 = stackOffset;
+      const y2 = stackOffset + value;
+      stackOffset = y2;
+      return {
+        category: category.label,
+        series: series.label,
+        value,
+        y1,
+        y2,
+        title: bar?.title
+      };
+    });
+  });
 }
 
 export function makeHeatmapPlotSpec({
@@ -251,16 +294,10 @@ export function makeObservablePlotConfig(spec) {
   }
 
   if (spec.kind === "categorical-bar-plot") {
-    const rows = spec.bars.map((bar) => {
-      const category = spec.categories.find((item) => item.id === bar.category);
-      const series = spec.series.find((item) => item.id === bar.series);
-      return {
-        category: category?.label ?? bar.category,
-        series: series?.label ?? bar.series,
-        value: bar.value,
-        title: bar.title
-      };
-    });
+    const rows = makeCategoricalBarRows(spec);
+    const barOptions = spec.barLayout === "stacked"
+      ? { x: "category", y1: "y1", y2: "y2", fill: "series", title: "title" }
+      : { x: "category", y: "value", fill: "series", title: "title" };
     return {
       title: spec.title,
       x: { label: spec.xLabel },
@@ -270,7 +307,7 @@ export function makeObservablePlotConfig(spec) {
         {
           type: "barY",
           data: rows,
-          options: { x: "category", y: "value", fill: "series", title: "title" }
+          options: barOptions
         }
       ]
     };
@@ -357,21 +394,26 @@ export function renderCategoricalBarPlotSvg(spec) {
     ? yScale(value)
     : margin.top + ((yMax - value) / Math.max(1, yMax - yMin)) * plotHeight;
   const categoryWidth = plotWidth / Math.max(1, categories.length);
+  const stackedBars = spec.barLayout === "stacked";
   const wideBars = spec.barWidthMode === "histogram" && series.length === 1;
   const barGap = wideBars ? Math.min(4, Math.max(1, categoryWidth * 0.06)) : series.length > 1 ? 1 : 2;
   const innerWidth = Math.max(1, categoryWidth - 4);
   const compactBarWidth = Math.min(13, (innerWidth - barGap * Math.max(0, series.length - 1)) / Math.max(1, series.length));
   const histogramBarWidth = Math.max(1, categoryWidth - barGap);
-  const barWidth = wideBars ? histogramBarWidth : Math.max(1, compactBarWidth);
-  const barGroupWidth = barWidth * Math.max(1, series.length) + barGap * Math.max(0, series.length - 1);
+  const barWidth = stackedBars
+    ? Math.max(1, categoryWidth - 1)
+    : wideBars ? histogramBarWidth : Math.max(1, compactBarWidth);
+  const barGroupWidth = stackedBars
+    ? barWidth
+    : barWidth * Math.max(1, series.length) + barGap * Math.max(0, series.length - 1);
   const barFillOpacity = Number.isFinite(Number(spec.barFillOpacity)) ? Number(spec.barFillOpacity) : 1;
   const barsByKey = new Map(spec.bars.map((bar) => [`${bar.category}\t${bar.series}`, bar]));
   const yTicks = yScale
     ? yScale.ticks(4)
     : [0, yMax * 0.25, yMax * 0.5, yMax * 0.75, yMax];
   const parts = [
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(spec.title)}" data-plot-foundation="observable-plot" data-plot-backend="d3" data-plot-renderer="sms3" data-sms3-plot-kind="categorical-bar-plot" data-sms3-plot-width-mode="${wideBars ? "histogram" : "compact"}">`,
-    "<style>text{font-family:Inter,Arial,sans-serif;font-size:12px;fill:#172026}.title{font-size:18px;font-weight:700}.axis{stroke:#5c6b75;stroke-width:1}.grid{stroke:#dfe7ec;stroke-width:1}.bar{shape-rendering:crispEdges}.histogram-bar{shape-rendering:auto;stroke:#ffffff;stroke-width:1}.codon-label{font-size:10px;text-anchor:middle}.x-tick{font-size:11px;text-anchor:middle;fill:#334155}.aa-label{font-size:10px;text-anchor:middle;fill:#64748b}.legend-label{font-size:11px}.note{font-size:11px;fill:#64748b}</style>",
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(spec.title)}" data-plot-foundation="observable-plot" data-plot-backend="d3" data-plot-renderer="sms3" data-sms3-plot-kind="categorical-bar-plot" data-sms3-plot-width-mode="${wideBars ? "histogram" : "compact"}" data-sms3-bar-layout="${stackedBars ? "stacked" : "grouped"}">`,
+    "<style>text{font-family:Inter,Arial,sans-serif;font-size:12px;fill:#172026}.title{font-size:18px;font-weight:700}.axis{stroke:#5c6b75;stroke-width:1}.grid{stroke:#dfe7ec;stroke-width:1}.bar{shape-rendering:crispEdges;stroke:none}.codon-bar{shape-rendering:geometricPrecision;stroke:none}.histogram-bar{shape-rendering:auto;stroke:#ffffff;stroke-width:1}.codon-label{font-family:Inter,Arial,sans-serif;font-size:9px;text-anchor:middle}.x-tick{font-size:11px;text-anchor:middle;fill:#334155}.aa-label{font-size:10px;text-anchor:middle;fill:#64748b}.legend-label{font-size:11px}.note{font-size:11px;fill:#64748b}</style>",
     `<rect width="${width}" height="${height}" fill="#ffffff"></rect>`,
     `<text class="title" x="${FIGURE_TEXT_X}" y="${FIGURE_TITLE_Y}">${escapeXml(spec.title)}</text>`,
     ...header.subtitleLines.map((line, index) =>
@@ -401,17 +443,25 @@ export function renderCategoricalBarPlotSvg(spec) {
   categories.forEach((category, categoryIndex) => {
     const categoryLeft = margin.left + categoryIndex * categoryWidth;
     const center = categoryLeft + categoryWidth / 2;
+    let stackOffset = 0;
     series.forEach((item, seriesIndex) => {
       const bar = barsByKey.get(`${category.id}\t${item.id}`);
-      const value = Number(bar?.value ?? 0);
-      const y = scaleY(value);
-      const x = categoryLeft + (categoryWidth - barGroupWidth) / 2 + seriesIndex * (barWidth + barGap);
-      const barHeight = height - margin.bottom - y;
-      const barClass = wideBars ? "bar histogram-bar" : "bar";
+      const numericValue = Number(bar?.value ?? 0);
+      const value = Number.isFinite(numericValue) ? numericValue : 0;
+      const stackStart = stackedBars ? stackOffset : 0;
+      const stackEnd = stackedBars ? stackOffset + value : value;
+      const y = scaleY(Math.max(stackStart, stackEnd));
+      const barBottom = scaleY(Math.min(stackStart, stackEnd));
+      const x = stackedBars
+        ? categoryLeft + (categoryWidth - barWidth) / 2
+        : categoryLeft + (categoryWidth - barGroupWidth) / 2 + seriesIndex * (barWidth + barGap);
+      const barHeight = barBottom - y;
+      const barClass = stackedBars ? "bar codon-bar" : wideBars ? "bar histogram-bar" : "bar";
       const radius = wideBars ? 3 : 0;
       parts.push(
         `<rect class="${barClass}" data-codon="${escapeXml(category.id)}" data-series="${escapeXml(item.id)}" x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${barWidth.toFixed(2)}" height="${Math.max(0, barHeight).toFixed(2)}" rx="${radius}" fill="${item.color}" fill-opacity="${barFillOpacity}"><title>${escapeXml(bar?.title ?? `${category.label}: ${value}`)}</title></rect>`
       );
+      stackOffset = stackEnd;
     });
     if (splitCodonLabels) {
       parts.push(`<text class="codon-label" x="${center.toFixed(2)}" y="${height - margin.bottom + 14}"><tspan x="${center.toFixed(2)}">${escapeXml(category.label[0] ?? "")}</tspan><tspan x="${center.toFixed(2)}" dy="10">${escapeXml(category.label[1] ?? "")}</tspan><tspan x="${center.toFixed(2)}" dy="10">${escapeXml(category.label[2] ?? "")}</tspan></text>`);
@@ -779,7 +829,7 @@ export function renderLinePlotSvg(spec) {
         ])].filter((tick) => tick >= xMin && tick <= xMax);
   const parts = [
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(spec.title)}" data-plot-foundation="observable-plot" data-plot-backend="d3" data-plot-renderer="sms3">`,
-    "<style>text{font-family:Inter,Arial,sans-serif;font-size:12px;fill:#172026}.title{font-size:18px;font-weight:700}.axis{stroke:#5c6b75;stroke-width:1}.grid{stroke:#dfe7ec;stroke-width:1}.zero{stroke:#172026;stroke-width:1.2}.line{fill:none;stroke-width:2.2}.band{stroke:none}.dot{stroke:#fff;stroke-width:1}.legend-label{font-size:11px}.note{font-size:11px;fill:#64748b}</style>",
+    "<style>text{font-family:Inter,Arial,sans-serif;font-size:12px;fill:#172026}.title{font-size:18px;font-weight:700}.axis{stroke:#5c6b75;stroke-width:1}.grid{stroke:#dfe7ec;stroke-width:1}.zero{stroke:#172026;stroke-width:1.2}.line{fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}.band{stroke:none}.dot{stroke:none}.legend-label{font-size:11px}.note{font-size:11px;fill:#64748b}</style>",
     `<rect width="${width}" height="${height}" fill="#ffffff"></rect>`,
     `<text class="title" x="${FIGURE_TEXT_X}" y="${FIGURE_TITLE_Y}">${escapeXml(spec.title)}</text>`,
     ...header.subtitleLines.map((line, index) =>
