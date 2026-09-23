@@ -1212,18 +1212,8 @@ export function shouldUseCircularFeatureLabelFallback(trackType, hasSlotLayout, 
     width >= 8;
 }
 
-export function shouldUseStraightCircularFeatureLabel(trackType, hasSlotLayout, pixelsPerBp, viewSpan, recordLength) {
-  const px = Number(pixelsPerBp);
-  const span = Number(viewSpan);
-  const length = Number(recordLength);
-  return Boolean(hasSlotLayout) &&
-    trackType !== "digest-fragments" &&
-    Number.isFinite(px) &&
-    px >= 1.4 &&
-    Number.isFinite(span) &&
-    Number.isFinite(length) &&
-    length > 0 &&
-    span < length * 0.75;
+export function shouldCurveCircularFeatureLabel(trackType, hasSlotLayout) {
+  return trackType === "digest-fragments" || Boolean(hasSlotLayout);
 }
 
 export function chooseCircularArcLabelPlacement(
@@ -1803,13 +1793,6 @@ function drawIntervalTrack(ctx, track, cx, cy, outerRadius, innerRadius, state, 
     const labelEndAngle = absToAngle(labelEnd, state, arc);
     const labelArcWidth = Math.max(0, Math.abs(labelEndAngle - labelStartAngle) * Math.max(1, labelRadius) - headLength);
     const labelPaddingPx = slotLayout ? 12 : 10;
-    const useStraightZoomLabel = shouldUseStraightCircularFeatureLabel(
-      track.type,
-      Boolean(slotLayout),
-      pxPerBp,
-      state.viewSpan,
-      record.length
-    );
     const labelOptionsBase = {
       minSize: 8,
       maxSize: slotLayout ? 10 : 11,
@@ -1880,7 +1863,7 @@ function drawIntervalTrack(ctx, track, cx, cy, outerRadius, innerRadius, state, 
         angle: labelPlacement.angle,
         availableAngle: labelPlacement.availableAngle,
         options: labelOptions,
-        curved: (track.type === "digest-fragments" || Boolean(slotLayout)) && !useStraightZoomLabel,
+        curved: shouldCurveCircularFeatureLabel(track.type, Boolean(slotLayout)),
         tangentialFallback: track.type !== "digest-fragments"
       });
       continue;
