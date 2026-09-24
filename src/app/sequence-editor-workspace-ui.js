@@ -1121,10 +1121,15 @@ function renderSequenceEditorWorkspace(previousState = null) {
     const requestedKey = sequences.some((sequence) => sequence.key === activeViewerSequence?.sequenceKey)
       ? activeViewerSequence.sequenceKey
       : sequences[0].key;
+    const requestedSequence = sequences.find((sequence) => sequence.key === requestedKey) ?? sequences[0];
+    const initialSpan = Math.max(0, Math.floor(Number(previousState?.__initialViewerSpan) || 0));
+    const useInitialSpan = !activeViewerSequence && initialSpan > 0;
     const requested = {
       sequenceKey: requestedKey,
-      start: activeViewerSequence?.startBlank === false ? activeViewerSequence.start : "",
-      end: activeViewerSequence?.endBlank === false ? activeViewerSequence.end : ""
+      start: activeViewerSequence?.startBlank === false ? activeViewerSequence.start : useInitialSpan ? 1 : "",
+      end: activeViewerSequence?.endBlank === false
+        ? activeViewerSequence.end
+        : useInitialSpan ? Math.min(requestedSequence.length, initialSpan) : ""
     };
     return validateViewerSequenceRegionRequest(requested, sequences).selection
       ?? validateViewerSequenceRegionRequest({ sequenceKey: requestedKey, start: "", end: "" }, sequences).selection;
@@ -1328,7 +1333,7 @@ function renderSequenceEditorWorkspace(previousState = null) {
   };
 }
 
-export function renderSequenceEditorOutput(container, sequenceEditor = {}, editorDocument = null) {
+export function renderSequenceEditorOutput(container, sequenceEditor = {}, editorDocument = null, renderOptions = {}) {
   const sourceInput = document.createElement("textarea");
   const controller = createSequenceEditorWorkspaceController({
     elements: {
@@ -1348,6 +1353,7 @@ export function renderSequenceEditorOutput(container, sequenceEditor = {}, edito
     filename: sequenceEditor.filename ?? "sequence-editor-cleaned.fasta",
     lineWidth: String(sequenceEditor.lineWidth ?? "60"),
     featureTrackOverrides: sequenceEditor.featureTrackOverrides ?? [],
+    __initialViewerSpan: renderOptions.initialViewerSpan,
     ...editorDocument?.state,
     __documentLoaded: Boolean(editorDocument),
     __documentSource: editorDocument?.source

@@ -54,13 +54,17 @@ export function createAppLayoutController({ elements }) {
       return;
     }
 
+    const visualViewport = window.visualViewport;
+    const viewportBottom = visualViewport
+      ? visualViewport.offsetTop + visualViewport.height
+      : window.innerHeight;
     const sidebarTop = Math.max(
       SIDEBAR_VIEWPORT_MARGIN,
       elements.toolNav.getBoundingClientRect().top
     );
     const availableHeight = Math.max(
       120,
-      Math.floor(window.innerHeight - sidebarTop - SIDEBAR_VIEWPORT_MARGIN)
+      Math.floor(viewportBottom - sidebarTop - SIDEBAR_VIEWPORT_MARGIN)
     );
     elements.appShell.style.setProperty("--sidebar-available-height", `${availableHeight}px`);
   }
@@ -205,6 +209,8 @@ export function createAppLayoutController({ elements }) {
     mobileNavigationQuery.addEventListener("change", handleNavigationModeChange);
     window.addEventListener("resize", handleWindowResize);
     window.addEventListener("scroll", updateSidebarAvailableHeight, { passive: true });
+    window.visualViewport?.addEventListener("resize", updateSidebarAvailableHeight, { passive: true });
+    window.visualViewport?.addEventListener("scroll", updateSidebarAvailableHeight, { passive: true });
   }
 
   return {

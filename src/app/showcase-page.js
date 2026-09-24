@@ -227,6 +227,10 @@ function recordHasAlignedReadDetails(record) {
   );
 }
 
+function recordHasVariantSites(record) {
+  return (record?.tracks ?? []).some((track) => track?.id === "vcf-variants");
+}
+
 function clampShowcaseWindow(start, span, length) {
   const safeSpan = Math.max(1, Math.min(length, Math.ceil(span)));
   let safeStart = Math.floor(start);
@@ -250,7 +254,9 @@ function chooseShowcaseFocusRange(record, targetSpan) {
   }
   const widestRange = ranges.reduce((max, range) => Math.max(max, range.end - range.start + 1), 0);
   const alignedReadDetails = recordHasAlignedReadDetails(record);
-  const detailSpan = widestRange <= 2 && !alignedReadDetails ? Math.max(targetSpan, 72) : targetSpan;
+  const detailSpan = widestRange <= 2 && !alignedReadDetails && !recordHasVariantSites(record)
+    ? Math.max(targetSpan, 72)
+    : targetSpan;
   const maxFocusSpan = record?.alphabet === "protein" || alignedReadDetails
     ? detailSpan
     : Math.max(detailSpan, Math.ceil(detailSpan * 2.5));
@@ -280,7 +286,7 @@ function chooseShowcaseFocusRange(record, targetSpan) {
 }
 
 function showcaseViewerTargetSpan(record) {
-  if (record?.alphabet === "protein") {
+  if (record?.alphabet === "protein" || recordHasVariantSites(record)) {
     return 48;
   }
   return recordHasAlignedReadDetails(record) ? 42 : 48;
@@ -578,7 +584,7 @@ async function renderShowcaseCard(card, item, token, context) {
       renderSangerTraceViewer(preview, result.visual.sangerTrace);
     } else if (result.visual?.sequenceEditor) {
       preview.classList.add("showcase-preview-viewer");
-      renderSequenceEditorOutput(preview, result.visual.sequenceEditor);
+      renderSequenceEditorOutput(preview, result.visual.sequenceEditor, null, { initialViewerSpan: 48 });
     } else if (result.visual?.viewer) {
       preview.classList.add("showcase-preview-viewer");
       renderShowcaseViewer(preview, result.visual.viewer, context);

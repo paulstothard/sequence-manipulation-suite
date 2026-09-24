@@ -220,11 +220,13 @@ function addLetterStack(svg, column, logo, state, geometry) {
     if (pixelHeight < 0.35) continue;
     const { ascent, descent } = measureLogoGlyph(symbol);
     const measuredHeight = Math.max(LOGO_GLYPH_HEIGHT, ascent + descent);
+    const fill = colorForSymbol(symbol, state, logo.symbols);
     const text = svgElement("text", {
       class: "sequence-logo-letter",
       x: 0,
       y: 0,
-      fill: colorForSymbol(symbol, state, logo.symbols),
+      fill,
+      style: `fill: ${fill}`,
       "font-family": FIGURE_FONT,
       "font-size": 100,
       "font-weight": 800,
@@ -382,6 +384,7 @@ function buildLogoSvg(logo, state, availableWidth) {
     width,
     height,
     class: "sequence-logo-svg",
+    style: "color-scheme: light",
     role: "img",
     tabindex: "0",
     "data-sms3-inspection-highlight": "none",

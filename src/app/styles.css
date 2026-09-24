@@ -566,7 +566,7 @@ button:hover {
 }
 
 .tool-nav-scroll {
-  max-height: var(--sidebar-available-height, calc(100vh - 7rem));
+  max-height: calc(var(--sidebar-available-height, calc(100vh - 7rem)) - 2px);
   overflow: auto;
   padding: 0.85rem;
   padding-right: 0.95rem;
@@ -1890,11 +1890,17 @@ textarea {
   --viewer-border-strong: var(--app-output-border-strong);
   --viewer-text: var(--app-output-text);
   --viewer-muted: var(--app-output-muted);
+  --viewer-placeholder: var(--app-output-placeholder);
   --viewer-accent: var(--app-output-accent);
   --viewer-accent-strong: var(--app-output-accent-strong);
+  --viewer-accent-soft: var(--app-output-accent-soft);
+  --viewer-danger: var(--app-output-danger);
+  --viewer-warning: var(--app-output-warning);
+  --viewer-button-gradient: var(--app-output-button-gradient);
   --viewer-hover-bg: var(--app-output-hover-bg);
   --viewer-hover-border: var(--app-output-hover-border);
   --viewer-focus: var(--app-output-focus);
+  --viewer-shadow: var(--app-output-shadow);
   color-scheme: var(--app-output-color-scheme);
   color: var(--app-output-text);
 }
@@ -2030,6 +2036,7 @@ textarea {
 
 .sequence-logo-svg {
   background: #ffffff;
+  color-scheme: light;
   display: block;
   font-family: Arial, Helvetica, "Liberation Sans", sans-serif;
   height: auto;
