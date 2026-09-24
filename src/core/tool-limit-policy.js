@@ -228,6 +228,10 @@ const TOOL_LIMIT_POLICIES = Object.freeze({
   }),
   "vcf-filter": Object.freeze({ maxVariants: Object.freeze({}) }),
   "vcf-random-sampler": Object.freeze({ maxInputVariants: Object.freeze({}) }),
+  "sequence-logo": Object.freeze({
+    logoInputCells: Object.freeze({}),
+    logoBootstrapObservations: Object.freeze({})
+  }),
   "multiple-align-coding-dna": Object.freeze({
     maxAlignmentRecords: Object.freeze({}),
     maxTotalSymbols: Object.freeze({}),

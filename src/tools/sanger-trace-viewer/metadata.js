@@ -380,6 +380,13 @@ export const sangerTraceReviewEditorMetadata = {
     workerExport: "runSangerTraceReviewEditor",
     workflowOutputIds: ["primary", "report", "table", "traceSvg", "fasta", "fastq", "traceJson", "warnings"]
   }),
+  showcaseOutputs: [
+    {
+      id: "interactive-trace-editor",
+      label: "Trace editor",
+      options: { outputFormat: "interactive-trace" }
+    }
+  ],
   options: [
     reviewSettingsGroup(false),
     trimmingGroup("manual"),

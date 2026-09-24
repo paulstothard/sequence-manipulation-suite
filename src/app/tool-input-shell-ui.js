@@ -339,10 +339,35 @@ export function createToolInputShellController({
       "single";
   }
 
+  function getInputModeExampleOption(tool = state.selectedTool) {
+    return flattenOptions(tool?.metadata?.options ?? []).find((option) =>
+      option.placement === "input" &&
+      Array.isArray(option.choices) &&
+      option.choices.some((choice) => String(choice.example ?? "").trim())
+    );
+  }
+
+  function getActiveInputModeExample(tool = state.selectedTool) {
+    const option = getInputModeExampleOption(tool);
+    if (!option) return null;
+    const roots = [elements.inputPanel, elements.toolOptions];
+    const value = roots
+      .map((root) => root?.querySelector(`select[name="${option.id}"]`)?.value ??
+        root?.querySelector(`input[name="${option.id}"]:checked`)?.value)
+      .find((candidate) => candidate !== undefined) ?? option.defaultValue;
+    const choice = option.choices.find((candidate) => candidate.value === value);
+    const choiceExample = String(choice?.example ?? "");
+    return choiceExample.trim() ? choiceExample : String(tool?.example ?? "");
+  }
+
   function hasLoadableExampleForActiveInputMode(tool = state.selectedTool) {
     const activeFileOptionExamples = getActiveInputFileOptionExamples(tool);
     if (activeFileOptionExamples.length > 0) {
       return true;
+    }
+    const inputModeExample = getActiveInputModeExample(tool);
+    if (inputModeExample !== null) {
+      return Boolean(inputModeExample.trim());
     }
     if (!String(tool?.example ?? "").trim()) {
       return false;
@@ -400,9 +425,20 @@ export function createToolInputShellController({
     return [
       tool?.example ?? "",
       ...flattenOptions(tool?.metadata?.options ?? [])
+        .flatMap((option) => option.choices ?? [])
+        .map((choice) => choice.example ?? ""),
+      ...flattenOptions(tool?.metadata?.options ?? [])
         .filter((option) => option.type === "file" && option.placement === "input" && option.pasteArea === true)
         .map((option) => option.example ?? "")
     ];
+  }
+
+  function maybeLoadInputModeExampleIfSafe(tool = state.selectedTool) {
+    const example = getActiveInputModeExample(tool);
+    if (example === null) return;
+    const knownExamples = getKnownInputModeExamples(tool);
+    if (!canReplaceInputWithExample(elements.sequenceInput.value, knownExamples)) return;
+    elements.sequenceInput.value = formatExampleInputForDisplay(example);
   }
 
   function maybeLoadReadLayoutExampleIfSafe(tool = state.selectedTool) {
@@ -575,6 +611,15 @@ export function createToolInputShellController({
     container.append(fragment);
     groupRelatedInputFileOptions(container);
     elements.dropZone.before(container);
+    container.addEventListener("change", (event) => {
+      const modeOption = getInputModeExampleOption(tool);
+      if (modeOption && (event.target?.name === modeOption.id || event.target?.id === modeOption.id)) {
+        maybeLoadInputModeExampleIfSafe(tool);
+        clearToolOutput();
+      }
+      updateInputActionButtons({ previewTable: true });
+      updateToolOptionSuggestions({ autofillColumns: true, forceAutofillColumns: true });
+    });
     container
       .querySelectorAll("input[name='readLayout']")
       .forEach((input) => input.addEventListener("change", () => {
@@ -846,8 +891,9 @@ export function createToolInputShellController({
         }
       }
     } else {
+      const inputModeExample = getActiveInputModeExample(state.selectedTool);
       elements.sequenceInput.value = toolRequiresInput(state.selectedTool)
-        ? formatExampleInputForDisplay(state.selectedTool.example ?? "")
+        ? formatExampleInputForDisplay(inputModeExample ?? state.selectedTool.example ?? "")
         : "";
     }
     if (state.selectedTool?.metadata?.id === "sankey-plot") {

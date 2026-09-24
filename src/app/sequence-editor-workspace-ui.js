@@ -1327,3 +1327,29 @@ function renderSequenceEditorWorkspace(previousState = null) {
     render: renderSequenceEditorWorkspace
   };
 }
+
+export function renderSequenceEditorOutput(container, sequenceEditor = {}, editorDocument = null) {
+  const sourceInput = document.createElement("textarea");
+  const controller = createSequenceEditorWorkspaceController({
+    elements: {
+      markdownWorkspace: container,
+      sequenceInput: sourceInput
+    },
+    state: {
+      selectedTool: {
+        example: sequenceEditor.input ?? ""
+      }
+    }
+  });
+  controller.render({
+    text: sequenceEditor.input ?? "",
+    geneticCode: sequenceEditor.geneticCode ?? "1",
+    viewerLayout: sequenceEditor.viewerLayout === "circular" ? "circular" : "linear",
+    filename: sequenceEditor.filename ?? "sequence-editor-cleaned.fasta",
+    lineWidth: String(sequenceEditor.lineWidth ?? "60"),
+    featureTrackOverrides: sequenceEditor.featureTrackOverrides ?? [],
+    ...editorDocument?.state,
+    __documentLoaded: Boolean(editorDocument),
+    __documentSource: editorDocument?.source
+  });
+}

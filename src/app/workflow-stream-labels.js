@@ -83,6 +83,7 @@ export function describeStream(stream) {
     return describeViewerStream(stream);
   }
   if (stream.kind === "figure") {
+    if (stream.figureType === "sequence-logo") return "Sequence logo";
     return stream.figureType === "protein-sequence-figure" ? "Protein sequence figure" : "Genome Figure";
   }
   if (stream.kind === "orf-records") {

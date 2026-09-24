@@ -59,10 +59,11 @@ import {
 } from "./dna-viewer-canvas.js";
 import { renderProteinViewer } from "./protein-viewer-canvas.js";
 import { renderProteinSequenceFigure } from "./protein-sequence-figure-ui.js";
+import { renderSequenceLogo } from "./sequence-logo-ui.js";
 import { renderGenomeFigure } from "./genome-figure-svg.js";
 import { renderProteinStructureViewer } from "./protein-structure-viewer.js";
 import { renderSangerTraceViewer } from "./sanger-trace-viewer.js";
-import { createSequenceEditorWorkspaceController } from "./sequence-editor-workspace-ui.js";
+import { renderSequenceEditorOutput } from "./sequence-editor-workspace-ui.js";
 import { renderSequenceExtractorWorkspace } from "./sequence-extractor-workspace-ui.js";
 import { loadMarkdownNotebookDraft, saveMarkdownNotebookDraft } from "./markdown-notebook-model.js";
 import { renderObservablePlotPreview } from "./plot-preview-ui.js";
@@ -1679,7 +1680,7 @@ function renderVisualOutput(scope, svg, options = {}) {
     }
   }
   visualOutput._sms3PortableViewerSnapshot = null;
-  if (!svg && !options.viewer && !options.figure && !options.proteinFigure && !options.proteinStructure && !options.notebook && !options.sangerTrace && !options.sequenceEditor && !options.sequenceExtractor && !options.treeViewer && !options.plateLayout) {
+  if (!svg && !options.viewer && !options.figure && !options.proteinFigure && !options.sequenceLogo && !options.proteinStructure && !options.notebook && !options.sangerTrace && !options.sequenceEditor && !options.sequenceExtractor && !options.treeViewer && !options.plateLayout) {
     visualOutput.hidden = true;
     visualOutput.textContent = "";
     return;
@@ -1688,7 +1689,9 @@ function renderVisualOutput(scope, svg, options = {}) {
   visualOutput.textContent = "";
   const heading = document.createElement("h4");
   heading.className = "visual-output-heading";
-  heading.textContent = options.plateLayout ? "Plate Layout Planner" : options.treeViewer ? "Tree Viewer" : options.proteinFigure
+  heading.textContent = options.plateLayout ? "Plate Layout Planner" : options.treeViewer ? "Tree Viewer" : options.sequenceLogo
+    ? "Sequence Logo"
+    : options.proteinFigure
     ? "Protein Sequence Figure"
     : options.figure
     ? "Genome Figure"
@@ -1726,30 +1729,7 @@ function renderVisualOutput(scope, svg, options = {}) {
     return "";
   }
   if (options.sequenceEditor) {
-    const sourceInput = document.createElement("textarea");
-    const controller = createSequenceEditorWorkspaceController({
-      elements: {
-        markdownWorkspace: visualOutput,
-        sequenceInput: sourceInput
-      },
-      state: {
-        selectedTool: {
-          example: options.sequenceEditor.input ?? ""
-        }
-      },
-      addMessage
-    });
-    controller.render({
-      text: options.sequenceEditor.input ?? "",
-      geneticCode: options.sequenceEditor.geneticCode ?? "1",
-      viewerLayout: options.sequenceEditor.viewerLayout === "circular" ? "circular" : "linear",
-      filename: options.sequenceEditor.filename ?? "sequence-editor-cleaned.fasta",
-      lineWidth: String(options.sequenceEditor.lineWidth ?? "60"),
-      featureTrackOverrides: options.sequenceEditor.featureTrackOverrides ?? [],
-      ...options.editorDocument?.state,
-      __documentLoaded:!!options.editorDocument,
-      __documentSource:options.editorDocument?.source
-    });
+    renderSequenceEditorOutput(visualOutput, options.sequenceEditor, options.editorDocument);
     return "";
   }
   if (options.sequenceExtractor) {
@@ -1762,6 +1742,11 @@ function renderVisualOutput(scope, svg, options = {}) {
   }
   if (options.proteinFigure) {
     renderProteinSequenceFigure(visualOutput, options.proteinFigure);
+    attachVisualInspection(visualOutput);
+    return "";
+  }
+  if (options.sequenceLogo) {
+    renderSequenceLogo(visualOutput, options.sequenceLogo);
     attachVisualInspection(visualOutput);
     return "";
   }
@@ -1826,7 +1811,7 @@ function renderVisualOutput(scope, svg, options = {}) {
 }
 
 function applyToolOutputChoice(choice) {
-  const hasVisualOutput = Boolean(choice.svg || choice.viewer || choice.figure || choice.proteinFigure || choice.proteinStructure || choice.notebook || choice.sangerTrace || choice.sequenceEditor || choice.sequenceExtractor || choice.treeViewer || choice.plateLayout);
+  const hasVisualOutput = Boolean(choice.svg || choice.viewer || choice.figure || choice.proteinFigure || choice.sequenceLogo || choice.proteinStructure || choice.notebook || choice.sangerTrace || choice.sequenceEditor || choice.sequenceExtractor || choice.treeViewer || choice.plateLayout);
   const hasPrimaryOutput = Boolean(choice.text || choice.tableStream || hasVisualOutput);
   elements.toolOutput.dataset.rawOutput = choice.text;
   elements.toolOutput.value = choice.tableStream
@@ -1846,6 +1831,7 @@ function applyToolOutputChoice(choice) {
     viewer: choice.viewer,
     figure: choice.figure,
     proteinFigure: choice.proteinFigure,
+    sequenceLogo: choice.sequenceLogo,
     proteinStructure: choice.proteinStructure,
     notebook: choice.notebook,
     sangerTrace: choice.sangerTrace,
@@ -1868,7 +1854,7 @@ function applyToolOutputChoice(choice) {
   elements.toolOutput.hidden = Boolean(choice.tableStream || hasVisualOutput || !choice.text);
   setOutputSearchRowVisible("tool", Boolean(choice.tableStream || (!hasVisualOutput && choice.text)));
   updateOutputActions("tool", {
-    hidden: Boolean(choice.tableStream || choice.viewer || choice.figure || choice.proteinFigure || choice.proteinStructure || choice.notebook || choice.sangerTrace || choice.sequenceEditor || choice.sequenceExtractor || choice.treeViewer || choice.plateLayout || (!choice.text && !choice.svg)),
+    hidden: Boolean(choice.tableStream || choice.viewer || choice.figure || choice.proteinFigure || choice.sequenceLogo || choice.proteinStructure || choice.notebook || choice.sangerTrace || choice.sequenceEditor || choice.sequenceExtractor || choice.treeViewer || choice.plateLayout || (!choice.text && !choice.svg)),
     mimeType: choice.download.mimeType,
     label: choice.label
   });
@@ -1923,6 +1909,7 @@ function renderGeneratedToolOutputChoice(result) {
     workspaceLayerContext
   );
   const proteinFigure = result.visual?.proteinFigure ?? null;
+  const sequenceLogo = result.visual?.sequenceLogo ?? null;
   const proteinStructure = result.visual?.proteinStructure ?? null;
   const notebook = result.visual?.notebook ?? null;
   const sangerTrace = result.visual?.sangerTrace ?? null;
@@ -1949,6 +1936,7 @@ function renderGeneratedToolOutputChoice(result) {
     viewer,
     figure,
     proteinFigure,
+    sequenceLogo,
     proteinStructure,
     notebook,
     sangerTrace,

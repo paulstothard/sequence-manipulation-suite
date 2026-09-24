@@ -21,6 +21,8 @@ import {
   multipleAlignmentTableColumns
 } from "../../core/multiple-sequence-alignment.js";
 import { makeTableStream, makeTextStream, makeToolResult } from "../../core/workflow.js";
+import { calculateSequenceLogo } from "../../core/sequence-logo.js";
+import { formatFastaRecord } from "../../core/fasta.js";
 
 const OUTPUT_FORMATS = new Set([
   "report",
@@ -29,6 +31,7 @@ const OUTPUT_FORMATS = new Set([
   "clustal",
   "tsv",
   "svg-color",
+  "sequence-logo",
   "tree-viewer",
   "nj-tree",
   "nj-tree-svg",
@@ -117,6 +120,25 @@ async function runMultipleAlignment(input, options = {}, alphabet, context = {})
     lineWidth: options.lineWidth,
     maxCells: options.maxTotalSymbols
   });
+  const logoCalculation = outputFormat === "sequence-logo"
+    ? await calculateSequenceLogo(
+      prepared.alignment.titles.map((title, index) => formatFastaRecord(
+        title,
+        prepared.alignment.aligned[index],
+        80
+      )).join("\n"),
+      {
+        inputFormat: "alignment",
+        alphabet: alphabet === "protein" ? "protein" : alphabet === "coding-dna" ? "dna" : "auto",
+        ambiguousPolicy: "exclude",
+        sequenceWeighting: "none",
+        correction: "none",
+        bootstrapReplicates: 0,
+        title: alphabet === "coding-dna" ? "Aligned coding-DNA sequence logo" : "Multiple-alignment sequence logo"
+      },
+      context
+    )
+    : null;
   const isTreeOutput = outputFormat === "nj-tree" || outputFormat === "nj-tree-svg";
   const treeReport = isTreeOutput ? makeMultipleAlignmentTreeReport(prepared.alignment) : "";
   const treeSvg = outputFormat === "nj-tree-svg" ? makeMultipleAlignmentTreeSvg(prepared.alignment) : "";
@@ -128,6 +150,9 @@ async function runMultipleAlignment(input, options = {}, alphabet, context = {})
     clustal,
     tsv,
     "svg-color": svg,
+    "sequence-logo": logoCalculation
+      ? `Sequence logo\nAlphabet: ${logoCalculation.logo.alphabet}\nColumns: ${logoCalculation.logo.alignmentLength}\nSequences: ${logoCalculation.logo.sequenceCount}`
+      : "",
     "nj-tree": treeReport,
     "nj-tree-svg": treeSvg
   };
@@ -138,6 +163,7 @@ async function runMultipleAlignment(input, options = {}, alphabet, context = {})
     clustal: "aln",
     tsv: "tsv",
     "svg-color": "svg",
+    "sequence-logo": "logo-summary.txt",
     "nj-tree": "nwk.txt",
     "nj-tree-svg": "tree.svg"
   };
@@ -148,6 +174,7 @@ async function runMultipleAlignment(input, options = {}, alphabet, context = {})
     clustal: "text/plain;charset=utf-8",
     tsv: "text/tab-separated-values;charset=utf-8",
     "svg-color": "image/svg+xml;charset=utf-8",
+    "sequence-logo": "text/plain;charset=utf-8",
     "nj-tree": "text/plain;charset=utf-8",
     "nj-tree-svg": "image/svg+xml;charset=utf-8"
   };
@@ -182,6 +209,14 @@ async function runMultipleAlignment(input, options = {}, alphabet, context = {})
         `multiple-alignment-${alphabet}`
       ),
       ...(outputFormat === "svg-color" ? { coloredSvg: makeTextStream(svg, "image/svg+xml") } : {}),
+      ...(logoCalculation ? {
+        sequenceLogo: {
+          kind: "figure",
+          figureType: "sequence-logo",
+          label: "Sequence logo",
+          figure: logoCalculation.logo
+        }
+      } : {}),
       ...(isTreeOutput ? {
         tree: makeTextStream(treeReport, "text/plain"),
         distanceTable: makeTableStream(multipleAlignmentDistanceTableColumns, distanceRows, `multiple-alignment-${alphabet}-distances`),
@@ -190,6 +225,8 @@ async function runMultipleAlignment(input, options = {}, alphabet, context = {})
     },
     visual: outputFormat === "svg-color"
       ? { svg }
+      : outputFormat === "sequence-logo"
+        ? { sequenceLogo: logoCalculation.logo }
       : outputFormat === "nj-tree-svg"
         ? { svg: treeSvg }
         : undefined

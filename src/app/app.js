@@ -5629,7 +5629,7 @@ async function runSelectedWorkflow() {
       stepCount: result.steps.length
     };
     renderWorkflowView();
-    const hasWorkflowVisual = Boolean(formatted.svg || formatted.viewer || formatted.figure || formatted.proteinFigure || formatted.sequenceExtractor || formatted.treeViewer || formatted.plateLayout);
+    const hasWorkflowVisual = Boolean(formatted.svg || formatted.viewer || formatted.figure || formatted.proteinFigure || formatted.sequenceLogo || formatted.sequenceExtractor || formatted.treeViewer || formatted.plateLayout);
     elements.workflowOutput.value = formatted.text;
     elements.workflowOutput.dataset.rawOutput = formatted.rawText;
     elements.workflowOutput.dataset.filename = formatted.filename ?? "sms3-workflow-output.txt";
@@ -5643,6 +5643,7 @@ async function runSelectedWorkflow() {
       viewer: formatted.viewer,
       figure: formatted.figure,
       proteinFigure: formatted.proteinFigure,
+      sequenceLogo: formatted.sequenceLogo,
       sequenceExtractor: formatted.sequenceExtractor,
       treeViewer: formatted.treeViewer,
       plateLayout: formatted.plateLayout,
@@ -5651,7 +5652,7 @@ async function runSelectedWorkflow() {
     elements.workflowOutput.hidden = Boolean(formatted.tableStream || hasWorkflowVisual);
     setOutputSearchRowVisible("workflow", Boolean(formatted.tableStream || (!hasWorkflowVisual && formatted.text)));
     updateOutputActions("workflow", {
-      hidden: Boolean(formatted.tableStream || formatted.plateLayout || formatted.proteinFigure),
+      hidden: Boolean(formatted.tableStream || formatted.plateLayout || formatted.proteinFigure || formatted.sequenceLogo),
       mimeType: formatted.mimeType,
       label: formatted.outputLabel
     });

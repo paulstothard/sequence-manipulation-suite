@@ -1882,6 +1882,348 @@ textarea {
   }
 }
 
+.sequence-logo-output {
+  --viewer-surface: var(--app-output-surface);
+  --viewer-surface-soft: var(--app-output-surface-soft);
+  --viewer-surface-strong: var(--app-output-surface-strong);
+  --viewer-border: var(--app-output-border);
+  --viewer-border-strong: var(--app-output-border-strong);
+  --viewer-text: var(--app-output-text);
+  --viewer-muted: var(--app-output-muted);
+  --viewer-accent: var(--app-output-accent);
+  --viewer-accent-strong: var(--app-output-accent-strong);
+  --viewer-hover-bg: var(--app-output-hover-bg);
+  --viewer-hover-border: var(--app-output-hover-border);
+  --viewer-focus: var(--app-output-focus);
+  color-scheme: var(--app-output-color-scheme);
+  color: var(--app-output-text);
+}
+
+.sequence-logo-output,
+.sequence-logo-output * {
+  box-sizing: border-box;
+}
+
+.sequence-logo-workspace {
+  --logo-panel-width: min(25rem, 38vw);
+  background: var(--viewer-surface-soft);
+  border-radius: 0 0 8px 8px;
+  color: var(--viewer-text);
+  overflow: hidden;
+}
+
+.sequence-logo-toolbar {
+  align-items: end;
+  background: var(--viewer-surface);
+  border-bottom: 1px solid var(--viewer-border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.65rem;
+  padding: 0.55rem 0.7rem;
+}
+
+.sequence-logo-toolbar-title {
+  margin-right: auto;
+  min-width: 10rem;
+}
+
+.sequence-logo-toolbar-title strong,
+.sequence-logo-toolbar-title span {
+  display: block;
+}
+
+.sequence-logo-toolbar-title strong {
+  color: var(--viewer-text);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.sequence-logo-toolbar-title span {
+  color: var(--viewer-muted);
+  font-size: 0.67rem;
+  margin-top: 0.08rem;
+}
+
+.sequence-logo-toolbar-actions {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.sequence-logo-button {
+  background: var(--viewer-surface);
+  border: 1px solid var(--viewer-border-strong);
+  border-radius: 6px;
+  color: var(--viewer-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.73rem;
+  font-weight: 700;
+  min-height: 1.9rem;
+  padding: 0.25rem 0.55rem;
+}
+
+.sequence-logo-button:hover,
+.sequence-logo-button.active,
+.sequence-logo-button[aria-pressed="true"] {
+  background: var(--viewer-hover-bg);
+  border-color: var(--viewer-focus);
+  color: var(--viewer-accent);
+}
+
+.sequence-logo-button:focus-visible,
+.sequence-logo-field :is(input, select):focus-visible {
+  outline: 2px solid var(--viewer-focus);
+  outline-offset: 1px;
+}
+
+.sequence-logo-field {
+  color: var(--viewer-muted);
+  display: grid;
+  font-size: 0.65rem;
+  font-weight: 700;
+  gap: 0.12rem;
+  min-width: 7.4rem;
+}
+
+.sequence-logo-field-wide {
+  grid-column: 1 / -1;
+}
+
+.sequence-logo-field :is(input, select) {
+  background: var(--viewer-surface);
+  border: 1px solid var(--viewer-border-strong);
+  border-radius: 6px;
+  color: var(--viewer-text);
+  font: inherit;
+  font-size: 0.73rem;
+  min-height: 1.9rem;
+  min-width: 0;
+  padding: 0.18rem 0.45rem;
+}
+
+.sequence-logo-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 22rem;
+}
+
+.sequence-logo-workspace.panel-open .sequence-logo-body {
+  grid-template-columns: minmax(0, 1fr) var(--logo-panel-width);
+}
+
+.sequence-logo-paper {
+  background: var(--viewer-surface-soft);
+  min-width: 0;
+  padding: 0.65rem;
+}
+
+.sequence-logo-svg-host {
+  background: #ffffff;
+  border: 1px solid #d3dce1;
+  box-shadow: 0 2px 9px rgb(15 23 42 / 0.07);
+  margin: 0 auto;
+  max-width: 78rem;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0.55rem;
+}
+
+.sequence-logo-svg {
+  background: #ffffff;
+  display: block;
+  font-family: Arial, Helvetica, "Liberation Sans", sans-serif;
+  height: auto;
+  max-width: none;
+  shape-rendering: geometricPrecision;
+  text-rendering: geometricPrecision;
+  width: 100%;
+}
+
+.sequence-logo-range-notice {
+  background: color-mix(in srgb, var(--warning) 13%, var(--viewer-surface));
+  border: 1px solid color-mix(in srgb, var(--warning) 50%, var(--viewer-border));
+  border-radius: 6px;
+  color: var(--viewer-text);
+  font-size: 0.75rem;
+  margin-bottom: 0.55rem;
+  padding: 0.5rem 0.6rem;
+}
+
+.sequence-logo-panel {
+  background: var(--viewer-surface);
+  border-left: 1px solid var(--viewer-border);
+  min-width: 0;
+  overflow: auto;
+}
+
+.sequence-logo-panel-header {
+  align-items: center;
+  border-bottom: 1px solid var(--viewer-border);
+  display: flex;
+  gap: 0.4rem;
+  padding: 0.45rem;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--viewer-surface);
+}
+
+.sequence-logo-tabs {
+  display: grid;
+  flex: 1;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.2rem;
+}
+
+.sequence-logo-tabs .sequence-logo-button {
+  min-width: 0;
+  padding-inline: 0.2rem;
+}
+
+.sequence-logo-panel-close {
+  font-size: 1.1rem;
+  line-height: 1;
+  padding-inline: 0.45rem;
+}
+
+.sequence-logo-panel-content {
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 0.7rem;
+}
+
+.sequence-logo-check {
+  align-items: flex-start;
+  color: var(--viewer-text);
+  display: flex;
+  font-size: 0.74rem;
+  gap: 0.45rem;
+  grid-column: 1 / -1;
+  line-height: 1.35;
+}
+
+.sequence-logo-check input {
+  accent-color: var(--viewer-accent);
+  margin: 0.15rem 0 0;
+}
+
+.sequence-logo-help,
+.sequence-logo-caveat,
+.sequence-logo-data-header {
+  color: var(--viewer-muted);
+  font-size: 0.7rem;
+  grid-column: 1 / -1;
+  line-height: 1.42;
+  margin: 0;
+}
+
+.sequence-logo-caveat {
+  border-top: 1px solid var(--viewer-border);
+  margin-top: 0.25rem;
+  padding-top: 0.65rem;
+}
+
+.sequence-logo-data-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.55rem;
+}
+
+.sequence-logo-data-header p {
+  margin: 0;
+}
+
+.sequence-logo-data-wrap {
+  border: 1px solid var(--viewer-border);
+  border-radius: 6px;
+  grid-column: 1 / -1;
+  max-height: 34rem;
+  overflow: auto;
+}
+
+.sequence-logo-data-table {
+  border-collapse: collapse;
+  color: var(--viewer-text);
+  font-size: 0.66rem;
+  width: 100%;
+}
+
+.sequence-logo-data-table :is(th, td) {
+  border-bottom: 1px solid var(--viewer-border);
+  padding: 0.35rem 0.42rem;
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.sequence-logo-data-table thead th {
+  background: var(--viewer-surface-soft);
+  color: var(--viewer-muted);
+  font-weight: 800;
+  position: sticky;
+  top: 0;
+}
+
+.sequence-logo-empty {
+  color: var(--viewer-muted);
+  margin: 0;
+  padding: 0.8rem;
+}
+
+@media (max-width: 800px) {
+  .sequence-logo-toolbar-title {
+    flex-basis: 100%;
+  }
+
+  .sequence-logo-workspace.panel-open .sequence-logo-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sequence-logo-panel {
+    border-left: 0;
+    border-top: 1px solid var(--viewer-border);
+    max-height: 32rem;
+  }
+}
+
+@media (max-width: 560px) {
+  .sequence-logo-toolbar {
+    align-items: stretch;
+    gap: 0.4rem;
+  }
+
+  .sequence-logo-field {
+    flex: 1 1 8rem;
+  }
+
+  .sequence-logo-toolbar-actions {
+    margin-left: auto;
+  }
+
+  .sequence-logo-paper {
+    padding: 0.4rem;
+  }
+
+  .sequence-logo-svg-host {
+    padding: 0.3rem;
+  }
+
+  .sequence-logo-panel-content {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sequence-logo-field,
+  .sequence-logo-check,
+  .sequence-logo-help,
+  .sequence-logo-caveat,
+  .sequence-logo-data-header,
+  .sequence-logo-data-wrap {
+    grid-column: 1;
+  }
+}
+
 .sequence-editor-workspace-shell {
   --se-bg: var(--app-output-bg);
   --se-surface: var(--app-output-surface);
@@ -6622,6 +6964,23 @@ legend {
   min-height: 34rem;
 }
 
+.showcase-preview .sanger-trace-controls {
+  grid-template-columns: repeat(auto-fit, minmax(min(16rem, 100%), 1fr));
+}
+
+.showcase-preview .sanger-trace-toolbar {
+  grid-template-columns: minmax(12rem, 1fr);
+}
+
+.showcase-preview .sanger-trace-toolbar > .sanger-trace-view-info {
+  justify-self: start;
+  white-space: normal;
+}
+
+.showcase-preview .sanger-trace-toolbar-buttons {
+  justify-content: flex-start;
+}
+
 .showcase-preview pre {
   margin: 0;
   white-space: pre-wrap;
@@ -9054,7 +9413,8 @@ legend {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem 0.55rem;
-  max-height: 6.2rem;
+  max-height: 24rem;
+  max-height: clamp(10rem, calc(100dvh - 26rem), 24rem);
   min-width: 10rem;
   overflow: auto;
   padding: 0.38rem;

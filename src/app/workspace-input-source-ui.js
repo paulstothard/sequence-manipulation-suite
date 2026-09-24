@@ -188,7 +188,6 @@ function appendWorkspaceSequenceCollectionPicker({ parent, labelText, compatible
     const remove = document.createElement("button");
     remove.type = "button";
     remove.textContent = "Remove";
-    remove.disabled = selected.length <= requirement.minRecords;
     remove.setAttribute("aria-label", `Remove ${sequence.name}`);
     remove.addEventListener("click", () => onChange(selected.filter((_, itemIndex) => itemIndex !== index).map((record) => record.id)));
     actions.append(moveUp, moveDown, remove);
@@ -271,7 +270,7 @@ export function createWorkspaceInputSourceController({
   const selectedSequenceIdsByToolId = new Map();
   const nativeWorkspaceSequenceByToolId = new Map();
   let workflowInputSourceMode = "paste";
-  let selectedWorkflowSequenceIds = [];
+  const selectedWorkflowSequenceIdsByWorkflow = new WeakMap();
 
   function canRenderToolSource(tool) {
     return (
@@ -344,11 +343,12 @@ export function createWorkspaceInputSourceController({
     }
     const toolId = tool?.metadata?.id ?? "";
     const requirement = getToolWorkspaceSequenceRequirement(tool?.metadata) ?? { minRecords: 1, maxRecords: 1 };
+    const hasStoredSelection = selectedSequenceIdsByToolId.has(toolId);
     const selected = normalizeSelectedSequences(
       compatible,
       selectedSequenceIdsByToolId.get(toolId),
       requirement,
-      { initialize: true }
+      { initialize: !hasStoredSelection }
     );
     selectedSequenceIdsByToolId.set(toolId, selected.map((sequence) => sequence.id));
     return selected;
@@ -580,17 +580,18 @@ export function createWorkspaceInputSourceController({
   function getSelectedWorkflowSequences(workflow) {
     const compatible = getWorkflowCompatibleSequences(workflow);
     if (compatible.length === 0) {
-      selectedWorkflowSequenceIds = [];
+      selectedWorkflowSequenceIdsByWorkflow.set(workflow, []);
       return [];
     }
     const requirement = getWorkflowWorkspaceSequenceRequirement(workflow, tools) ?? { minRecords: 1, maxRecords: 1 };
+    const hasStoredSelection = selectedWorkflowSequenceIdsByWorkflow.has(workflow);
     const selected = normalizeSelectedSequences(
       compatible,
-      selectedWorkflowSequenceIds,
+      selectedWorkflowSequenceIdsByWorkflow.get(workflow),
       requirement,
-      { initialize: true }
+      { initialize: !hasStoredSelection }
     );
-    selectedWorkflowSequenceIds = selected.map((sequence) => sequence.id);
+    selectedWorkflowSequenceIdsByWorkflow.set(workflow, selected.map((sequence) => sequence.id));
     return selected;
   }
 
@@ -639,7 +640,7 @@ export function createWorkspaceInputSourceController({
       const requirement = getWorkflowWorkspaceSequenceRequirement(workflow, tools) ?? { minRecords: 1, maxRecords: 1 };
       const onChange = (ids) => {
         retireWorkflowRun();
-        selectedWorkflowSequenceIds = ids;
+        selectedWorkflowSequenceIdsByWorkflow.set(workflow, ids);
         renderWorkflowSource(workflow, needsInput);
         clearWorkflowOutput();
       };

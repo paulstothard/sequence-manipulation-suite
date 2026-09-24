@@ -30,6 +30,13 @@ export const sequenceEditorMetadata = {
   whenToUse: "Use this when you want to inspect and edit one DNA/RNA sequence after loading it through the standard SMS3 input workflow.",
   inputType: "Plain-text DNA/RNA sequence, FASTA records, GenBank/DDBJ or EMBL nucleotide flatfile records, GFF3+FASTA, GTF+FASTA, or BED+FASTA",
   outputType: "Live sequence editor or summary report",
+  showcaseOutputs: [
+    {
+      id: "interactive-sequence-editor",
+      label: "Sequence editor",
+      options: { outputFormat: "editor" }
+    }
+  ],
   splitInput: sequenceEditorSplitInput,
   runInWorker: true,
   workerModule: "../tools/sequence-editor/run.js",

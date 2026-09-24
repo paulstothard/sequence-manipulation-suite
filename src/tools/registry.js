@@ -169,6 +169,9 @@ import {
   runMultipleAlignDnaRna,
   runMultipleAlignProtein
 } from "./multiple-sequence-alignment/run.js";
+import { sequenceLogoMetadata } from "./sequence-logo/metadata.js";
+import { runSequenceLogo } from "./sequence-logo/run.js";
+import { sequenceLogoExample } from "../examples/sequence-logo-example.js";
 import { phylogenyBuilderMetadata } from "./phylogeny-builder/metadata.js";
 import { runPhylogenyBuilder } from "./phylogeny-builder/run.js";
 import { technicalSequenceScannerMetadata } from "./technical-sequence-scanner/metadata.js";
@@ -738,6 +741,11 @@ GGGGCCACCATGGCTAGGAGGTTTTATAWAAGGCCAATAAAGGGTATAATTTGACA`
     metadata: multipleAlignDnaRnaMetadata,
     run: runMultipleAlignDnaRna,
     example: multipleAlignDnaRnaExample
+  },
+  {
+    metadata: sequenceLogoMetadata,
+    run: runSequenceLogo,
+    example: sequenceLogoExample
   },
   {
     metadata: multipleAlignCodingDnaMetadata,

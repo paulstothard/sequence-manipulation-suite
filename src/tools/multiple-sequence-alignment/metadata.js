@@ -12,7 +12,7 @@ import { pairwiseAlignmentDefaultLimits } from "../../core/pairwise-alignment.js
 import { geneticCodes } from "../../core/genetic-code.js";
 
 const identityOutputFormats = ["identity-matrix", "identity-heatmap"];
-const alignmentOutputFormats = ["clustal", "aligned-fasta", "translated-protein-fasta", "report", "tsv", "svg-color", "tree-viewer", "nj-tree", "nj-tree-svg"];
+const alignmentOutputFormats = ["clustal", "aligned-fasta", "translated-protein-fasta", "report", "tsv", "svg-color", "sequence-logo", "tree-viewer", "nj-tree", "nj-tree-svg"];
 const pairwiseScoringVisibleWhen = {
   any: [
     { option: "alignmentEngine", value: MULTIPLE_ALIGNMENT_ENGINES.sms3 },
@@ -33,8 +33,8 @@ function buildMetadata(alphabet) {
       : `Align multiple ${isProtein ? "protein" : "DNA/RNA"} FASTA records with MUSCLE or the SMS3 progressive aligner.`,
     inputType: `${isCodingDna ? "Coding DNA/RNA" : isProtein ? "Protein" : "DNA/RNA"} FASTA records`,
     outputType: isCodingDna
-      ? "Multiple alignment report, aligned codon FASTA, aligned translated protein FASTA, CLUSTAL-format text, table, colored alignment, or neighbor-joining tree in Tree Viewer"
-      : "Multiple alignment report, aligned FASTA, CLUSTAL-format text, table, colored alignment, or neighbor-joining tree in Tree Viewer",
+      ? "Multiple alignment report, aligned codon FASTA, aligned translated protein FASTA, CLUSTAL-format text, table, colored alignment, coding-DNA sequence logo, or neighbor-joining tree in Tree Viewer"
+      : "Multiple alignment report, aligned FASTA, CLUSTAL-format text, table, colored alignment, sequence logo, or neighbor-joining tree in Tree Viewer",
     workflow: {
       inputs: [
         { id: "input", kind: "text", mediaType: "text/plain" },
@@ -50,6 +50,7 @@ function buildMetadata(alphabet) {
         { id: "clustal", kind: "text", mediaType: "text/plain" },
         { id: "table", kind: "table", schema: isCodingDna ? "multiple-alignment-coding-dna" : isProtein ? "multiple-alignment-protein" : "multiple-alignment-dna-rna", columns: isCodingDna ? multipleCodingDnaAlignmentTableColumns : multipleAlignmentTableColumns },
         { id: "coloredSvg", kind: "text", mediaType: "image/svg+xml" },
+        { id: "sequenceLogo", kind: "figure", figureType: "sequence-logo", label: "Sequence logo" },
         { id: "tree", kind: "text", mediaType: "text/plain" },
         { id: "treeSvg", kind: "text", mediaType: "image/svg+xml" },
         { id: "distanceTable", kind: "table", schema: isCodingDna ? "multiple-alignment-coding-dna-distances" : isProtein ? "multiple-alignment-protein-distances" : "multiple-alignment-dna-rna-distances", columns: multipleAlignmentDistanceTableColumns },
@@ -104,6 +105,7 @@ function buildMetadata(alphabet) {
           { value: "report", label: "Summary report" },
           { value: "tsv", label: "Alignment table" },
           { value: "svg-color", label: "Colored alignment" },
+          { value: "sequence-logo", label: isCodingDna ? "Aligned coding-DNA sequence logo" : "Sequence logo" },
           { value: "tree-viewer", label: "Tree Viewer" },
           { value: "nj-tree", label: "Neighbor-joining tree report" },
           { value: "nj-tree-svg", label: "Midpoint-rooted NJ tree" },

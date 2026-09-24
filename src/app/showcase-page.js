@@ -1,14 +1,17 @@
 import { renderPlateSvg } from "../core/plate-layout-svg.js";
 import { renderObservablePlotPreview } from "./plot-preview-ui.js";
 import { renderProteinSequenceFigure } from "./protein-sequence-figure-ui.js";
+import { renderSequenceLogo } from "./sequence-logo-ui.js";
+import { renderSequenceEditorOutput } from "./sequence-editor-workspace-ui.js";
 import { renderSequenceExtractorWorkspace } from "./sequence-extractor-workspace-ui.js";
+import { renderSangerTraceViewer } from "./sanger-trace-viewer.js";
 import { installVisualInspection } from "./visual-inspection.js";
 import { renderTreeViewer } from "./tree-viewer-ui.js";
 import { alignmentViewerReferenceExample } from "../examples/alignment-viewer-example.js";
 import { vcfExtractorReferenceExample } from "../examples/vcf-extractor-example.js";
 import { rerootTree } from "../../packages/tree-viewer/src/core/reroot.js";
 
-const SHOWCASE_VISUAL_INCLUDE = /\b(plot|map|gel|figure|heatmap|cloud|sankey|venn|upset|tree|chromatogram|diagram|poster)\b|\bcolored alignment\b|\bdot plot\b|svg/i;
+const SHOWCASE_VISUAL_INCLUDE = /\b(plot|map|gel|figure|logo|heatmap|cloud|sankey|venn|upset|tree|chromatogram|diagram|poster)\b|\bcolored alignment\b|\bdot plot\b|svg/i;
 const SHOWCASE_VIEWER_INCLUDE = /\bviewer\b|\binteractive-viewer\b/i;
 const SHOWCASE_VISUAL_EXCLUDE = /\b(json|table|report|text|fasta|fastq|tsv|csv|xlsx|records?|summary)\b/i;
 const SHOWCASE_VIEWER_ALLOWLIST = new Map([
@@ -502,6 +505,15 @@ function applyShowcaseFilters(filterControls, cards) {
   filterControls.count.textContent = `${visibleCount.toLocaleString()} of ${cards.length.toLocaleString()} previews`;
 }
 
+export function installShowcaseWheelIntentGuard(preview) {
+  const handleWheel = (event) => {
+    if (event.ctrlKey || event.metaKey) return;
+    event.stopPropagation();
+  };
+  preview.addEventListener("wheel", handleWheel, { capture: true });
+  return () => preview.removeEventListener("wheel", handleWheel, { capture: true });
+}
+
 function renderShowcaseViewer(preview, viewer, context) {
   const showcaseViewer = makeShowcaseViewerPayload(viewer);
   const viewerOptions = {
@@ -561,6 +573,12 @@ async function renderShowcaseCard(card, item, token, context) {
     } else if (result.visual?.sequenceExtractor) {
       preview.classList.add("showcase-preview-viewer");
       renderSequenceExtractorWorkspace(preview, result.visual.sequenceExtractor);
+    } else if (result.visual?.sangerTrace) {
+      preview.classList.add("showcase-preview-viewer");
+      renderSangerTraceViewer(preview, result.visual.sangerTrace);
+    } else if (result.visual?.sequenceEditor) {
+      preview.classList.add("showcase-preview-viewer");
+      renderSequenceEditorOutput(preview, result.visual.sequenceEditor);
     } else if (result.visual?.viewer) {
       preview.classList.add("showcase-preview-viewer");
       renderShowcaseViewer(preview, result.visual.viewer, context);
@@ -569,6 +587,10 @@ async function renderShowcaseCard(card, item, token, context) {
       context.renderProteinStructureViewer?.(preview, result.visual.proteinStructure);
     } else if (result.visual?.proteinFigure) {
       renderProteinSequenceFigure(preview, result.visual.proteinFigure);
+      preview.querySelectorAll("svg").forEach(normalizeShowcaseSvg);
+      sharedInspection = true;
+    } else if (result.visual?.sequenceLogo) {
+      renderSequenceLogo(preview, result.visual.sequenceLogo);
       preview.querySelectorAll("svg").forEach(normalizeShowcaseSvg);
       sharedInspection = true;
     } else if (result.visual?.figure) {
@@ -641,6 +663,7 @@ export function appendShowcase(topic, context) {
 
     const preview = document.createElement("div");
     preview.className = "showcase-preview";
+    installShowcaseWheelIntentGuard(preview);
     preview.append(makeShowcaseStatus("Generating preview from current tool code..."));
 
     const status = makeShowcaseStatus(
