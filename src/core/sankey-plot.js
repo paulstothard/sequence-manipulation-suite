@@ -358,7 +358,7 @@ export function renderSankeySvg(rows, warnings = [], options = {}) {
   const stateById = makeOffsets(placedNodes);
 
   const nodeRects = placedNodes.map((node) =>
-    `<rect class="sankey-node" data-sms3-inspection-highlight="shade" data-node="${escapeXml(node.id)}" data-value="${niceNumber(node.total)}" x="${node.x.toFixed(2)}" y="${node.y.toFixed(2)}" width="${nodeWidth}" height="${node.height.toFixed(2)}" rx="3" fill="${node.color}" fill-opacity="0.9"><title>${escapeXml(nodeInspectionText(node, rows, presentation))}</title></rect>`
+    `<rect class="sankey-node" data-sms3-inspection-highlight="shade" data-node="${escapeXml(node.id)}" data-value="${niceNumber(node.total)}" x="${node.x.toFixed(2)}" y="${node.y.toFixed(2)}" width="${nodeWidth}" height="${node.height.toFixed(2)}" fill="${node.color}" fill-opacity="0.9"><title>${escapeXml(nodeInspectionText(node, rows, presentation))}</title></rect>`
   ).join("");
 
   const labelCandidates = placedNodes

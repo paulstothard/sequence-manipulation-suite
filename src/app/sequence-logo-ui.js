@@ -374,14 +374,12 @@ function addFrequencyInformationCiTrack(svg, columns, rowGeometry, logo) {
   });
 }
 
-function buildLogoSvg(logo, state, availableWidth) {
+function buildLogoSvg(logo, state) {
   const columns = rangeColumns(logo, state);
   const cellWidth = state.stackWidth === "compact" ? 20 : state.stackWidth === "wide" ? 32 : 26;
   const left = 62;
   const right = 18;
-  const usableWidth = Math.max(220, availableWidth - left - right);
-  const fitColumns = Math.max(5, Math.floor(usableWidth / cellWidth));
-  const perRow = Math.max(1, Math.min(state.wrapColumns, fitColumns));
+  const perRow = Math.max(1, state.wrapColumns);
   const rows = [];
   for (let index = 0; index < columns.length; index += perRow) rows.push(columns.slice(index, index + perRow));
   const titleHeight = state.showTitle ? 58 : 22;
@@ -708,10 +706,7 @@ export function renderSequenceLogo(container, logo) {
       host.replaceChildren();
       return;
     }
-    const paperStyle = getComputedStyle(paper);
-    const horizontalPadding = Number.parseFloat(paperStyle.paddingLeft || "0") + Number.parseFloat(paperStyle.paddingRight || "0");
-    const availableWidth = Math.max(360, (paper.clientWidth || 960) - horizontalPadding);
-    currentSvg = buildLogoSvg(logo, state, availableWidth);
+    currentSvg = buildLogoSvg(logo, state);
     host.replaceChildren(currentSvg);
     if (state.panelOpen && state.panelTab === "data") renderPanel();
   }
@@ -781,7 +776,7 @@ export function renderSequenceLogo(container, logo) {
       content.append(
         start.label,
         end.label,
-        numberControl("Maximum columns per row", state.wrapColumns, { min: 5, max: 100 }, (value) => { state.wrapColumns = Math.max(5, Math.min(100, value || 40)); render(); }).label,
+        numberControl("Columns per row", state.wrapColumns, { min: 5, max: 100 }, (value) => { state.wrapColumns = Math.max(5, Math.min(100, value || 40)); render(); }).label,
         selectControl("Stack width", [
           { value: "compact", label: "Compact" },
           { value: "standard", label: "Standard" },
@@ -790,7 +785,7 @@ export function renderSequenceLogo(container, logo) {
       );
       const rangeHelp = document.createElement("p");
       rangeHelp.className = "sequence-logo-help";
-      rangeHelp.textContent = `Up to ${MAX_VISIBLE_COLUMNS.toLocaleString()} columns can be drawn at once. Range changes affect the figure and its SVG/PNG exports, not the full Data table or TSV download.`;
+      rangeHelp.textContent = `Up to ${MAX_VISIBLE_COLUMNS.toLocaleString()} columns can be drawn at once. The chosen columns-per-row layout stays fixed while the browser scales the complete figure to fit. SVG and PNG exports retain the full intrinsic figure dimensions.`;
       content.append(rangeHelp);
     } else if (state.panelTab === "tracks") {
       const trackIntro = document.createElement("p");
@@ -829,11 +824,8 @@ export function renderSequenceLogo(container, logo) {
   workspace.append(toolbar, body);
   container.append(workspace);
   render();
-  const resizeObserver = typeof ResizeObserver === "function" ? new ResizeObserver(queueRender) : null;
-  resizeObserver?.observe(paper);
   container._sms3VisualCleanup = () => {
     cancelAnimationFrame(renderFrame);
-    resizeObserver?.disconnect();
     container.classList.remove("sequence-logo-output");
   };
 }

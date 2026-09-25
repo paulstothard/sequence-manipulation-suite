@@ -8,8 +8,15 @@ export const DEFAULT_ALIGNMENT_SVG_CELL_LIMIT = 250000;
 const CONSENSUS_BLOCK_GAP_PX = 40;
 const ALIGNMENT_BLOCK_GAP_PX = 44;
 const ALIGNMENT_FIGURE_FAMILY = "sequence-alignment";
-const MAX_ALIGNMENT_LABEL_WIDTH_PX = 390;
-const ALIGNMENT_LAYOUT_ITERATION_LIMIT = 8;
+const DEFAULT_ALIGNMENT_BLOCK_COLUMNS = 72;
+const MIN_ALIGNMENT_LABEL_WIDTH_PX = 96;
+const MAX_ALIGNMENT_LABEL_WIDTH_PX = 360;
+const ALIGNMENT_CELL_GAP_PX = 1;
+const ALIGNMENT_CELL_WIDTH_EM = 0.9;
+const ALIGNMENT_CELL_HEIGHT_EM = 1.45;
+const ALIGNMENT_LABEL_COORDINATE_GAP_PX = 6;
+const ALIGNMENT_COORDINATE_SEQUENCE_GAP_PX = 8;
+const ALIGNMENT_LAYOUT_ITERATION_LIMIT = 12;
 
 function escapeXml(value) {
   return String(value ?? "")
@@ -19,26 +26,26 @@ function escapeXml(value) {
     .replace(/"/g, "&quot;");
 }
 
-function truncateLabelToWidth(value, maxWidth, fontSize) {
+function truncateLabelToWidth(value, maxWidth, fontSize, measure = estimateTextWidth) {
   const text = String(value || "sequence");
-  if (estimateTextWidth(text, fontSize) <= maxWidth) return text;
+  if (measure(text, fontSize) <= maxWidth) return text;
 
   const characters = Array.from(text);
   const ellipsis = "...";
-  if (estimateTextWidth(ellipsis, fontSize) >= maxWidth) return ellipsis;
+  if (measure(ellipsis, fontSize) >= maxWidth) return ellipsis;
   let low = 0;
   let high = characters.length;
   while (low < high) {
     const middle = Math.ceil((low + high) / 2);
     const candidate = `${characters.slice(0, middle).join("")}${ellipsis}`;
-    if (estimateTextWidth(candidate, fontSize) <= maxWidth) low = middle;
+    if (measure(candidate, fontSize) <= maxWidth) low = middle;
     else high = middle - 1;
   }
   return `${characters.slice(0, Math.max(1, low)).join("")}${ellipsis}`;
 }
 
 function normalizeLineWidth(lineWidth) {
-  return Math.max(20, Math.min(120, Number.parseInt(lineWidth, 10) || 60));
+  return Math.max(20, Math.min(120, Number.parseInt(lineWidth, 10) || DEFAULT_ALIGNMENT_BLOCK_COLUMNS));
 }
 
 function normalizeCellLimit(value) {
@@ -55,6 +62,15 @@ function estimateTextWidth(value, fontSize) {
     if (/[MW@#%&]/u.test(character)) return width + fontSize * 0.9;
     if (/[ilI.,:;!'|]/u.test(character)) return width + fontSize * 0.34;
     return width + fontSize * 0.6;
+  }, 0);
+}
+
+function estimateAlignmentLabelWidth(value, fontSize) {
+  return Array.from(String(value ?? "")).reduce((width, character) => {
+    if (/\s/u.test(character)) return width + fontSize * 0.28;
+    if (/[MW@#%&]/u.test(character)) return width + fontSize * 0.75;
+    if (/[ilI.,:;!'|]/u.test(character)) return width + fontSize * 0.28;
+    return width + fontSize * 0.46;
   }, 0);
 }
 
@@ -132,7 +148,7 @@ export function makeAlignmentSvg({
   rows = [],
   consensus = "",
   columnRelations = [],
-  lineWidth = 60,
+  lineWidth = DEFAULT_ALIGNMENT_BLOCK_COLUMNS,
   maxCells = DEFAULT_ALIGNMENT_SVG_CELL_LIMIT,
   legend = "Teal conserved; blue similar; orange variable; gray gap.",
   summary = "",
@@ -162,37 +178,41 @@ export function makeAlignmentSvg({
   }
 
   const blockWidth = normalizeLineWidth(lineWidth);
-  const cell = 15;
   const labelX = 24;
   const endCoordinatePadding = 4;
   const blocks = Math.ceil(alignmentLength / blockWidth);
   const renderedBlockColumns = Math.min(blockWidth, alignmentLength);
   const hasConsensus = consensus.length > 0;
   const blockGap = hasConsensus ? CONSENSUS_BLOCK_GAP_PX : ALIGNMENT_BLOCK_GAP_PX;
-  const coordinateCharacters = Math.max(6, coordinateWidthForRows(rows));
-  let labelPixelWidth = 132;
+  const coordinateCharacters = coordinateWidthForRows(rows);
+  let cellWidth = 14;
+  let cellHeight = 14;
+  let cellStep = cellWidth + ALIGNMENT_CELL_GAP_PX;
+  let labelPixelWidth = MIN_ALIGNMENT_LABEL_WIDTH_PX;
   let coordinatePixelWidth = coordinateCharacters * 7;
-  let left = labelX + labelPixelWidth + 12 + coordinatePixelWidth + 12;
-  let width = Math.max(760, left + renderedBlockColumns * cell + endCoordinatePadding + coordinatePixelWidth + 24);
+  let left = labelX + labelPixelWidth + ALIGNMENT_LABEL_COORDINATE_GAP_PX + coordinatePixelWidth + ALIGNMENT_COORDINATE_SEQUENCE_GAP_PX;
+  let width = Math.max(760, left + renderedBlockColumns * cellStep + endCoordinatePadding + coordinatePixelWidth + 24);
   let publicationStyle = makePublicationPlotStyle(width, 1);
   for (let iteration = 0; iteration < ALIGNMENT_LAYOUT_ITERATION_LIMIT; iteration += 1) {
     labelPixelWidth = Math.max(
-      132,
+      MIN_ALIGNMENT_LABEL_WIDTH_PX,
       Math.min(
         MAX_ALIGNMENT_LABEL_WIDTH_PX,
-        Math.ceil(Math.max(...rows.map((row) => estimateTextWidth(row.label || "sequence", publicationStyle.bodyFontSize)), 0) + 8)
+        Math.ceil(Math.max(...rows.map((row) => estimateAlignmentLabelWidth(row.label || "sequence", publicationStyle.smallFontSize)), 0) + 8)
       )
     );
-    coordinatePixelWidth = Math.max(42, Math.ceil(coordinateCharacters * publicationStyle.smallFontSize * 0.62));
-    left = labelX + labelPixelWidth + 12 + coordinatePixelWidth + 12;
-    width = Math.max(760, left + renderedBlockColumns * cell + endCoordinatePadding + coordinatePixelWidth + 24);
+    coordinatePixelWidth = Math.max(16, Math.ceil(coordinateCharacters * publicationStyle.smallFontSize * 0.62));
+    cellWidth = Math.max(10, Math.ceil(publicationStyle.smallFontSize * ALIGNMENT_CELL_WIDTH_EM));
+    cellHeight = Math.max(14, Math.ceil(publicationStyle.smallFontSize * ALIGNMENT_CELL_HEIGHT_EM));
+    cellStep = cellWidth + ALIGNMENT_CELL_GAP_PX;
+    left = labelX + labelPixelWidth + ALIGNMENT_LABEL_COORDINATE_GAP_PX + coordinatePixelWidth + ALIGNMENT_COORDINATE_SEQUENCE_GAP_PX;
+    width = Math.max(760, left + renderedBlockColumns * cellStep + endCoordinatePadding + coordinatePixelWidth + 24);
     publicationStyle = makePublicationPlotStyle(width, 1);
   }
-  const startCoordinateX = left - 8;
-  const rowHeight = Math.max(18, Math.ceil(publicationStyle.bodyFontSize + 5));
-  const cellHeight = Math.max(16, Math.ceil(publicationStyle.bodyFontSize + 2));
-  const consensusHeight = hasConsensus ? Math.ceil(publicationStyle.bodyFontSize + 8) : 0;
-  const blockHeight = rows.length * rowHeight + consensusHeight;
+  const labelRightX = labelX + labelPixelWidth;
+  const startCoordinateX = left - ALIGNMENT_COORDINATE_SEQUENCE_GAP_PX;
+  const rowHeight = cellHeight + ALIGNMENT_CELL_GAP_PX;
+  const blockHeight = (rows.length + (hasConsensus ? 1 : 0)) * rowHeight;
   const captionWidth = width - 48;
   const titleLines = wrapTextLines(title, captionWidth, publicationStyle.titleFontSize);
   const titleLineHeight = publicationStyle.titleFontSize + 6;
@@ -211,16 +231,16 @@ export function makeAlignmentSvg({
     viewBoxHeight: height
   };
   const parts = [
-    `<svg ${alignmentSvgRootAttributes(publicationStyle, ariaLabel)} data-block-gap-px="${blockGap}" data-alignment-block-columns="${renderedBlockColumns}">`,
+    `<svg ${alignmentSvgRootAttributes(publicationStyle, ariaLabel)} data-block-gap-px="${blockGap}" data-alignment-block-columns="${renderedBlockColumns}" data-alignment-cell-width-px="${cellWidth}" data-alignment-cell-height-px="${cellHeight}" data-alignment-label-width-px="${labelPixelWidth}">`,
     "<style>",
     `.title{font:600 ${publicationStyle.titleFontSize}px ${publicationStyle.fontFamily};fill:${SMS3_PLOT_THEME.text}}`,
     `.note{font:400 ${publicationStyle.smallFontSize}px ${publicationStyle.fontFamily};fill:${SMS3_PLOT_THEME.textMuted}}`,
-    `.label{font:400 ${publicationStyle.bodyFontSize}px ${publicationStyle.fontFamily};fill:${SMS3_PLOT_THEME.text}}`,
-    `.coord{font:400 ${publicationStyle.smallFontSize}px ${publicationStyle.sequenceFontFamily};fill:${SMS3_PLOT_THEME.textMuted}}`,
+    `.label{font:400 ${publicationStyle.smallFontSize}px ${publicationStyle.fontFamily};dominant-baseline:central;fill:${SMS3_PLOT_THEME.text}}`,
+    `.coord{font:400 ${publicationStyle.smallFontSize}px ${publicationStyle.sequenceFontFamily};dominant-baseline:central;fill:${SMS3_PLOT_THEME.textMuted}}`,
     ".coord-start{text-anchor:end}",
     ".coord-end{text-anchor:start}",
-    `.cell{font:400 ${publicationStyle.bodyFontSize}px ${publicationStyle.sequenceFontFamily};text-anchor:middle;dominant-baseline:central;fill:${SMS3_PLOT_THEME.text}}`,
-    `.consensus{font:400 ${publicationStyle.bodyFontSize}px ${publicationStyle.sequenceFontFamily};fill:${SMS3_PLOT_THEME.text};text-anchor:middle;dominant-baseline:central}`,
+    `.cell{font:400 ${publicationStyle.smallFontSize}px ${publicationStyle.sequenceFontFamily};text-anchor:middle;dominant-baseline:central;fill:${SMS3_PLOT_THEME.text}}`,
+    `.consensus{font:400 ${publicationStyle.smallFontSize}px ${publicationStyle.sequenceFontFamily};fill:${SMS3_PLOT_THEME.text};text-anchor:middle;dominant-baseline:central}`,
     `.legend{font:400 ${publicationStyle.bodyFontSize}px ${publicationStyle.fontFamily};fill:${SMS3_PLOT_THEME.textMuted}}`,
     "</style>",
     `<rect width="100%" height="100%" fill="${SMS3_PLOT_THEME.surface}"/>`,
@@ -232,7 +252,7 @@ export function makeAlignmentSvg({
     const start = block * blockWidth;
     const chunkLength = Math.min(blockWidth, alignmentLength - start);
     const blockTop = top + block * (blockHeight + blockGap);
-    const consensusY = blockTop + rows.length * rowHeight + 9;
+    const consensusY = blockTop + rows.length * rowHeight + cellHeight / 2;
 
     rows.forEach((row, rowIndex) => {
       const y = blockTop + rowIndex * rowHeight;
@@ -241,12 +261,18 @@ export function makeAlignmentSvg({
       const startCoord = positions[rowIndex];
       const endCoord = count > 0 ? positions[rowIndex] + count - 1 : positions[rowIndex] - 1;
       const rowLabel = String(row.label || `Sequence ${rowIndex + 1}`);
-      const visibleRowLabel = truncateLabelToWidth(rowLabel, labelPixelWidth - 8, publicationStyle.bodyFontSize);
+      const visibleRowLabel = truncateLabelToWidth(
+        rowLabel,
+        labelPixelWidth - 8,
+        publicationStyle.smallFontSize,
+        estimateAlignmentLabelWidth
+      );
       const coordinateSummary = count > 0 ? `${startCoord}–${endCoord}` : "gap-only chunk";
+      const rowTextY = y + cellHeight / 2;
       parts.push(`<g class="alignment-row" data-alignment-row-label="${escapeXml(rowLabel)}"><title>${escapeXml(`${rowLabel}; alignment columns ${start + 1}–${start + chunkLength}; sequence coordinates ${coordinateSummary}`)}</title>`);
-      parts.push(`<text class="label" x="${labelX}" y="${y + 11}">${escapeXml(visibleRowLabel)}</text>`);
-      parts.push(`<text class="coord coord-start" x="${startCoordinateX}" y="${y + 11}">${count > 0 ? startCoord : ""}</text>`);
-      parts.push(`<text class="coord coord-end" x="${left + chunkLength * cell + endCoordinatePadding}" y="${y + 11}">${count > 0 ? endCoord : ""}</text>`);
+      parts.push(`<text class="label" text-anchor="end" x="${labelRightX}" y="${rowTextY}">${escapeXml(visibleRowLabel)}</text>`);
+      parts.push(`<text class="coord coord-start" x="${startCoordinateX}" y="${rowTextY}">${count > 0 ? startCoord : ""}</text>`);
+      parts.push(`<text class="coord coord-end" x="${left + chunkLength * cellStep + endCoordinatePadding}" y="${rowTextY}">${count > 0 ? endCoord : ""}</text>`);
       let sequencePosition = startCoord - 1;
       for (let offset = 0; offset < chunkLength; offset += 1) {
         const columnIndex = start + offset;
@@ -254,23 +280,23 @@ export function makeAlignmentSvg({
         const relation = columnRelations[columnIndex] ?? row.relations?.[columnIndex] ?? "";
         const hasGap = rows.some((candidate) => String(candidate.aligned ?? "")[columnIndex] === "-");
         const fill = relationFill(relation, consensus[columnIndex], hasGap);
-        const x = left + offset * cell;
+        const x = left + offset * cellStep;
         if (symbol !== "-") sequencePosition += 1;
         const inspectionRelation = relation || (hasGap ? "gap column" : consensus[columnIndex] === "*" ? "conserved" : "");
-        parts.push(`<rect data-alignment-column="${columnIndex + 1}" data-alignment-symbol="${escapeXml(symbol)}" data-sequence-coordinate="${symbol === "-" ? "gap" : sequencePosition}" data-alignment-relation="${escapeXml(inspectionRelation)}" x="${x}" y="${y}" width="${cell - 1}" height="${cellHeight}" fill="${fill}"></rect>`);
-        parts.push(`<text class="cell" pointer-events="none" x="${x + cell / 2}" y="${y + cellHeight / 2}">${escapeXml(symbol)}</text>`);
+        parts.push(`<rect data-alignment-column="${columnIndex + 1}" data-alignment-symbol="${escapeXml(symbol)}" data-sequence-coordinate="${symbol === "-" ? "gap" : sequencePosition}" data-alignment-relation="${escapeXml(inspectionRelation)}" x="${x}" y="${y}" width="${cellWidth}" height="${cellHeight}" fill="${fill}"></rect>`);
+        parts.push(`<text class="cell" pointer-events="none" x="${x + cellWidth / 2}" y="${y + cellHeight / 2}">${escapeXml(symbol)}</text>`);
       }
       parts.push("</g>");
       positions[rowIndex] += count;
     });
 
     if (hasConsensus) {
-      parts.push(`<text class="label" x="${labelX}" y="${consensusY + 4}">Consensus</text>`);
+      parts.push(`<text class="label" text-anchor="end" x="${labelRightX}" y="${consensusY}">Consensus</text>`);
       for (let offset = 0; offset < chunkLength; offset += 1) {
         const columnIndex = start + offset;
-        const x = left + offset * cell;
+        const x = left + offset * cellStep;
         const symbol = consensus[columnIndex] === " " ? "." : consensus[columnIndex];
-        parts.push(`<text class="consensus" x="${x + cell / 2}" y="${consensusY}">${escapeXml(symbol)}</text>`);
+        parts.push(`<text class="consensus" x="${x + cellWidth / 2}" y="${consensusY}">${escapeXml(symbol)}</text>`);
       }
     }
   }

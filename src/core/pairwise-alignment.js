@@ -1144,7 +1144,7 @@ export function makeCodonAlignmentTsv(alignment) {
   ].join("\n");
 }
 
-export function makeColoredAlignmentSvg(records, alignment, lineWidth = 60) {
+export function makeColoredAlignmentSvg(records, alignment, lineWidth = 72) {
   const legend =
     alignment.alphabet === "protein"
       ? "Teal exact match; blue positive-scoring substitution; orange zero/negative-scoring substitution; gray gap."
@@ -1164,7 +1164,7 @@ export function makeColoredAlignmentSvg(records, alignment, lineWidth = 60) {
   });
 }
 
-export function makeColoredCodonAlignmentSvg(records, alignment, lineWidth = 20) {
+export function makeColoredCodonAlignmentSvg(records, alignment, lineWidth = 24) {
   const columnRelations = alignment.codonColumns.flatMap((column) => [column.relation, column.relation, column.relation]);
   return makeAlignmentSvg({
     title: `${records[0].title} vs ${records[1].title}`,

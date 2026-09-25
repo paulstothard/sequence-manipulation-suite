@@ -2040,10 +2040,11 @@ textarea {
   display: block;
   font-family: Arial, Helvetica, "Liberation Sans", sans-serif;
   height: auto;
-  max-width: none;
+  margin: 0 auto;
+  max-width: 100%;
   shape-rendering: geometricPrecision;
   text-rendering: geometricPrecision;
-  width: 100%;
+  width: auto;
 }
 
 .sequence-logo-range-notice {
@@ -7165,10 +7166,6 @@ legend {
   background: #ffffff;
   color: #172026;
   color-scheme: light;
-}
-
-:is(.visual-output, .showcase-preview) svg[data-sms3-figure-family="sequence-alignment"][data-alignment-block-columns] {
-  min-width: 56rem;
 }
 
 :is(.visual-output, .showcase-preview) svg[tabindex="0"]:focus-visible {
