@@ -65,15 +65,6 @@ function estimateTextWidth(value, fontSize) {
   }, 0);
 }
 
-function estimateAlignmentLabelWidth(value, fontSize) {
-  return Array.from(String(value ?? "")).reduce((width, character) => {
-    if (/\s/u.test(character)) return width + fontSize * 0.28;
-    if (/[MW@#%&]/u.test(character)) return width + fontSize * 0.75;
-    if (/[ilI.,:;!'|]/u.test(character)) return width + fontSize * 0.28;
-    return width + fontSize * 0.46;
-  }, 0);
-}
-
 function wrapTextLines(value, maxWidth, fontSize) {
   const text = String(value ?? "").trim();
   if (!text || estimateTextWidth(text, fontSize) <= maxWidth) return text ? [text] : [];
@@ -198,7 +189,7 @@ export function makeAlignmentSvg({
       MIN_ALIGNMENT_LABEL_WIDTH_PX,
       Math.min(
         MAX_ALIGNMENT_LABEL_WIDTH_PX,
-        Math.ceil(Math.max(...rows.map((row) => estimateAlignmentLabelWidth(row.label || "sequence", publicationStyle.smallFontSize)), 0) + 8)
+        Math.ceil(Math.max(...rows.map((row) => estimateTextWidth(row.label || "sequence", publicationStyle.smallFontSize)), 0) + 8)
       )
     );
     coordinatePixelWidth = Math.max(16, Math.ceil(coordinateCharacters * publicationStyle.smallFontSize * 0.62));
@@ -265,7 +256,7 @@ export function makeAlignmentSvg({
         rowLabel,
         labelPixelWidth - 8,
         publicationStyle.smallFontSize,
-        estimateAlignmentLabelWidth
+        estimateTextWidth
       );
       const coordinateSummary = count > 0 ? `${startCoord}–${endCoord}` : "gap-only chunk";
       const rowTextY = y + cellHeight / 2;
