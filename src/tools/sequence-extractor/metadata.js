@@ -110,7 +110,7 @@ export const sequenceExtractorMetadata = {
         {
           id: "translationScopeNote",
           type: "note",
-          text: "Annotated CDS translations come from /translation qualifiers supplied in the input. Six-frame translations are computed from DNA using the selected genetic code."
+          text: "Annotated CDS translations come from /translation qualifiers supplied in the input. Six-frame and individual reading-frame translations are computed from DNA using the selected genetic code."
         }
       ]
     },

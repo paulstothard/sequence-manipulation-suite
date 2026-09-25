@@ -1,5 +1,5 @@
 import { tsneEmbeddingColumns } from "../../core/tsne-plot.js";
-import { makeAxisLimitsGroup } from "../plot-axis-options.js";
+import { makeAxisLimitsGroup, makePublicationPlotGroup } from "../plot-axis-options.js";
 
 export const tsnePlotMetadata = {
   id: "tsne-plot",
@@ -113,6 +113,7 @@ export const tsnePlotMetadata = {
       ]
     },
     makeAxisLimitsGroup({ x: true, y: true }),
+    makePublicationPlotGroup(),
     {
       type: "group",
       label: "Output format",

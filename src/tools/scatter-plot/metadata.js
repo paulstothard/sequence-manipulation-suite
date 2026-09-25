@@ -1,5 +1,5 @@
 import { scatterPlotColumns } from "../../core/plot-tools.js";
-import { makeAxisLimitsGroup } from "../plot-axis-options.js";
+import { makeAxisLimitsGroup, makePublicationPlotGroup } from "../plot-axis-options.js";
 
 export const scatterPlotMetadata = {
   id: "scatter-plot",
@@ -47,6 +47,7 @@ export const scatterPlotMetadata = {
       ]
     },
     makeAxisLimitsGroup({ x: true, y: true }),
+    makePublicationPlotGroup(),
     {
       type: "group",
       label: "Output format",

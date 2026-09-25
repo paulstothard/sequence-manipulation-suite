@@ -1,6 +1,15 @@
+import {
+  makePublicationPlotStyle,
+  publicationSvgAttributes,
+  SMS3_PLOT_THEME
+} from "./publication-plot-style.js";
+
 export const DEFAULT_ALIGNMENT_SVG_CELL_LIMIT = 250000;
 const CONSENSUS_BLOCK_GAP_PX = 40;
 const ALIGNMENT_BLOCK_GAP_PX = 44;
+const ALIGNMENT_FIGURE_FAMILY = "sequence-alignment";
+const MAX_ALIGNMENT_LABEL_WIDTH_PX = 390;
+const ALIGNMENT_LAYOUT_ITERATION_LIMIT = 8;
 
 function escapeXml(value) {
   return String(value ?? "")
@@ -10,9 +19,22 @@ function escapeXml(value) {
     .replace(/"/g, "&quot;");
 }
 
-function truncateLabel(value, maxLength = 20) {
+function truncateLabelToWidth(value, maxWidth, fontSize) {
   const text = String(value || "sequence");
-  return text.length > maxLength ? `${text.slice(0, Math.max(1, maxLength - 1))}...` : text;
+  if (estimateTextWidth(text, fontSize) <= maxWidth) return text;
+
+  const characters = Array.from(text);
+  const ellipsis = "...";
+  if (estimateTextWidth(ellipsis, fontSize) >= maxWidth) return ellipsis;
+  let low = 0;
+  let high = characters.length;
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    const candidate = `${characters.slice(0, middle).join("")}${ellipsis}`;
+    if (estimateTextWidth(candidate, fontSize) <= maxWidth) low = middle;
+    else high = middle - 1;
+  }
+  return `${characters.slice(0, Math.max(1, low)).join("")}${ellipsis}`;
 }
 
 function normalizeLineWidth(lineWidth) {
@@ -63,15 +85,45 @@ function coordinateWidthForRows(rows) {
 
 function relationFill(relation, consensusSymbol, hasGap) {
   if (relation === "match" || consensusSymbol === "*") {
-    return "#bbf7d0";
+    return SMS3_PLOT_THEME.alignment.exact;
   }
   if (relation === "similar" || consensusSymbol === ":") {
-    return "#dbeafe";
+    return SMS3_PLOT_THEME.alignment.similar;
   }
   if (relation === "gap" || hasGap) {
-    return "#e5e7eb";
+    return SMS3_PLOT_THEME.alignment.gap;
   }
-  return "#fecaca";
+  return SMS3_PLOT_THEME.alignment.mismatch;
+}
+
+function alignmentSvgRootAttributes(style, ariaLabel) {
+  return [
+    'xmlns="http://www.w3.org/2000/svg"',
+    publicationSvgAttributes(style),
+    `viewBox="0 0 ${style.viewBoxWidth} ${style.viewBoxHeight}"`,
+    'role="img"',
+    `aria-label="${escapeXml(ariaLabel)}"`,
+    `data-sms3-figure-family="${ALIGNMENT_FIGURE_FAMILY}"`,
+    'data-sms3-publication-theme="alignment"'
+  ].join(" ");
+}
+
+function makeAlignmentMessageSvg({ title, lines, ariaLabel, height }) {
+  const width = 760;
+  const style = {
+    ...makePublicationPlotStyle(width, height),
+    viewBoxWidth: width,
+    viewBoxHeight: height
+  };
+  const lineHeight = style.bodyFontSize + 8;
+  return [
+    `<svg ${alignmentSvgRootAttributes(style, ariaLabel)}>`,
+    `<style>.title{font:600 ${style.titleFontSize}px ${style.fontFamily};fill:${SMS3_PLOT_THEME.text}}.note{font:400 ${style.bodyFontSize}px ${style.fontFamily};fill:${SMS3_PLOT_THEME.textMuted}}</style>`,
+    `<rect width="100%" height="100%" fill="${SMS3_PLOT_THEME.surface}"/>`,
+    `<text class="title" x="32" y="48">${escapeXml(title)}</text>`,
+    ...lines.map((line, index) => `<text class="note" x="32" y="${82 + index * lineHeight}">${escapeXml(line)}</text>`),
+    "</svg>"
+  ].join("");
 }
 
 export function makeAlignmentSvg({
@@ -82,61 +134,96 @@ export function makeAlignmentSvg({
   columnRelations = [],
   lineWidth = 60,
   maxCells = DEFAULT_ALIGNMENT_SVG_CELL_LIMIT,
-  legend = "Green conserved; blue similar; red variable; gray gap.",
+  legend = "Teal conserved; blue similar; orange variable; gray gap.",
   summary = "",
   ariaLabel = "Colored sequence alignment"
 } = {}) {
   const alignmentLength = Math.max(...rows.map((row) => String(row.aligned ?? "").length), 0);
   if (alignmentLength === 0 || rows.length === 0) {
-    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 140" role="img" aria-label="${escapeXml(ariaLabel)}"><style>.title{font:600 18px system-ui,sans-serif;fill:#111827}.note{font:13px system-ui,sans-serif;fill:#475569}</style><rect width="100%" height="100%" fill="white"/><text class="title" x="32" y="48">${escapeXml(title)}</text><text class="note" x="32" y="82">No aligned symbols were available to draw.</text></svg>`;
+    return makeAlignmentMessageSvg({
+      title,
+      lines: ["No aligned symbols were available to draw."],
+      ariaLabel,
+      height: 140
+    });
   }
   const displayedCells = alignmentLength * rows.length;
   const cellLimit = normalizeCellLimit(maxCells);
   if (displayedCells > cellLimit) {
-    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 150" role="img" aria-label="${escapeXml(ariaLabel)} not drawn"><style>.title{font:600 18px system-ui,sans-serif;fill:#111827}.note{font:13px system-ui,sans-serif;fill:#475569}</style><rect width="100%" height="100%" fill="white"/><text class="title" x="32" y="48">Colored alignment not drawn</text><text class="note" x="32" y="82">The alignment has ${displayedCells.toLocaleString()} displayed cells, exceeding the ${cellLimit.toLocaleString()}-cell colored alignment limit.</text><text class="note" x="32" y="106">Use text, CLUSTAL, FASTA, or TSV output for the complete alignment.</text></svg>`;
+    return makeAlignmentMessageSvg({
+      title: "Colored alignment not drawn",
+      lines: [
+        `The alignment has ${displayedCells.toLocaleString()} displayed cells, exceeding the ${cellLimit.toLocaleString()}-cell colored alignment limit.`,
+        "Use text, CLUSTAL, FASTA, or TSV output for the complete alignment."
+      ],
+      ariaLabel: `${ariaLabel} not drawn`,
+      height: 150
+    });
   }
 
   const blockWidth = normalizeLineWidth(lineWidth);
   const cell = 15;
-  const rowHeight = 17;
   const labelX = 24;
-  const labelPixelWidth = 132;
-  const coordinatePixelWidth = Math.max(6, coordinateWidthForRows(rows)) * 7;
-  const left = labelX + labelPixelWidth + 12 + coordinatePixelWidth + 12;
-  const startCoordinateX = left - 8;
   const endCoordinatePadding = 4;
   const blocks = Math.ceil(alignmentLength / blockWidth);
   const renderedBlockColumns = Math.min(blockWidth, alignmentLength);
   const hasConsensus = consensus.length > 0;
   const blockGap = hasConsensus ? CONSENSUS_BLOCK_GAP_PX : ALIGNMENT_BLOCK_GAP_PX;
-  const blockHeight = rows.length * rowHeight + (hasConsensus ? 20 : 0);
-  const width = Math.max(760, left + renderedBlockColumns * cell + endCoordinatePadding + coordinatePixelWidth + 24);
+  const coordinateCharacters = Math.max(6, coordinateWidthForRows(rows));
+  let labelPixelWidth = 132;
+  let coordinatePixelWidth = coordinateCharacters * 7;
+  let left = labelX + labelPixelWidth + 12 + coordinatePixelWidth + 12;
+  let width = Math.max(760, left + renderedBlockColumns * cell + endCoordinatePadding + coordinatePixelWidth + 24);
+  let publicationStyle = makePublicationPlotStyle(width, 1);
+  for (let iteration = 0; iteration < ALIGNMENT_LAYOUT_ITERATION_LIMIT; iteration += 1) {
+    labelPixelWidth = Math.max(
+      132,
+      Math.min(
+        MAX_ALIGNMENT_LABEL_WIDTH_PX,
+        Math.ceil(Math.max(...rows.map((row) => estimateTextWidth(row.label || "sequence", publicationStyle.bodyFontSize)), 0) + 8)
+      )
+    );
+    coordinatePixelWidth = Math.max(42, Math.ceil(coordinateCharacters * publicationStyle.smallFontSize * 0.62));
+    left = labelX + labelPixelWidth + 12 + coordinatePixelWidth + 12;
+    width = Math.max(760, left + renderedBlockColumns * cell + endCoordinatePadding + coordinatePixelWidth + 24);
+    publicationStyle = makePublicationPlotStyle(width, 1);
+  }
+  const startCoordinateX = left - 8;
+  const rowHeight = Math.max(18, Math.ceil(publicationStyle.bodyFontSize + 5));
+  const cellHeight = Math.max(16, Math.ceil(publicationStyle.bodyFontSize + 2));
+  const consensusHeight = hasConsensus ? Math.ceil(publicationStyle.bodyFontSize + 8) : 0;
+  const blockHeight = rows.length * rowHeight + consensusHeight;
   const captionWidth = width - 48;
-  const titleLines = wrapTextLines(title, captionWidth, 18);
-  const titleLineHeight = 22;
+  const titleLines = wrapTextLines(title, captionWidth, publicationStyle.titleFontSize);
+  const titleLineHeight = publicationStyle.titleFontSize + 6;
   const top = 58 + Math.max(0, titleLines.length - 1) * titleLineHeight;
   const footerLines = [
-    ...wrapTextLines(legend, captionWidth, 12).map((text) => ({ className: "legend", text })),
-    ...wrapTextLines(note, captionWidth, 12).map((text) => ({ className: "note", text })),
-    ...wrapTextLines(summary, captionWidth, 12).map((text) => ({ className: "note", text }))
+    ...wrapTextLines(legend, captionWidth, publicationStyle.bodyFontSize).map((text) => ({ className: "legend", text })),
+    ...wrapTextLines(note, captionWidth, publicationStyle.smallFontSize).map((text) => ({ className: "note", text })),
+    ...wrapTextLines(summary, captionWidth, publicationStyle.smallFontSize).map((text) => ({ className: "note", text }))
   ];
-  const footerLineHeight = 18;
+  const footerLineHeight = publicationStyle.bodyFontSize + 6;
   const footerTop = top + blocks * (blockHeight + blockGap) + 20;
-  const height = footerTop + footerLines.length * footerLineHeight + 14;
+  const height = Math.ceil(footerTop + footerLines.length * footerLineHeight + 14);
+  publicationStyle = {
+    ...makePublicationPlotStyle(width, height),
+    viewBoxWidth: width,
+    viewBoxHeight: height
+  };
   const parts = [
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(ariaLabel)}" data-block-gap-px="${blockGap}">`,
+    `<svg ${alignmentSvgRootAttributes(publicationStyle, ariaLabel)} data-block-gap-px="${blockGap}" data-alignment-block-columns="${renderedBlockColumns}">`,
     "<style>",
-    ".title{font:600 18px system-ui,sans-serif;fill:#111827}",
-    ".note{font:12px system-ui,sans-serif;fill:#475569}",
-    ".label{font:12px system-ui,sans-serif;fill:#334155}",
-    ".coord{font:11px ui-monospace,SFMono-Regular,Menlo,monospace;fill:#475569}",
+    `.title{font:600 ${publicationStyle.titleFontSize}px ${publicationStyle.fontFamily};fill:${SMS3_PLOT_THEME.text}}`,
+    `.note{font:400 ${publicationStyle.smallFontSize}px ${publicationStyle.fontFamily};fill:${SMS3_PLOT_THEME.textMuted}}`,
+    `.label{font:400 ${publicationStyle.bodyFontSize}px ${publicationStyle.fontFamily};fill:${SMS3_PLOT_THEME.text}}`,
+    `.coord{font:400 ${publicationStyle.smallFontSize}px ${publicationStyle.sequenceFontFamily};fill:${SMS3_PLOT_THEME.textMuted}}`,
     ".coord-start{text-anchor:end}",
     ".coord-end{text-anchor:start}",
-    ".cell{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;text-anchor:middle;dominant-baseline:central;fill:#111827}",
-    ".consensus{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;fill:#334155;text-anchor:middle;dominant-baseline:central}",
-    ".legend{font:12px system-ui,sans-serif;fill:#475569}",
+    `.cell{font:400 ${publicationStyle.bodyFontSize}px ${publicationStyle.sequenceFontFamily};text-anchor:middle;dominant-baseline:central;fill:${SMS3_PLOT_THEME.text}}`,
+    `.consensus{font:400 ${publicationStyle.bodyFontSize}px ${publicationStyle.sequenceFontFamily};fill:${SMS3_PLOT_THEME.text};text-anchor:middle;dominant-baseline:central}`,
+    `.legend{font:400 ${publicationStyle.bodyFontSize}px ${publicationStyle.fontFamily};fill:${SMS3_PLOT_THEME.textMuted}}`,
     "</style>",
-    '<rect width="100%" height="100%" fill="white"/>',
+    `<rect width="100%" height="100%" fill="${SMS3_PLOT_THEME.surface}"/>`,
     ...titleLines.map((line, index) => `<text class="title" x="24" y="${30 + index * titleLineHeight}">${escapeXml(line)}</text>`)
   ];
 
@@ -154,9 +241,10 @@ export function makeAlignmentSvg({
       const startCoord = positions[rowIndex];
       const endCoord = count > 0 ? positions[rowIndex] + count - 1 : positions[rowIndex] - 1;
       const rowLabel = String(row.label || `Sequence ${rowIndex + 1}`);
+      const visibleRowLabel = truncateLabelToWidth(rowLabel, labelPixelWidth - 8, publicationStyle.bodyFontSize);
       const coordinateSummary = count > 0 ? `${startCoord}–${endCoord}` : "gap-only chunk";
       parts.push(`<g class="alignment-row" data-alignment-row-label="${escapeXml(rowLabel)}"><title>${escapeXml(`${rowLabel}; alignment columns ${start + 1}–${start + chunkLength}; sequence coordinates ${coordinateSummary}`)}</title>`);
-      parts.push(`<text class="label" x="${labelX}" y="${y + 11}">${escapeXml(truncateLabel(row.label, 20))}</text>`);
+      parts.push(`<text class="label" x="${labelX}" y="${y + 11}">${escapeXml(visibleRowLabel)}</text>`);
       parts.push(`<text class="coord coord-start" x="${startCoordinateX}" y="${y + 11}">${count > 0 ? startCoord : ""}</text>`);
       parts.push(`<text class="coord coord-end" x="${left + chunkLength * cell + endCoordinatePadding}" y="${y + 11}">${count > 0 ? endCoord : ""}</text>`);
       let sequencePosition = startCoord - 1;
@@ -169,8 +257,8 @@ export function makeAlignmentSvg({
         const x = left + offset * cell;
         if (symbol !== "-") sequencePosition += 1;
         const inspectionRelation = relation || (hasGap ? "gap column" : consensus[columnIndex] === "*" ? "conserved" : "");
-        parts.push(`<rect data-alignment-column="${columnIndex + 1}" data-alignment-symbol="${escapeXml(symbol)}" data-sequence-coordinate="${symbol === "-" ? "gap" : sequencePosition}" data-alignment-relation="${escapeXml(inspectionRelation)}" x="${x}" y="${y}" width="${cell - 1}" height="${cell}" fill="${fill}"></rect>`);
-        parts.push(`<text class="cell" pointer-events="none" x="${x + cell / 2}" y="${y + cell / 2}">${escapeXml(symbol)}</text>`);
+        parts.push(`<rect data-alignment-column="${columnIndex + 1}" data-alignment-symbol="${escapeXml(symbol)}" data-sequence-coordinate="${symbol === "-" ? "gap" : sequencePosition}" data-alignment-relation="${escapeXml(inspectionRelation)}" x="${x}" y="${y}" width="${cell - 1}" height="${cellHeight}" fill="${fill}"></rect>`);
+        parts.push(`<text class="cell" pointer-events="none" x="${x + cell / 2}" y="${y + cellHeight / 2}">${escapeXml(symbol)}</text>`);
       }
       parts.push("</g>");
       positions[rowIndex] += count;

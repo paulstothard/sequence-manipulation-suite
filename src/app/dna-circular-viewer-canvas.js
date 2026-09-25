@@ -15,6 +15,7 @@ import {
   createViewerTrackControls,
   getViewerFeatureTypeStyle,
   getViewerHitTargets,
+  getSelectionTranslation,
   getViewerTrackDisplayMode,
   getViewerTrackItems,
   getViewerTargetClientPosition,
@@ -22,6 +23,7 @@ import {
   hasHiddenViewerItemTypes,
   hitTestRegions,
   makeTooltipText,
+  makeRangeAnchor,
   makeViewerItemTargetDetails,
   makeTargetKey,
   makeViewerFeatureSuggestions,
@@ -248,15 +250,6 @@ function getCircularSequence(record, target) {
 function copyViewerText(text) {
   if (!text || !navigator.clipboard?.writeText) return false;
   return navigator.clipboard.writeText(String(text));
-}
-
-function makeRangeAnchor(target) {
-  const position = Number(target.position ?? target.start);
-  if (!Number.isFinite(position) || position < 1) return null;
-  return {
-    position: Math.round(position),
-    label: target.label || target.enzyme || target.base || target.codon || target.kind
-  };
 }
 
 function getCircularRangeState(state, record) {
@@ -2857,7 +2850,7 @@ function installCircularViewer(panel, record, options = {}) {
       recordIndex: options.recordIndex ?? 0,
       viewer: "circular",
       actions: {
-        addRangeAnchor: (selected = target) => selectionActions().addRangeAnchor(selected),
+        addRangeAnchor: (selected = target, endpoint = "start") => selectionActions().addRangeAnchor(selected, endpoint),
         clearRange: () => {
           state.rangeAnchors = [];
           renderCurrentRange();
@@ -2932,14 +2925,24 @@ function installCircularViewer(panel, record, options = {}) {
   function selectionActions() {
     return {
       clearSelection: () => selectTarget(null),
-      addRangeAnchor: (selected) => {
-        const anchor = makeRangeAnchor(selected);
+      addRangeAnchor: (selected, endpoint = "start") => {
+        const anchor = makeRangeAnchor(selected, endpoint);
         if (!anchor) return;
         state.rangeAnchors = [...state.rangeAnchors, anchor].slice(-2);
         renderCurrentRange();
       },
       copyText: copyViewerText,
       copySequence: (selected) => copyViewerText(getCircularSequence(record, selected)),
+      canCopyTranslation: (selected, translation = getSelectionTranslation(selected)) =>
+        selected?.alphabet !== "protein" && Boolean(translation || getCircularSequence(record, selected).length >= 3),
+      copyTranslation: (selected) => {
+        const translation = getSelectionTranslation(selected) || translateRange(
+          getCircularSequence(record, selected),
+          "+1",
+          getViewerGeneticCode(record, state)
+        );
+        return copyViewerText(translation);
+      },
       zoomToTarget: (selected) => zoomToTargetAnimated(selected),
       canZoomToMate: (selected) => Boolean(findMateTarget(selected)),
       zoomToMate: (selected) => {

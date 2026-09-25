@@ -4,6 +4,13 @@ import { annotatePointCrowding, pointCrowdingFact } from "./point-plot-inspectio
 import { parseStatisticsNumber } from "./statistics-utils.js";
 import { findColumn, parseDelimitedTable } from "./table.js";
 import { twoTailedPValue } from "./hypothesis-tests.js";
+import {
+  makePlotAxisLabel,
+  makePublicationPlotStyle,
+  publicationPlotCss,
+  publicationSvgAttributes,
+  SMS3_PLOT_THEME
+} from "./publication-plot-style.js";
 
 export const simpleLinearRegressionColumns = [
   { id: "model", label: "Model", type: "string" },
@@ -31,7 +38,7 @@ export const simpleLinearRegressionFitColumns = [
   { id: "residual", label: "Residual", type: "number" }
 ];
 
-const COLORS = ["#2563eb", "#0f766e", "#a33a3a", "#7c3aed", "#d97706", "#0369a1", "#be123c", "#4b5563"];
+const COLORS = SMS3_PLOT_THEME.categorical;
 
 function getD3() {
   return globalThis.d3 ?? null;
@@ -107,16 +114,19 @@ function groupColor(group, groups) {
 function renderRegressionSvg(result, options = {}) {
   const rows = result.fitRows ?? [];
   if (rows.length === 0) {
+    const emptyStyle = makePublicationPlotStyle(900, 360);
     return [
-      '<svg xmlns="http://www.w3.org/2000/svg" width="900" height="360" viewBox="0 0 900 360" role="img" aria-label="Simple linear regression" data-plot-foundation="d3-regression-svg" data-plot-renderer="sms3-d3">',
-      '<rect width="900" height="360" fill="white"/>',
-      '<text x="34" y="42" font-family="system-ui, sans-serif" font-size="20" font-weight="700" fill="#263238">Simple linear regression</text>',
-      '<text x="34" y="88" font-family="system-ui, sans-serif" font-size="14" fill="#455a64">No numeric paired rows were available.</text>',
+      `<svg xmlns="http://www.w3.org/2000/svg" ${publicationSvgAttributes(emptyStyle)} viewBox="0 0 900 360" role="img" aria-label="Simple linear regression" data-plot-foundation="d3-regression-svg" data-plot-renderer="sms3-d3" data-sms3-publication-theme="default" data-grid-lines="hidden">`,
+      `<style>${publicationPlotCss(emptyStyle)}</style>`,
+      `<rect width="900" height="360" fill="${SMS3_PLOT_THEME.surface}"/>`,
+      '<text class="title" x="34" y="42">Simple linear regression</text>',
+      '<text class="note" x="34" y="88">No numeric paired rows were available.</text>',
       "</svg>"
     ].join("");
   }
   const width = 920;
   const height = 560;
+  const style = makePublicationPlotStyle(width, height);
   const showLegend = result.groupColumn !== null;
   const margin = { top: 70, right: showLegend ? 150 : 36, bottom: 74, left: 86 };
   const plotWidth = width - margin.left - margin.right;
@@ -139,29 +149,24 @@ function renderRegressionSvg(result, options = {}) {
     plotY: scale(row.y, yMin, yMax, plotHeight, 0)
   })), { getX: (row) => row.plotX, getY: (row) => row.plotY });
   const parts = [
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(options.title || "Simple linear regression")}" data-plot-foundation="d3-regression-svg" data-plot-renderer="sms3-d3">`,
+    `<svg xmlns="http://www.w3.org/2000/svg" ${publicationSvgAttributes(style)} viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(options.title || "Simple linear regression")}" data-plot-foundation="d3-regression-svg" data-plot-renderer="sms3-d3" data-sms3-publication-theme="default" data-grid-lines="hidden">`,
     "<style>",
-    ".title{font:700 20px system-ui,sans-serif;fill:#263238}",
-    ".axis{stroke:#455a64;stroke-width:1.2}",
-    ".grid{stroke:#d9e2e8;stroke-width:1}",
-    ".tick{font:11px system-ui,sans-serif;fill:#455a64}",
-    ".label{font:13px system-ui,sans-serif;fill:#263238}",
-    ".legend{font:12px system-ui,sans-serif;fill:#263238}",
+    publicationPlotCss(style),
     "</style>",
-    `<rect width="${width}" height="${height}" fill="white"/>`,
+    `<rect width="${width}" height="${height}" fill="${SMS3_PLOT_THEME.surface}"/>`,
     `<text class="title" x="34" y="34">${escapeXml(options.title || "Simple linear regression")}</text>`,
     `<g transform="translate(${margin.left} ${margin.top})">`,
     ...xTicks.map((tick) => {
       const x = scale(tick, xMin, xMax, 0, plotWidth);
-      return `<line class="grid" x1="${x}" x2="${x}" y1="0" y2="${plotHeight}"/><text class="tick" x="${x}" y="${plotHeight + 20}" text-anchor="middle">${escapeXml(niceNumber(tick))}</text>`;
+      return `<line class="axis-tick" x1="${x}" x2="${x}" y1="${plotHeight}" y2="${plotHeight + style.tickLength}"/><text class="tick" x="${x}" y="${plotHeight + style.tickLength + style.bodyFontSize + 4}" text-anchor="middle">${escapeXml(niceNumber(tick))}</text>`;
     }),
     ...yTicks.map((tick) => {
       const y = scale(tick, yMin, yMax, plotHeight, 0);
-      return `<line class="grid" x1="0" x2="${plotWidth}" y1="${y}" y2="${y}"/><text class="tick" x="-10" y="${y + 4}" text-anchor="end">${escapeXml(niceNumber(tick))}</text>`;
+      return `<line class="axis-tick" x1="${-style.tickLength}" x2="0" y1="${y}" y2="${y}"/><text class="tick" x="${-style.tickLength - 6}" y="${y + style.bodyFontSize * 0.34}" text-anchor="end">${escapeXml(niceNumber(tick))}</text>`;
     }),
     `<line class="axis" x1="0" x2="${plotWidth}" y1="${plotHeight}" y2="${plotHeight}"/>`,
     `<line class="axis" x1="0" x2="0" y1="0" y2="${plotHeight}"/>`,
-    `<line x1="${line.x1.toFixed(2)}" y1="${line.y1.toFixed(2)}" x2="${line.x2.toFixed(2)}" y2="${line.y2.toFixed(2)}" stroke="#111827" stroke-width="2.2"/>`,
+    `<line x1="${line.x1.toFixed(2)}" y1="${line.y1.toFixed(2)}" x2="${line.x2.toFixed(2)}" y2="${line.y2.toFixed(2)}" stroke="${SMS3_PLOT_THEME.outline}" stroke-width="${style.dataStrokeWidth}"/>`,
     ...pointRows.map((row) => {
       const color = groupColor(row.group || "Data", groups);
       const details = [`${row.label}: x=${row.x}, y=${row.y}, fitted=${row.fitted}`];
@@ -170,8 +175,8 @@ function renderRegressionSvg(result, options = {}) {
       return `<circle data-sms3-nearest-point="true" cx="${row.plotX.toFixed(2)}" cy="${row.plotY.toFixed(2)}" r="4.6" fill="${color}" fill-opacity="0.8"><title>${escapeXml(details.join("; "))}</title></circle>`;
     }),
     "</g>",
-    `<text class="label" x="${width / 2}" y="${height - 18}" text-anchor="middle">${escapeXml(result.xColumn?.label ?? "X")}</text>`,
-    `<text class="label" transform="translate(18 ${height / 2}) rotate(-90)" text-anchor="middle">${escapeXml(result.yColumn?.label ?? "Y")}</text>`,
+    `<text class="label" x="${width / 2}" y="${height - 18}" text-anchor="middle">${escapeXml(makePlotAxisLabel(result.xColumn?.label ?? "X"))}</text>`,
+    `<text class="label" transform="translate(18 ${height / 2}) rotate(-90)" text-anchor="middle">${escapeXml(makePlotAxisLabel(result.yColumn?.label ?? "Y"))}</text>`,
     `<text class="legend" x="34" y="${height - 44}">y = ${escapeXml(niceNumber(result.intercept))} + ${escapeXml(niceNumber(result.slope))}x; R^2 = ${escapeXml(niceNumber(result.rSquared))}</text>`
   ];
   if (showLegend) {

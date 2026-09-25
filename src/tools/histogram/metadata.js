@@ -1,5 +1,5 @@
 import { HISTOGRAM_BIN_LIMIT, histogramColumns } from "../../core/plot-tools.js";
-import { makeAxisLimitsGroup } from "../plot-axis-options.js";
+import { makeAxisLimitsGroup, makePublicationPlotGroup } from "../plot-axis-options.js";
 
 export const histogramMetadata = {
   id: "histogram",
@@ -66,6 +66,7 @@ export const histogramMetadata = {
       ]
     },
     makeAxisLimitsGroup({ x: true, y: true }),
+    makePublicationPlotGroup(),
     {
       type: "group",
       label: "Output format",

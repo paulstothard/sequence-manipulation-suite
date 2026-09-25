@@ -1,4 +1,5 @@
 import { HEATMAP_VISUAL_CELL_LIMIT, heatmapColumns } from "../../core/plot-tools.js";
+import { makePublicationPlotGroup } from "../plot-axis-options.js";
 
 export const heatmapMetadata = {
   id: "heatmap",
@@ -34,6 +35,7 @@ export const heatmapMetadata = {
         { id: "hasHeader", type: "checkbox", label: "First row contains column names", defaultValue: true }
       ]
     },
+    makePublicationPlotGroup({ value: true, grid: false }),
     {
       type: "group",
       label: "Plot columns",

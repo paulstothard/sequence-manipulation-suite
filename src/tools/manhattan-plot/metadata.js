@@ -1,5 +1,5 @@
 import { manhattanPlotColumns } from "../../core/plot-tools.js";
-import { makeAxisLimitsGroup } from "../plot-axis-options.js";
+import { makeAxisLimitsGroup, makePublicationPlotGroup } from "../plot-axis-options.js";
 
 export const manhattanPlotMetadata = {
   id: "manhattan-plot",
@@ -65,6 +65,7 @@ export const manhattanPlotMetadata = {
       ]
     },
     makeAxisLimitsGroup({ x: false, y: true }),
+    makePublicationPlotGroup(),
     {
       type: "group",
       label: "Output format",

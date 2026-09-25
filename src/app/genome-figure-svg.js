@@ -13,11 +13,21 @@ import { createStackedIntervalLayout } from "../core/viewer-track-layout.js";
 import { featureArrowHeadLength, featureArrowTerminalVisible, linearFeaturePolygon } from "../core/directional-feature-geometry.js";
 import { createSearchableViewerChoiceCombobox } from "./searchable-viewer-choice-ui.js";
 import { serializeSvgElement } from "./svg-export.js";
+import {
+  makePublicationPlotStyle,
+  publicationSvgAttributeMap,
+  SMS3_PLOT_THEME
+} from "../core/publication-plot-style.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const TAU = Math.PI * 2;
+const GENOME_FIGURE_PUBLICATION_STYLE = makePublicationPlotStyle(1400, 1400);
 
-const LINEAR_LABEL_LANES = [74, 52, 30, 8, -14, -36];
+const LABEL_FONT_SIZE = GENOME_FIGURE_PUBLICATION_STYLE.smallFontSize;
+const LABEL_BOX_HEIGHT = Math.ceil(LABEL_FONT_SIZE + 6);
+const LABEL_VERTICAL_GAP = LABEL_BOX_HEIGHT + 3;
+const LINEAR_LABEL_LANES = Array.from({ length: 6 }, (_, index) => 78 - index * LABEL_VERTICAL_GAP);
+const DEFAULT_FEATURE_TRACK_WIDTH = 21;
 const DEFAULT_PLOT_BAND_WIDTH = 56;
 const MAX_PLOT_BAND_WIDTH = 120;
 const LINEAR_PLOT_GAP = 12;
@@ -33,17 +43,15 @@ const LINEAR_RIGHT_MARGIN = 65;
 const LINEAR_ROW_GAP = 16;
 const MAX_PLOT_WINDOW_SIZE = 10000;
 const LABEL_SNAP_TOLERANCE = 14;
-const LABEL_FONT_SIZE = 12;
 const LABEL_MIN_WIDTH = 56;
 const LABEL_MAX_WIDTH = 170;
-const LABEL_BOX_HEIGHT = 18;
-const LABEL_VERTICAL_GAP = 20;
 const LABEL_HORIZONTAL_PADDING = 7;
 const LABEL_VISUAL_PADDING = 2;
 const CIRCULAR_LABEL_LEADER_GAP = 28;
 const CIRCULAR_LABEL_MARGIN = 16;
-const INSIDE_FEATURE_LABEL_FONT_SIZE = 9.5;
-const INSIDE_FEATURE_LABEL_HEIGHT = 11;
+const INSIDE_FEATURE_LABEL_FONT_SIZE = GENOME_FIGURE_PUBLICATION_STYLE.smallFontSize;
+const INSIDE_FEATURE_LABEL_HEIGHT = Math.ceil(INSIDE_FEATURE_LABEL_FONT_SIZE);
+const MIN_INSIDE_FEATURE_LABEL_TRACK_WIDTH = INSIDE_FEATURE_LABEL_HEIGHT + 1;
 const INSIDE_FEATURE_LABEL_PADDING = 18;
 const INSIDE_FEATURE_LABEL_LETTER_SPACING = 0.55;
 const CIRCULAR_INSIDE_LABEL_OPTICAL_OFFSET = 3.2;
@@ -56,12 +64,12 @@ const DEFAULT_PLOT_SCALE_MODE = "fit";
 const DEFAULT_FEATURE_SLOT_GROUPING = "rna";
 const DEFAULT_FEATURE_OPACITY = 100;
 const MIN_FEATURE_DISPLAY_WIDTH = 3;
-const FEATURE_FAMILY_SLOT_ORDER = ["gene", "CDS", "RNA", "repeat", "mobile", "misc"];
+const FEATURE_FAMILY_SLOT_ORDER = ["gene", "CDS", "RNA", "repeat", "mobile", "variant", "misc"];
 const COMMON_PLOT_WINDOW_SIZES = [
   24, 50, 100, 200, 500, 1000, 2000, 5000, 10000
 ];
 const STICKY_PLOT_WINDOW_SIZES = [100, 500, 1000, 5000];
-const LABEL_FONT = '12px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+const LABEL_FONT = `${LABEL_FONT_SIZE}px ${GENOME_FIGURE_PUBLICATION_STYLE.fontFamily}`;
 let textMeasureContext = null;
 
 const ICONS = {
@@ -71,15 +79,15 @@ const ICONS = {
 
 const PLOT_STYLES = {
   gc: {
-    stroke: "#0f766e",
-    fill: "rgba(15, 118, 110, 0.28)",
+    stroke: SMS3_PLOT_THEME.genomeFigure.plotLine,
+    fill: SMS3_PLOT_THEME.genomeFigure.plotFill,
     label: "GC fraction",
     baseline: 0.5,
     scale: "0 to 1 GC fraction; dashed line marks 0.50"
   },
   "gc-skew": {
-    stroke: "#b91c1c",
-    fill: "rgba(185, 28, 28, 0.40)",
+    stroke: SMS3_PLOT_THEME.direction.positive,
+    fill: "rgba(213, 94, 0, 0.30)",
     label: "GC skew",
     baseline: 0,
     scale: "-1 to +1 as (G-C)/(G+C); dashed line marks 0"
@@ -88,28 +96,8 @@ const PLOT_STYLES = {
 
 const PALETTES = {
   classic: {
-    paper: "#fbfdff",
-    panel: "#f1f5f9",
-    ink: "#111827",
-    muted: "#64748b",
-    axis: "#263241",
-    grid: "#cbd5e1",
-    plotFill: "rgba(14, 116, 144, 0.14)",
-    plotLine: "#0e7490",
-    connector: "#8b98a8",
-    features: {
-      CDS: "#2563eb",
-      gene: "#94a3b8",
-      RNA: "#7e22ce",
-      tRNA: "#7e22ce",
-      rRNA: "#be185d",
-      ncRNA: "#0891b2",
-      tmRNA: "#9333ea",
-      repeat: "#f59e0b",
-      mobile: "#dc2626",
-      misc: "#059669",
-      custom: "#111827"
-    }
+    ...SMS3_PLOT_THEME.genomeFigure,
+    features: { ...SMS3_PLOT_THEME.genomeFigure.features }
   },
   marine: {
     paper: "#f8ffff",
@@ -131,6 +119,7 @@ const PALETTES = {
       tmRNA: "#7c3aed",
       repeat: "#d97706",
       mobile: "#e11d48",
+      variant: "#b91c1c",
       misc: "#15803d",
       custom: "#111827"
     }
@@ -155,6 +144,7 @@ const PALETTES = {
       tmRNA: "#7c3aed",
       repeat: "#d97706",
       mobile: "#c2410c",
+      variant: "#b91c1c",
       misc: "#0f766e",
       custom: "#111827"
     }
@@ -175,6 +165,7 @@ const PALETTES = {
       RNA: "#71717a",
       repeat: "#a1a1aa",
       mobile: "#3f3f46",
+      variant: "#09090b",
       misc: "#737373",
       custom: "#111827"
     }
@@ -203,6 +194,7 @@ const PALETTES = {
       tmRNA: "#6d5dfc",
       repeat: "#f59e0b",
       mobile: "#ef4444",
+      variant: "#be123c",
       misc: "#0ea66d",
       custom: "#10202f"
     }
@@ -235,6 +227,7 @@ const PALETTES = {
       tmRNA: "#818cf8",
       repeat: "#fbbf24",
       mobile: "#f97316",
+      variant: "#f43f5e",
       misc: "#34d399",
       custom: "#f8fafc"
     }
@@ -267,6 +260,7 @@ const PALETTES = {
       tmRNA: "#818cf8",
       repeat: "#facc15",
       mobile: "#fb923c",
+      variant: "#f43f5e",
       misc: "#86efac",
       custom: "#fff7ed"
     }
@@ -299,6 +293,7 @@ const PALETTES = {
       tmRNA: "#a78bfa",
       repeat: "#fde047",
       mobile: "#fb923c",
+      variant: "#ef4444",
       misc: "#86efac",
       custom: "#eff6ff"
     }
@@ -416,7 +411,7 @@ export function insideFeatureLabelContrastStyle(featureFill) {
   return `fill:${textFill};stroke:${stroke};stroke-opacity:${strokeOpacity};stroke-width:${strokeWidth}`;
 }
 
-function appendFigureStyles(svg, palette) {
+function appendFigureStyles(svg, palette, publicationStyle = GENOME_FIGURE_PUBLICATION_STYLE) {
   const halo = palette.labelHalo || palette.paper;
   svg.style.setProperty("--genome-figure-ink", palette.ink);
   svg.style.setProperty("--genome-figure-muted", palette.muted);
@@ -427,19 +422,19 @@ function appendFigureStyles(svg, palette) {
   style.textContent = `
     .genome-figure-title {
       fill: var(--genome-figure-ink);
-      font: 700 28px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font: 600 ${publicationStyle.titleFontSize}px ${publicationStyle.fontFamily};
       letter-spacing: 0;
     }
     .genome-figure-subtitle {
       fill: var(--genome-figure-muted);
-      font: 14px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font: ${publicationStyle.bodyFontSize}px ${publicationStyle.fontFamily};
     }
     .genome-figure-subtitle,
     .genome-figure-axis-label,
     .genome-figure-legend-text { fill: var(--genome-figure-muted); }
     .genome-figure-axis-label,
     .genome-figure-legend-text {
-      font: 12px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font: ${publicationStyle.smallFontSize}px ${publicationStyle.fontFamily};
     }
     .genome-figure-axis-label-curved {
       pointer-events: none;
@@ -448,10 +443,10 @@ function appendFigureStyles(svg, palette) {
     .genome-figure-plot-note,
     .genome-figure-label-text { fill: var(--genome-figure-ink); }
     .genome-figure-plot-note {
-      font: 13px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font: ${publicationStyle.bodyFontSize}px ${publicationStyle.fontFamily};
     }
     .genome-figure-legend-title {
-      font: 700 13px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font: 600 ${publicationStyle.axisLabelFontSize}px ${publicationStyle.fontFamily};
     }
     .genome-figure-label rect[fill="transparent"],
     .genome-figure-label-text {
@@ -462,12 +457,12 @@ function appendFigureStyles(svg, palette) {
       cursor: grabbing;
     }
     .genome-figure-label-text {
-      font: 12px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font: ${publicationStyle.smallFontSize}px ${publicationStyle.fontFamily};
       pointer-events: none;
     }
     .genome-figure-inside-label {
       fill: var(--genome-figure-ink);
-      font: 500 ${INSIDE_FEATURE_LABEL_FONT_SIZE}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font: 500 ${INSIDE_FEATURE_LABEL_FONT_SIZE}px ${publicationStyle.fontFamily};
       letter-spacing: ${INSIDE_FEATURE_LABEL_LETTER_SPACING}px;
       paint-order: stroke;
       pointer-events: none;
@@ -499,11 +494,12 @@ function hashString(value) {
   return Math.abs(hash);
 }
 
-function featureFamily(type) {
+export function featureFamily(type) {
   if (type === "CDS") return "CDS";
   if (/RNA/i.test(type)) return "RNA";
   if (/repeat/i.test(type)) return "repeat";
   if (/mobile|prophage|island|transpos/i.test(type)) return "mobile";
+  if (/variation|variant|mutation|SNP|misc_difference/i.test(type)) return "variant";
   if (type === "gene") return "gene";
   return "misc";
 }
@@ -513,17 +509,22 @@ function featureFamilyLabel(family) {
   if (family === "CDS") return "CDS";
   if (family === "mobile") return "Mobile elements";
   if (family === "repeat") return "Repeats";
+  if (family === "variant") return "Variants";
   if (family === "gene") return "Genes";
   return "Misc features";
 }
 
+function featureFamilySortOrder(type) {
+  const family = featureFamily(type);
+  const index = FEATURE_FAMILY_SLOT_ORDER.indexOf(family);
+  return index >= 0 ? index : FEATURE_FAMILY_SLOT_ORDER.length;
+}
+
 function slotGroupForFeature(feature, grouping = DEFAULT_FEATURE_SLOT_GROUPING) {
   const type = String(feature?.type || "misc");
+  const family = featureFamily(type);
+  const sortOrder = featureFamilySortOrder(type);
   if (grouping === "families") {
-    const family = featureFamily(type);
-    const sortOrder = FEATURE_FAMILY_SLOT_ORDER.includes(family)
-      ? FEATURE_FAMILY_SLOT_ORDER.indexOf(family)
-      : FEATURE_FAMILY_SLOT_ORDER.length;
     return {
       key: `family:${family}`,
       label: featureFamilyLabel(family),
@@ -536,14 +537,14 @@ function slotGroupForFeature(feature, grouping = DEFAULT_FEATURE_SLOT_GROUPING) 
       key: "group:RNA",
       label: "RNA types",
       colorType: "RNA",
-      sortOrder: Number.POSITIVE_INFINITY
+      sortOrder
     };
   }
   return {
     key: `type:${type}`,
     label: type,
     colorType: type,
-    sortOrder: Number.POSITIVE_INFINITY
+    sortOrder
   };
 }
 
@@ -563,7 +564,7 @@ function featureSlotGroups(features, grouping = DEFAULT_FEATURE_SLOT_GROUPING) {
   }
   const groups = [...groupsByKey.values()];
   return groups.sort((left, right) => {
-    if (grouping === "families" && left.sortOrder !== right.sortOrder) return left.sortOrder - right.sortOrder;
+    if (left.sortOrder !== right.sortOrder) return left.sortOrder - right.sortOrder;
     return left.firstIndex - right.firstIndex || left.label.localeCompare(right.label);
   });
 }
@@ -586,7 +587,7 @@ function generatedTypeColor(type, paletteName) {
   return `hsl(${hue} ${42 + (hashString(`${type}:s`) % 22)}% ${38 + (hashString(`${type}:l`) % 16)}%)`;
 }
 
-function colorForFeature(type, palette, paletteName) {
+export function colorForFeature(type, palette, paletteName) {
   if (palette.features[type]) return palette.features[type];
   const family = featureFamily(type);
   return palette.features[family] || generatedTypeColor(type, paletteName);
@@ -821,7 +822,7 @@ function plotScaleDescription(plot, scale) {
   const baselineLabel = plot.id === "gc"
     ? `baseline ${formatPlotValue(scale.baseline)}`
     : "baseline 0";
-  return `min ${formatPlotValue(scale.min)}; max ${formatPlotValue(scale.max)}; ${baselineLabel}; scale ±${formatPlotValue(scale.span)}`;
+  return `range ${formatPlotValue(scale.min)}–${formatPlotValue(scale.max)}; ${baselineLabel}; ±${formatPlotValue(scale.span)}`;
 }
 
 function getVisibleFeatures(record, state) {
@@ -1658,7 +1659,7 @@ export function getCircularInsideFeatureLabelPlacement({ cx, cy, radius, slotWid
   const label = String(text || "").trim();
   if (!label) return null;
   const bandHeight = Math.max(0, Number(slotWidth) || 0);
-  if (bandHeight < INSIDE_FEATURE_LABEL_HEIGHT + 2) return null;
+  if (bandHeight < MIN_INSIDE_FEATURE_LABEL_TRACK_WIDTH) return null;
   const adjustedStart = Number(startAngle);
   let adjustedEnd = Number(endAngle);
   const centerRadius = Number(radius);
@@ -1668,7 +1669,7 @@ export function getCircularInsideFeatureLabelPlacement({ cx, cy, radius, slotWid
   const reverse = Math.sin(midAngle) > 0;
   const pathRadius = centerRadius + (reverse ? CIRCULAR_INSIDE_LABEL_OPTICAL_OFFSET : -CIRCULAR_INSIDE_LABEL_OPTICAL_OFFSET);
   const arcWidth = Math.abs(adjustedEnd - adjustedStart) * centerRadius;
-  const textWidth = measuredTextWidth(label, `500 ${INSIDE_FEATURE_LABEL_FONT_SIZE}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`)
+  const textWidth = measuredTextWidth(label, `500 ${INSIDE_FEATURE_LABEL_FONT_SIZE}px ${GENOME_FIGURE_PUBLICATION_STYLE.fontFamily}`)
     + Math.max(0, label.length - 1) * INSIDE_FEATURE_LABEL_LETTER_SPACING;
   const requiredWidth = textWidth + INSIDE_FEATURE_LABEL_PADDING;
   const availableHalfPathSpan = (adjustedEnd - adjustedStart) / 2 - CIRCULAR_INSIDE_LABEL_END_INSET;
@@ -2553,20 +2554,21 @@ function drawCircularRulerLabel(svg, text, geometry, angle, radius, id) {
 function renderCircularRecord(record, state) {
   const width = state.figure.width || 1400;
   const height = width;
+  const publicationStyle = makePublicationPlotStyle(width, height);
   const palette = state.palette;
   const cx = width / 2;
   const cy = height / 2 + 18;
   state.circularLabelSnapCenter = { x: cx, y: cy };
   const svg = svgEl("svg", {
     viewBox: `0 0 ${width} ${height}`,
-    width,
-    height,
+    ...publicationSvgAttributeMap(publicationStyle),
     role: "img",
     "aria-label": `${record.title} genome figure`,
     class: "genome-figure-svg",
+    "data-sms3-publication-theme": "genome-figure",
     "data-genome-figure-layout": "circular"
   });
-  appendFigureStyles(svg, palette);
+  appendFigureStyles(svg, palette, publicationStyle);
   svg.append(svgEl("rect", { class: "genome-figure-paper", width, height, fill: palette.paper }));
   svg.append(textEl(record.title, { x: cx, y: 58, "text-anchor": "middle", class: "genome-figure-title" }));
   const features = getVisibleFeatures(record, state);
@@ -2584,7 +2586,7 @@ function renderCircularRecord(record, state) {
 
   const plots = visiblePlots(record, state);
   const geometryPlots = visiblePlots(geometryRecord, state);
-  const requestedSlotWidth = state.slotWidth ?? 17;
+  const requestedSlotWidth = state.slotWidth ?? DEFAULT_FEATURE_TRACK_WIDTH;
   const slotGap = 5;
   const stackedLayout = state.featureLayout === "non-overlap"
     ? getStackedFeatureLayout(geometryRecord, geometryFeatures, 14, state)
@@ -2841,8 +2843,8 @@ function renderLinearRecord(record, state) {
   const linearSlotCount = state.featureLayout === "type-slots"
     ? Math.max(1, slotGroups.length)
     : Math.max(1, Math.min(8, stackedLayout?.slotCount ?? 1));
-  const slotStep = Math.max(13, Math.min(22, (state.slotWidth ?? 17) + 4));
-  const featureTrackBottomOffset = LINEAR_FEATURE_TOP_OFFSET + Math.max(0, linearSlotCount - 1) * slotStep + (state.slotWidth ?? 17) / 2;
+  const slotStep = Math.max(13, Math.min(26, (state.slotWidth ?? DEFAULT_FEATURE_TRACK_WIDTH) + 4));
+  const featureTrackBottomOffset = LINEAR_FEATURE_TOP_OFFSET + Math.max(0, linearSlotCount - 1) * slotStep + (state.slotWidth ?? DEFAULT_FEATURE_TRACK_WIDTH) / 2;
   const plotTopOffset = LINEAR_AXIS_Y + featureTrackBottomOffset + 34;
   const plotStackHeight = plots.length ? plots.length * plotBandWidth + Math.max(0, plots.length - 1) * LINEAR_PLOT_GAP : 0;
   const rowHeight = Math.max(LINEAR_ROW_MIN_HEIGHT, plotTopOffset + plotStackHeight + LINEAR_ROW_BOTTOM_PADDING);
@@ -2858,15 +2860,16 @@ function renderLinearRecord(record, state) {
     }))
   };
   const height = rows.at(-1).y + rows.at(-1).height + 90;
+  const publicationStyle = makePublicationPlotStyle(width, height);
   const svg = svgEl("svg", {
     viewBox: `0 0 ${width} ${height}`,
-    width,
-    height,
+    ...publicationSvgAttributeMap(publicationStyle),
     role: "img",
     "aria-label": `${record.title} genome figure`,
-    class: "genome-figure-svg"
+    class: "genome-figure-svg",
+    "data-sms3-publication-theme": "genome-figure"
   });
-  appendFigureStyles(svg, palette);
+  appendFigureStyles(svg, palette, publicationStyle);
   svg.append(svgEl("rect", { class: "genome-figure-paper", width, height, fill: palette.paper }));
   svg.append(textEl(record.title, { x: 82, y: 58, class: "genome-figure-title" }));
   const originalLength = record.sourceLength || record.length;
@@ -2908,11 +2911,11 @@ function renderLinearRecord(record, state) {
       renderLinearPlotBand(svg, row, record, plot, plotTop + plotIndex * (plotBandWidth + LINEAR_PLOT_GAP), plotBandWidth, state);
     }
     if (stackedLayout) {
-      drawLinearPackedGroupBands(svg, row, stackedLayout, axisY, state.slotWidth ?? 17, slotStep, state);
+      drawLinearPackedGroupBands(svg, row, stackedLayout, axisY, state.slotWidth ?? DEFAULT_FEATURE_TRACK_WIDTH, slotStep, state);
     }
     if (state.showSlotDividers) {
-      const slotStep = Math.max(13, Math.min(22, (state.slotWidth ?? 17) + 4));
-      drawLinearSlotDividers(svg, row, axisY, plotTop, plots, state.slotWidth ?? 17, slotStep, linearSlotCount, palette);
+      const slotStep = Math.max(13, Math.min(26, (state.slotWidth ?? DEFAULT_FEATURE_TRACK_WIDTH) + 4));
+      drawLinearSlotDividers(svg, row, axisY, plotTop, plots, state.slotWidth ?? DEFAULT_FEATURE_TRACK_WIDTH, slotStep, linearSlotCount, palette);
     }
     for (const feature of features) {
       const parts = clipFeatureToRow(feature, row);
@@ -2931,9 +2934,9 @@ function renderLinearRecord(record, state) {
         const x2 = rowBoundaryX(row, part.end + 1);
         const left = Math.min(x1, x2);
         const widthPx = Math.abs(x2 - x1);
-        const featureSlotWidth = state.slotWidth ?? 17;
+        const featureSlotWidth = state.slotWidth ?? DEFAULT_FEATURE_TRACK_WIDTH;
         drawLinearFeatureGlyph(svg, feature, left, y, widthPx, featureSlotWidth, color, state, part);
-        if (shouldUseInsideLabel(feature, labelCandidateIds, insideLabelIds) && featureSlotWidth >= INSIDE_FEATURE_LABEL_HEIGHT + 2 && widthPx > estimateTextWidth(feature.label, INSIDE_FEATURE_LABEL_FONT_SIZE) + INSIDE_FEATURE_LABEL_PADDING) {
+        if (shouldUseInsideLabel(feature, labelCandidateIds, insideLabelIds) && featureSlotWidth >= MIN_INSIDE_FEATURE_LABEL_TRACK_WIDTH && widthPx > estimateTextWidth(feature.label, INSIDE_FEATURE_LABEL_FONT_SIZE) + INSIDE_FEATURE_LABEL_PADDING) {
           insideLabelDraws.push({ label: feature.label, x: left + widthPx / 2, y, options: { featureFill: color } });
           insideLabelIds.add(feature.id);
         }
@@ -2956,7 +2959,7 @@ function renderLinearRecord(record, state) {
     const legendY = 52;
     if (state.featureLayout === "type-slots") {
       renderSlotLegend(svg, slotGroups.slice(0, 14), palette, state.paletteName, width - 720, legendY, {
-        title: "Feature slots (lower to upper)",
+        title: "Feature slots (top to bottom)",
         width: 250,
         colorMode: state.featureColorMode
       });
@@ -2966,7 +2969,7 @@ function renderLinearRecord(record, state) {
         columnWidth: 150,
         rowHeight: 22,
         colorMode: state.featureColorMode,
-        title: "Feature groups (lower to upper)"
+        title: "Feature groups (top to bottom)"
       });
     }
     renderPlotLegend(svg, plots, width - 405, legendY, state);
@@ -3464,7 +3467,7 @@ function installFigureEditor(panel, sourceRecords, figure, editorDocument) {
     tickDensity: DEFAULT_TICK_DENSITY,
     visibleFeatureTypes: defaultVisibleTypes,
     figureWidth: figure.width || 1400,
-    slotWidth: 17,
+    slotWidth: DEFAULT_FEATURE_TRACK_WIDTH,
     plotBandWidth: DEFAULT_PLOT_BAND_WIDTH,
     plotWindowSize: defaultPlotWindow,
     circularGeometryRecord: figureRecord,
@@ -3527,7 +3530,7 @@ function installFigureEditor(panel, sourceRecords, figure, editorDocument) {
     { value: "types", label: "Separate types" },
     { value: "rna", label: "RNA types together" },
     { value: "families", label: "Feature families" }
-  ], state.featureSlotGrouping, "Keep RNA types together, separate every type, or group related annotation types into broader lanes: CDS, RNA types, mobile elements, repeats, genes, and miscellaneous features. In packed layouts, pale tracks identify groups; solid marks show where features occur.");
+  ], state.featureSlotGrouping, "Keep RNA types together, separate every type, or group related annotation types into broader lanes: CDS, RNA types, mobile elements, repeats, variants, genes, and miscellaneous features. Groups use a stable biological-family order rather than record order. In packed layouts, pale tracks identify groups; solid marks show where features occur.");
   const groupingSummary = document.createElement("output");
   groupingSummary.className = "genome-figure-grouping-summary";
   groupingSummary.setAttribute("aria-live", "polite");
@@ -3535,7 +3538,7 @@ function installFigureEditor(panel, sourceRecords, figure, editorDocument) {
   const featureColorControl = makeSelect("Feature colors", [
     { value: "type", label: "By feature type" },
     { value: "family", label: "By feature family" }
-  ], state.featureColorMode, "Feature family colors use the same broad buckets as feature-family slot grouping: CDS, RNA types, mobile elements, repeats, genes, and miscellaneous features.");
+  ], state.featureColorMode, "Feature family colors use the same broad buckets as feature-family slot grouping: CDS, RNA types, mobile elements, repeats, variants, genes, and miscellaneous features.");
   const featureGlyphControl = makeSelect("Feature shape", [
     { value: "bands", label: "Bands" },
     { value: "directional", label: "Directional" }
@@ -4042,7 +4045,7 @@ function installFigureEditor(panel, sourceRecords, figure, editorDocument) {
     render();
   });
   slotWidthControl.input.addEventListener("input", () => {
-    state.slotWidth = Number.parseInt(slotWidthControl.input.value, 10) || 17;
+    state.slotWidth = Number.parseInt(slotWidthControl.input.value, 10) || DEFAULT_FEATURE_TRACK_WIDTH;
     slotWidthControl.valueLabel.textContent = `${state.slotWidth}${slotWidthControl.unit}`;
     clearSuggestedLabels();
     render();

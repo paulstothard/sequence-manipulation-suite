@@ -4,6 +4,11 @@ import { exportDelimitedTable } from "./table.js";
 import { createBioWasmCli, requireBioWasmRuntime } from "./biowasm-runner.js";
 import { escapeXml } from "./plot-renderer.js";
 import { effectiveToolLimit } from "./tool-limit-policy.js";
+import {
+  makePublicationPlotStyle,
+  publicationSvgAttributes,
+  SMS3_PLOT_THEME
+} from "./publication-plot-style.js";
 
 const MINIMAP2_VERSION = "2.22";
 const DEFAULT_SEED_SIZE = 14;
@@ -1231,27 +1236,29 @@ function makeWrappedAxisTicks(referenceLength, segment) {
 
 function truncateLabel(label, maxLength = 34) {
   const text = String(label ?? "");
-  if (text.length <= maxLength) return text;
-  return `${text.slice(0, Math.max(1, maxLength - 1))}...`;
+  const safeMaximum = Math.max(1, Math.floor(Number(maxLength) || 1));
+  if (text.length <= safeMaximum) return text;
+  if (safeMaximum <= 3) return text.slice(0, safeMaximum);
+  return `${text.slice(0, safeMaximum - 3)}...`;
 }
 
-const ART_POSTER_BACKGROUND = "#0b0b0f";
-const ART_POSTER_NO_HIT = "#0b0b0f";
-const ART_POSTER_AXIS = "#f9f871";
-const ART_POSTER_AXIS_SECONDARY = "#6b7280";
-const ART_POSTER_TEXT = "#f8fafc";
-const ART_POSTER_MUTED_TEXT = "#cbd5e1";
+const ART_POSTER_BACKGROUND = SMS3_PLOT_THEME.genomeComparison.darkBackground;
+const ART_POSTER_NO_HIT = SMS3_PLOT_THEME.genomeComparison.darkNoHit;
+const ART_POSTER_AXIS = SMS3_PLOT_THEME.genomeComparison.darkAxis;
+const ART_POSTER_AXIS_SECONDARY = SMS3_PLOT_THEME.genomeComparison.darkAxisSecondary;
+const ART_POSTER_TEXT = SMS3_PLOT_THEME.genomeComparison.darkText;
+const ART_POSTER_MUTED_TEXT = SMS3_PLOT_THEME.genomeComparison.darkMutedText;
 const CIRCULAR_AXIS_MAJOR_TICK_TARGET = 10;
 const CIRCULAR_AXIS_MINOR_TICK_TARGET = 50;
 const WRAPPED_AXIS_MAJOR_TICK_TARGET = 4;
 const WRAPPED_AXIS_MINOR_DIVISIONS = 5;
 const ART_POSTER_TRACK_PAINT_OVERLAP_FRACTION = 0.08;
 const ART_POSTER_TRACK_PAINT_OVERLAP_MAXIMUM = 0.2;
-const LOOM_POSTER_BACKGROUND = "#ffffff";
-const LOOM_POSTER_TEXT = "#111827";
-const LOOM_POSTER_MUTED_TEXT = "#475569";
-const LOOM_POSTER_AXIS = "#111827";
-const LOOM_POSTER_AXIS_SECONDARY = "#94a3b8";
+const LOOM_POSTER_BACKGROUND = SMS3_PLOT_THEME.genomeComparison.lightBackground;
+const LOOM_POSTER_TEXT = SMS3_PLOT_THEME.genomeComparison.lightText;
+const LOOM_POSTER_MUTED_TEXT = SMS3_PLOT_THEME.genomeComparison.lightMutedText;
+const LOOM_POSTER_AXIS = SMS3_PLOT_THEME.genomeComparison.lightAxis;
+const LOOM_POSTER_AXIS_SECONDARY = SMS3_PLOT_THEME.genomeComparison.lightAxisSecondary;
 const GENOME_COMPARISON_POSTER_CLASS = "sms3-genome-comparison-poster";
 
 function genomeComparisonPosterStyleScope(layout) {
@@ -2287,12 +2294,13 @@ function renderLoomGenomeComparisonPosterSvg({
   const allComparisonBlocks = displayedComparisons.flatMap((comparison) =>
     comparisonBlocksByTitle.get(comparison.title) ?? []
   );
+  const publicationStyle = makePublicationPlotStyle(width, height);
   const parts = [
-    `<svg xmlns="http://www.w3.org/2000/svg" class="${GENOME_COMPARISON_POSTER_CLASS}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Genome loom ribbon figure" data-plot-foundation="sms3-genome-comparison" data-plot-renderer="sms3-genome-comparison" data-layout="loom" data-art-style="genome-loom" data-alignment-engine="${escapeXml(options.alignmentEngine)}" data-color-mode="${escapeXml(loomColorMode === "reference" ? "reference-paint" : identityScale.mode)}" data-color-scheme="${escapeXml(options.colorScheme)}" data-loom-color-mode="${escapeXml(loomColorMode)}" data-identity-min="${escapeXml(identityScale.min)}" data-identity-max="${escapeXml(identityScale.max)}" data-show-axis="${options.showAxis ? "true" : "false"}" data-show-legend="${options.showLegend ? "true" : "false"}" data-show-reference-paint-legend="${showReferencePaintLegend ? "true" : "false"}" data-contig-gap-bases="${maxContigGapBases}" data-paint-block-gap-px="${LOOM_PAINT_BLOCK_GAP_PX}" data-comparison-count="${displayedComparisons.length}">`,
+    `<svg xmlns="http://www.w3.org/2000/svg" ${publicationSvgAttributes(publicationStyle)} class="${GENOME_COMPARISON_POSTER_CLASS}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Genome loom ribbon figure" data-plot-foundation="sms3-genome-comparison" data-plot-renderer="sms3-genome-comparison" data-sms3-publication-theme="genome-comparison" data-layout="loom" data-art-style="genome-loom" data-alignment-engine="${escapeXml(options.alignmentEngine)}" data-color-mode="${escapeXml(loomColorMode === "reference" ? "reference-paint" : identityScale.mode)}" data-color-scheme="${escapeXml(options.colorScheme)}" data-loom-color-mode="${escapeXml(loomColorMode)}" data-identity-min="${escapeXml(identityScale.min)}" data-identity-max="${escapeXml(identityScale.max)}" data-show-axis="${options.showAxis ? "true" : "false"}" data-show-legend="${options.showLegend ? "true" : "false"}" data-show-reference-paint-legend="${showReferencePaintLegend ? "true" : "false"}" data-contig-gap-bases="${maxContigGapBases}" data-paint-block-gap-px="${LOOM_PAINT_BLOCK_GAP_PX}" data-comparison-count="${displayedComparisons.length}">`,
     "<style>",
-    `${styleScope} .label{font:600 18px system-ui,sans-serif;fill:${LOOM_POSTER_TEXT}}`,
-    `${styleScope} .small{font:12px system-ui,sans-serif;fill:${LOOM_POSTER_MUTED_TEXT}}`,
-    `${styleScope} .axis-label{font:500 13px system-ui,sans-serif;fill:${LOOM_POSTER_AXIS};stroke:${LOOM_POSTER_BACKGROUND};stroke-width:1.8px;stroke-opacity:.78;paint-order:stroke;stroke-linejoin:round}`,
+    `${styleScope} .label{font:600 ${publicationStyle.axisLabelFontSize}px ${publicationStyle.fontFamily};fill:${LOOM_POSTER_TEXT}}`,
+    `${styleScope} .small{font:${publicationStyle.smallFontSize}px ${publicationStyle.fontFamily};fill:${LOOM_POSTER_MUTED_TEXT}}`,
+    `${styleScope} .axis-label{font:500 ${publicationStyle.smallFontSize}px ${publicationStyle.fontFamily};fill:${LOOM_POSTER_AXIS};stroke:${LOOM_POSTER_BACKGROUND};stroke-width:1.8px;stroke-opacity:.78;paint-order:stroke;stroke-linejoin:round}`,
     `${styleScope} .axis{stroke:${LOOM_POSTER_AXIS};stroke-width:2;stroke-linecap:round}`,
     `${styleScope} .tick{stroke:${LOOM_POSTER_AXIS_SECONDARY};stroke-width:1.4;stroke-linecap:round}`,
     `${styleScope} .minor-tick{stroke:${LOOM_POSTER_AXIS_SECONDARY};stroke-width:.9;opacity:.56;stroke-linecap:round}`,
@@ -2301,17 +2309,17 @@ function renderLoomGenomeComparisonPosterSvg({
     `${styleScope} .loom-paint-block{stroke:none}`,
     `${styleScope} .loom-ribbon{stroke:none;mix-blend-mode:normal}`,
     `${styleScope} .loom-ribbon-reverse{stroke:#f8fafc;stroke-width:.45;stroke-opacity:.16}`,
-    `${styleScope} .legend{font:12px system-ui,sans-serif;fill:${LOOM_POSTER_MUTED_TEXT}}`,
+    `${styleScope} .legend{font:${publicationStyle.smallFontSize}px ${publicationStyle.fontFamily};fill:${LOOM_POSTER_MUTED_TEXT}}`,
     "</style>",
     makeIdentityGradientDefs("loom", options.colorScheme),
     `<rect width="${width}" height="${height}" fill="${LOOM_POSTER_BACKGROUND}"/>`
   ];
 
   if (options.showGenomeLabels) {
-    parts.push(`<text class="label" data-role="genome-label" data-genome-role="reference" x="${margin.left - 24}" y="${topY + 6}" text-anchor="end">${escapeXml(truncateLabel(reference.title, 28))}</text>`);
+    parts.push(`<text class="label" data-role="genome-label" data-genome-role="reference" x="${margin.left - 24}" y="${topY + 6}" text-anchor="end"><title>${escapeXml(reference.title)}</title>${escapeXml(truncateLabel(reference.title, 24))}</text>`);
     displayedComparisons.forEach((comparison) => {
       const y = rowYs.get(comparison.title) ?? topY;
-      parts.push(`<text class="label" data-role="genome-label" data-genome-role="comparison" data-comparison="${escapeXml(comparison.title)}" x="${margin.left - 24}" y="${y + 6}" text-anchor="end">${escapeXml(truncateLabel(comparison.title, 28))}</text>`);
+      parts.push(`<text class="label" data-role="genome-label" data-genome-role="comparison" data-comparison="${escapeXml(comparison.title)}" x="${margin.left - 24}" y="${y + 6}" text-anchor="end"><title>${escapeXml(comparison.title)}</title>${escapeXml(truncateLabel(comparison.title, 24))}</text>`);
     });
   }
 
@@ -2482,19 +2490,20 @@ function renderLinearGenomeComparisonPosterSvg({
   const rowHeight = Math.max(4, (rowAreaHeight - rowGap * Math.max(0, rowCount - 1)) / rowCount);
   const trackHeight = rowHeight;
   const styleScope = genomeComparisonPosterStyleScope(options.layout);
+  const publicationStyle = makePublicationPlotStyle(width, height);
   const parts = [
-    `<svg xmlns="http://www.w3.org/2000/svg" class="${GENOME_COMPARISON_POSTER_CLASS}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Genome comparison poster" data-plot-foundation="sms3-genome-comparison" data-plot-renderer="sms3-genome-comparison" data-layout="${escapeXml(options.layout)}" data-art-style="genome-artistry" data-alignment-engine="${escapeXml(options.alignmentEngine)}" data-color-mode="${escapeXml(identityScale.mode)}" data-color-scheme="${escapeXml(options.colorScheme)}" data-identity-min="${escapeXml(identityScale.min)}" data-identity-max="${escapeXml(identityScale.max)}" data-show-axis="${options.showAxis ? "true" : "false"}" data-show-legend="${options.showLegend ? "true" : "false"}" data-row-gap="${round(rowGap, 2)}" data-segment-header-height="${round(segmentHeaderHeight, 2)}">`,
+    `<svg xmlns="http://www.w3.org/2000/svg" ${publicationSvgAttributes(publicationStyle)} class="${GENOME_COMPARISON_POSTER_CLASS}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Genome comparison poster" data-plot-foundation="sms3-genome-comparison" data-plot-renderer="sms3-genome-comparison" data-sms3-publication-theme="genome-comparison" data-layout="${escapeXml(options.layout)}" data-art-style="genome-artistry" data-alignment-engine="${escapeXml(options.alignmentEngine)}" data-color-mode="${escapeXml(identityScale.mode)}" data-color-scheme="${escapeXml(options.colorScheme)}" data-identity-min="${escapeXml(identityScale.min)}" data-identity-max="${escapeXml(identityScale.max)}" data-show-axis="${options.showAxis ? "true" : "false"}" data-show-legend="${options.showLegend ? "true" : "false"}" data-row-gap="${round(rowGap, 2)}" data-segment-header-height="${round(segmentHeaderHeight, 2)}">`,
     "<style>",
-    `${styleScope} .label{font:600 12px system-ui,sans-serif;fill:${ART_POSTER_TEXT}}`,
-    `${styleScope} .small{font:11px system-ui,sans-serif;fill:${ART_POSTER_MUTED_TEXT}}`,
-    `${styleScope} .axis-label{font:500 12px system-ui,sans-serif;fill:${ART_POSTER_AXIS};stroke:${ART_POSTER_BACKGROUND};stroke-width:1.6px;stroke-opacity:.78;paint-order:stroke;stroke-linejoin:round}`,
+    `${styleScope} .label{font:600 ${publicationStyle.axisLabelFontSize}px ${publicationStyle.fontFamily};fill:${ART_POSTER_TEXT}}`,
+    `${styleScope} .small{font:${publicationStyle.smallFontSize}px ${publicationStyle.fontFamily};fill:${ART_POSTER_MUTED_TEXT}}`,
+    `${styleScope} .axis-label{font:500 ${publicationStyle.smallFontSize}px ${publicationStyle.fontFamily};fill:${ART_POSTER_AXIS};stroke:${ART_POSTER_BACKGROUND};stroke-width:1.6px;stroke-opacity:.78;paint-order:stroke;stroke-linejoin:round}`,
     `${styleScope} .axis{stroke:${ART_POSTER_AXIS};stroke-width:1.4}`,
     `${styleScope} .tick{stroke:${ART_POSTER_AXIS_SECONDARY};stroke-width:1}`,
     `${styleScope} .minor-tick{stroke:${ART_POSTER_AXIS_SECONDARY};stroke-width:.8;opacity:.55}`,
     `${styleScope} .track{fill:${ART_POSTER_NO_HIT}}`,
     `${styleScope} .block{stroke:none}`,
     `${styleScope} .ga-linear-row,${styleScope} .ga-linear-block{shape-rendering:crispEdges}`,
-    `${styleScope} .legend{font:12px system-ui,sans-serif;fill:${ART_POSTER_MUTED_TEXT}}`,
+    `${styleScope} .legend{font:${publicationStyle.smallFontSize}px ${publicationStyle.fontFamily};fill:${ART_POSTER_MUTED_TEXT}}`,
     "</style>",
     makeIdentityGradientDefs(options.layout, options.colorScheme),
     `<rect width="${width}" height="${height}" fill="${ART_POSTER_BACKGROUND}"/>`
@@ -2526,7 +2535,7 @@ function renderLinearGenomeComparisonPosterSvg({
     comparisons.forEach((comparison, comparisonIndex) => {
       const rowTop = y0 + segmentHeaderHeight + comparisonIndex * (rowHeight + rowGap);
       if (options.showGenomeLabels) {
-        parts.push(`<text class="label" data-role="genome-label" data-genome-role="comparison" data-comparison="${escapeXml(comparison.title)}" x="${margin.left - 14}" y="${(rowTop + rowHeight / 2).toFixed(2)}" text-anchor="end" dominant-baseline="middle">${escapeXml(truncateLabel(comparison.title, 26))}</text>`);
+        parts.push(`<text class="label" data-role="genome-label" data-genome-role="comparison" data-comparison="${escapeXml(comparison.title)}" x="${margin.left - 14}" y="${(rowTop + rowHeight / 2).toFixed(2)}" text-anchor="end" dominant-baseline="middle"><title>${escapeXml(comparison.title)}</title>${escapeXml(truncateLabel(comparison.title, 24))}</text>`);
       }
       parts.push(`<rect class="track ga-linear-row" x="${margin.left}" y="${rowTop.toFixed(2)}" width="${segmentWidth.toFixed(2)}" height="${trackHeight.toFixed(2)}"/>`);
       const comparisonBlocks = blocks
@@ -2674,22 +2683,23 @@ function renderCircularGenomeComparisonPosterSvg({
   const ringThickness = ringPitch * 0.68;
   const referenceLength = Math.max(1, reference.sequence.length);
   const styleScope = genomeComparisonPosterStyleScope("circular");
+  const publicationStyle = makePublicationPlotStyle(width, height);
   const parts = [
-    `<svg xmlns="http://www.w3.org/2000/svg" class="${GENOME_COMPARISON_POSTER_CLASS}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Circular genome comparison poster" data-plot-foundation="sms3-genome-comparison" data-plot-renderer="sms3-genome-comparison" data-layout="circular" data-art-style="genome-artistry" data-alignment-engine="${escapeXml(options.alignmentEngine)}" data-color-mode="${escapeXml(identityScale.mode)}" data-color-scheme="${escapeXml(options.colorScheme)}" data-identity-min="${escapeXml(identityScale.min)}" data-identity-max="${escapeXml(identityScale.max)}" data-show-axis="${options.showAxis ? "true" : "false"}" data-show-legend="${options.showLegend ? "true" : "false"}">`,
+    `<svg xmlns="http://www.w3.org/2000/svg" ${publicationSvgAttributes(publicationStyle)} class="${GENOME_COMPARISON_POSTER_CLASS}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Circular genome comparison poster" data-plot-foundation="sms3-genome-comparison" data-plot-renderer="sms3-genome-comparison" data-sms3-publication-theme="genome-comparison" data-layout="circular" data-art-style="genome-artistry" data-alignment-engine="${escapeXml(options.alignmentEngine)}" data-color-mode="${escapeXml(identityScale.mode)}" data-color-scheme="${escapeXml(options.colorScheme)}" data-identity-min="${escapeXml(identityScale.min)}" data-identity-max="${escapeXml(identityScale.max)}" data-show-axis="${options.showAxis ? "true" : "false"}" data-show-legend="${options.showLegend ? "true" : "false"}">`,
     "<style>",
-    `${styleScope} .label{font:600 12px system-ui,sans-serif;fill:${ART_POSTER_TEXT}}`,
-    `${styleScope} .small{font:11px system-ui,sans-serif;fill:${ART_POSTER_MUTED_TEXT}}`,
-    `${styleScope} .axis-label{font:500 12px system-ui,sans-serif;fill:${ART_POSTER_AXIS};stroke:${ART_POSTER_BACKGROUND};stroke-width:1.6px;stroke-opacity:.78;paint-order:stroke;stroke-linejoin:round}`,
+    `${styleScope} .label{font:600 ${publicationStyle.axisLabelFontSize}px ${publicationStyle.fontFamily};fill:${ART_POSTER_TEXT}}`,
+    `${styleScope} .small{font:${publicationStyle.smallFontSize}px ${publicationStyle.fontFamily};fill:${ART_POSTER_MUTED_TEXT}}`,
+    `${styleScope} .axis-label{font:500 ${publicationStyle.smallFontSize}px ${publicationStyle.fontFamily};fill:${ART_POSTER_AXIS};stroke:${ART_POSTER_BACKGROUND};stroke-width:1.6px;stroke-opacity:.78;paint-order:stroke;stroke-linejoin:round}`,
     `${styleScope} .axis{stroke:${ART_POSTER_AXIS};stroke-width:2;fill:none}`,
     `${styleScope} .tick{stroke:${ART_POSTER_AXIS_SECONDARY};stroke-width:1.2}`,
     `${styleScope} .minor-tick{stroke:${ART_POSTER_AXIS_SECONDARY};stroke-width:.8;opacity:.55}`,
     `${styleScope} .ga-circular-slot-boundary{stroke:#f8fafc;stroke-width:1.35;opacity:.55;fill:none}`,
     `${styleScope} .ga-circular-block-full{fill:none;stroke-linecap:butt}`,
-    `${styleScope} .ga-circular-track-index{font:750 16px system-ui,sans-serif;fill:${ART_POSTER_BACKGROUND};stroke:${ART_POSTER_TEXT};stroke-width:2.8px;paint-order:stroke;stroke-linejoin:round}`,
-    `${styleScope} .ga-circular-track-key-title{font:750 13px system-ui,sans-serif;fill:${ART_POSTER_TEXT}}`,
-    `${styleScope} .ga-circular-track-key-row{font:600 12px system-ui,sans-serif;fill:${ART_POSTER_MUTED_TEXT}}`,
-    `${styleScope} .ga-circular-track-key-index{font:750 11px system-ui,sans-serif;fill:${ART_POSTER_BACKGROUND}}`,
-    `${styleScope} .legend{font:12px system-ui,sans-serif;fill:${ART_POSTER_MUTED_TEXT}}`,
+    `${styleScope} .ga-circular-track-index{font:750 ${publicationStyle.axisLabelFontSize}px ${publicationStyle.fontFamily};fill:${ART_POSTER_BACKGROUND};stroke:${ART_POSTER_TEXT};stroke-width:2.8px;paint-order:stroke;stroke-linejoin:round}`,
+    `${styleScope} .ga-circular-track-key-title{font:750 ${publicationStyle.axisLabelFontSize}px ${publicationStyle.fontFamily};fill:${ART_POSTER_TEXT}}`,
+    `${styleScope} .ga-circular-track-key-row{font:600 ${publicationStyle.bodyFontSize}px ${publicationStyle.fontFamily};fill:${ART_POSTER_MUTED_TEXT}}`,
+    `${styleScope} .ga-circular-track-key-index{font:750 ${publicationStyle.smallFontSize}px ${publicationStyle.fontFamily};fill:${ART_POSTER_BACKGROUND}}`,
+    `${styleScope} .legend{font:${publicationStyle.smallFontSize}px ${publicationStyle.fontFamily};fill:${ART_POSTER_MUTED_TEXT}}`,
     "</style>",
     makeIdentityGradientDefs("circular", options.colorScheme),
     `<rect width="${width}" height="${height}" fill="${ART_POSTER_BACKGROUND}"/>`
@@ -2757,7 +2767,7 @@ function renderCircularGenomeComparisonPosterSvg({
     }
     const indexLabelPoint = polarPoint(cx, cy, radius, -Math.PI / 2);
     parts.push(`<circle class="ga-circular-track-index-badge" data-role="comparison-track-index-badge" data-comparison-index="${comparisonIndex + 1}" cx="${indexLabelPoint.x.toFixed(2)}" cy="${indexLabelPoint.y.toFixed(2)}" r="14" fill="${ART_POSTER_TEXT}" fill-opacity=".95" stroke="${ART_POSTER_BACKGROUND}" stroke-width="2"/>`);
-    parts.push(`<text class="ga-circular-track-index" data-role="comparison-track-index" data-comparison-index="${comparisonIndex + 1}" x="${indexLabelPoint.x.toFixed(2)}" y="${indexLabelPoint.y.toFixed(2)}" text-anchor="middle" dominant-baseline="middle" style="font:750 16px system-ui,sans-serif;fill:${ART_POSTER_BACKGROUND};stroke:${ART_POSTER_TEXT};stroke-width:2.8px;paint-order:stroke;stroke-linejoin:round"><title>${escapeXml(`${comparisonIndex + 1}. ${comparison.title}`)}</title>${comparisonIndex + 1}</text>`);
+    parts.push(`<text class="ga-circular-track-index" data-role="comparison-track-index" data-comparison-index="${comparisonIndex + 1}" x="${indexLabelPoint.x.toFixed(2)}" y="${indexLabelPoint.y.toFixed(2)}" text-anchor="middle" dominant-baseline="middle"><title>${escapeXml(`${comparisonIndex + 1}. ${comparison.title}`)}</title>${comparisonIndex + 1}</text>`);
   });
 
   if (comparisons.length > 1) {
@@ -2765,15 +2775,15 @@ function renderCircularGenomeComparisonPosterSvg({
     const keyX = cx - 96;
     const keyY = cy - 54;
     parts.push(`<g class="ga-circular-track-key" data-role="comparison-track-key" aria-label="Comparison tracks" pointer-events="none">`);
-    parts.push(`<text class="ga-circular-track-key-title" x="${keyX}" y="${keyY}" style="font:750 13px system-ui,sans-serif;fill:${ART_POSTER_TEXT}">Comparison tracks</text>`);
+    parts.push(`<text class="ga-circular-track-key-title" x="${keyX}" y="${keyY}">Comparison tracks</text>`);
     visibleKeyRows.forEach((comparison, comparisonIndex) => {
       const rowY = keyY + 22 + comparisonIndex * 20;
       parts.push(`<circle data-role="comparison-track-key-badge" cx="${keyX + 8}" cy="${rowY - 4}" r="7" fill="${ART_POSTER_TEXT}" fill-opacity=".95"/>`);
-      parts.push(`<text class="ga-circular-track-key-index" x="${keyX + 8}" y="${rowY - 4}" text-anchor="middle" dominant-baseline="middle" style="font:750 11px system-ui,sans-serif;fill:${ART_POSTER_BACKGROUND}">${comparisonIndex + 1}</text>`);
-      parts.push(`<text class="ga-circular-track-key-row" x="${keyX + 24}" y="${rowY}" style="font:600 12px system-ui,sans-serif;fill:${ART_POSTER_MUTED_TEXT}">${escapeXml(truncateLabel(comparison.title, 23))}</text>`);
+      parts.push(`<text class="ga-circular-track-key-index" x="${keyX + 8}" y="${rowY - 4}" text-anchor="middle" dominant-baseline="middle">${comparisonIndex + 1}</text>`);
+      parts.push(`<text class="ga-circular-track-key-row" x="${keyX + 24}" y="${rowY}">${escapeXml(truncateLabel(comparison.title, 23))}</text>`);
     });
     if (comparisons.length > visibleKeyRows.length) {
-      parts.push(`<text class="ga-circular-track-key-row" x="${keyX + 24}" y="${keyY + 22 + visibleKeyRows.length * 20}" style="font:600 12px system-ui,sans-serif;fill:${ART_POSTER_MUTED_TEXT}">+${comparisons.length - visibleKeyRows.length} more</text>`);
+      parts.push(`<text class="ga-circular-track-key-row" x="${keyX + 24}" y="${keyY + 22 + visibleKeyRows.length * 20}">+${comparisons.length - visibleKeyRows.length} more</text>`);
     }
     parts.push("</g>");
   }
@@ -2820,18 +2830,20 @@ function renderSpiralGenomeComparisonPosterSvg({
   const maxU = Math.PI * 2 * turnCount;
   const referenceLength = Math.max(1, reference.sequence.length);
   const styleScope = genomeComparisonPosterStyleScope("spiral");
+  const publicationStyle = makePublicationPlotStyle(width, height);
+  const inlineGenomeLabels = options.showGenomeLabels && stripWidth >= publicationStyle.bodyFontSize * 1.4;
   const parts = [
-    `<svg xmlns="http://www.w3.org/2000/svg" class="${GENOME_COMPARISON_POSTER_CLASS}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Spiral genome comparison poster" data-plot-foundation="sms3-genome-comparison" data-plot-renderer="sms3-genome-comparison" data-layout="spiral" data-art-style="genome-artistry" data-alignment-engine="${escapeXml(options.alignmentEngine)}" data-color-mode="${escapeXml(identityScale.mode)}" data-color-scheme="${escapeXml(options.colorScheme)}" data-identity-min="${escapeXml(identityScale.min)}" data-identity-max="${escapeXml(identityScale.max)}" data-show-axis="${options.showAxis ? "true" : "false"}" data-show-legend="${options.showLegend ? "true" : "false"}">`,
+    `<svg xmlns="http://www.w3.org/2000/svg" ${publicationSvgAttributes(publicationStyle)} class="${GENOME_COMPARISON_POSTER_CLASS}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Spiral genome comparison poster" data-plot-foundation="sms3-genome-comparison" data-plot-renderer="sms3-genome-comparison" data-sms3-publication-theme="genome-comparison" data-layout="spiral" data-art-style="genome-artistry" data-alignment-engine="${escapeXml(options.alignmentEngine)}" data-color-mode="${escapeXml(identityScale.mode)}" data-color-scheme="${escapeXml(options.colorScheme)}" data-identity-min="${escapeXml(identityScale.min)}" data-identity-max="${escapeXml(identityScale.max)}" data-show-axis="${options.showAxis ? "true" : "false"}" data-show-legend="${options.showLegend ? "true" : "false"}" data-genome-label-mode="${inlineGenomeLabels ? "inline" : options.showGenomeLabels ? "key" : "hidden"}">`,
     "<style>",
-    `${styleScope} .label{font:600 12px system-ui,sans-serif;fill:${ART_POSTER_TEXT}}`,
-    `${styleScope} .small{font:11px system-ui,sans-serif;fill:${ART_POSTER_MUTED_TEXT}}`,
-    `${styleScope} .axis-label{font:500 12px system-ui,sans-serif;fill:${ART_POSTER_AXIS};stroke:${ART_POSTER_BACKGROUND};stroke-width:1.6px;stroke-opacity:.78;paint-order:stroke;stroke-linejoin:round}`,
+    `${styleScope} .label{font:600 ${publicationStyle.bodyFontSize}px ${publicationStyle.fontFamily};fill:${ART_POSTER_TEXT}}`,
+    `${styleScope} .small{font:${publicationStyle.smallFontSize}px ${publicationStyle.fontFamily};fill:${ART_POSTER_MUTED_TEXT}}`,
+    `${styleScope} .axis-label{font:500 ${publicationStyle.smallFontSize}px ${publicationStyle.fontFamily};fill:${ART_POSTER_AXIS};stroke:${ART_POSTER_BACKGROUND};stroke-width:1.6px;stroke-opacity:.78;paint-order:stroke;stroke-linejoin:round}`,
     `${styleScope} .tick{stroke:${ART_POSTER_AXIS};stroke-width:1.2;stroke-linecap:round}`,
     `${styleScope} .minor-tick{stroke:${ART_POSTER_AXIS_SECONDARY};stroke-width:.8;opacity:.58;stroke-linecap:round}`,
     `${styleScope} .axis{stroke:${ART_POSTER_AXIS_SECONDARY};stroke-width:1;fill:none;opacity:.55}`,
     `${styleScope} .track{fill:${ART_POSTER_NO_HIT};stroke:none}`,
     `${styleScope} .block{stroke:none}`,
-    `${styleScope} .legend{font:12px system-ui,sans-serif;fill:${ART_POSTER_MUTED_TEXT}}`,
+    `${styleScope} .legend{font:${publicationStyle.smallFontSize}px ${publicationStyle.fontFamily};fill:${ART_POSTER_MUTED_TEXT}}`,
     "</style>",
     makeIdentityGradientDefs("spiral", options.colorScheme),
     `<rect width="${width}" height="${height}" fill="${ART_POSTER_BACKGROUND}"/>`
@@ -2881,12 +2893,26 @@ function renderSpiralGenomeComparisonPosterSvg({
       parts.push(`<polygon class="block ga-spiral-block" points="${points}" fill="${identityColor(block.identity, block.strand, identityScale, options.colorScheme)}" data-comparison="${escapeXml(block.comparison)}" data-strand="${escapeXml(block.strand)}" data-paint-offset="${paint.offset.toFixed(2)}" data-paint-width="${paint.width.toFixed(2)}"><title>${escapeXml(`${block.comparison} ${block.strand} ${block.referenceStart + 1}-${block.referenceEnd}; ${round(block.identity, 2)}% identity`)}</title></polygon>`);
     }
 
-    if (options.showGenomeLabels) {
+    if (inlineGenomeLabels) {
       const labelRadius = rStartCenter - ribbonWidth / 2 + stripOffset + stripWidth / 2;
       const labelPoint = polarPoint(cx, cy, labelRadius, 0);
       parts.push(`<text class="label" data-role="genome-label" data-genome-role="comparison" data-comparison="${escapeXml(comparison.title)}" x="${(labelPoint.x - 10).toFixed(2)}" y="${labelPoint.y.toFixed(2)}" text-anchor="end" dominant-baseline="middle">${escapeXml(truncateLabel(comparison.title, 36))}</text>`);
     }
   });
+
+  if (options.showGenomeLabels && !inlineGenomeLabels) {
+    const keyX = 54;
+    const keyY = 62;
+    const rowHeight = Math.max(18, publicationStyle.bodyFontSize + 5);
+    parts.push(`<g class="ga-spiral-track-key" data-role="comparison-track-key" aria-label="Comparison tracks">`);
+    parts.push(`<text class="label" x="${keyX}" y="${keyY}">Comparison tracks</text>`);
+    parts.push(`<text class="small" x="${keyX}" y="${(keyY + 18).toFixed(2)}">Outer → inner</text>`);
+    comparisons.forEach((comparison, comparisonIndex) => {
+      const rowY = keyY + 22 + (comparisonIndex + 1) * rowHeight;
+      parts.push(`<text class="small" data-role="genome-label" data-genome-role="comparison" data-comparison="${escapeXml(comparison.title)}" x="${keyX}" y="${rowY.toFixed(2)}">${escapeXml(`${comparisonIndex + 1}. ${truncateLabel(comparison.title, 28)}`)}</text>`);
+    });
+    parts.push("</g>");
+  }
 
   if (options.showAxis) {
     const { majorTicks, minorTicks } = makePosterAxisTicks(1, referenceLength, 4, 18);

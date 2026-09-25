@@ -1,10 +1,11 @@
 import "../vendor/d3/d3.min.js";
 import { escapeXml } from "./plot-renderer.js";
+import { makePublicationPlotStyle, publicationSvgAttributes, SMS3_PLOT_THEME } from "./publication-plot-style.js";
 import { englishStopWords } from "../reference-data/text-stop-words/english.js";
 
 const DEFAULT_STOP_WORDS = new Set(englishStopWords);
 
-const COLORS = ["#2563eb", "#0f766e", "#a33a3a", "#7c3aed", "#d97706", "#0369a1", "#be123c", "#475569"];
+const COLORS = SMS3_PLOT_THEME.categorical;
 const WORD_CLOUD_FOUNDATION = "sms3-word-cloud-svg";
 
 function getD3() {
@@ -160,6 +161,7 @@ export function makeWordCloud(input, options = {}) {
 export function renderWordCloudSvg(rows, warnings = [], options = {}) {
   const title = String(options.title ?? "Word cloud");
   const { placed, omitted, width, height } = placeWords(rows, options);
+  const style = makePublicationPlotStyle(width, height, options);
   const wordElements = placed.map((row) => {
     const transform = row.rotation === 0 ? "" : ` transform="rotate(${row.rotation} ${row.centerX} ${row.centerY})"`;
     return `<text class="word-cloud-word" data-word-cloud-word="true" data-count="${row.count}" data-rotation="${row.rotation}" x="${row.centerX}" y="${row.centerY}"${transform} text-anchor="middle" style="font-size:${row.fontSize}px;font-weight:${row.rank <= 5 ? 700 : 500};fill:${row.color}"><title>${escapeXml(`${row.word}: ${row.count}`)}</title>${escapeXml(row.word)}</text>`;
@@ -167,12 +169,12 @@ export function renderWordCloudSvg(rows, warnings = [], options = {}) {
   const note = rows.length === 0
     ? warnings[0] ?? "No words to draw."
     : `Showing ${placed.length} of ${rows.length} ranked word(s)${omitted > 0 ? `; ${omitted} omitted by layout` : ""}.`;
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="${WORD_CLOUD_FOUNDATION}" data-plot-backend="d3" data-plot-renderer="sms3-d3">
-  <style>[data-plot-foundation="${WORD_CLOUD_FOUNDATION}"] text{font-family:Inter,Arial,sans-serif;stroke:none!important;stroke-width:0!important;text-shadow:none!important;paint-order:normal!important}[data-plot-foundation="${WORD_CLOUD_FOUNDATION}"] .word-cloud-word{dominant-baseline:middle}</style>
-  <rect width="${width}" height="${height}" fill="#ffffff"/>
-  <text x="28" y="34" font-family="Inter, Arial, sans-serif" font-size="20" font-weight="700" fill="#0f172a">${escapeXml(title)}</text>
-  <text x="28" y="56" font-family="Inter, Arial, sans-serif" font-size="12" fill="#475569">${escapeXml(note)}</text>
-  <g font-family="Inter, Arial, sans-serif">${wordElements}</g>
+  return `<svg xmlns="http://www.w3.org/2000/svg" ${publicationSvgAttributes(style)} viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="${WORD_CLOUD_FOUNDATION}" data-plot-backend="d3" data-plot-renderer="sms3-d3" data-sms3-publication-theme="default">
+  <style>[data-plot-foundation="${WORD_CLOUD_FOUNDATION}"] text{font-family:${style.fontFamily};fill:${SMS3_PLOT_THEME.text};stroke:none!important;stroke-width:0!important;text-shadow:none!important;paint-order:normal!important}[data-plot-foundation="${WORD_CLOUD_FOUNDATION}"] .title{font-size:${style.titleFontSize}px;font-weight:600}[data-plot-foundation="${WORD_CLOUD_FOUNDATION}"] .note{font-size:${style.bodyFontSize}px;fill:${SMS3_PLOT_THEME.textMuted}}[data-plot-foundation="${WORD_CLOUD_FOUNDATION}"] .word-cloud-word{dominant-baseline:middle}</style>
+  <rect width="${width}" height="${height}" fill="${SMS3_PLOT_THEME.surface}"/>
+  ${style.showTitle ? `<text class="title" x="28" y="34">${escapeXml(title)}</text>` : ""}
+  <text class="note" x="28" y="56">${escapeXml(note)}</text>
+  <g>${wordElements}</g>
 </svg>`;
 }
 

@@ -1,3 +1,9 @@
+import {
+  makePublicationPlotStyle,
+  publicationSvgAttributes,
+  SMS3_PLOT_THEME
+} from "./publication-plot-style.js";
+
 function escapeXml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -185,13 +191,13 @@ function largestPartLength(feature) {
 }
 
 const defaultFeatureStyles = {
-  coding: { label: "CDS/exon", fill: "#2563eb", stroke: "#1d4ed8" },
-  gene: { label: "Gene", fill: "#16a34a", stroke: "#15803d" },
-  source: { label: "Source", fill: "#94a3b8", stroke: "#64748b" },
-  regulatory: { label: "Regulatory", fill: "#d97706", stroke: "#b45309" },
-  repeat: { label: "Repeat", fill: "#9333ea", stroke: "#7e22ce" },
-  variant: { label: "Variation", fill: "#dc2626", stroke: "#b91c1c" },
-  other: { label: "Other", fill: "#0891b2", stroke: "#0e7490" }
+  coding: { label: "CDS/exon", ...SMS3_PLOT_THEME.featureMap.coding },
+  gene: { label: "Gene", ...SMS3_PLOT_THEME.featureMap.gene },
+  source: { label: "Source", ...SMS3_PLOT_THEME.featureMap.source },
+  regulatory: { label: "Regulatory", ...SMS3_PLOT_THEME.featureMap.regulatory },
+  repeat: { label: "Repeat", ...SMS3_PLOT_THEME.featureMap.repeat },
+  variant: { label: "Variation", ...SMS3_PLOT_THEME.featureMap.variant },
+  other: { label: "Other", ...SMS3_PLOT_THEME.featureMap.other }
 };
 
 function normalizeFeature(feature, sequenceLength) {
@@ -1096,7 +1102,8 @@ function renderCircularRecord(record, styles, classes, recordIndex) {
 export function renderSequenceMap({ title = "Feature map", records = [], styles = defaultFeatureStyles, layout = "auto" } = {}) {
   const drawableRecords = records.filter((record) => record.length > 0);
   if (drawableRecords.length === 0) {
-    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 130" role="img" aria-label="No feature map available"><style>.title{font:600 18px system-ui,sans-serif;fill:#111827}.note{font:13px system-ui,sans-serif;fill:#475569}</style><text class="title" x="32" y="42">${escapeXml(title)}</text><text class="note" x="32" y="78">No sequence was available to draw.</text></svg>`;
+    const emptyStyle = makePublicationPlotStyle(640, 130);
+    return `<svg xmlns="http://www.w3.org/2000/svg" ${publicationSvgAttributes(emptyStyle)} viewBox="0 0 640 130" role="img" aria-label="No feature map available" data-sms3-publication-theme="feature-map"><style>.title{font:600 ${emptyStyle.titleFontSize}px ${emptyStyle.fontFamily};fill:${SMS3_PLOT_THEME.text}}.note{font:${emptyStyle.bodyFontSize}px ${emptyStyle.fontFamily};fill:${SMS3_PLOT_THEME.textMuted}}</style><rect width="640" height="130" fill="${SMS3_PLOT_THEME.surface}"/><text class="title" x="32" y="42">${escapeXml(title)}</text><text class="note" x="32" y="78">No sequence was available to draw.</text></svg>`;
   }
   const requestedLayout = layout === "linear" || layout === "circular" ? layout : "auto";
   const classes = new Set();
@@ -1144,27 +1151,29 @@ export function renderSequenceMap({ title = "Feature map", records = [], styles 
   const legendTop = height - 24;
   const legend = renderLegend(classes, styles, legendX, legendTop, { maxWidth: legendMaxWidth });
   const viewHeight = legend ? legendTop + legendRows * 24 + 20 : height;
+  const publicationStyle = makePublicationPlotStyle(width, viewHeight);
   return [
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${viewHeight}" role="img" aria-label="${escapeXml(title)}" data-sequence-map-renderer="sms3">`,
+    `<svg xmlns="http://www.w3.org/2000/svg" ${publicationSvgAttributes(publicationStyle)} viewBox="0 0 ${width} ${viewHeight}" role="img" aria-label="${escapeXml(title)}" data-sequence-map-renderer="sms3" data-sms3-publication-theme="feature-map">`,
     "<style>",
-    "[data-sequence-map-renderer=\"sms3\"] .title{font:700 18px system-ui,-apple-system,Segoe UI,sans-serif;fill:#111827}",
-    "[data-sequence-map-renderer=\"sms3\"] .record-title{font:600 15px system-ui,-apple-system,Segoe UI,sans-serif;fill:#111827}",
-    "[data-sequence-map-renderer=\"sms3\"] .axis,[data-sequence-map-renderer=\"sms3\"] .circle-axis{stroke:#334155;stroke-width:1.5}",
-    "[data-sequence-map-renderer=\"sms3\"] .axis-tick{stroke:#64748b;stroke-width:1}",
-    "[data-sequence-map-renderer=\"sms3\"] .axis-tick-minor{stroke:#94a3b8;stroke-width:.75}",
+    `[data-sequence-map-renderer="sms3"] .title{font:600 ${publicationStyle.titleFontSize}px ${publicationStyle.fontFamily};fill:${SMS3_PLOT_THEME.text}}`,
+    `[data-sequence-map-renderer="sms3"] .record-title{font:600 ${publicationStyle.axisLabelFontSize}px ${publicationStyle.fontFamily};fill:${SMS3_PLOT_THEME.text}}`,
+    `[data-sequence-map-renderer="sms3"] .axis,[data-sequence-map-renderer="sms3"] .circle-axis{stroke:${SMS3_PLOT_THEME.axis};stroke-width:${publicationStyle.axisStrokeWidth}}`,
+    `[data-sequence-map-renderer="sms3"] .axis-tick{stroke:${SMS3_PLOT_THEME.axis};stroke-width:${publicationStyle.axisStrokeWidth}}`,
+    `[data-sequence-map-renderer="sms3"] .axis-tick-minor{stroke:${SMS3_PLOT_THEME.missingOutline};stroke-width:${Math.max(0.75, publicationStyle.axisStrokeWidth * 0.72)}}`,
     "[data-sequence-map-renderer=\"sms3\"] .feature-boundary{stroke-width:1}",
-    "[data-sequence-map-renderer=\"sms3\"] .axis-label,[data-sequence-map-renderer=\"sms3\"] .axis-note{font:12px system-ui,-apple-system,Segoe UI,sans-serif;fill:#475569;stroke:none;stroke-width:0;paint-order:normal}",
-    "[data-sequence-map-renderer=\"sms3\"] .axis-label-circular{font-size:10.5px;fill:#64748b}",
+    `[data-sequence-map-renderer="sms3"] .axis-label,[data-sequence-map-renderer="sms3"] .axis-note{font:${publicationStyle.bodyFontSize}px ${publicationStyle.fontFamily};fill:${SMS3_PLOT_THEME.textMuted};stroke:none;stroke-width:0;paint-order:normal}`,
+    `[data-sequence-map-renderer="sms3"] .axis-label-circular{font-size:${publicationStyle.smallFontSize}px;fill:${SMS3_PLOT_THEME.textMuted}}`,
     "[data-sequence-map-renderer=\"sms3\"] .feature-connector{stroke-width:1.25;fill:none;stroke-linecap:round}",
-    "[data-sequence-map-renderer=\"sms3\"] .feature-label{font:12.5px system-ui,-apple-system,Segoe UI,sans-serif;fill:#111827;paint-order:stroke;stroke:#fff;stroke-width:2.75px;stroke-linejoin:round}",
-    `[data-sequence-map-renderer="sms3"] .feature-label-circular-boxed{font-size:${CIRCULAR_LABEL_FONT_SIZE}px}`,
-    "[data-sequence-map-renderer=\"sms3\"] .feature-label-box{fill:#f8fafc;stroke:#dfe7ec;stroke-width:1}",
-    `[data-sequence-map-renderer="sms3"] .feature-label-inside{font:600 ${INSIDE_FEATURE_LABEL_FONT_SIZE}px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;fill:#f8fafc;paint-order:stroke;stroke:#0f172a;stroke-width:.85px;stroke-opacity:.76;stroke-linejoin:round}`,
-    `[data-sequence-map-renderer="sms3"] .feature-label-inside-compact{font-size:${INSIDE_FEATURE_LABEL_COMPACT_FONT_SIZE}px;stroke-width:.7px}`,
-    "[data-sequence-map-renderer=\"sms3\"] .label-leader{stroke:#cbd5e1;stroke-width:1;fill:none}",
-    "[data-sequence-map-renderer=\"sms3\"] .legend-frame{fill:#f8fafc;stroke:#dfe7ec;stroke-width:1}",
-    "[data-sequence-map-renderer=\"sms3\"] .legend text{font:12px system-ui,-apple-system,Segoe UI,sans-serif;fill:#111827}",
+    `[data-sequence-map-renderer="sms3"] .feature-label{font:${publicationStyle.bodyFontSize}px ${publicationStyle.fontFamily};fill:${SMS3_PLOT_THEME.text};paint-order:stroke;stroke:${SMS3_PLOT_THEME.surface};stroke-width:2.75px;stroke-linejoin:round}`,
+    `[data-sequence-map-renderer="sms3"] .feature-label-circular-boxed{font-size:${publicationStyle.bodyFontSize}px}`,
+    `[data-sequence-map-renderer="sms3"] .feature-label-box{fill:${SMS3_PLOT_THEME.surfaceMuted};stroke:${SMS3_PLOT_THEME.missingOutline};stroke-width:1}`,
+    `[data-sequence-map-renderer="sms3"] .feature-label-inside{font:600 ${publicationStyle.smallFontSize}px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;fill:${SMS3_PLOT_THEME.surfaceMuted};paint-order:stroke;stroke:${SMS3_PLOT_THEME.outline};stroke-width:.85px;stroke-opacity:.76;stroke-linejoin:round}`,
+    `[data-sequence-map-renderer="sms3"] .feature-label-inside-compact{font-size:${publicationStyle.smallFontSize}px;stroke-width:.7px}`,
+    `[data-sequence-map-renderer="sms3"] .label-leader{stroke:${SMS3_PLOT_THEME.missingOutline};stroke-width:1;fill:none}`,
+    `[data-sequence-map-renderer="sms3"] .legend-frame{fill:${SMS3_PLOT_THEME.surfaceMuted};stroke:${SMS3_PLOT_THEME.missingOutline};stroke-width:1}`,
+    `[data-sequence-map-renderer="sms3"] .legend text{font:${publicationStyle.bodyFontSize}px ${publicationStyle.fontFamily};fill:${SMS3_PLOT_THEME.text}}`,
     "</style>",
+    `<rect width="${width}" height="${viewHeight}" fill="${SMS3_PLOT_THEME.surface}"/>`,
     `<text class="title" x="32" y="28">${escapeXml(title)}</text>`,
     body,
     legend,

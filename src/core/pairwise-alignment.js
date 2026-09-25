@@ -1147,8 +1147,8 @@ export function makeCodonAlignmentTsv(alignment) {
 export function makeColoredAlignmentSvg(records, alignment, lineWidth = 60) {
   const legend =
     alignment.alphabet === "protein"
-      ? "Green exact match; blue positive-scoring substitution; red zero/negative-scoring substitution; gray gap."
-      : "Green exact match; blue ambiguous overlap; red mismatch; gray gap.";
+      ? "Teal exact match; blue positive-scoring substitution; orange zero/negative-scoring substitution; gray gap."
+      : "Teal exact match; blue ambiguous overlap; orange mismatch; gray gap.";
   return makeAlignmentSvg({
     title: `${records[0].title} vs ${records[1].title}`,
     note: "Coordinates count bases or amino acids and ignore gaps.",
@@ -1175,7 +1175,7 @@ export function makeColoredCodonAlignmentSvg(records, alignment, lineWidth = 20)
     ],
     columnRelations,
     lineWidth: Math.max(30, Math.min(180, (Number.parseInt(lineWidth, 10) || 20) * 3)),
-    legend: "Green exact amino-acid match; blue positive-scoring substitution; red zero/negative-scoring substitution; gray codon gap.",
+    legend: "Teal exact amino-acid match; blue positive-scoring substitution; orange zero/negative-scoring substitution; gray codon gap.",
     summary: `Score ${alignment.score}; amino acid identity ${alignment.identityPercent.toFixed(2)}%.`,
     ariaLabel: "Colored pairwise coding DNA alignment"
   });

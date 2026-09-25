@@ -1,4 +1,5 @@
 import { listOverlapColumns } from "../../core/list-overlap.js";
+import { makePublicationPlotGroup } from "../plot-axis-options.js";
 
 export const upsetPlotMetadata = {
   id: "upset-plot",
@@ -44,6 +45,7 @@ export const upsetPlotMetadata = {
         { id: "ignoreCommentLines", type: "checkbox", label: "Ignore comment lines starting with #", defaultValue: true }
       ]
     },
+    makePublicationPlotGroup({ x: false, y: false, grid: false }),
     {
       type: "group",
       label: "Output format",

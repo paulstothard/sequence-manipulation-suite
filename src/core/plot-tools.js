@@ -1,11 +1,27 @@
 import "../vendor/d3/d3.min.js";
-import { HEATMAP_LEGEND_LABEL_GAP, escapeXml, makeHeatmapPlotSpec, renderHeatmapLegendRamp, renderHeatmapPlotSvg } from "./plot-renderer.js";
+import {
+  HEATMAP_LEGEND_BAR_WIDTH,
+  HEATMAP_LEGEND_GUTTER,
+  HEATMAP_LEGEND_LABEL_GAP,
+  escapeXml,
+  heatmapLegendLayout,
+  makeHeatmapPlotSpec,
+  renderHeatmapLegendRamp,
+  renderHeatmapPlotSvg
+} from "./plot-renderer.js";
 import {
   annotatePointCrowding,
   pointCrowdingFact,
   pointSamplingFact,
   sampleStratifiedPoints
 } from "./point-plot-inspection.js";
+import {
+  makePlotAxisLabel,
+  makePublicationPlotStyle,
+  publicationPlotCss,
+  publicationSvgAttributes,
+  SMS3_PLOT_THEME
+} from "./publication-plot-style.js";
 import { findColumn, parseDelimitedTable } from "./table.js";
 
 export const scatterPlotColumns = [
@@ -100,7 +116,7 @@ export const qqPlotColumns = [
   { id: "sample_quantile", label: "Sample quantile", type: "number" }
 ];
 
-const COLORS = ["#2563eb", "#0f766e", "#a33a3a", "#7c3aed", "#d97706", "#0369a1", "#be123c", "#4b5563"];
+const COLORS = SMS3_PLOT_THEME.categorical;
 export const HEATMAP_VISUAL_CELL_LIMIT = 900;
 const HEATMAP_CATEGORY_LIMIT = 80;
 const MAX_DENSE_SVG_POINTS = 20000;
@@ -113,23 +129,7 @@ const DEFAULT_BAR_LIMIT = 300;
 const DEFAULT_VOLCANO_POINT_LIMIT = 10000;
 const DEFAULT_MANHATTAN_POINT_LIMIT = MAX_DENSE_SVG_POINTS;
 const DEFAULT_QQ_POINT_LIMIT = 10000;
-const MANHATTAN_DEFAULT_COLORS = [
-  "#E69F00",
-  "#56B4E9",
-  "#009E73",
-  "#F0E442",
-  "#0072B2",
-  "#D55E00",
-  "#CC79A7",
-  "#8B4513",
-  "#4682B4",
-  "#6A5ACD",
-  "#FF6347",
-  "#3CB371",
-  "#87CEEB",
-  "#D2691E",
-  "#FF69B4"
-];
+const MANHATTAN_DEFAULT_COLORS = SMS3_PLOT_THEME.chromosome;
 
 export const GENERAL_PLOT_FOUNDATION = {
   name: "D3",
@@ -224,6 +224,9 @@ export function axisRenderOptions(options = {}, warnings) {
     yMin: options.yMin,
     yMax: options.yMax,
     yStartAtZero: options.yStartAtZero === true,
+    publicationWidthMm: options.publicationWidthMm,
+    showGridLines: options.showGridLines === true,
+    showTitle: options.showTitle !== false,
     warnings
   };
 }
@@ -377,7 +380,7 @@ function interpolateHex(a, b, t) {
 
 function interpolateStops(stops, t) {
   const clamped = clamp(t, 0, 1);
-  if (stops.length <= 1) return stops[0] ?? "#2563eb";
+  if (stops.length <= 1) return stops[0] ?? SMS3_PLOT_THEME.selection;
   const scaled = clamped * (stops.length - 1);
   const index = Math.min(stops.length - 2, Math.floor(scaled));
   return interpolateHex(stops[index], stops[index + 1], scaled - index);
@@ -388,19 +391,19 @@ function normalizeHeatmapColorScale(value) {
 }
 
 function colorForValue(value, min, max, { colorScale = "light-viridis" } = {}) {
-  if (!Number.isFinite(value)) return "#f1f5f9";
+  if (!Number.isFinite(value)) return SMS3_PLOT_THEME.missing;
   const span = max - min || 1;
   const fraction = (value - min) / span;
   if (colorScale === "light-viridis") {
-    return interpolateStops(["#f1f5f9", "#bbdbe0", "#48bb8f", "#fde725"], fraction);
+    return interpolateStops(SMS3_PLOT_THEME.heatmapScales.lightViridis, fraction);
   }
   if (colorScale === "red-blue") {
     const limit = Math.max(Math.abs(min), Math.abs(max), 1e-9);
-    if (value < 0) return interpolateHex("#b91c1c", "#f8fafc", (value + limit) / limit);
-    return interpolateHex("#f8fafc", "#2563eb", value / limit);
+    if (value < 0) return interpolateHex(SMS3_PLOT_THEME.diverging.low, SMS3_PLOT_THEME.diverging.middle, (value + limit) / limit);
+    return interpolateHex(SMS3_PLOT_THEME.diverging.middle, SMS3_PLOT_THEME.diverging.high, value / limit);
   }
   if (colorScale === "blue") {
-    return interpolateHex("#eff6ff", "#1d4ed8", fraction);
+    return interpolateStops(SMS3_PLOT_THEME.heatmapScales.blue, fraction);
   }
   const d3 = getD3();
   if (d3?.scaleSequential) {
@@ -417,7 +420,7 @@ function colorForValue(value, min, max, { colorScale = "light-viridis" } = {}) {
       return d3.scaleSequential(interpolator).domain([min, max])(value);
     }
   }
-  return interpolateStops(["#440154", "#31688e", "#35b779", "#fde725"], fraction);
+  return interpolateStops(SMS3_PLOT_THEME.heatmapScales.viridis, fraction);
 }
 
 function orderValues(values, mode = "input") {
@@ -527,7 +530,7 @@ function parseSignificanceLines(value, warnings = []) {
     }
     return {
       threshold,
-      color: pieces[1] || "#dc2626"
+      color: pieces[1] || SMS3_PLOT_THEME.significance
     };
   }).filter(Boolean);
 }
@@ -549,8 +552,8 @@ function manhattanSignificanceLines(options, warnings = []) {
     return parseSignificanceLines(options.significanceLines, warnings);
   }
   return [
-    parseManhattanThresholdOption(options.suggestiveThreshold, 5, "suggestive", "#16a34a", warnings),
-    parseManhattanThresholdOption(options.genomeWideThreshold, 7.3, "genome-wide", "#dc2626", warnings)
+    parseManhattanThresholdOption(options.suggestiveThreshold, 5, "suggestive", SMS3_PLOT_THEME.significance, warnings),
+    parseManhattanThresholdOption(options.genomeWideThreshold, 7.3, "genome-wide", SMS3_PLOT_THEME.significanceSecondary, warnings)
   ].filter(Boolean);
 }
 
@@ -653,8 +656,8 @@ export function makeScatterPlot(input, options = {}) {
     warnings,
     svg: renderScatterSvg(svgRows, {
       title: options.title || "Scatter plot",
-      xLabel: xColumn.label,
-      yLabel: yColumn.label,
+      xLabel: makePlotAxisLabel(xColumn.label, options.xAxisLabel, options.xAxisUnit),
+      yLabel: makePlotAxisLabel(yColumn.label, options.yAxisLabel, options.yAxisUnit),
       showLegend: groupColumn !== null,
       totalPointCount: rows.length,
       sampleMethod: "group-stratified",
@@ -730,8 +733,8 @@ export function makeVolcanoPlot(input, options = {}) {
     warnings,
     svg: renderVolcanoSvg(svgRows, {
       title: options.title || "Volcano plot",
-      xLabel: foldChangeColumn.label,
-      yLabel: `-log10(${pValueColumn.label})`,
+      xLabel: makePlotAxisLabel(foldChangeColumn.label, options.xAxisLabel, options.xAxisUnit),
+      yLabel: makePlotAxisLabel(`−log10(${pValueColumn.label})`, options.yAxisLabel, options.yAxisUnit),
       foldChangeCutoff,
       pValueCutoff,
       totalPointCount: rows.length,
@@ -895,8 +898,8 @@ export function makeManhattanPlot(input, options = {}) {
     warnings,
     svg: renderManhattanSvg(svgRows, {
       title: options.title || "Manhattan Plot",
-      xLabel: options.xLabel || "Chromosome",
-      yLabel: options.yLabel || "-log10(p-value)",
+      xLabel: makePlotAxisLabel(options.xLabel || "Chromosome", options.xAxisLabel, options.xAxisUnit),
+      yLabel: makePlotAxisLabel(options.yLabel || "−log10(p-value)", options.yAxisLabel, options.yAxisUnit),
       width: parsePositiveInteger(options.plotWidth, 1100, 640, 2400),
       height: parsePositiveInteger(options.plotHeight, 620, 420, 1600),
       pointRadius: Math.max(1, Math.min(12, Number(options.pointSize) || 4)),
@@ -973,8 +976,8 @@ export function makeQqPlot(input, options = {}) {
     warnings,
     svg: renderQqPlotSvg(svgRows, {
       title: options.title || "Normal Q-Q plot",
-      xLabel: "Theoretical normal quantile",
-      yLabel: valueColumn.label,
+      xLabel: makePlotAxisLabel("Theoretical normal quantile", options.xAxisLabel, options.xAxisUnit),
+      yLabel: makePlotAxisLabel(valueColumn.label, options.yAxisLabel, options.yAxisUnit),
       valueLabel: valueColumn.label,
       totalPointCount: rows.length,
       sampleMethod: "quantile-spaced",
@@ -1033,8 +1036,8 @@ export function makeLinePlot(input, options = {}) {
     warnings,
     svg: renderLineSvg(svgRows, {
       title: options.title || "Line plot",
-      xLabel: xColumn.label,
-      yLabel: yColumn.label,
+      xLabel: makePlotAxisLabel(xColumn.label, options.xAxisLabel, options.xAxisUnit),
+      yLabel: makePlotAxisLabel(yColumn.label, options.yAxisLabel, options.yAxisUnit),
       showLegend: seriesColumn !== null,
       totalPointCount: rows.length,
       sampleMethod: "series-stratified",
@@ -1091,8 +1094,8 @@ export function makeBarPlot(input, options = {}) {
     warnings,
     svg: renderBarSvg(svgRows, {
       title: options.title || "Bar plot",
-      xLabel: categoryColumn.label,
-      yLabel: valueColumn.label,
+      xLabel: makePlotAxisLabel(categoryColumn.label, options.xAxisLabel, options.xAxisUnit),
+      yLabel: makePlotAxisLabel(valueColumn.label, options.yAxisLabel, options.yAxisUnit),
       showLegend: groupColumn !== null,
       ...axisRenderOptions(options, warnings)
     })
@@ -1176,8 +1179,8 @@ export function makeBoxPlot(input, options = {}) {
     warnings,
     svg: renderBoxSvg(rows, outliers, {
       title: options.title || "Box plot",
-      xLabel: groupColumn?.label ?? "Group",
-      yLabel: valueColumn.label,
+      xLabel: makePlotAxisLabel(groupColumn?.label ?? "Group", options.xAxisLabel, options.xAxisUnit),
+      yLabel: makePlotAxisLabel(valueColumn.label, options.yAxisLabel, options.yAxisUnit),
       points: plottedPoints,
       totalPointCount: points.length,
       ...axisRenderOptions(options, warnings)
@@ -1302,8 +1305,8 @@ export function makeViolinPlot(input, options = {}) {
     warnings,
     svg: renderViolinSvg(summaries, densityRows, {
       title: options.title || "Violin plot",
-      xLabel: groupColumn?.label ?? "Group",
-      yLabel: valueColumn.label,
+      xLabel: makePlotAxisLabel(groupColumn?.label ?? "Group", options.xAxisLabel, options.xAxisUnit),
+      yLabel: makePlotAxisLabel(valueColumn.label, options.yAxisLabel, options.yAxisUnit),
       points: plottedPoints,
       totalPointCount: points.length,
       ...axisRenderOptions(options, warnings)
@@ -1397,9 +1400,11 @@ export function makeHeatmapPlot(input, options = {}) {
   const valueDomain = values.length > 0 ? [Math.min(...values), Math.max(...values)] : [0, 1];
   const plotSpec = makeHeatmapPlotSpec({
     title: options.title || "Heatmap",
-    xLabel: xColumn.label,
-    yLabel: yColumn.label,
-    valueLabel: valueColumn.label,
+    xLabel: makePlotAxisLabel(xColumn.label, options.xAxisLabel, options.xAxisUnit),
+    yLabel: makePlotAxisLabel(yColumn.label, options.yAxisLabel, options.yAxisUnit),
+    valueLabel: makePlotAxisLabel(valueColumn.label, options.valueAxisLabel, options.valueAxisUnit),
+    publicationWidthMm: options.publicationWidthMm,
+    showTitle: options.showTitle !== false,
     colorScheme: normalizeHeatmapColorScale(options.colorScale),
     xCategories: xValues.map((value) => ({ id: value, label: value })),
     yCategories: yValues.map((value) => ({ id: value, label: value })),
@@ -1473,28 +1478,26 @@ export function makeHistogramPlot(input, options = {}) {
     warnings,
     svg: renderHistogramSvg(rows, {
       title: options.title || "Histogram",
-      xLabel: valueColumn.label,
-      yLabel: "Count",
+      xLabel: makePlotAxisLabel(valueColumn.label, options.xAxisLabel, options.xAxisUnit),
+      yLabel: makePlotAxisLabel("Count", options.yAxisLabel, options.yAxisUnit),
       ...axisRenderOptions(options, warnings)
     })
   };
 }
 
-function renderEmptyPlot(title, warnings) {
+function renderEmptyPlot(title, warnings, options = {}) {
   const lines = warnings.length > 0 ? warnings : ["No plot data were available."];
+  const width = 760;
+  const height = 160;
+  const style = makePublicationPlotStyle(width, height, options);
   return [
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 160" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="d3" data-plot-renderer="sms3-d3">`,
-    `<rect width="760" height="160" fill="white"/>`,
-    `<text x="28" y="42" font-family="system-ui, sans-serif" font-size="20" font-weight="700" fill="#263238">${escapeXml(title)}</text>`,
-    ...lines.map((line, index) => `<text x="28" y="${78 + index * 20}" font-family="system-ui, sans-serif" font-size="13" fill="#5c6b75">${escapeXml(line)}</text>`),
+    `<svg xmlns="http://www.w3.org/2000/svg" ${publicationSvgAttributes(style)} viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="d3" data-plot-renderer="sms3-d3" data-sms3-publication-theme="default">`,
+    `<rect width="${width}" height="${height}" fill="${SMS3_PLOT_THEME.surface}"/>`,
+    `<text x="28" y="36" font-family="${style.fontFamily}" font-size="${style.titleFontSize}" font-weight="600" fill="${SMS3_PLOT_THEME.text}">${escapeXml(title)}</text>`,
+    ...lines.map((line, index) => `<text x="28" y="${68 + index * 20}" font-family="${style.fontFamily}" font-size="${style.bodyFontSize}" fill="${SMS3_PLOT_THEME.textMuted}">${escapeXml(line)}</text>`),
     "</svg>"
   ].join("");
 }
-
-const PLOT_TITLE_Y = 44;
-const PLOT_SUBTITLE_FIRST_Y = 72;
-const PLOT_TEXT_LINE_HEIGHT = 17;
-const PLOT_HEADER_GAP = 42;
 
 function wrapPlotText(text, width, maxCharacters = Math.max(52, Math.floor((width - 120) / 8))) {
   const words = String(text ?? "").split(/\s+/u).filter(Boolean);
@@ -1519,19 +1522,28 @@ function plotTextWidthEstimate(text, fontSize = 11) {
   return String(text ?? "").length * fontSize * 0.58;
 }
 
-function plotHeaderLayout(width, subtitle = "") {
+function plotHeaderLayout(width, subtitle = "", options = {}) {
+  const style = makePublicationPlotStyle(width, width, options);
+  const titleY = Math.max(34, style.titleFontSize + 22);
+  const subtitleFirstY = style.showTitle ? titleY + style.bodyFontSize + 12 : Math.max(28, style.bodyFontSize + 18);
+  const textLineHeight = Math.max(15, style.bodyFontSize * 1.35);
+  const headerGap = Math.max(34, style.axisLabelFontSize * 2.8);
   const subtitleLines = subtitle ? wrapPlotText(subtitle, width) : [];
   const lastHeaderBaseline = subtitleLines.length > 0
-    ? PLOT_SUBTITLE_FIRST_Y + (subtitleLines.length - 1) * PLOT_TEXT_LINE_HEIGHT
-    : PLOT_TITLE_Y;
+    ? subtitleFirstY + (subtitleLines.length - 1) * textLineHeight
+    : style.showTitle ? titleY : 0;
   return {
     subtitleLines,
-    plotTop: lastHeaderBaseline + PLOT_HEADER_GAP
+    plotTop: lastHeaderBaseline + headerGap,
+    style,
+    titleY,
+    subtitleFirstY,
+    textLineHeight
   };
 }
 
-function applyPlotHeaderLayout({ width, height, margin, subtitle = "" }) {
-  const { plotTop } = plotHeaderLayout(width, subtitle);
+function applyPlotHeaderLayout({ width, height, margin, subtitle = "", publicationWidthMm, showTitle }) {
+  const { plotTop } = plotHeaderLayout(width, subtitle, { publicationWidthMm, showTitle });
   const top = Math.max(margin.top, plotTop);
   return {
     height: height + Math.max(0, top - margin.top),
@@ -1539,8 +1551,10 @@ function applyPlotHeaderLayout({ width, height, margin, subtitle = "" }) {
   };
 }
 
-function renderBaseSvg({ title, width = 900, height = 560, xLabel, yLabel, plot, subtitle = "", notes = [], inspectionHighlight = "", plotKind = "" }) {
-  const { subtitleLines } = plotHeaderLayout(width, subtitle);
+function renderBaseSvg({ title, width = 900, height = 560, xLabel, yLabel, plot, subtitle = "", notes = [], inspectionHighlight = "", plotKind = "", publicationWidthMm, showTitle = true, showGridLines = false }) {
+  const header = plotHeaderLayout(width, subtitle, { publicationWidthMm, showTitle });
+  const { subtitleLines, style, titleY, subtitleFirstY, textLineHeight } = header;
+  style.heightMm = Number((style.widthMm * height / width).toFixed(3));
   const noteLines = notes.flatMap((note) => wrapPlotText(note, width));
   const scope = '[data-plot-renderer="sms3-d3"]';
   const inspectionHighlightAttribute = inspectionHighlight
@@ -1548,24 +1562,34 @@ function renderBaseSvg({ title, width = 900, height = 560, xLabel, yLabel, plot,
     : "";
   const plotKindAttribute = plotKind ? ` data-sms3-plot-kind="${escapeXml(plotKind)}"` : "";
   return [
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="d3" data-plot-renderer="sms3-d3"${inspectionHighlightAttribute}${plotKindAttribute}>`,
+    `<svg xmlns="http://www.w3.org/2000/svg" ${publicationSvgAttributes(style)} viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="d3" data-plot-renderer="sms3-d3" data-sms3-publication-theme="default" data-grid-lines="${showGridLines ? "shown" : "hidden"}"${inspectionHighlightAttribute}${plotKindAttribute}>`,
     "<style>",
-    `${scope} .title{font:700 20px system-ui,sans-serif;fill:#263238;stroke:none;stroke-width:0;paint-order:normal}`,
-    `${scope} .axis{stroke:#455a64;stroke-width:1.2}`,
-    `${scope} .grid{stroke:#d9e2e8;stroke-width:1}`,
-    `${scope} .tick{font:11px system-ui,sans-serif;fill:#455a64;stroke:none;stroke-width:0;paint-order:normal}`,
-    `${scope} .label{font:13px system-ui,sans-serif;fill:#263238;stroke:none;stroke-width:0;paint-order:normal}`,
-    `${scope} .legend{font:12px system-ui,sans-serif;fill:#263238;stroke:none;stroke-width:0;paint-order:normal}`,
+    publicationPlotCss(style, { scope }),
     "</style>",
-    `<rect width="${width}" height="${height}" fill="white"/>`,
-    `<text class="title" x="34" y="${PLOT_TITLE_Y}">${escapeXml(title)}</text>`,
-    ...subtitleLines.map((line, index) => `<text class="legend" x="34" y="${PLOT_SUBTITLE_FIRST_Y + index * PLOT_TEXT_LINE_HEIGHT}" data-plot-subtitle="true">${escapeXml(line)}</text>`),
+    `<rect width="${width}" height="${height}" fill="${SMS3_PLOT_THEME.surface}"/>`,
+    ...(style.showTitle ? [`<text class="title" x="34" y="${titleY}">${escapeXml(title)}</text>`] : []),
+    ...subtitleLines.map((line, index) => `<text class="legend" x="34" y="${subtitleFirstY + index * textLineHeight}" data-plot-subtitle="true">${escapeXml(line)}</text>`),
     plot,
     ...noteLines.map((line, index) => `<text class="legend" x="34" y="${height - 48 + index * 14}">${escapeXml(line)}</text>`),
-    `<text class="label" x="${width / 2}" y="${height - 18}" text-anchor="middle">${escapeXml(xLabel)}</text>`,
-    `<text class="label" transform="translate(18 ${height / 2}) rotate(-90)" text-anchor="middle">${escapeXml(yLabel)}</text>`,
+    `<text class="label" x="${width / 2}" y="${height - Math.max(14, style.axisLabelFontSize * 0.8)}" text-anchor="middle">${escapeXml(xLabel)}</text>`,
+    `<text class="label" transform="translate(${Math.max(14, style.axisLabelFontSize * 0.8)} ${height / 2}) rotate(-90)" text-anchor="middle">${escapeXml(yLabel)}</text>`,
     "</svg>"
   ].join("");
+}
+
+function renderNumericXTick({ x, plotHeight, label, style }) {
+  const grid = style.showGridLines
+    ? `<line class="grid" x1="${x}" x2="${x}" y1="0" y2="${plotHeight}"/>`
+    : "";
+  const labelY = plotHeight + style.tickLength + style.bodyFontSize + 4;
+  return `${grid}<line class="axis-tick" x1="${x}" x2="${x}" y1="${plotHeight}" y2="${plotHeight + style.tickLength}"/><text class="tick" x="${x}" y="${labelY}" text-anchor="middle">${escapeXml(label)}</text>`;
+}
+
+function renderNumericYTick({ y, plotWidth, label, style }) {
+  const grid = style.showGridLines
+    ? `<line class="grid" x1="0" x2="${plotWidth}" y1="${y}" y2="${y}"/>`
+    : "";
+  return `${grid}<line class="axis-tick" x1="0" x2="${-style.tickLength}" y1="${y}" y2="${y}"/><text class="tick" x="${-style.tickLength - 6}" y="${y + style.bodyFontSize * 0.34}" text-anchor="end">${escapeXml(label)}</text>`;
 }
 
 const ANGLED_X_TICK_GAP = 28;
@@ -1576,12 +1600,15 @@ function renderAngledCategoryTick({ x, plotHeight, label, title, angle = -28 }) 
 }
 
 export function renderScatterSvg(rows, options = {}) {
-  if (rows.length === 0) return renderEmptyPlot(options.title || "Scatter plot", ["No scatter plot data were available."]);
+  if (rows.length === 0) return renderEmptyPlot(options.title || "Scatter plot", ["No scatter plot data were available."], options);
   const width = 900;
+  const style = makePublicationPlotStyle(width, 560, options);
   const layout = applyPlotHeaderLayout({
     width,
     height: 560,
-    margin: { top: 68, right: options.showLegend ? 150 : 34, bottom: 70, left: 78 }
+    margin: { top: 68, right: options.showLegend ? 150 : 34, bottom: 70, left: 78 },
+    publicationWidthMm: options.publicationWidthMm,
+    showTitle: options.showTitle
   });
   const { height, margin } = layout;
   const plotWidth = width - margin.left - margin.right;
@@ -1605,11 +1632,11 @@ export function renderScatterSvg(rows, options = {}) {
     `<g transform="translate(${margin.left} ${margin.top})">`,
     ...xTicks.map((tick) => {
       const x = scale(tick, xMin, xMax, 0, plotWidth);
-      return `<line class="grid" x1="${x}" x2="${x}" y1="0" y2="${plotHeight}"/><text class="tick" x="${x}" y="${plotHeight + 20}" text-anchor="middle">${escapeXml(niceNumber(tick))}</text>`;
+      return renderNumericXTick({ x, plotHeight, label: niceNumber(tick), style });
     }),
     ...yTicks.map((tick) => {
       const y = scale(tick, yMin, yMax, plotHeight, 0);
-      return `<line class="grid" x1="0" x2="${plotWidth}" y1="${y}" y2="${y}"/><text class="tick" x="-10" y="${y + 4}" text-anchor="end">${escapeXml(niceNumber(tick))}</text>`;
+      return renderNumericYTick({ y, plotWidth, label: niceNumber(tick), style });
     }),
     `<line class="axis" x1="0" x2="${plotWidth}" y1="${plotHeight}" y2="${plotHeight}"/>`,
     `<line class="axis" x1="0" x2="0" y1="0" y2="${plotHeight}"/>`,
@@ -1642,17 +1669,23 @@ export function renderScatterSvg(rows, options = {}) {
     height,
     xLabel: options.xLabel,
     yLabel: options.yLabel,
+    publicationWidthMm: options.publicationWidthMm,
+    showTitle: options.showTitle,
+    showGridLines: options.showGridLines,
     plot: parts.join("")
   });
 }
 
 export function renderVolcanoSvg(rows, options = {}) {
-  if (rows.length === 0) return renderEmptyPlot(options.title || "Volcano plot", ["No volcano plot data were available."]);
+  if (rows.length === 0) return renderEmptyPlot(options.title || "Volcano plot", ["No volcano plot data were available."], options);
   const width = 940;
+  const style = makePublicationPlotStyle(width, 600, options);
   const layout = applyPlotHeaderLayout({
     width,
     height: 600,
-    margin: { top: 72, right: 164, bottom: 78, left: 86 }
+    margin: { top: 72, right: 164, bottom: 78, left: 86 },
+    publicationWidthMm: options.publicationWidthMm,
+    showTitle: options.showTitle
   });
   const { height, margin } = layout;
   const plotWidth = width - margin.left - margin.right;
@@ -1668,9 +1701,9 @@ export function renderVolcanoSvg(rows, options = {}) {
   const xTicks = makeAxisTicks(xMin, xMax);
   const yTicks = makeAxisTicks(yMin, yUpper);
   const colorByClass = {
-    up: "#b91c1c",
-    down: "#2563eb",
-    "not significant": "#64748b"
+    up: SMS3_PLOT_THEME.direction.positive,
+    down: SMS3_PLOT_THEME.direction.negative,
+    "not significant": SMS3_PLOT_THEME.direction.neutral
   };
   const pointRadius = 4.2;
   const pointOpacity = 0.78;
@@ -1689,20 +1722,20 @@ export function renderVolcanoSvg(rows, options = {}) {
     `<g transform="translate(${margin.left} ${margin.top})">`,
     ...xTicks.map((tick) => {
       const x = scale(tick, xMin, xMax, 0, plotWidth);
-      return `<line class="grid" x1="${x}" x2="${x}" y1="0" y2="${plotHeight}"/><text class="tick" x="${x}" y="${plotHeight + 20}" text-anchor="middle">${escapeXml(niceNumber(tick))}</text>`;
+      return renderNumericXTick({ x, plotHeight, label: niceNumber(tick), style });
     }),
     ...yTicks.map((tick) => {
       const y = scale(tick, yMin, yUpper, plotHeight, 0);
-      return `<line class="grid" x1="0" x2="${plotWidth}" y1="${y}" y2="${y}"/><text class="tick" x="-10" y="${y + 4}" text-anchor="end">${escapeXml(niceNumber(tick))}</text>`;
+      return renderNumericYTick({ y, plotWidth, label: niceNumber(tick), style });
     }),
     `<line class="axis" x1="0" x2="${plotWidth}" y1="${plotHeight}" y2="${plotHeight}"/>`,
-    `<line class="axis" x1="${scale(0, xMin, xMax, 0, plotWidth)}" x2="${scale(0, xMin, xMax, 0, plotWidth)}" y1="0" y2="${plotHeight}" stroke="#94a3b8" stroke-width="1.2"/>`,
+    `<line x1="${scale(0, xMin, xMax, 0, plotWidth)}" x2="${scale(0, xMin, xMax, 0, plotWidth)}" y1="0" y2="${plotHeight}" stroke="${SMS3_PLOT_THEME.reference}" stroke-width="${style.axisStrokeWidth}" stroke-opacity="0.7"/>`,
     `<line class="axis" x1="0" x2="0" y1="0" y2="${plotHeight}"/>`,
     ...[-foldChangeThreshold, foldChangeThreshold].map((cutoff) => {
       const x = scale(cutoff, xMin, xMax, 0, plotWidth);
-      return `<g><line x1="${x}" x2="${x}" y1="0" y2="${plotHeight}" stroke="#f59e0b" stroke-width="1.4" stroke-dasharray="5 5"><title>${escapeXml(`log2 fold-change threshold ${niceNumber(cutoff)}`)}</title></line><text x="${x + (cutoff < 0 ? -6 : 6)}" y="-10" text-anchor="${cutoff < 0 ? "end" : "start"}" font-size="11" fill="#b45309" paint-order="stroke" stroke="#ffffff" stroke-width="3" stroke-opacity="0.88" stroke-linejoin="round">log₂FC ${cutoff < 0 ? "≤" : "≥"} ${escapeXml(niceNumber(cutoff))}</text></g>`;
+      return `<g><line x1="${x}" x2="${x}" y1="0" y2="${plotHeight}" stroke="${SMS3_PLOT_THEME.significance}" stroke-width="${style.axisStrokeWidth}" stroke-dasharray="5 5"><title>${escapeXml(`log2 fold-change threshold ${niceNumber(cutoff)}`)}</title></line><text x="${x + (cutoff < 0 ? -6 : 6)}" y="-10" text-anchor="${cutoff < 0 ? "end" : "start"}" font-size="${style.bodyFontSize}" fill="${SMS3_PLOT_THEME.text}">log₂FC ${cutoff < 0 ? "≤" : "≥"} ${escapeXml(niceNumber(cutoff))}</text></g>`;
     }),
-    `<g><line x1="0" x2="${plotWidth}" y1="${scale(thresholdY, yMin, yUpper, plotHeight, 0)}" y2="${scale(thresholdY, yMin, yUpper, plotHeight, 0)}" stroke="#f59e0b" stroke-width="1.4" stroke-dasharray="5 5"><title>${escapeXml(`p-value threshold ${niceNumber(pValueThreshold)}`)}</title></line><text x="${plotWidth - 4}" y="${scale(thresholdY, yMin, yUpper, plotHeight, 0) - 7}" text-anchor="end" font-size="11" fill="#b45309" paint-order="stroke" stroke="#ffffff" stroke-width="3" stroke-opacity="0.88" stroke-linejoin="round">p ≤ ${escapeXml(niceNumber(pValueThreshold))}</text></g>`,
+    `<g><line x1="0" x2="${plotWidth}" y1="${scale(thresholdY, yMin, yUpper, plotHeight, 0)}" y2="${scale(thresholdY, yMin, yUpper, plotHeight, 0)}" stroke="${SMS3_PLOT_THEME.significance}" stroke-width="${style.axisStrokeWidth}" stroke-dasharray="5 5"><title>${escapeXml(`p-value threshold ${niceNumber(pValueThreshold)}`)}</title></line><text x="${plotWidth - 4}" y="${scale(thresholdY, yMin, yUpper, plotHeight, 0) - 7}" text-anchor="end" font-size="${style.bodyFontSize}" fill="${SMS3_PLOT_THEME.text}">p ≤ ${escapeXml(niceNumber(pValueThreshold))}</text></g>`,
     ...pointRows.map((row) => {
       const x = row.plotX;
       const y = row.plotY;
@@ -1725,21 +1758,27 @@ export function renderVolcanoSvg(rows, options = {}) {
     height,
     xLabel: options.xLabel,
     yLabel: options.yLabel,
+    publicationWidthMm: options.publicationWidthMm,
+    showTitle: options.showTitle,
+    showGridLines: options.showGridLines,
     plot: parts.join("")
   });
 }
 
 export function renderManhattanSvg(rows, options = {}) {
-  if (rows.length === 0) return renderEmptyPlot(options.title || "Manhattan Plot", ["No Manhattan plot data were available."]);
+  if (rows.length === 0) return renderEmptyPlot(options.title || "Manhattan Plot", ["No Manhattan plot data were available."], options);
   const width = options.width ?? 1100;
   const heightOption = options.height ?? 620;
+  const style = makePublicationPlotStyle(width, heightOption, options);
   const chromosomeOrder = options.chromosomeOrder ?? [...new Set(rows.map((row) => row.chromosome))];
   const chromosomeStats = options.chromosomeStats ?? new Map();
   const showLabels = options.labelTopMarkers === true;
   const layout = applyPlotHeaderLayout({
     width,
     height: heightOption,
-    margin: { top: showLabels ? 98 : 76, right: 34, bottom: chromosomeOrder.length > 18 ? 96 : 76, left: 86 }
+    margin: { top: showLabels ? 98 : 76, right: 34, bottom: chromosomeOrder.length > 18 ? 96 : 76, left: 86 },
+    publicationWidthMm: options.publicationWidthMm,
+    showTitle: options.showTitle
   });
   const { height, margin } = layout;
   const plotWidth = width - margin.left - margin.right;
@@ -1790,7 +1829,7 @@ export function renderManhattanSvg(rows, options = {}) {
     `<g transform="translate(${margin.left} ${margin.top})">`,
     ...yTicks.map((tick) => {
       const y = yForValue(tick);
-      return `<line class="grid" x1="0" x2="${plotWidth}" y1="${y}" y2="${y}"/><text class="tick" x="-10" y="${y + 4}" text-anchor="end">${escapeXml(niceNumber(tick))}</text>`;
+      return renderNumericYTick({ y, plotWidth, label: niceNumber(tick), style });
     }),
     ...chromosomeOrder.flatMap((chromosome) => {
       const stats = chromosomeStats.get(chromosome);
@@ -1799,20 +1838,20 @@ export function renderManhattanSvg(rows, options = {}) {
       const labelY = plotHeight + 24;
       const label = String(chromosome);
       return [
-        `<text class="tick" x="${center.toFixed(2)}" y="${labelY}" text-anchor="${xTickAngle === 0 ? "middle" : "end"}" transform="rotate(${xTickAngle} ${center.toFixed(2)} ${labelY})">${escapeXml(label)}<title>${escapeXml(label)}</title></text>`
+        `<line class="axis-tick" x1="${center.toFixed(2)}" x2="${center.toFixed(2)}" y1="${plotHeight}" y2="${plotHeight + style.tickLength}"/><text class="tick" x="${center.toFixed(2)}" y="${labelY}" text-anchor="${xTickAngle === 0 ? "middle" : "end"}" transform="rotate(${xTickAngle} ${center.toFixed(2)} ${labelY})">${escapeXml(label)}<title>${escapeXml(label)}</title></text>`
       ];
     }),
     ...(options.significanceLines ?? []).map((line) => {
       const y = yForValue(line.threshold);
-      return `<line x1="0" x2="${plotWidth}" y1="${y.toFixed(2)}" y2="${y.toFixed(2)}" stroke="${escapeXml(line.color)}" stroke-width="1.6" stroke-dasharray="6 5"><title>${escapeXml(`Threshold ${line.threshold}`)}</title></line>`;
+      return `<line x1="0" x2="${plotWidth}" y1="${y.toFixed(2)}" y2="${y.toFixed(2)}" stroke="${escapeXml(line.color)}" stroke-width="${style.axisStrokeWidth}" stroke-dasharray="6 5"><title>${escapeXml(`Threshold ${line.threshold}`)}</title></line>`;
     }),
     `<line class="axis" x1="0" x2="${plotWidth}" y1="${plotHeight}" y2="${plotHeight}"/>`,
     `<line class="axis" x1="0" x2="0" y1="0" y2="${plotHeight}"/>`,
     ...pointRows.map((row) => {
       const x = row.plotX;
       const y = row.plotY;
-      const color = colorByChromosome.get(row.chromosome) ?? "#2563eb";
-      const stroke = row.top_marker === "yes" ? "#263238" : "none";
+      const color = colorByChromosome.get(row.chromosome) ?? SMS3_PLOT_THEME.selection;
+      const stroke = row.top_marker === "yes" ? SMS3_PLOT_THEME.text : "none";
       const strokeWidth = row.top_marker === "yes" ? "0.8" : "0";
       const details = [`${row.marker}; ${row.chromosome}:${row.position}; p=${row.p_value}; -log10(p)=${row.neg_log10_p}`];
       const crowdingFact = pointCrowdingFact(row);
@@ -1823,9 +1862,8 @@ export function renderManhattanSvg(rows, options = {}) {
     ...rows.filter((row) => row.top_marker === "yes").map((row) => {
       const x = xForPlotPosition(row.plot_position);
       const y = Math.max(14, yForValue(row.neg_log10_p) - pointRadius - 6);
-      const color = colorByChromosome.get(row.chromosome) ?? "#2563eb";
       const label = String(row.marker).length > 24 ? `${String(row.marker).slice(0, 23)}...` : String(row.marker);
-      return `<text class="legend" x="${x.toFixed(2)}" y="${y.toFixed(2)}" text-anchor="start" transform="rotate(-70 ${x.toFixed(2)} ${y.toFixed(2)})" fill="${escapeXml(color)}">${escapeXml(label)}<title>${escapeXml(row.marker)}</title></text>`;
+      return `<text class="legend" x="${x.toFixed(2)}" y="${y.toFixed(2)}" text-anchor="start" transform="rotate(-70 ${x.toFixed(2)} ${y.toFixed(2)})">${escapeXml(label)}<title>${escapeXml(row.marker)}</title></text>`;
     }),
     "</g>"
   ];
@@ -1835,19 +1873,25 @@ export function renderManhattanSvg(rows, options = {}) {
     height,
     xLabel: options.xLabel,
     yLabel: options.yLabel,
+    publicationWidthMm: options.publicationWidthMm,
+    showTitle: options.showTitle,
+    showGridLines: options.showGridLines,
     plot: parts.join("")
   });
 }
 
 export function renderQqPlotSvg(rows, options = {}) {
-  if (rows.length === 0) return renderEmptyPlot(options.title || "Q-Q plot", ["No Q-Q plot data were available."]);
+  if (rows.length === 0) return renderEmptyPlot(options.title || "Q-Q plot", ["No Q-Q plot data were available."], options);
   const width = 900;
+  const style = makePublicationPlotStyle(width, 560, options);
   const subtitle = "Reference line: sample mean + sample SD x theoretical normal quantile.";
   const layout = applyPlotHeaderLayout({
     width,
     height: 560,
     margin: { top: 82, right: 46, bottom: 76, left: 86 },
-    subtitle
+    subtitle,
+    publicationWidthMm: options.publicationWidthMm,
+    showTitle: options.showTitle
   });
   const { height, margin } = layout;
   const plotWidth = width - margin.left - margin.right;
@@ -1877,21 +1921,21 @@ export function renderQqPlotSvg(rows, options = {}) {
     `<g transform="translate(${margin.left} ${margin.top})">`,
     ...xTicks.map((tick) => {
       const x = scale(tick, xMin, xMax, 0, plotWidth);
-      return `<line class="grid" x1="${x}" x2="${x}" y1="0" y2="${plotHeight}"/><text class="tick" x="${x}" y="${plotHeight + 20}" text-anchor="middle">${escapeXml(niceNumber(tick))}</text>`;
+      return renderNumericXTick({ x, plotHeight, label: niceNumber(tick), style });
     }),
     ...yTicks.map((tick) => {
       const y = scale(tick, yMin, yMax, plotHeight, 0);
-      return `<line class="grid" x1="0" x2="${plotWidth}" y1="${y}" y2="${y}"/><text class="tick" x="-10" y="${y + 4}" text-anchor="end">${escapeXml(niceNumber(tick))}</text>`;
+      return renderNumericYTick({ y, plotWidth, label: niceNumber(tick), style });
     }),
     `<line class="axis" x1="0" x2="${plotWidth}" y1="${plotHeight}" y2="${plotHeight}"/>`,
     `<line class="axis" x1="0" x2="0" y1="0" y2="${plotHeight}"/>`,
-    `<line x1="0" x2="${plotWidth}" y1="${refStartY.toFixed(2)}" y2="${refEndY.toFixed(2)}" stroke="#64748b" stroke-width="2" stroke-dasharray="6 5"><title>${escapeXml("Reference line based on sample mean and sample standard deviation")}</title></line>`,
+    `<line x1="0" x2="${plotWidth}" y1="${refStartY.toFixed(2)}" y2="${refEndY.toFixed(2)}" stroke="${SMS3_PLOT_THEME.reference}" stroke-width="${style.dataStrokeWidth}" stroke-dasharray="6 5"><title>${escapeXml("Reference line based on sample mean and sample standard deviation")}</title></line>`,
     ...pointRows.map((row) => {
       const details = [`${row.label}: normal=${row.theoretical_quantile}, ${options.valueLabel || "value"}=${row.sample_quantile}`];
       const crowdingFact = pointCrowdingFact(row);
       if (crowdingFact) details.push(crowdingFact);
       if (sampleFact) details.push(sampleFact);
-      return `<circle data-sms3-nearest-point="true" cx="${row.plotX.toFixed(2)}" cy="${row.plotY.toFixed(2)}" r="4.2" fill="#2563eb" fill-opacity="0.76" stroke="#ffffff" stroke-width="0.8"><title>${escapeXml(details.join("; "))}</title></circle>`;
+      return `<circle data-sms3-nearest-point="true" cx="${row.plotX.toFixed(2)}" cy="${row.plotY.toFixed(2)}" r="4.2" fill="${SMS3_PLOT_THEME.selection}" fill-opacity="0.76" stroke="${SMS3_PLOT_THEME.surface}" stroke-width="0.8"><title>${escapeXml(details.join("; "))}</title></circle>`;
     }),
     "</g>"
   ];
@@ -1902,16 +1946,22 @@ export function renderQqPlotSvg(rows, options = {}) {
     xLabel: options.xLabel,
     yLabel: options.yLabel,
     subtitle,
+    publicationWidthMm: options.publicationWidthMm,
+    showTitle: options.showTitle,
+    showGridLines: options.showGridLines,
     plot: parts.join("")
   });
 }
 
 export function renderHistogramSvg(rows, options = {}) {
   const width = 900;
+  const style = makePublicationPlotStyle(width, 520, options);
   const layout = applyPlotHeaderLayout({
     width,
     height: 520,
-    margin: { top: 68, right: 34, bottom: 78, left: 78 }
+    margin: { top: 68, right: 34, bottom: 78, left: 78 },
+    publicationWidthMm: options.publicationWidthMm,
+    showTitle: options.showTitle
   });
   const { height, margin } = layout;
   const plotWidth = width - margin.left - margin.right;
@@ -1928,11 +1978,11 @@ export function renderHistogramSvg(rows, options = {}) {
     `<g transform="translate(${margin.left} ${margin.top})">`,
     ...xTicks.map((tick) => {
       const x = scale(tick, xMin, xMax, 0, plotWidth);
-      return `<line class="grid" x1="${x}" x2="${x}" y1="0" y2="${plotHeight}"/><text class="tick" x="${x}" y="${plotHeight + 20}" text-anchor="middle">${escapeXml(niceNumber(tick))}</text>`;
+      return renderNumericXTick({ x, plotHeight, label: niceNumber(tick), style });
     }),
     ...yTicks.map((tick) => {
       const y = scale(tick, yMin, yMax, plotHeight, 0);
-      return `<line class="grid" x1="0" x2="${plotWidth}" y1="${y}" y2="${y}"/><text class="tick" x="-10" y="${y + 4}" text-anchor="end">${escapeXml(niceNumber(tick))}</text>`;
+      return renderNumericYTick({ y, plotWidth, label: niceNumber(tick), style });
     }),
     `<line class="axis" x1="0" x2="${plotWidth}" y1="${plotHeight}" y2="${plotHeight}"/>`,
     `<line class="axis" x1="0" x2="0" y1="0" y2="${plotHeight}"/>`,
@@ -1942,7 +1992,7 @@ export function renderHistogramSvg(rows, options = {}) {
       const y = scale(row.count, yMin, yMax, plotHeight, 0);
       const zeroY = scale(0, yMin, yMax, plotHeight, 0);
       const barWidth = Math.max(1, x2 - x1 - barGap);
-      return `<rect class="histogram-bin" data-sms3-inspection-highlight="shade" x="${(x1 + barGap / 2).toFixed(2)}" y="${Math.min(y, zeroY).toFixed(2)}" width="${barWidth.toFixed(2)}" height="${Math.abs(zeroY - y).toFixed(2)}" fill="#2563eb" fill-opacity="0.78"><title>${escapeXml(`${niceNumber(row.bin_start)} to ${niceNumber(row.bin_end)}: ${row.count}`)}</title></rect>`;
+      return `<rect class="histogram-bin" data-sms3-inspection-highlight="shade" x="${(x1 + barGap / 2).toFixed(2)}" y="${Math.min(y, zeroY).toFixed(2)}" width="${barWidth.toFixed(2)}" height="${Math.abs(zeroY - y).toFixed(2)}" fill="${SMS3_PLOT_THEME.selection}" fill-opacity="0.78"><title>${escapeXml(`${niceNumber(row.bin_start)} to ${niceNumber(row.bin_end)}: ${row.count}`)}</title></rect>`;
     }),
     "</g>"
   ];
@@ -1952,17 +2002,23 @@ export function renderHistogramSvg(rows, options = {}) {
     height,
     xLabel: options.xLabel,
     yLabel: options.yLabel,
+    publicationWidthMm: options.publicationWidthMm,
+    showTitle: options.showTitle,
+    showGridLines: options.showGridLines,
     plot: parts.join("")
   });
 }
 
 export function renderLineSvg(rows, options = {}) {
-  if (rows.length === 0) return renderEmptyPlot(options.title || "Line plot", ["No line plot data were available."]);
+  if (rows.length === 0) return renderEmptyPlot(options.title || "Line plot", ["No line plot data were available."], options);
   const width = 900;
+  const style = makePublicationPlotStyle(width, 560, options);
   const layout = applyPlotHeaderLayout({
     width,
     height: 560,
-    margin: { top: 68, right: options.showLegend ? 150 : 34, bottom: 70, left: 78 }
+    margin: { top: 68, right: options.showLegend ? 150 : 34, bottom: 70, left: 78 },
+    publicationWidthMm: options.publicationWidthMm,
+    showTitle: options.showTitle
   });
   const { height, margin } = layout;
   const plotWidth = width - margin.left - margin.right;
@@ -1987,11 +2043,11 @@ export function renderLineSvg(rows, options = {}) {
     `<g transform="translate(${margin.left} ${margin.top})">`,
     ...xTicks.map((tick) => {
       const x = scale(tick, xMin, xMax, 0, plotWidth);
-      return `<line class="grid" x1="${x}" x2="${x}" y1="0" y2="${plotHeight}"/><text class="tick" x="${x}" y="${plotHeight + 20}" text-anchor="middle">${escapeXml(niceNumber(tick))}</text>`;
+      return renderNumericXTick({ x, plotHeight, label: niceNumber(tick), style });
     }),
     ...yTicks.map((tick) => {
       const y = scale(tick, yMin, yMax, plotHeight, 0);
-      return `<line class="grid" x1="0" x2="${plotWidth}" y1="${y}" y2="${y}"/><text class="tick" x="-10" y="${y + 4}" text-anchor="end">${escapeXml(niceNumber(tick))}</text>`;
+      return renderNumericYTick({ y, plotWidth, label: niceNumber(tick), style });
     }),
     `<line class="axis" x1="0" x2="${plotWidth}" y1="${plotHeight}" y2="${plotHeight}"/>`,
     `<line class="axis" x1="0" x2="0" y1="0" y2="${plotHeight}"/>`,
@@ -2014,7 +2070,7 @@ export function renderLineSvg(rows, options = {}) {
         if (sampleFact) details.push(sampleFact);
         return `<circle data-sms3-nearest-point="true" cx="${row.plotX.toFixed(2)}" cy="${row.plotY.toFixed(2)}" r="3.2" fill="${color}"><title>${escapeXml(details.join("; "))}</title></circle>`;
       }).join("");
-      return `<path d="${path}" fill="none" stroke="${color}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>${points}`;
+      return `<path d="${path}" fill="none" stroke="${color}" stroke-width="${style.dataStrokeWidth}" stroke-linejoin="round" stroke-linecap="round"/>${points}`;
     }),
     "</g>"
   ];
@@ -2030,17 +2086,23 @@ export function renderLineSvg(rows, options = {}) {
     height,
     xLabel: options.xLabel,
     yLabel: options.yLabel,
+    publicationWidthMm: options.publicationWidthMm,
+    showTitle: options.showTitle,
+    showGridLines: options.showGridLines,
     plot: parts.join("")
   });
 }
 
 export function renderBarSvg(rows, options = {}) {
-  if (rows.length === 0) return renderEmptyPlot(options.title || "Bar plot", ["No bar plot data were available."]);
+  if (rows.length === 0) return renderEmptyPlot(options.title || "Bar plot", ["No bar plot data were available."], options);
   const width = 940;
+  const style = makePublicationPlotStyle(width, 560, options);
   const layout = applyPlotHeaderLayout({
     width,
     height: 560,
-    margin: { top: 68, right: options.showLegend ? 150 : 34, bottom: 96, left: 78 }
+    margin: { top: 68, right: options.showLegend ? 150 : 34, bottom: 96, left: 78 },
+    publicationWidthMm: options.publicationWidthMm,
+    showTitle: options.showTitle
   });
   const { height, margin } = layout;
   const plotWidth = width - margin.left - margin.right;
@@ -2060,7 +2122,7 @@ export function renderBarSvg(rows, options = {}) {
     `<g transform="translate(${margin.left} ${margin.top})">`,
     ...yTicks.map((tick) => {
       const y = scale(tick, yMin, yMax, plotHeight, 0);
-      return `<line class="grid" x1="0" x2="${plotWidth}" y1="${y}" y2="${y}"/><text class="tick" x="-10" y="${y + 4}" text-anchor="end">${escapeXml(niceNumber(tick))}</text>`;
+      return renderNumericYTick({ y, plotWidth, label: niceNumber(tick), style });
     }),
     `<line class="axis" x1="0" x2="${plotWidth}" y1="${zeroY}" y2="${zeroY}"/>`,
     `<line class="axis" x1="0" x2="0" y1="0" y2="${plotHeight}"/>`,
@@ -2091,17 +2153,23 @@ export function renderBarSvg(rows, options = {}) {
     height,
     xLabel: options.xLabel,
     yLabel: options.yLabel,
+    publicationWidthMm: options.publicationWidthMm,
+    showTitle: options.showTitle,
+    showGridLines: options.showGridLines,
     plot: parts.join("")
   });
 }
 
 export function renderBoxSvg(rows, outliers = [], options = {}) {
-  if (rows.length === 0) return renderEmptyPlot(options.title || "Box plot", ["No box plot data were available."]);
+  if (rows.length === 0) return renderEmptyPlot(options.title || "Box plot", ["No box plot data were available."], options);
   const width = 900;
+  const style = makePublicationPlotStyle(width, 560, options);
   const layout = applyPlotHeaderLayout({
     width,
     height: 560,
-    margin: { top: 68, right: 34, bottom: 94, left: 78 }
+    margin: { top: 68, right: 34, bottom: 94, left: 78 },
+    publicationWidthMm: options.publicationWidthMm,
+    showTitle: options.showTitle
   });
   const { height, margin } = layout;
   const plotWidth = width - margin.left - margin.right;
@@ -2144,7 +2212,7 @@ export function renderBoxSvg(rows, outliers = [], options = {}) {
     `<g transform="translate(${margin.left} ${margin.top})">`,
     ...yTicks.map((tick) => {
       const y = scale(tick, yMin, yMax, plotHeight, 0);
-      return `<line class="grid" x1="0" x2="${plotWidth}" y1="${y}" y2="${y}"/><text class="tick" x="-10" y="${y + 4}" text-anchor="end">${escapeXml(niceNumber(tick))}</text>`;
+      return renderNumericYTick({ y, plotWidth, label: niceNumber(tick), style });
     }),
     `<line class="axis" x1="0" x2="${plotWidth}" y1="${plotHeight}" y2="${plotHeight}"/>`,
     `<line class="axis" x1="0" x2="0" y1="0" y2="${plotHeight}"/>`,
@@ -2157,11 +2225,11 @@ export function renderBoxSvg(rows, outliers = [], options = {}) {
       const whiskerHigh = scale(row.whisker_high, yMin, yMax, plotHeight, 0);
       const label = row.group.length > 14 ? `${row.group.slice(0, 13)}...` : row.group;
       return [
-        `<line x1="${x}" x2="${x}" y1="${whiskerHigh}" y2="${whiskerLow}" stroke="#455a64" stroke-width="1.4"/>`,
-        `<line x1="${x - boxWidth / 3}" x2="${x + boxWidth / 3}" y1="${whiskerHigh}" y2="${whiskerHigh}" stroke="#455a64" stroke-width="1.4"/>`,
-        `<line x1="${x - boxWidth / 3}" x2="${x + boxWidth / 3}" y1="${whiskerLow}" y2="${whiskerLow}" stroke="#455a64" stroke-width="1.4"/>`,
-        `<rect class="box-summary" data-sms3-inspection-highlight="shade" x="${x - boxWidth / 2}" y="${Math.min(q1, q3)}" width="${boxWidth}" height="${Math.max(1, Math.abs(q3 - q1))}" fill="#2563eb" fill-opacity="0.22" stroke="#2563eb" stroke-width="1.6"><title>${escapeXml(`${row.group}: n=${row.count}, median=${row.median}`)}</title></rect>`,
-        `<line x1="${x - boxWidth / 2}" x2="${x + boxWidth / 2}" y1="${median}" y2="${median}" stroke="#1d4ed8" stroke-width="2.2"/>`,
+        `<line x1="${x}" x2="${x}" y1="${whiskerHigh}" y2="${whiskerLow}" stroke="${SMS3_PLOT_THEME.axis}" stroke-width="${style.axisStrokeWidth}"/>`,
+        `<line x1="${x - boxWidth / 3}" x2="${x + boxWidth / 3}" y1="${whiskerHigh}" y2="${whiskerHigh}" stroke="${SMS3_PLOT_THEME.axis}" stroke-width="${style.axisStrokeWidth}"/>`,
+        `<line x1="${x - boxWidth / 3}" x2="${x + boxWidth / 3}" y1="${whiskerLow}" y2="${whiskerLow}" stroke="${SMS3_PLOT_THEME.axis}" stroke-width="${style.axisStrokeWidth}"/>`,
+        `<rect class="box-summary" data-sms3-inspection-highlight="shade" x="${x - boxWidth / 2}" y="${Math.min(q1, q3)}" width="${boxWidth}" height="${Math.max(1, Math.abs(q3 - q1))}" fill="${SMS3_PLOT_THEME.selection}" fill-opacity="0.22" stroke="${SMS3_PLOT_THEME.selection}" stroke-width="${style.axisStrokeWidth}"><title>${escapeXml(`${row.group}: n=${row.count}, median=${row.median}`)}</title></rect>`,
+        `<line x1="${x - boxWidth / 2}" x2="${x + boxWidth / 2}" y1="${median}" y2="${median}" stroke="${SMS3_PLOT_THEME.selection}" stroke-width="${style.dataStrokeWidth}"/>`,
         renderAngledCategoryTick({ x, plotHeight, label, title: row.group })
       ].join("");
     }),
@@ -2170,14 +2238,14 @@ export function renderBoxSvg(rows, outliers = [], options = {}) {
       const crowdingFact = pointCrowdingFact(point, { noun: "displayed measurement dots" });
       if (crowdingFact) details.push(crowdingFact);
       if (sampleFact) details.push(sampleFact);
-      return `<circle class="box-measurement" data-sms3-inspection-highlight="shade" data-sms3-nearest-point="true" cx="${point.plotX.toFixed(2)}" cy="${point.plotY.toFixed(2)}" r="2.5" fill="#0f172a" fill-opacity="0.42" stroke="#ffffff" stroke-opacity="0.75" stroke-width="0.8"><title>${escapeXml(details.join("; "))}</title></circle>`;
+      return `<circle class="box-measurement" data-sms3-inspection-highlight="shade" data-sms3-nearest-point="true" cx="${point.plotX.toFixed(2)}" cy="${point.plotY.toFixed(2)}" r="2.5" fill="${SMS3_PLOT_THEME.outline}" fill-opacity="0.42" stroke="${SMS3_PLOT_THEME.surface}" stroke-opacity="0.75" stroke-width="0.8"><title>${escapeXml(details.join("; "))}</title></circle>`;
     }),
     ...outliers.map((outlier) => {
       const index = rows.findIndex((row) => row.group === outlier.group);
       if (index < 0) return "";
       const x = index * groupWidth + groupWidth / 2;
       const y = scale(outlier.value, yMin, yMax, plotHeight, 0);
-      return `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="2.8" fill="#be123c" fill-opacity="0.78"><title>${escapeXml(`${outlier.group} outlier: ${outlier.value}`)}</title></circle>`;
+      return `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="2.8" fill="${SMS3_PLOT_THEME.direction.positive}" fill-opacity="0.78"><title>${escapeXml(`${outlier.group} outlier: ${outlier.value}`)}</title></circle>`;
     }),
     "</g>"
   ];
@@ -2187,13 +2255,17 @@ export function renderBoxSvg(rows, outliers = [], options = {}) {
     height,
     xLabel: options.xLabel,
     yLabel: options.yLabel,
+    publicationWidthMm: options.publicationWidthMm,
+    showTitle: options.showTitle,
+    showGridLines: options.showGridLines,
     plot: parts.join("")
   });
 }
 
 export function renderViolinSvg(summaryRows, densityRows = [], options = {}) {
-  if (summaryRows.length === 0) return renderEmptyPlot(options.title || "Violin plot", ["No violin plot data were available."]);
+  if (summaryRows.length === 0) return renderEmptyPlot(options.title || "Violin plot", ["No violin plot data were available."], options);
   const width = 940;
+  const style = makePublicationPlotStyle(width, 600, options);
   const points = options.points ?? [];
   const totalPointCount = Math.max(points.length, Number(options.totalPointCount) || 0);
   const dotDescription = totalPointCount > points.length
@@ -2204,7 +2276,9 @@ export function renderViolinSvg(summaryRows, densityRows = [], options = {}) {
     width,
     height: 600,
     margin: { top: 86, right: 36, bottom: 104, left: 86 },
-    subtitle
+    subtitle,
+    publicationWidthMm: options.publicationWidthMm,
+    showTitle: options.showTitle
   });
   const { height, margin } = layout;
   const plotWidth = width - margin.left - margin.right;
@@ -2248,7 +2322,7 @@ export function renderViolinSvg(summaryRows, densityRows = [], options = {}) {
     `<g transform="translate(${margin.left} ${margin.top})">`,
     ...yTicks.map((tick) => {
       const y = scale(tick, yMin, yMax, plotHeight, 0);
-      return `<line class="grid" x1="0" x2="${plotWidth}" y1="${y}" y2="${y}"/><text class="tick" x="-10" y="${y + 4}" text-anchor="end">${escapeXml(niceNumber(tick))}</text>`;
+      return renderNumericYTick({ y, plotWidth, label: niceNumber(tick), style });
     }),
     `<line class="axis" x1="0" x2="${plotWidth}" y1="${plotHeight}" y2="${plotHeight}"/>`,
     `<line class="axis" x1="0" x2="0" y1="0" y2="${plotHeight}"/>`,
@@ -2282,8 +2356,8 @@ export function renderViolinSvg(summaryRows, densityRows = [], options = {}) {
       return [
         path ? `<path class="violin-density" d="${path}" fill="${color}" fill-opacity="0.22" stroke="${color}" stroke-width="1.6" stroke-linejoin="round"><title>${escapeXml(`${row.group}: n=${row.count}, median=${row.median}, bandwidth=${row.bandwidth}`)}</title></path>` : "",
         `<line x1="${centerX}" x2="${centerX}" y1="${q3}" y2="${q1}" stroke="${color}" stroke-width="7" stroke-linecap="round" stroke-opacity="0.72"/>`,
-        `<line x1="${centerX - maxHalfWidth * 0.42}" x2="${centerX + maxHalfWidth * 0.42}" y1="${median}" y2="${median}" stroke="#0f172a" stroke-width="2.2" stroke-linecap="round"/>`,
-        `<path d="M${centerX},${mean - 5} L${centerX + 5},${mean} L${centerX},${mean + 5} L${centerX - 5},${mean} Z" fill="#ffffff" stroke="${color}" stroke-width="1.4"><title>${escapeXml(`${row.group} mean: ${row.mean}`)}</title></path>`,
+        `<line x1="${centerX - maxHalfWidth * 0.42}" x2="${centerX + maxHalfWidth * 0.42}" y1="${median}" y2="${median}" stroke="${SMS3_PLOT_THEME.outline}" stroke-width="${style.dataStrokeWidth}" stroke-linecap="round"/>`,
+        `<path d="M${centerX},${mean - 5} L${centerX + 5},${mean} L${centerX},${mean + 5} L${centerX - 5},${mean} Z" fill="${SMS3_PLOT_THEME.surface}" stroke="${color}" stroke-width="${style.axisStrokeWidth}"><title>${escapeXml(`${row.group} mean: ${row.mean}`)}</title></path>`,
         renderAngledCategoryTick({ x: centerX, plotHeight, label, title: row.group })
       ].join("");
     }),
@@ -2301,7 +2375,7 @@ export function renderViolinSvg(summaryRows, densityRows = [], options = {}) {
       if (totalPointCount > pointGeometry.length) {
         details.push(`displayed dots are a group-stratified sample of ${pointGeometry.length.toLocaleString()} of ${totalPointCount.toLocaleString()} measurements`);
       }
-      return `<circle data-sms3-nearest-point="true" cx="${point.x.toFixed(2)}" cy="${point.y.toFixed(2)}" r="2.4" fill="#0f172a" fill-opacity="0.42" stroke="#ffffff" stroke-opacity="0.75" stroke-width="0.8"><title>${escapeXml(details.join("; "))}</title></circle>`;
+      return `<circle data-sms3-nearest-point="true" cx="${point.x.toFixed(2)}" cy="${point.y.toFixed(2)}" r="2.4" fill="${SMS3_PLOT_THEME.outline}" fill-opacity="0.42" stroke="${SMS3_PLOT_THEME.surface}" stroke-opacity="0.75" stroke-width="0.8"><title>${escapeXml(details.join("; "))}</title></circle>`;
     }),
     "</g>"
   ];
@@ -2312,12 +2386,15 @@ export function renderViolinSvg(summaryRows, densityRows = [], options = {}) {
     xLabel: options.xLabel,
     yLabel: options.yLabel,
     subtitle,
+    publicationWidthMm: options.publicationWidthMm,
+    showTitle: options.showTitle,
+    showGridLines: options.showGridLines,
     plot: parts.join("")
   });
 }
 
 export function renderHeatmapSvg(rows, options = {}) {
-  if (rows.length === 0) return renderEmptyPlot(options.title || "Heatmap", ["No heatmap data were available."]);
+  if (rows.length === 0) return renderEmptyPlot(options.title || "Heatmap", ["No heatmap data were available."], options);
   const xValues = [...new Set(rows.map((row) => row.x))];
   const yValues = [...new Set(rows.map((row) => row.y))];
   const maxXLabelWidth = Math.max(...xValues.map((value) => plotTextWidthEstimate(value, 11)), 40);
@@ -2331,17 +2408,19 @@ export function renderHeatmapSvg(rows, options = {}) {
   const legendTitle = rawLegendTitle.length > 18
     ? `${rawLegendTitle.slice(0, 17)}...`
     : rawLegendTitle;
-  const legendBarWidth = 18;
+  const legendBarWidth = HEATMAP_LEGEND_BAR_WIDTH;
   const legendLabelGap = HEATMAP_LEGEND_LABEL_GAP;
   const legendLabelWidth = Math.max(plotTextWidthEstimate(niceNumber(min), 11), plotTextWidthEstimate(niceNumber(max), 11), 24);
   const legendTitleWidth = Math.max(plotTextWidthEstimate(legendTitle, 12), legendBarWidth + legendLabelGap + legendLabelWidth);
-  const legendGutter = 46;
+  const legendGutter = HEATMAP_LEGEND_GUTTER;
   const marginRight = Math.max(160, Math.ceil(legendGutter + legendTitleWidth + 16));
   const width = 920;
   const layout = applyPlotHeaderLayout({
     width,
     height: 600,
-    margin: { top: 68, right: marginRight, bottom: marginBottom, left: marginLeft }
+    margin: { top: 68, right: marginRight, bottom: marginBottom, left: marginLeft },
+    publicationWidthMm: options.publicationWidthMm,
+    showTitle: options.showTitle
   });
   const { height, margin } = layout;
   const plotWidth = width - margin.left - margin.right;
@@ -2349,19 +2428,25 @@ export function renderHeatmapSvg(rows, options = {}) {
   const colorScale = normalizeHeatmapColorScale(options.colorScale);
   const cellWidth = plotWidth / Math.max(1, xValues.length);
   const cellHeight = plotHeight / Math.max(1, yValues.length);
-  const legendHeight = 162;
-  const legendX = margin.left + plotWidth + legendGutter;
+  const legendLayout = heatmapLegendLayout({
+    matrixX: margin.left,
+    matrixY: margin.top,
+    matrixWidth: plotWidth,
+    matrixHeight: plotHeight
+  });
+  const legendHeight = legendLayout.height;
+  const legendX = legendLayout.x;
   const rowByCell = new Map(rows.map((row) => [`${row.x}\u0000${row.y}`, row]));
   const parts = [
     `<g transform="translate(${margin.left} ${margin.top})">`,
-    `<rect data-heatmap-matrix="true" x="0" y="0" width="${plotWidth}" height="${plotHeight}" fill="#f8fafc" stroke="#cbd5e1"/>`,
+    `<rect data-heatmap-matrix="true" x="0" y="0" width="${plotWidth}" height="${plotHeight}" fill="${SMS3_PLOT_THEME.surfaceMuted}" stroke="${SMS3_PLOT_THEME.missingOutline}"/>`,
     ...yValues.flatMap((yValue, yIndex) => xValues.map((xValue, xIndex) => {
       const row = rowByCell.get(`${xValue}\u0000${yValue}`);
       const x = xIndex * cellWidth;
       const y = yIndex * cellHeight;
-      const color = row ? colorForValue(row.value, min, max, { colorScale }) : "#f1f5f9";
+      const color = row ? colorForValue(row.value, min, max, { colorScale }) : SMS3_PLOT_THEME.missing;
       const title = row ? `${row.x} / ${row.y}: ${niceNumber(row.value)}` : `${xValue} / ${yValue}: missing`;
-      return `<rect data-sms3-inspection-highlight="shade" x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${Math.max(1, cellWidth).toFixed(2)}" height="${Math.max(1, cellHeight).toFixed(2)}" fill="${color}" stroke="#ffffff" stroke-width="1"><title>${escapeXml(title)}</title></rect>`;
+      return `<rect data-sms3-inspection-highlight="shade" x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${Math.max(1, cellWidth).toFixed(2)}" height="${Math.max(1, cellHeight).toFixed(2)}" fill="${color}" stroke="${SMS3_PLOT_THEME.surface}" stroke-width="1"><title>${escapeXml(title)}</title></rect>`;
     })),
     ...xValues.map((value, index) => {
       const x = index * cellWidth + cellWidth / 2;
@@ -2376,7 +2461,7 @@ export function renderHeatmapSvg(rows, options = {}) {
     `<line class="axis" x1="0" x2="${plotWidth}" y1="${plotHeight}" y2="${plotHeight}"/>`,
     `<line class="axis" x1="0" x2="0" y1="0" y2="${plotHeight}"/>`,
     "</g>",
-    `<g data-heatmap-legend="true" transform="translate(${legendX.toFixed(2)} ${margin.top + 18})">`,
+    `<g data-heatmap-legend="true" transform="translate(${legendX.toFixed(2)} ${legendLayout.y.toFixed(2)})">`,
     renderHeatmapLegendRamp({
       x: 0,
       y: 0,
@@ -2396,6 +2481,8 @@ export function renderHeatmapSvg(rows, options = {}) {
     xLabel: options.xLabel,
     yLabel: options.yLabel,
     plotKind: "heatmap",
+    publicationWidthMm: options.publicationWidthMm,
+    showTitle: options.showTitle,
     plot: parts.join("")
   });
 }

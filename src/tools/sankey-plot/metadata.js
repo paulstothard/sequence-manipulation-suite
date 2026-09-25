@@ -1,4 +1,5 @@
 import { sankeyFlowColumns } from "../../core/sankey-plot.js";
+import { makePublicationPlotGroup } from "../plot-axis-options.js";
 
 export const sankeyPlotMetadata = {
   id: "sankey-plot",
@@ -45,6 +46,7 @@ export const sankeyPlotMetadata = {
         { id: "title", type: "text", label: "Plot title", defaultValue: "Read assignment flow" }
       ]
     },
+    makePublicationPlotGroup({ x: false, y: false, grid: false }),
     {
       type: "group",
       label: "Output format",

@@ -1,6 +1,12 @@
 import "../vendor/d3/d3.min.js";
 import { parseSequenceInput } from "./fasta.js";
 import { annotatePointCrowding } from "./point-plot-inspection.js";
+import {
+  makePublicationPlotStyle,
+  publicationPlotCss,
+  publicationSvgAttributes,
+  SMS3_PLOT_THEME
+} from "./publication-plot-style.js";
 
 export const alignmentDotPlotColumns = [
   { id: "orientation", label: "Orientation", type: "string" },
@@ -210,6 +216,7 @@ export function renderAlignmentDotPlotSvg({ records, matches, omittedMatches, wo
   const [sequenceA, sequenceB] = records;
   const width = 900;
   const height = 800;
+  const publicationStyle = makePublicationPlotStyle(width, height);
   const margin = { top: 82, right: 70, bottom: 128, left: 112 };
   const plotWidth = width - margin.left - margin.right;
   const plotHeight = height - margin.top - margin.bottom;
@@ -247,25 +254,24 @@ export function renderAlignmentDotPlotSvg({ records, matches, omittedMatches, wo
     return `<circle data-sms3-nearest-point="true" cx="${point.plotX.toFixed(2)}" cy="${point.plotY.toFixed(2)}" r="${pointRadius}" fill="${color}" fill-opacity="${opacity}"><title>${escapeXml(details.join("; "))}</title></circle>`;
   }).join("\n");
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="d3-alignment-dot-plot" data-plot-renderer="sms3-d3">
-  <rect width="${width}" height="${height}" fill="#ffffff"/>
-  <text x="${margin.left}" y="34" font-family="system-ui, sans-serif" font-size="22" font-weight="700" fill="#18212b">${escapeXml(title)}</text>
-  <rect x="${margin.left}" y="${margin.top}" width="${plotWidth}" height="${plotHeight}" fill="#f9fbfc" stroke="#a8b4bf"/>
-  ${xTicks.map((tick) => `<line x1="${xScale(tick).toFixed(2)}" x2="${xScale(tick).toFixed(2)}" y1="${margin.top}" y2="${margin.top + plotHeight}" stroke="#d7dee5" stroke-width="1"/>`).join("\n")}
-  ${yTicks.map((tick) => `<line x1="${margin.left}" x2="${margin.left + plotWidth}" y1="${yScale(tick).toFixed(2)}" y2="${yScale(tick).toFixed(2)}" stroke="#d7dee5" stroke-width="1"/>`).join("\n")}
-  ${pointElements(directPoints, "#2563eb")}
-  ${pointElements(reversePoints, "#d9480f")}
-  <line x1="${margin.left}" y1="${margin.top + plotHeight}" x2="${margin.left + plotWidth}" y2="${margin.top + plotHeight}" stroke="#334155" stroke-width="1.2"/>
-  <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + plotHeight}" stroke="#334155" stroke-width="1.2"/>
-  ${xTicks.map((tick) => `<text x="${xScale(tick).toFixed(2)}" y="${margin.top + plotHeight + 23}" font-family="system-ui, sans-serif" font-size="12" text-anchor="middle" fill="#334155">${escapeXml(formatPosition(tick))}</text>`).join("\n")}
-  ${yTicks.map((tick) => `<text x="${margin.left - 12}" y="${(yScale(tick) + 4).toFixed(2)}" font-family="system-ui, sans-serif" font-size="12" text-anchor="end" fill="#334155">${escapeXml(formatPosition(tick))}</text>`).join("\n")}
-  <text x="${margin.left + plotWidth / 2}" y="${height - 36}" font-family="system-ui, sans-serif" font-size="14" text-anchor="middle" fill="#18212b">${escapeXml(sequenceA.title)} position</text>
-  <text x="${margin.left + plotWidth / 2}" y="${height - 12}" font-family="system-ui, sans-serif" font-size="12" text-anchor="middle" fill="#52616f">${escapeXml(plotNote)}</text>
-  <text transform="translate(30 ${margin.top + plotHeight / 2}) rotate(-90)" font-family="system-ui, sans-serif" font-size="14" text-anchor="middle" fill="#18212b">${escapeXml(sequenceB.title)} position</text>
-  <g transform="translate(${margin.left + plotWidth - 230} 24)" font-family="system-ui, sans-serif" font-size="13" fill="#334155">
-    <circle cx="0" cy="0" r="4" fill="#2563eb"/>
+  return `<svg xmlns="http://www.w3.org/2000/svg" ${publicationSvgAttributes(publicationStyle)} viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="d3-alignment-dot-plot" data-plot-renderer="sms3-d3" data-sms3-publication-theme="default" data-grid-lines="hidden">
+  <style>${publicationPlotCss(publicationStyle)}.tick-label,.note{font-size:${publicationStyle.smallFontSize}px}</style>
+  <rect width="${width}" height="${height}" fill="${SMS3_PLOT_THEME.surface}"/>
+  <text class="title" x="${margin.left}" y="34">${escapeXml(title)}</text>
+  <rect class="plot-background" x="${margin.left}" y="${margin.top}" width="${plotWidth}" height="${plotHeight}" fill="${SMS3_PLOT_THEME.surface}"/>
+  ${pointElements(directPoints, SMS3_PLOT_THEME.categorical[0])}
+  ${pointElements(reversePoints, SMS3_PLOT_THEME.categorical[1])}
+  <line class="axis-rule" x1="${margin.left}" y1="${margin.top + plotHeight}" x2="${margin.left + plotWidth}" y2="${margin.top + plotHeight}"/>
+  <line class="axis-rule" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + plotHeight}"/>
+  ${xTicks.map((tick) => `<line class="axis-tick x-tick" x1="${xScale(tick).toFixed(2)}" x2="${xScale(tick).toFixed(2)}" y1="${margin.top + plotHeight}" y2="${margin.top + plotHeight + publicationStyle.tickLength}"/><text class="tick-label" x="${xScale(tick).toFixed(2)}" y="${margin.top + plotHeight + 23}" text-anchor="middle">${escapeXml(formatPosition(tick))}</text>`).join("\n")}
+  ${yTicks.map((tick) => `<line class="axis-tick y-tick" x1="${margin.left - publicationStyle.tickLength}" x2="${margin.left}" y1="${yScale(tick).toFixed(2)}" y2="${yScale(tick).toFixed(2)}"/><text class="tick-label" x="${margin.left - publicationStyle.tickLength - 7}" y="${(yScale(tick) + publicationStyle.smallFontSize * 0.34).toFixed(2)}" text-anchor="end">${escapeXml(formatPosition(tick))}</text>`).join("\n")}
+  <text class="axis-label" x="${margin.left + plotWidth / 2}" y="${height - 36}" text-anchor="middle">${escapeXml(sequenceA.title)} position</text>
+  <text class="note" x="${margin.left + plotWidth / 2}" y="${height - 12}" text-anchor="middle">${escapeXml(plotNote)}</text>
+  <text class="axis-label" transform="translate(30 ${margin.top + plotHeight / 2}) rotate(-90)" text-anchor="middle">${escapeXml(sequenceB.title)} position</text>
+  <g class="legend" transform="translate(${margin.left + plotWidth - 230} 24)">
+    <circle cx="0" cy="0" r="4" fill="${SMS3_PLOT_THEME.categorical[0]}"/>
     <text x="11" y="4">Direct matches (${directPoints.length.toLocaleString()})</text>
-    ${showReverseComplementLegend ? `<circle cx="0" cy="22" r="4" fill="#d9480f"/>
+    ${showReverseComplementLegend ? `<circle cx="0" cy="22" r="4" fill="${SMS3_PLOT_THEME.categorical[1]}"/>
     <text x="11" y="26">Reverse-complement matches (${reversePoints.length.toLocaleString()})</text>` : ""}
   </g>
 </svg>`;

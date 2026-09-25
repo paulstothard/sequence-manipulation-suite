@@ -27,6 +27,9 @@ const SHOWCASE_VIEWER_ALLOWLIST = new Map([
   ["vcf-genotype-table", new Set(["interactive-viewer"])]
 ]);
 const SHOWCASE_TOOL_OPTION_OVERRIDES = new Map([
+  ["orf-finder", {
+    nestedMode: "all-starts"
+  }],
   ["alignment-viewer", {
     chromosome: "NC_001422.1",
     regionStart: 3920,
@@ -380,6 +383,15 @@ function makeShowcaseViewerInitialState(viewer) {
   return snapshots.some(Boolean) ? snapshots : undefined;
 }
 
+export function formatShowcaseItemTitle(toolName, outputLabel) {
+  return `Tool: ${toolName} · Output: ${outputLabel}`;
+}
+
+export function formatShowcaseRunStatus(toolName, outputLabel, warningCount = 0) {
+  const warnings = warningCount > 0 ? ` · Warnings: ${warningCount.toLocaleString()}` : "";
+  return `Generated locally · Tool: ${toolName} · Output: ${outputLabel}${warnings}.`;
+}
+
 export function makeShowcaseItems({ tools, flattenOptions, getDefaultOptionValues, compareToolCategories }) {
   return tools.flatMap((tool) => {
     const outputOption = getShowcaseOutputOption(tool.metadata, flattenOptions);
@@ -395,7 +407,7 @@ export function makeShowcaseItems({ tools, flattenOptions, getDefaultOptionValue
         return {
           id: `${tool.metadata.id}:${choice.value}`,
           toolId: tool.metadata.id,
-          title: `${tool.metadata.name}: ${choice.label}`,
+          title: formatShowcaseItemTitle(tool.metadata.name, choice.label),
           summary: `Generated from the bundled ${tool.metadata.name} example using the ${choice.label} output.`,
           outputLabel: choice.label,
           options
@@ -404,7 +416,7 @@ export function makeShowcaseItems({ tools, flattenOptions, getDefaultOptionValue
     const declaredItems = (tool.metadata.showcaseOutputs ?? []).map((output) => ({
       id: `${tool.metadata.id}:${output.id}`,
       toolId: tool.metadata.id,
-      title: `${tool.metadata.name}: ${output.label}`,
+      title: formatShowcaseItemTitle(tool.metadata.name, output.label),
       summary: output.summary ?? `Generated from the bundled ${tool.metadata.name} example using the ${output.label} output.`,
       outputLabel: output.label,
       options: {
@@ -505,18 +517,34 @@ function applyShowcaseFilters(filterControls, cards) {
     const matchesCategory = !category || card.dataset.showcaseCategory === category;
     const visible = Boolean(matchesQuery && matchesCategory);
     card.hidden = !visible;
+    if (!visible) card._sms3ShowcaseScrollZoom?.setEnabled(false);
     if (visible) visibleCount += 1;
   }
   filterControls.clearButton.disabled = !query && !category;
   filterControls.count.textContent = `${visibleCount.toLocaleString()} of ${cards.length.toLocaleString()} previews`;
 }
 
-export function installShowcaseWheelIntentGuard(preview) {
+const SHOWCASE_SCROLL_ZOOM_SELECTOR = [
+  ".dna-viewer-canvas",
+  ".sanger-trace-canvas",
+  ".protein-structure-canvas-host",
+  ".sms3-tree-viewer"
+].join(", ");
+
+export function showcasePreviewSupportsScrollZoom(preview) {
+  return Boolean(preview?.querySelector?.(SHOWCASE_SCROLL_ZOOM_SELECTOR));
+}
+
+export function installShowcaseWheelIntentGuard(preview, { isScrollZoomEnabled = () => false } = {}) {
   const handleWheel = (event) => {
     if (event.ctrlKey || event.metaKey) return;
+    if (isScrollZoomEnabled()) {
+      event.preventDefault();
+      return;
+    }
     event.stopPropagation();
   };
-  preview.addEventListener("wheel", handleWheel, { capture: true });
+  preview.addEventListener("wheel", handleWheel, { capture: true, passive: false });
   return () => preview.removeEventListener("wheel", handleWheel, { capture: true });
 }
 
@@ -608,11 +636,10 @@ async function renderShowcaseCard(card, item, token, context) {
       pre.textContent = String(result.output ?? "").slice(0, 1600);
       preview.append(pre);
     }
+    card._sms3ShowcaseScrollZoom?.setAvailable(showcasePreviewSupportsScrollZoom(preview));
     if (sharedInspection) installVisualInspection(preview);
     const warningCount = result.warnings?.length ?? 0;
-    status.textContent = warningCount
-      ? `Generated from ${tool.metadata.name}; ${item.outputLabel}; ${warningCount} warning(s).`
-      : `Generated from ${tool.metadata.name}; ${item.outputLabel}.`;
+    status.textContent = formatShowcaseRunStatus(tool.metadata.name, item.outputLabel, warningCount);
     status.classList.remove("error");
   } catch (error) {
     if (context.state.showcaseRenderToken !== token) {
@@ -620,20 +647,59 @@ async function renderShowcaseCard(card, item, token, context) {
     }
     preview.textContent = "";
     preview.append(makeShowcaseStatus(error.message || "Preview generation failed.", "error"));
+    card._sms3ShowcaseScrollZoom?.setAvailable(false);
     status.textContent = "Preview generation failed.";
     status.classList.add("error");
   }
 }
 
 export function appendShowcase(topic, context) {
+  context.container._sms3ShowcaseCleanup?.();
   const token = {};
   context.state.showcaseRenderToken = token;
+  const eventController = new AbortController();
   const grid = document.createElement("div");
   grid.className = "showcase-grid";
   const showcaseItems = makeShowcaseItems(context);
   const filterControls = makeShowcaseFilters(showcaseItems, context);
   const renderQueue = [];
   const cards = [];
+  const scrollZoomEntries = [];
+  let activeScrollZoom = null;
+
+  const updateScrollZoomEntry = (entry, enabled) => {
+    entry.enabled = enabled;
+    entry.button.setAttribute("aria-pressed", String(enabled));
+    entry.button.textContent = enabled ? "Scroll zoom: On" : "Scroll zoom: Off";
+    entry.button.title = enabled
+      ? "Ordinary wheel and two-finger trackpad gestures zoom this preview. Press Escape, click outside, or select this button again to return to page scrolling."
+      : "Ordinary wheel and two-finger trackpad gestures scroll the Showcase page. Enable this mode to make them zoom this preview; pinch and Ctrl/Command-scroll always zoom.";
+    entry.preview.classList.toggle("showcase-scroll-zoom-active", enabled);
+  };
+
+  const setScrollZoomEnabled = (entry, enabled) => {
+    const nextEnabled = Boolean(enabled && entry.available);
+    if (nextEnabled && activeScrollZoom && activeScrollZoom !== entry) {
+      updateScrollZoomEntry(activeScrollZoom, false);
+    }
+    updateScrollZoomEntry(entry, nextEnabled);
+    activeScrollZoom = nextEnabled
+      ? entry
+      : activeScrollZoom === entry
+        ? null
+        : activeScrollZoom;
+  };
+
+  document.addEventListener("pointerdown", (event) => {
+    if (!activeScrollZoom) return;
+    if (activeScrollZoom.preview.contains(event.target) || activeScrollZoom.controls.contains(event.target)) return;
+    setScrollZoomEnabled(activeScrollZoom, false);
+  }, { capture: true, signal: eventController.signal });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && activeScrollZoom) {
+      setScrollZoomEnabled(activeScrollZoom, false);
+    }
+  }, { capture: true, signal: eventController.signal });
 
   for (const item of showcaseItems) {
     const tool = context.tools.find((candidate) => candidate.metadata.id === item.toolId);
@@ -667,17 +733,50 @@ export function appendShowcase(topic, context) {
     summary.className = "summary";
     summary.textContent = item.summary;
 
+    const previewControls = document.createElement("div");
+    previewControls.className = "showcase-preview-controls";
+    previewControls.hidden = true;
+    const scrollZoomButton = document.createElement("button");
+    scrollZoomButton.type = "button";
+    scrollZoomButton.className = "showcase-scroll-zoom-toggle";
+    previewControls.append(scrollZoomButton);
+
     const preview = document.createElement("div");
     preview.className = "showcase-preview";
-    installShowcaseWheelIntentGuard(preview);
+    const scrollZoomEntry = {
+      available: false,
+      button: scrollZoomButton,
+      controls: previewControls,
+      enabled: false,
+      preview,
+      setAvailable(available) {
+        this.available = Boolean(available);
+        previewControls.hidden = !this.available;
+        scrollZoomButton.disabled = !this.available;
+        if (!this.available) setScrollZoomEnabled(this, false);
+      },
+      setEnabled(enabled) {
+        setScrollZoomEnabled(this, enabled);
+      }
+    };
+    scrollZoomEntries.push(scrollZoomEntry);
+    updateScrollZoomEntry(scrollZoomEntry, false);
+    scrollZoomButton.disabled = true;
+    scrollZoomButton.addEventListener("click", () => {
+      setScrollZoomEnabled(scrollZoomEntry, !scrollZoomEntry.enabled);
+    }, { signal: eventController.signal });
+    preview._sms3ShowcaseWheelCleanup = installShowcaseWheelIntentGuard(preview, {
+      isScrollZoomEnabled: () => scrollZoomEntry.enabled
+    });
     preview.append(makeShowcaseStatus("Generating preview from current tool code..."));
+    card._sms3ShowcaseScrollZoom = scrollZoomEntry;
 
     const status = makeShowcaseStatus(
       tool ? `Queued ${tool.metadata.name}.` : "Tool is not registered.",
       tool ? "showcase-run-status" : "showcase-run-status error"
     );
 
-    card.append(header, summary, preview, status);
+    card.append(header, summary, previewControls, preview, status);
     grid.append(card);
     cards.push(card);
 
@@ -685,6 +784,17 @@ export function appendShowcase(topic, context) {
       renderQueue.push({ card, item });
     }
   }
+
+  context.container._sms3ShowcaseCleanup = () => {
+    eventController.abort();
+    for (const entry of scrollZoomEntries) {
+      entry.preview._sms3ShowcaseWheelCleanup?.();
+      entry.preview._sms3ShowcaseWheelCleanup = null;
+      updateScrollZoomEntry(entry, false);
+    }
+    activeScrollZoom = null;
+    context.container._sms3ShowcaseCleanup = null;
+  };
 
   for (const eventName of ["input", "change"]) {
     filterControls.searchInput.addEventListener(eventName, () => applyShowcaseFilters(filterControls, cards));

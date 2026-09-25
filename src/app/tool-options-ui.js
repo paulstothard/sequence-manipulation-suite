@@ -558,6 +558,9 @@ export function createToolOptionsController({
       input.type = "number";
       input.min = option.min;
       input.max = option.max;
+      if (option.step !== undefined) {
+        input.step = option.step;
+      }
       input.value = optionValue;
       label.append(input);
       parent.append(label);

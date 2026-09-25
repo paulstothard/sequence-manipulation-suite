@@ -2362,7 +2362,8 @@ textarea {
 
 .sequence-editor-app-body {
   display: grid;
-  grid-template-columns: minmax(44rem, 1fr) minmax(20rem, 26rem);
+  grid-template-columns: minmax(0, 1fr) clamp(18rem, 24vw, 23rem);
+  align-items: stretch;
   min-height: min(78vh, 62rem);
   background: var(--se-surface);
 }
@@ -2441,30 +2442,46 @@ textarea {
 .sequence-editor-settings {
   display: flex;
   flex-direction: column;
-  gap: 0.62rem;
   min-width: 0;
   max-height: none;
-  overflow: auto;
+  overflow: visible;
   border-left: 1px solid var(--se-border);
   background: var(--se-surface-soft);
-  padding: 0.8rem;
 }
 
-.sequence-editor-settings h3 {
-  position: sticky;
-  top: -0.8rem;
-  z-index: 2;
-  margin: -0.8rem -0.8rem 0;
+.sequence-editor-inspector-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
   border-bottom: 1px solid var(--se-border);
-  background: var(--se-surface-soft);
-  padding: 0.8rem 0.8rem 0.65rem;
+  background: var(--se-surface);
+  padding: 0.7rem 0.75rem;
+}
+
+.sequence-editor-inspector-heading-text {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.sequence-editor-inspector-heading h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.sequence-editor-inspector-body {
+  display: grid;
+  align-content: start;
+  gap: 0.65rem;
+  padding: 0.7rem;
 }
 
 .sequence-editor-inspector-intro {
   margin: 0;
   color: var(--se-muted);
-  font-size: 0.82rem;
-  line-height: 1.4;
+  font-size: 0.72rem;
+  line-height: 1.3;
 }
 
 .sequence-editor-open-file-input {
@@ -4586,8 +4603,15 @@ legend {
   position: relative;
   display: inline-grid;
   place-items: center;
+  flex: 0 0 1rem;
   width: 1rem;
+  min-width: 1rem;
+  max-width: 1rem;
   height: 1rem;
+  min-height: 1rem;
+  max-height: 1rem;
+  padding: 0;
+  box-sizing: border-box;
   border: 1px solid var(--border);
   border-radius: 999px;
   color: var(--muted);
@@ -6929,6 +6953,45 @@ legend {
   margin: 0;
 }
 
+.showcase-preview-controls {
+  align-items: center;
+  display: flex;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.showcase-preview-controls[hidden] {
+  display: none;
+}
+
+.showcase-scroll-zoom-toggle {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 800;
+  min-height: 2rem;
+  padding: 0.3rem 0.7rem;
+}
+
+.showcase-scroll-zoom-toggle:hover,
+.showcase-scroll-zoom-toggle:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+
+.showcase-scroll-zoom-toggle[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+
+.showcase-scroll-zoom-active {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 42%, transparent);
+}
+
 .showcase-preview {
   /* Keep resized SVGs from turning this grid item into a hidden vertical scroller. */
   align-self: start;
@@ -7104,6 +7167,10 @@ legend {
   color-scheme: light;
 }
 
+:is(.visual-output, .showcase-preview) svg[data-sms3-figure-family="sequence-alignment"][data-alignment-block-columns] {
+  min-width: 56rem;
+}
+
 :is(.visual-output, .showcase-preview) svg[tabindex="0"]:focus-visible {
   outline: 3px solid var(--focus-ring, #2563eb);
   outline-offset: -3px;
@@ -7271,10 +7338,6 @@ legend {
 :is(.visual-output, .showcase-preview) svg[data-plot-renderer="sms3-d3"] circle.box-measurement[data-sms3-inspection-active="true"] {
   fill-opacity: 1;
   filter: none !important;
-}
-
-:is(.visual-output, .showcase-preview) svg[data-sms3-plot="orf-overview"] rect:is(.complete, .partial)[data-sms3-inspection-active="true"] {
-  filter: brightness(1.18) saturate(1.16) drop-shadow(0 0 3px rgba(183, 121, 31, 0.5)) !important;
 }
 
 :is(.visual-output, .showcase-preview) svg.genome-figure-svg :is(.genome-figure-feature-glyph, [data-plot-bin])[data-sms3-inspection-active="true"] {
@@ -7634,6 +7697,10 @@ legend {
   overflow-x: auto;
   padding: 0.75rem;
   position: relative;
+}
+
+.showcase-preview .dna-viewer-panel {
+  container-type: inline-size;
 }
 
 .dna-viewer-panel:first-of-type {
@@ -9112,7 +9179,11 @@ legend {
 .genome-figure-option-help.option-help {
   flex: 0 0 auto;
   height: 0.82rem;
+  min-height: 0.82rem;
+  max-height: 0.82rem;
   width: 0.82rem;
+  min-width: 0.82rem;
+  max-width: 0.82rem;
   font-size: 0.56rem;
 }
 
@@ -10227,6 +10298,7 @@ legend {
 
 .interactive-sequence-viewer-main .dna-viewer-canvas {
   border-radius: 8px;
+  min-width: 0;
 }
 
 .interactive-sequence-viewer-inspector {
@@ -10306,6 +10378,18 @@ legend {
   }
 
   .interactive-sequence-viewer-inspector {
+    margin: 0;
+    max-height: none;
+    position: static;
+  }
+}
+
+@container (max-width: 62rem) {
+  .showcase-preview .interactive-sequence-viewer-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .showcase-preview .interactive-sequence-viewer-inspector {
     margin: 0;
     max-height: none;
     position: static;
@@ -11402,7 +11486,8 @@ legend {
   color: color-mix(in srgb, #34d399 74%, var(--viewer-text, var(--app-output-text)));
 }
 
-.sequence-extractor-translation-note.is-six-frame {
+.sequence-extractor-translation-note.is-six-frame,
+.sequence-extractor-translation-note.is-computed-frame {
   border-left-color: #8b5cf6;
   color: color-mix(in srgb, #a78bfa 74%, var(--viewer-text, var(--app-output-text)));
 }
@@ -12726,8 +12811,15 @@ legend {
 .sequence-extractor-assembly-help > summary {
   display: inline-grid;
   place-items: center;
+  flex: 0 0 1rem;
   width: 1rem;
+  min-width: 1rem;
+  max-width: 1rem;
   height: 1rem;
+  min-height: 1rem;
+  max-height: 1rem;
+  padding: 0;
+  box-sizing: border-box;
   border: 1px solid var(--viewer-border-strong, var(--app-output-border-strong));
   border-radius: 999px;
   cursor: help;
@@ -14614,7 +14706,7 @@ details[open] > .sequence-extractor-section-header .sequence-extractor-section-h
 .editor-session-status { color:var(--app-output-muted); font-size:.68rem; }
 .editor-session-status:empty { display:none; }
 .editor-session-recovery { display:inline-flex; align-items:center; gap:.3rem; min-width:0; }
-.editor-session-actions .editor-recovery-help { display:inline-grid; place-items:center; flex:0 0 16px; width:16px; height:16px; min-height:16px; padding:0; border:1px solid var(--app-output-border-strong); border-radius:50%; background:transparent; color:var(--app-output-muted); font:700 10px/1 system-ui,sans-serif; box-shadow:none; cursor:help; }
+.editor-session-actions .editor-recovery-help { display:inline-grid; place-items:center; flex:0 0 16px; width:16px; min-width:16px; max-width:16px; height:16px; min-height:16px; max-height:16px; padding:0; box-sizing:border-box; border:1px solid var(--app-output-border-strong); border-radius:50%; background:transparent; color:var(--app-output-muted); font:700 10px/1 system-ui,sans-serif; box-shadow:none; cursor:help; }
 .editor-session-actions .editor-recovery-help:hover, .editor-session-actions .editor-recovery-help[aria-expanded=true] { background:var(--app-output-accent-soft); color:var(--app-output-accent-strong); border-color:var(--app-output-accent); }
 .editor-recovery-popover { position:fixed; inset:auto; margin:0; width:min(360px,calc(100vw - 16px)); max-height:calc(100vh - 16px); overflow:auto; padding:10px 12px; border:1px solid var(--app-output-border-strong); border-radius:6px; background:var(--app-output-surface); color:var(--app-output-text); box-shadow:var(--shadow); font:400 12px/1.45 system-ui,sans-serif; white-space:normal; text-align:left; }
 .tree-viewer-recovery { padding:5px 10px; }

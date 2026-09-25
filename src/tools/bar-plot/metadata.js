@@ -1,5 +1,5 @@
 import { barPlotColumns } from "../../core/plot-tools.js";
-import { makeAxisLimitsGroup } from "../plot-axis-options.js";
+import { makeAxisLimitsGroup, makePublicationPlotGroup } from "../plot-axis-options.js";
 
 export const barPlotMetadata = {
   id: "bar-plot",
@@ -46,6 +46,7 @@ export const barPlotMetadata = {
       ]
     },
     makeAxisLimitsGroup({ x: false, y: true }),
+    makePublicationPlotGroup(),
     {
       type: "group",
       label: "Output format",

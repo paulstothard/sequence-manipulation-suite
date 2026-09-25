@@ -14,11 +14,18 @@ import {
   pointSamplingFact,
   sampleStratifiedPoints
 } from "./point-plot-inspection.js";
+import {
+  makePlotAxisLabel,
+  publicationPlotCss,
+  makePublicationPlotStyle,
+  publicationSvgAttributes,
+  SMS3_PLOT_THEME
+} from "./publication-plot-style.js";
 
 const OUTPUT_FORMATS = new Set(["plot", "compact-heatmap", "comparison-table", "pair-table", "report"]);
 const COMPARISON_TYPES = new Set(["auto", "numeric-numeric", "numeric-category", "category-category"]);
 const PLOT_STYLES = new Set(["violin", "box"]);
-const COLORS = ["#2563eb", "#0f766e", "#7c3aed", "#d97706", "#be123c", "#0369a1", "#4b5563", "#a33a3a"];
+const COLORS = SMS3_PLOT_THEME.categorical;
 
 export const tableColumnComparisonColumns = [
   { id: "analysis", label: "Analysis", type: "string" },
@@ -449,23 +456,32 @@ function histogram(values, domain, binCount = 12) {
   return bins;
 }
 
+function interpolateStops(stops, fraction) {
+  const t = Math.max(0, Math.min(1, fraction));
+  if (stops.length <= 1) return stops[0] ?? SMS3_PLOT_THEME.selection;
+  const d3 = getD3();
+  if (d3?.scaleLinear && d3?.interpolateRgb) {
+    const domain = stops.map((_, index) => index / (stops.length - 1));
+    return d3.scaleLinear(domain, stops).interpolate(d3.interpolateRgb)(t);
+  }
+  return stops[Math.round(t * (stops.length - 1))];
+}
+
 function renderBaseSvg({ title, width = 980, height = 640, plot, xLabel, yLabel, subtitle = "", plotKind = "", plotVariant = "" }) {
+  const style = makePublicationPlotStyle(width, height);
+  const scope = '[data-sms3-column-comparison="true"]';
   return [
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="d3" data-plot-renderer="sms3-d3"${plotKind ? ` data-sms3-plot-kind="${escapeXml(plotKind)}"` : ""}${plotVariant ? ` data-sms3-plot-variant="${escapeXml(plotVariant)}"` : ""}>`,
+    `<svg xmlns="http://www.w3.org/2000/svg" ${publicationSvgAttributes(style)} viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="d3" data-plot-renderer="sms3-d3" data-sms3-column-comparison="true" data-sms3-publication-theme="default" data-grid-lines="hidden"${plotKind ? ` data-sms3-plot-kind="${escapeXml(plotKind)}"` : ""}${plotVariant ? ` data-sms3-plot-variant="${escapeXml(plotVariant)}"` : ""}>`,
     "<style>",
-    ".title{font:700 21px system-ui,sans-serif;fill:#263238}",
-    ".subtitle,.legend{font:12px system-ui,sans-serif;fill:#455a64}",
-    ".axis{stroke:#455a64;stroke-width:1.2}",
-    ".grid{stroke:#dbe4ea;stroke-width:1}",
-    ".tick{font:11px system-ui,sans-serif;fill:#455a64}",
-    ".label{font:13px system-ui,sans-serif;fill:#263238}",
+    publicationPlotCss(style, { scope }),
+    `${scope} .subtitle{font-size:${style.smallFontSize}px}`,
     "</style>",
-    `<rect width="${width}" height="${height}" fill="white"/>`,
+    `<rect width="${width}" height="${height}" fill="${SMS3_PLOT_THEME.surface}"/>`,
     `<text class="title" x="34" y="42">${escapeXml(title)}</text>`,
     subtitle ? `<text class="subtitle" x="34" y="68">${escapeXml(subtitle)}</text>` : "",
     plot,
-    `<text class="label" x="${width / 2}" y="${height - 20}" text-anchor="middle">${escapeXml(xLabel)}</text>`,
-    `<text class="label" transform="translate(18 ${height / 2}) rotate(-90)" text-anchor="middle">${escapeXml(yLabel)}</text>`,
+    `<text class="label" data-sms3-axis-label="x" x="${width / 2}" y="${height - 20}" text-anchor="middle">${escapeXml(makePlotAxisLabel(xLabel))}</text>`,
+    `<text class="label" data-sms3-axis-label="y" transform="translate(18 ${height / 2}) rotate(-90)" text-anchor="middle">${escapeXml(makePlotAxisLabel(yLabel))}</text>`,
     "</svg>"
   ].join("");
 }
@@ -478,6 +494,7 @@ function renderNumericNumericPlot(points, columnA, columnB, options = {}) {
   const drawnPoints = sampleStratifiedPoints(points, maxPointsDrawn);
   const width = 980;
   const height = 680;
+  const style = makePublicationPlotStyle(width, height);
   const margin = { top: 102, right: 126, bottom: 78, left: 86 };
   const plotWidth = width - margin.left - margin.right - 90;
   const plotHeight = height - margin.top - margin.bottom - 80;
@@ -502,28 +519,28 @@ function renderNumericNumericPlot(points, columnA, columnB, options = {}) {
   })), { getX: (point) => point.plotX, getY: (point) => point.plotY });
   const sampleFact = pointSamplingFact({ displayed: pointGeometry.length, total: points.length });
   const parts = [
-    `<defs><filter id="sms3-marginal-histogram-top-glow" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"><feComponentTransfer in="SourceAlpha" result="opaque"><feFuncA type="linear" slope="3"/></feComponentTransfer><feGaussianBlur in="opaque" stdDeviation="3" result="blur"/><feFlood flood-color="#60a5fa" flood-opacity="0.7" result="color"/><feComposite in="color" in2="blur" operator="in" result="halo"/><feMerge><feMergeNode in="halo"/><feMergeNode in="SourceGraphic"/></feMerge></filter><filter id="sms3-marginal-histogram-right-glow" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"><feComponentTransfer in="SourceAlpha" result="opaque"><feFuncA type="linear" slope="3"/></feComponentTransfer><feGaussianBlur in="opaque" stdDeviation="3" result="blur"/><feFlood flood-color="#2dd4bf" flood-opacity="0.7" result="color"/><feComposite in="color" in2="blur" operator="in" result="halo"/><feMerge><feMergeNode in="halo"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>`,
+    `<defs><filter id="sms3-marginal-histogram-top-glow" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"><feComponentTransfer in="SourceAlpha" result="opaque"><feFuncA type="linear" slope="3"/></feComponentTransfer><feGaussianBlur in="opaque" stdDeviation="3" result="blur"/><feFlood flood-color="${SMS3_PLOT_THEME.categorical[4]}" flood-opacity="0.7" result="color"/><feComposite in="color" in2="blur" operator="in" result="halo"/><feMerge><feMergeNode in="halo"/><feMergeNode in="SourceGraphic"/></feMerge></filter><filter id="sms3-marginal-histogram-right-glow" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"><feComponentTransfer in="SourceAlpha" result="opaque"><feFuncA type="linear" slope="3"/></feComponentTransfer><feGaussianBlur in="opaque" stdDeviation="3" result="blur"/><feFlood flood-color="${SMS3_PLOT_THEME.band}" flood-opacity="0.7" result="color"/><feComposite in="color" in2="blur" operator="in" result="halo"/><feMerge><feMergeNode in="halo"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>`,
     `<g>`,
     ...xBins.map((bin) => {
       const x1 = scale(bin.start, xDomain[0], xDomain[1], plotX, plotX + plotWidth);
       const x2 = scale(bin.end, xDomain[0], xDomain[1], plotX, plotX + plotWidth);
       const h = scale(bin.count, 0, maxXBin, 0, histSize);
-      return `<rect class="marginal-histogram-bar marginal-histogram-bar-top" data-sms3-inspection-highlight="glow" x="${x1.toFixed(2)}" y="${(histTopY + histSize - h).toFixed(2)}" width="${Math.max(1, x2 - x1 - 1).toFixed(2)}" height="${h.toFixed(2)}" fill="#2563eb" fill-opacity="0.36"><title>${escapeXml(`${niceNumber(bin.start)} to ${niceNumber(bin.end)}: ${bin.count}`)}</title></rect>`;
+      return `<rect class="marginal-histogram-bar marginal-histogram-bar-top" data-sms3-inspection-highlight="glow" x="${x1.toFixed(2)}" y="${(histTopY + histSize - h).toFixed(2)}" width="${Math.max(1, x2 - x1 - 1).toFixed(2)}" height="${h.toFixed(2)}" fill="${SMS3_PLOT_THEME.categorical[0]}" fill-opacity="0.36"><title>${escapeXml(`${niceNumber(bin.start)} to ${niceNumber(bin.end)}: ${bin.count}`)}</title></rect>`;
     }),
     ...yBins.map((bin) => {
       const y1 = scale(bin.start, yDomain[0], yDomain[1], plotY + plotHeight, plotY);
       const y2 = scale(bin.end, yDomain[0], yDomain[1], plotY + plotHeight, plotY);
       const w = scale(bin.count, 0, maxYBin, 0, histSize);
-      return `<rect class="marginal-histogram-bar marginal-histogram-bar-right" data-sms3-inspection-highlight="glow" x="${histRightX}" y="${Math.min(y1, y2).toFixed(2)}" width="${w.toFixed(2)}" height="${Math.max(1, Math.abs(y2 - y1) - 1).toFixed(2)}" fill="#0f766e" fill-opacity="0.36"><title>${escapeXml(`${niceNumber(bin.start)} to ${niceNumber(bin.end)}: ${bin.count}`)}</title></rect>`;
+      return `<rect class="marginal-histogram-bar marginal-histogram-bar-right" data-sms3-inspection-highlight="glow" x="${histRightX}" y="${Math.min(y1, y2).toFixed(2)}" width="${w.toFixed(2)}" height="${Math.max(1, Math.abs(y2 - y1) - 1).toFixed(2)}" fill="${SMS3_PLOT_THEME.categorical[2]}" fill-opacity="0.36"><title>${escapeXml(`${niceNumber(bin.start)} to ${niceNumber(bin.end)}: ${bin.count}`)}</title></rect>`;
     }),
     `<g transform="translate(${plotX} ${plotY})">`,
     ...xTicks.map((tick) => {
       const x = scale(tick, xDomain[0], xDomain[1], 0, plotWidth);
-      return `<line class="grid" x1="${x}" x2="${x}" y1="0" y2="${plotHeight}"/><text class="tick" x="${x}" y="${plotHeight + 20}" text-anchor="middle">${escapeXml(niceNumber(tick))}</text>`;
+      return `<line class="axis-tick" x1="${x}" x2="${x}" y1="${plotHeight}" y2="${plotHeight + style.tickLength}"/><text class="tick" x="${x}" y="${plotHeight + style.tickLength + style.bodyFontSize + 4}" text-anchor="middle">${escapeXml(niceNumber(tick))}</text>`;
     }),
     ...yTicks.map((tick) => {
       const y = scale(tick, yDomain[0], yDomain[1], plotHeight, 0);
-      return `<line class="grid" x1="0" x2="${plotWidth}" y1="${y}" y2="${y}"/><text class="tick" x="-10" y="${y + 4}" text-anchor="end">${escapeXml(niceNumber(tick))}</text>`;
+      return `<line class="axis-tick" x1="${-style.tickLength}" x2="0" y1="${y}" y2="${y}"/><text class="tick" x="${-style.tickLength - 6}" y="${y + style.bodyFontSize * 0.34}" text-anchor="end">${escapeXml(niceNumber(tick))}</text>`;
     }),
     `<line class="axis" x1="0" x2="${plotWidth}" y1="${plotHeight}" y2="${plotHeight}"/>`,
     `<line class="axis" x1="0" x2="0" y1="0" y2="${plotHeight}"/>`,
@@ -532,11 +549,11 @@ function renderNumericNumericPlot(points, columnA, columnB, options = {}) {
       const crowdingFact = pointCrowdingFact(point);
       if (crowdingFact) details.push(crowdingFact);
       if (sampleFact) details.push(sampleFact);
-      return `<circle data-sms3-nearest-point="true" cx="${point.plotX.toFixed(2)}" cy="${point.plotY.toFixed(2)}" r="4" fill="#2563eb" fill-opacity="0.72" stroke="#ffffff" stroke-width="0.7"><title>${escapeXml(details.join("; "))}</title></circle>`;
+      return `<circle data-sms3-nearest-point="true" cx="${point.plotX.toFixed(2)}" cy="${point.plotY.toFixed(2)}" r="4" fill="${SMS3_PLOT_THEME.categorical[0]}" fill-opacity="0.72" stroke="${SMS3_PLOT_THEME.surface}" stroke-width="0.7"><title>${escapeXml(details.join("; "))}</title></circle>`;
     }),
     "</g>",
-    `<text class="legend" x="${plotX}" y="${histTopY - 10}">${escapeXml(columnA.label)} marginal distribution</text>`,
-    `<text class="legend" x="${histRightX}" y="${plotY - 10}">${escapeXml(columnB.label)} distribution</text>`,
+    `<text class="legend" x="${plotX}" y="${histTopY - 10}">${escapeXml(makePlotAxisLabel(columnA.label))} marginal distribution</text>`,
+    `<text class="legend" x="${histRightX}" y="${plotY - 10}">${escapeXml(makePlotAxisLabel(columnB.label))} distribution</text>`,
     "</g>"
   ];
   return renderBaseSvg({
@@ -592,6 +609,7 @@ function renderNumericCategoryPlot(result, options = {}) {
   const gridPoints = normalizePositiveInteger(options.gridPoints, 80, 24, 200);
   const width = 940;
   const height = 620;
+  const publicationStyle = makePublicationPlotStyle(width, height);
   const margin = { top: 96, right: 42, bottom: 112, left: 86 };
   const plotWidth = width - margin.left - margin.right;
   const plotHeight = height - margin.top - margin.bottom;
@@ -637,7 +655,7 @@ function renderNumericCategoryPlot(result, options = {}) {
     `<g transform="translate(${margin.left} ${margin.top})">`,
     ...yTicks.map((tick) => {
       const y = scale(tick, domain[0], domain[1], plotHeight, 0);
-      return `<line class="grid" x1="0" x2="${plotWidth}" y1="${y}" y2="${y}"/><text class="tick" x="-10" y="${y + 4}" text-anchor="end">${escapeXml(niceNumber(tick))}</text>`;
+      return `<line class="axis-tick" x1="${-publicationStyle.tickLength}" x2="0" y1="${y}" y2="${y}"/><text class="tick" x="${-publicationStyle.tickLength - 6}" y="${y + publicationStyle.bodyFontSize * 0.34}" text-anchor="end">${escapeXml(niceNumber(tick))}</text>`;
     }),
     `<line class="axis" x1="0" x2="${plotWidth}" y1="${plotHeight}" y2="${plotHeight}"/>`,
     `<line class="axis" x1="0" x2="0" y1="0" y2="${plotHeight}"/>`,
@@ -656,10 +674,11 @@ function renderNumericCategoryPlot(result, options = {}) {
       const violinPath = style === "violin" && left.length > 0 ? `M${left.join(" L")} L${right.join(" L")} Z` : "";
       return [
         violinPath ? `<path d="${violinPath}" fill="${color}" fill-opacity="0.22" stroke="${color}" stroke-width="1.5"><title>${escapeXml(`${summary.level_a}: n=${summary.count}, median=${summary.median}`)}</title></path>` : "",
-        style === "box" ? `<line x1="${centerX}" x2="${centerX}" y1="${max}" y2="${min}" stroke="#455a64" stroke-width="1.4"/>` : "",
+        style === "box" ? `<line x1="${centerX}" x2="${centerX}" y1="${max}" y2="${min}" stroke="${SMS3_PLOT_THEME.axis}" stroke-width="1.4"/>` : "",
         style === "box" ? `<rect x="${centerX - maxHalfWidth * 0.42}" y="${Math.min(q1, q3)}" width="${maxHalfWidth * 0.84}" height="${Math.max(1, Math.abs(q3 - q1))}" fill="${color}" fill-opacity="0.22" stroke="${color}" stroke-width="1.5"/>` : "",
         style === "violin" ? `<line x1="${centerX}" x2="${centerX}" y1="${q3}" y2="${q1}" stroke="${color}" stroke-width="7" stroke-linecap="round" stroke-opacity="0.72"/>` : "",
-        `<line x1="${centerX - maxHalfWidth * 0.42}" x2="${centerX + maxHalfWidth * 0.42}" y1="${median}" y2="${median}" stroke="#0f172a" stroke-width="2.2"/>`,
+        `<line x1="${centerX - maxHalfWidth * 0.42}" x2="${centerX + maxHalfWidth * 0.42}" y1="${median}" y2="${median}" stroke="${SMS3_PLOT_THEME.outline}" stroke-width="2.2"/>`,
+        `<line class="axis-tick" x1="${centerX}" x2="${centerX}" y1="${plotHeight}" y2="${plotHeight + publicationStyle.tickLength}"/>`,
         `<text class="tick" x="${centerX}" y="${plotHeight + 30}" text-anchor="middle" transform="rotate(-28 ${centerX} ${plotHeight + 30})">${escapeXml(label)}<title>${escapeXml(summary.level_a)}</title></text>`
       ].join("");
     }),
@@ -668,13 +687,13 @@ function renderNumericCategoryPlot(result, options = {}) {
       const crowdingFact = pointCrowdingFact(point, { noun: "displayed measurement dots" });
       if (crowdingFact) details.push(crowdingFact);
       if (sampleFact) details.push(sampleFact);
-      return `<circle data-sms3-nearest-point="true" cx="${point.plotX.toFixed(2)}" cy="${point.plotY.toFixed(2)}" r="2.4" fill="#0f172a" fill-opacity="0.42" stroke="#ffffff" stroke-opacity="0.75" stroke-width="0.8"><title>${escapeXml(details.join("; "))}</title></circle>`;
+      return `<circle data-sms3-nearest-point="true" cx="${point.plotX.toFixed(2)}" cy="${point.plotY.toFixed(2)}" r="2.4" fill="${SMS3_PLOT_THEME.outline}" fill-opacity="0.42" stroke="${SMS3_PLOT_THEME.surface}" stroke-opacity="0.75" stroke-width="0.8"><title>${escapeXml(details.join("; "))}</title></circle>`;
     }),
     "</g>"
   ];
   return renderBaseSvg({
     title: options.title || "Column comparison",
-    subtitle: `${result.numericColumn.label} by ${result.categoryColumn.label}; ${style === "violin" ? "violin widths show density" : "boxes show quartiles"}.`,
+    subtitle: `${makePlotAxisLabel(result.numericColumn.label)} by ${makePlotAxisLabel(result.categoryColumn.label)}; ${style === "violin" ? "violin widths show density" : "boxes show quartiles"}.`,
     width,
     height,
     xLabel: result.categoryColumn.label,
@@ -692,6 +711,7 @@ function renderCategoryCategoryPlot(result, columnA, columnB, options = {}) {
   const bValues = [...new Set(rows.map((row) => row.level_b))];
   const width = 920;
   const height = 600;
+  const publicationStyle = makePublicationPlotStyle(width, height);
   const margin = { top: 92, right: 110, bottom: 110, left: 150 };
   const plotWidth = width - margin.left - margin.right;
   const plotHeight = height - margin.top - margin.bottom;
@@ -701,8 +721,7 @@ function renderCategoryCategoryPlot(result, columnA, columnB, options = {}) {
   const rowByCell = new Map(rows.map((row) => [`${row.level_a}\u0000${row.level_b}`, row]));
   const colorForCount = (count) => {
     const t = count / maxCount;
-    const d3 = getD3();
-    return d3?.interpolateBlues ? d3.interpolateBlues(0.12 + t * 0.78) : "#2563eb";
+    return interpolateStops(SMS3_PLOT_THEME.heatmapScales.blue, 0.12 + t * 0.78);
   };
   const parts = [
     `<g transform="translate(${margin.left} ${margin.top})">`,
@@ -711,17 +730,17 @@ function renderCategoryCategoryPlot(result, columnA, columnB, options = {}) {
       const x = columnIndex * cellWidth;
       const y = rowIndex * cellHeight;
       const count = row?.count ?? 0;
-      return `<rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${Math.max(1, cellWidth).toFixed(2)}" height="${Math.max(1, cellHeight).toFixed(2)}" fill="${colorForCount(count)}" stroke="#ffffff" stroke-width="1"><title>${escapeXml(`${aValue} / ${bValue}: ${count}`)}</title></rect>`;
+      return `<rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${Math.max(1, cellWidth).toFixed(2)}" height="${Math.max(1, cellHeight).toFixed(2)}" fill="${colorForCount(count)}" stroke="${SMS3_PLOT_THEME.surface}" stroke-width="1"><title>${escapeXml(`${aValue} / ${bValue}: ${count}`)}</title></rect>`;
     })),
     ...bValues.map((value, index) => {
       const x = index * cellWidth + cellWidth / 2;
       const label = String(value).length > 14 ? `${String(value).slice(0, 13)}...` : String(value);
-      return `<text class="tick" x="${x}" y="${plotHeight + 30}" text-anchor="middle" transform="rotate(-32 ${x} ${plotHeight + 30})">${escapeXml(label)}<title>${escapeXml(value)}</title></text>`;
+      return `<line class="axis-tick" x1="${x}" x2="${x}" y1="${plotHeight}" y2="${plotHeight + publicationStyle.tickLength}"/><text class="tick" x="${x}" y="${plotHeight + 30}" text-anchor="middle" transform="rotate(-32 ${x} ${plotHeight + 30})">${escapeXml(label)}<title>${escapeXml(value)}</title></text>`;
     }),
     ...aValues.map((value, index) => {
       const y = index * cellHeight + cellHeight / 2 + 4;
       const label = String(value).length > 18 ? `${String(value).slice(0, 17)}...` : String(value);
-      return `<text class="tick" x="-10" y="${y}" text-anchor="end">${escapeXml(label)}<title>${escapeXml(value)}</title></text>`;
+      return `<line class="axis-tick" x1="${-publicationStyle.tickLength}" x2="0" y1="${y - 4}" y2="${y - 4}"/><text class="tick" x="${-publicationStyle.tickLength - 6}" y="${y}" text-anchor="end">${escapeXml(label)}<title>${escapeXml(value)}</title></text>`;
     }),
     `<line class="axis" x1="0" x2="${plotWidth}" y1="${plotHeight}" y2="${plotHeight}"/>`,
     `<line class="axis" x1="0" x2="0" y1="0" y2="${plotHeight}"/>`,
@@ -751,15 +770,15 @@ function truncateLabel(value, maxLength) {
 }
 
 function compactColor(count, maxCount) {
-  if (count <= 0) return "#f8fafc";
-  const d3 = getD3();
+  if (count <= 0) return SMS3_PLOT_THEME.missing;
   const t = Math.max(0, Math.min(1, count / Math.max(1, maxCount)));
-  return d3?.interpolateViridis ? d3.interpolateViridis(0.16 + t * 0.78) : d3?.interpolateBlues ? d3.interpolateBlues(0.18 + t * 0.78) : "#2563eb";
+  return interpolateStops(SMS3_PLOT_THEME.heatmapScales.lightViridis, 0.16 + t * 0.78);
 }
 
 function renderCompactMatrixSvg({ title, subtitle, xLabel, yLabel, xLabels, yLabels, counts }) {
   const width = 760;
   const height = 520;
+  const publicationStyle = makePublicationPlotStyle(width, height);
   const margin = { top: 82, right: 88, bottom: 92, left: 138 };
   const plotWidth = width - margin.left - margin.right;
   const plotHeight = height - margin.top - margin.bottom;
@@ -770,16 +789,16 @@ function renderCompactMatrixSvg({ title, subtitle, xLabel, yLabel, xLabels, yLab
     `<g transform="translate(${margin.left} ${margin.top})">`,
     ...yLabels.flatMap((yLabelValue, rowIndex) => xLabels.map((xLabelValue, columnIndex) => {
       const count = counts[rowIndex]?.[columnIndex] ?? 0;
-      return `<rect class="compact-heatmap-cell" data-sms3-inspection-highlight="shade" x="${(columnIndex * cellWidth).toFixed(2)}" y="${(rowIndex * cellHeight).toFixed(2)}" width="${Math.max(1, cellWidth).toFixed(2)}" height="${Math.max(1, cellHeight).toFixed(2)}" fill="${compactColor(count, maxCount)}" stroke="#ffffff" stroke-width="1"><title>${escapeXml(`${xLabelValue} / ${yLabelValue}: ${count}`)}</title></rect>`;
+      return `<rect class="compact-heatmap-cell" data-sms3-inspection-highlight="shade" x="${(columnIndex * cellWidth).toFixed(2)}" y="${(rowIndex * cellHeight).toFixed(2)}" width="${Math.max(1, cellWidth).toFixed(2)}" height="${Math.max(1, cellHeight).toFixed(2)}" fill="${compactColor(count, maxCount)}" stroke="${SMS3_PLOT_THEME.surface}" stroke-width="1"><title>${escapeXml(`${xLabelValue} / ${yLabelValue}: ${count}`)}</title></rect>`;
     })),
     ...xLabels.map((label, index) => {
       const x = index * cellWidth + cellWidth / 2;
       const text = truncateLabel(label, Math.max(6, Math.floor(cellWidth / 7)));
-      return `<text class="tick" x="${x.toFixed(2)}" y="${plotHeight + 26}" text-anchor="middle" transform="rotate(-34 ${x.toFixed(2)} ${plotHeight + 26})">${escapeXml(text)}<title>${escapeXml(label)}</title></text>`;
+      return `<line class="axis-tick" x1="${x.toFixed(2)}" x2="${x.toFixed(2)}" y1="${plotHeight}" y2="${plotHeight + publicationStyle.tickLength}"/><text class="tick" x="${x.toFixed(2)}" y="${plotHeight + 26}" text-anchor="middle" transform="rotate(-34 ${x.toFixed(2)} ${plotHeight + 26})">${escapeXml(text)}<title>${escapeXml(label)}</title></text>`;
     }),
     ...yLabels.map((label, index) => {
       const y = index * cellHeight + cellHeight / 2 + 4;
-      return `<text class="tick" x="-10" y="${y.toFixed(2)}" text-anchor="end">${escapeXml(truncateLabel(label, 18))}<title>${escapeXml(label)}</title></text>`;
+      return `<line class="axis-tick" x1="${-publicationStyle.tickLength}" x2="0" y1="${(y - 4).toFixed(2)}" y2="${(y - 4).toFixed(2)}"/><text class="tick" x="${-publicationStyle.tickLength - 6}" y="${y.toFixed(2)}" text-anchor="end">${escapeXml(truncateLabel(label, 18))}<title>${escapeXml(label)}</title></text>`;
     }),
     `<line class="axis" x1="0" x2="${plotWidth}" y1="${plotHeight}" y2="${plotHeight}"/>`,
     `<line class="axis" x1="0" x2="0" y1="0" y2="${plotHeight}"/>`,
@@ -862,7 +881,7 @@ function compactNumericCategoryHeatmap(result, options = {}) {
   const xLabels = Array.from({ length: binCount }, (_, index) => binLabel(domain[0] + index * step, domain[0] + (index + 1) * step));
   return renderCompactMatrixSvg({
     title: options.title || "Compact column heat map",
-    subtitle: `${values.length.toLocaleString()} complete numeric/category pair(s), binned by ${result.plotData.numericColumn.label}.`,
+    subtitle: `${values.length.toLocaleString()} complete numeric/category pair(s), binned by ${makePlotAxisLabel(result.plotData.numericColumn.label)}.`,
     xLabel: result.plotData.numericColumn.label,
     yLabel: result.plotData.categoryColumn.label,
     xLabels,

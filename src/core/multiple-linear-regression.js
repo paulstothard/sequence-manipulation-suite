@@ -7,6 +7,12 @@ import {
   pointSamplingFact,
   sampleStratifiedPoints
 } from "./point-plot-inspection.js";
+import {
+  makePublicationPlotStyle,
+  publicationPlotCss,
+  publicationSvgAttributes,
+  SMS3_PLOT_THEME
+} from "./publication-plot-style.js";
 import { parseStatisticsNumber } from "./statistics-utils.js";
 import { findColumn, parseColumnList, parseDelimitedTable } from "./table.js";
 
@@ -197,14 +203,17 @@ export function renderMultipleRegressionResidualSvg(result, options = {}) {
   const plotHeight = height - margin.top - margin.bottom;
   const title = options.title || "Multiple linear regression residuals";
   if (rows.length === 0) {
+    const emptyStyle = makePublicationPlotStyle(width, 300);
     return [
-      `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="300" viewBox="0 0 ${width} 300" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="d3-residual-plot-svg" data-plot-renderer="sms3-d3">`,
-      '<rect width="900" height="300" fill="white"/>',
-      `<text x="34" y="42" font-family="system-ui, sans-serif" font-size="20" font-weight="700" fill="#263238">${escapeXml(title)}</text>`,
-      '<text x="34" y="86" font-family="system-ui, sans-serif" font-size="14" fill="#455a64">No complete rows were available for residual plotting.</text>',
+      `<svg xmlns="http://www.w3.org/2000/svg" ${publicationSvgAttributes(emptyStyle)} viewBox="0 0 ${width} 300" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="d3-residual-plot-svg" data-plot-renderer="sms3-d3" data-sms3-publication-theme="default" data-grid-lines="hidden">`,
+      `<style>${publicationPlotCss(emptyStyle)}</style>`,
+      `<rect width="900" height="300" fill="${SMS3_PLOT_THEME.surface}"/>`,
+      `<text class="title" x="34" y="42">${escapeXml(title)}</text>`,
+      '<text class="note" x="34" y="86">No complete rows were available for residual plotting.</text>',
       "</svg>"
     ].join("");
   }
+  const style = makePublicationPlotStyle(width, height);
   const [xMin, xMax] = extent(rows.map((row) => row.fitted));
   const [rawYMin, rawYMax] = extent(rows.map((row) => row.residual));
   const yMaxAbs = Math.max(Math.abs(rawYMin), Math.abs(rawYMax), 1);
@@ -223,27 +232,22 @@ export function renderMultipleRegressionResidualSvg(result, options = {}) {
   })), { getX: (row) => row.plotX, getY: (row) => row.plotY });
   const sampleFact = pointSamplingFact({ displayed: pointRows.length, total: rows.length });
   return [
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="d3-residual-plot-svg" data-plot-renderer="sms3-d3">`,
+    `<svg xmlns="http://www.w3.org/2000/svg" ${publicationSvgAttributes(style)} viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="d3-residual-plot-svg" data-plot-renderer="sms3-d3" data-sms3-publication-theme="default" data-grid-lines="hidden">`,
     "<style>",
-    ".title{font:700 20px system-ui,sans-serif;fill:#263238}",
-    ".axis{stroke:#455a64;stroke-width:1.2}",
-    ".grid{stroke:#d9e2e8;stroke-width:1}",
-    ".zero{stroke:#111827;stroke-width:1.4;stroke-dasharray:5 4}",
-    ".tick{font:11px system-ui,sans-serif;fill:#455a64}",
-    ".label{font:13px system-ui,sans-serif;fill:#263238}",
-    ".note{font:12px system-ui,sans-serif;fill:#607d8b}",
+    publicationPlotCss(style),
+    `.zero{stroke:${SMS3_PLOT_THEME.reference};stroke-width:${style.axisStrokeWidth};stroke-dasharray:5 4}`,
     "</style>",
-    `<rect width="${width}" height="${height}" fill="white"/>`,
+    `<rect width="${width}" height="${height}" fill="${SMS3_PLOT_THEME.surface}"/>`,
     `<text class="title" x="34" y="34">${escapeXml(title)}</text>`,
     `<text class="note" x="34" y="56">Residuals versus fitted values; ${escapeXml(String(rows.length))} complete row(s) fitted${omitted > 0 ? `, ${omitted} point(s) omitted from SVG` : ""}.</text>`,
     `<g transform="translate(${margin.left} ${margin.top})">`,
     ...xTicks.map((tick) => {
       const x = scale(tick, xMin, xMax, 0, plotWidth);
-      return `<line class="grid" x1="${x}" x2="${x}" y1="0" y2="${plotHeight}"/><text class="tick" x="${x}" y="${plotHeight + 20}" text-anchor="middle">${escapeXml(niceNumber(tick))}</text>`;
+      return `<line class="axis-tick" x1="${x}" x2="${x}" y1="${plotHeight}" y2="${plotHeight + style.tickLength}"/><text class="tick" x="${x}" y="${plotHeight + style.tickLength + style.bodyFontSize + 4}" text-anchor="middle">${escapeXml(niceNumber(tick))}</text>`;
     }),
     ...yTicks.map((tick) => {
       const y = scale(tick, yMin, yMax, plotHeight, 0);
-      return `<line class="grid" x1="0" x2="${plotWidth}" y1="${y}" y2="${y}"/><text class="tick" x="-10" y="${y + 4}" text-anchor="end">${escapeXml(niceNumber(tick))}</text>`;
+      return `<line class="axis-tick" x1="${-style.tickLength}" x2="0" y1="${y}" y2="${y}"/><text class="tick" x="${-style.tickLength - 6}" y="${y + style.bodyFontSize * 0.34}" text-anchor="end">${escapeXml(niceNumber(tick))}</text>`;
     }),
     `<line class="zero" x1="0" x2="${plotWidth}" y1="${zeroY}" y2="${zeroY}"/>`,
     `<line class="axis" x1="0" x2="${plotWidth}" y1="${plotHeight}" y2="${plotHeight}"/>`,
@@ -253,7 +257,7 @@ export function renderMultipleRegressionResidualSvg(result, options = {}) {
       const crowdingFact = pointCrowdingFact(row);
       if (crowdingFact) details.push(crowdingFact);
       if (sampleFact) details.push(sampleFact);
-      return `<circle data-sms3-nearest-point="true" cx="${row.plotX.toFixed(2)}" cy="${row.plotY.toFixed(2)}" r="4" fill="#2563eb" fill-opacity="0.72"><title>${escapeXml(details.join("; "))}</title></circle>`;
+      return `<circle data-sms3-nearest-point="true" cx="${row.plotX.toFixed(2)}" cy="${row.plotY.toFixed(2)}" r="4" fill="${SMS3_PLOT_THEME.categorical[0]}" fill-opacity="0.72"><title>${escapeXml(details.join("; "))}</title></circle>`;
     }),
     "</g>",
     `<text class="label" x="${width / 2}" y="${height - 18}" text-anchor="middle">Fitted value</text>`,

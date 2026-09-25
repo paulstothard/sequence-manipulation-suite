@@ -3,6 +3,13 @@ import { escapeXml } from "./plot-renderer.js";
 import { annotatePointCrowding, pointCrowdingFact } from "./point-plot-inspection.js";
 import { findColumn, parseDelimitedTable } from "./table.js";
 import {
+  makePlotAxisLabel,
+  makePublicationPlotStyle,
+  publicationPlotCss,
+  publicationSvgAttributes,
+  SMS3_PLOT_THEME
+} from "./publication-plot-style.js";
+import {
   isNumericStatisticsColumn,
   parseStatisticsNumber
 } from "./statistics-utils.js";
@@ -40,7 +47,7 @@ export const outlierGroupSummaryColumns = [
   { id: "any_outliers", label: "Any-method outliers", type: "number" }
 ];
 
-const COLORS = ["#2563eb", "#0f766e", "#a33a3a", "#7c3aed", "#d97706", "#0369a1", "#be123c", "#4b5563"];
+const COLORS = SMS3_PLOT_THEME.categorical;
 
 function getD3() {
   return globalThis.d3 ?? null;
@@ -311,16 +318,19 @@ function jitterOffset(seedText, limit) {
 
 export function renderOutlierDiagnosticsSvg(result, options = {}) {
   if (result.rows.length === 0) {
+    const emptyStyle = makePublicationPlotStyle(760, 160);
     return [
-      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 160" role="img" aria-label="Outlier diagnostics" data-plot-foundation="d3-outlier-plot-svg" data-plot-renderer="sms3-d3">`,
-      `<rect width="760" height="160" fill="white"/>`,
-      `<text x="28" y="42" font-family="system-ui, sans-serif" font-size="20" font-weight="700" fill="#263238">Outlier diagnostics</text>`,
-      `<text x="28" y="78" font-family="system-ui, sans-serif" font-size="13" fill="#5c6b75">No numeric outlier data were available.</text>`,
+      `<svg xmlns="http://www.w3.org/2000/svg" ${publicationSvgAttributes(emptyStyle)} viewBox="0 0 760 160" role="img" aria-label="Outlier diagnostics" data-plot-foundation="d3-outlier-plot-svg" data-plot-renderer="sms3-d3" data-sms3-publication-theme="default" data-grid-lines="hidden">`,
+      `<style>${publicationPlotCss(emptyStyle)}</style>`,
+      `<rect width="760" height="160" fill="${SMS3_PLOT_THEME.surface}"/>`,
+      `<text class="title" x="28" y="42">Outlier diagnostics</text>`,
+      `<text class="note" x="28" y="78">No numeric outlier data were available.</text>`,
       "</svg>"
     ].join("");
   }
   const width = 940;
   const height = 600;
+  const style = makePublicationPlotStyle(width, height);
   const margin = { top: 76, right: 140, bottom: 96, left: 86 };
   const plotWidth = width - margin.left - margin.right;
   const plotHeight = height - margin.top - margin.bottom;
@@ -341,21 +351,16 @@ export function renderOutlierDiagnosticsSvg(result, options = {}) {
     };
   }), { getX: (row) => row.plotX, getY: (row) => row.plotY, getValue: (row) => row.value });
   const parts = [
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="d3-outlier-plot-svg" data-plot-renderer="sms3-d3">`,
+    `<svg xmlns="http://www.w3.org/2000/svg" ${publicationSvgAttributes(style)} viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="d3-outlier-plot-svg" data-plot-renderer="sms3-d3" data-sms3-publication-theme="default" data-grid-lines="hidden">`,
     "<style>",
-    ".title{font:700 20px system-ui,sans-serif;fill:#263238}",
-    ".axis{stroke:#455a64;stroke-width:1.2}",
-    ".grid{stroke:#d9e2e8;stroke-width:1}",
-    ".tick{font:11px system-ui,sans-serif;fill:#455a64}",
-    ".label{font:13px system-ui,sans-serif;fill:#263238}",
-    ".legend{font:12px system-ui,sans-serif;fill:#263238}",
+    publicationPlotCss(style),
     "</style>",
-    `<rect width="${width}" height="${height}" fill="white"/>`,
+    `<rect width="${width}" height="${height}" fill="${SMS3_PLOT_THEME.surface}"/>`,
     `<text class="title" x="34" y="34">${escapeXml(title)}</text>`,
     `<g transform="translate(${margin.left} ${margin.top})">`,
     ...yTicks.map((tick) => {
       const y = scale(tick, yMin, yMax, plotHeight, 0);
-      return `<line class="grid" x1="0" x2="${plotWidth}" y1="${y}" y2="${y}"/><text class="tick" x="-10" y="${y + 4}" text-anchor="end">${escapeXml(niceNumber(tick))}</text>`;
+      return `<line class="axis-tick" x1="${-style.tickLength}" x2="0" y1="${y}" y2="${y}"/><text class="tick" x="${-style.tickLength - 6}" y="${y + style.bodyFontSize * 0.34}" text-anchor="end">${escapeXml(niceNumber(tick))}</text>`;
     }),
     `<line class="axis" x1="0" x2="${plotWidth}" y1="${plotHeight}" y2="${plotHeight}"/>`,
     `<line class="axis" x1="0" x2="0" y1="0" y2="${plotHeight}"/>`,
@@ -369,27 +374,34 @@ export function renderOutlierDiagnosticsSvg(result, options = {}) {
       const median = scale(summary.median, yMin, yMax, plotHeight, 0);
       const boxWidth = Math.min(62, groupWidth * 0.36);
       const label = summary.group.length > 14 ? `${summary.group.slice(0, 13)}...` : summary.group;
+      const labelY = plotHeight + style.tickLength + style.bodyFontSize + 4;
+      const estimatedLabelWidth = label.length * style.bodyFontSize * 0.58;
+      const rotateLabel = estimatedLabelWidth > Math.max(36, groupWidth - 20);
+      const labelTransform = rotateLabel
+        ? ` transform="rotate(-28 ${centerX} ${labelY})"`
+        : "";
       return [
         `<line x1="${centerX}" x2="${centerX}" y1="${upper}" y2="${lower}" stroke="${color}" stroke-width="1.4" stroke-dasharray="4 4" stroke-opacity="0.7"><title>${escapeXml(`${summary.group} IQR fences`)}</title></line>`,
         `<rect x="${centerX - boxWidth / 2}" y="${Math.min(q1, q3)}" width="${boxWidth}" height="${Math.max(1, Math.abs(q3 - q1))}" fill="${color}" fill-opacity="0.14" stroke="${color}" stroke-width="1.2"/>`,
         `<line x1="${centerX - boxWidth / 2}" x2="${centerX + boxWidth / 2}" y1="${median}" y2="${median}" stroke="${color}" stroke-width="2.2"/>`,
-        `<text class="tick" x="${centerX}" y="${plotHeight + 22}" text-anchor="middle" transform="rotate(-28 ${centerX} ${plotHeight + 22})">${escapeXml(label)}<title>${escapeXml(summary.group)}</title></text>`
+        `<line class="axis-tick" x1="${centerX}" x2="${centerX}" y1="${plotHeight}" y2="${plotHeight + style.tickLength}"/>`,
+        `<text class="tick" x="${centerX}" y="${labelY}" text-anchor="middle"${labelTransform}>${escapeXml(label)}<title>${escapeXml(summary.group)}</title></text>`
       ].join("");
     }),
     ...pointRows.map((row) => {
       const flagged = row.methods_flagged !== "";
-      const color = flagged ? "#be123c" : "#334155";
+      const color = flagged ? SMS3_PLOT_THEME.categorical[1] : SMS3_PLOT_THEME.reference;
       const details = [`${row.label}: ${row.value}${flagged ? ` flagged by ${row.methods_flagged}` : ""}`];
       const crowdingFact = pointCrowdingFact(row, { noun: "displayed measurements" });
       if (crowdingFact) details.push(crowdingFact);
-      return `<circle data-sms3-nearest-point="true" cx="${row.plotX.toFixed(2)}" cy="${row.plotY.toFixed(2)}" r="${flagged ? 5.2 : 3.4}" fill="${color}" fill-opacity="${flagged ? "0.88" : "0.5"}" stroke="#ffffff" stroke-width="0.9"><title>${escapeXml(details.join("; "))}</title></circle>`;
+      return `<circle data-sms3-nearest-point="true" cx="${row.plotX.toFixed(2)}" cy="${row.plotY.toFixed(2)}" r="${flagged ? 5.2 : 3.4}" fill="${color}" fill-opacity="${flagged ? "0.88" : "0.5"}" stroke="${SMS3_PLOT_THEME.surface}" stroke-width="0.9"><title>${escapeXml(details.join("; "))}</title></circle>`;
     }),
     "</g>",
-    `<text class="label" x="${width / 2}" y="${height - 18}" text-anchor="middle">${escapeXml(result.groupColumn?.label ?? "Group")}</text>`,
-    `<text class="label" transform="translate(18 ${height / 2}) rotate(-90)" text-anchor="middle">${escapeXml(yLabel)}</text>`,
-    `<circle cx="${width - 118}" cy="82" r="4.2" fill="#334155" fill-opacity="0.5"/><text class="legend" x="${width - 106}" y="86">not flagged</text>`,
-    `<circle cx="${width - 118}" cy="108" r="5.2" fill="#be123c" fill-opacity="0.88"/><text class="legend" x="${width - 106}" y="112">flagged</text>`,
-    `<rect x="${width - 124}" y="130" width="12" height="12" fill="#2563eb" fill-opacity="0.14" stroke="#2563eb"/><text class="legend" x="${width - 106}" y="141">IQR band</text>`,
+    `<text class="label" x="${width / 2}" y="${height - 18}" text-anchor="middle">${escapeXml(makePlotAxisLabel(result.groupColumn?.label ?? "Group"))}</text>`,
+    `<text class="label" transform="translate(18 ${height / 2}) rotate(-90)" text-anchor="middle">${escapeXml(makePlotAxisLabel(yLabel))}</text>`,
+    `<circle cx="${width - 118}" cy="82" r="4.2" fill="${SMS3_PLOT_THEME.reference}" fill-opacity="0.5"/><text class="legend" x="${width - 106}" y="86">not flagged</text>`,
+    `<circle cx="${width - 118}" cy="108" r="5.2" fill="${SMS3_PLOT_THEME.categorical[1]}" fill-opacity="0.88"/><text class="legend" x="${width - 106}" y="112">flagged</text>`,
+    `<rect x="${width - 124}" y="130" width="12" height="12" fill="${SMS3_PLOT_THEME.categorical[0]}" fill-opacity="0.14" stroke="${SMS3_PLOT_THEME.categorical[0]}"/><text class="legend" x="${width - 106}" y="141">IQR band</text>`,
     "</svg>"
   ];
   return parts.join("");

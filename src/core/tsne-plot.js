@@ -1,5 +1,6 @@
 import { createBioWasmCli, requireBioWasmRuntime } from "./biowasm-runner.js";
 import { axisRenderOptions, plotRowsToTsv, renderScatterSvg, stratifiedRowsForSvg } from "./plot-tools.js";
+import { makePlotAxisLabel } from "./publication-plot-style.js";
 import { isNumericStatisticsColumn, parseStatisticsNumber } from "./statistics-utils.js";
 import { findColumn, parseColumnList, parseDelimitedTable } from "./table.js";
 import { effectiveToolLimit } from "./tool-limit-policy.js";
@@ -281,8 +282,8 @@ export async function runTsneEmbedding(input, options = {}, context = {}) {
   });
   const svg = renderScatterSvg(svgRows, {
     title: options.title || "t-SNE plot",
-    xLabel: "t-SNE 1",
-    yLabel: "t-SNE 2",
+    xLabel: makePlotAxisLabel("t-SNE 1", options.xAxisLabel, options.xAxisUnit),
+    yLabel: makePlotAxisLabel("t-SNE 2", options.yAxisLabel, options.yAxisUnit),
     showLegend: prepared.rows.some((row) => row.group !== "Data"),
     totalPointCount: embeddingRows.length,
     sampleMethod: "group-stratified",

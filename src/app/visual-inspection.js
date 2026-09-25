@@ -29,8 +29,7 @@ const NEAREST_POINT_HIT_RADIUS = 11;
 const NEAREST_POINT_HYSTERESIS = 2;
 const NEAREST_POINT_GRID_SIZE = 16;
 const SHADED_MARK_SELECTOR = [
-  `${PLOT_SVG_SELECTOR}:is([data-sms3-plot-kind="categorical-bar-plot"], [data-sms3-plot-kind="heatmap"]) rect[${TITLE_MARK_ATTRIBUTE}]`,
-  'svg[data-sms3-plot="orf-overview"] rect:is(.complete, .partial)'
+  `${PLOT_SVG_SELECTOR}:is([data-sms3-plot-kind="categorical-bar-plot"], [data-sms3-plot-kind="heatmap"]) rect[${TITLE_MARK_ATTRIBUTE}]`
 ].join(",");
 
 function normalizedText(value) {
@@ -184,12 +183,11 @@ function applyInspectionGlow(mark) {
   if (!(mark instanceof SVGElement) || !getComputedStyle(mark).filter.includes("drop-shadow(")) return;
   const svg = mark.ownerSVGElement;
   if (!svg) return;
-  const isOrf = Boolean(mark.closest('svg[data-sms3-plot="orf-overview"]'));
-  const color = isOrf ? "#b7791f" : getComputedStyle(mark).getPropertyValue(CONTRAST_PROPERTY).trim() || "#0f172a";
+  const color = getComputedStyle(mark).getPropertyValue(CONTRAST_PROPERTY).trim() || "#0f172a";
   const id = `sms3-inspection-glow-${++inspectionGlowId}`;
   const defs = document.createElementNS(SVG_NAMESPACE, "defs");
   defs.setAttribute("data-sms3-inspection-glow-def", "");
-  defs.innerHTML = `<filter id="${id}" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"><feGaussianBlur in="SourceAlpha" stdDeviation="${isOrf ? 3 : 1.5}" result="blur"/><feFlood flood-color="${color}" flood-opacity="${isOrf ? 0.5 : 0.75}" result="color"/><feComposite in="color" in2="blur" operator="in" result="halo"/><feMerge><feMergeNode in="halo"/><feMergeNode in="SourceGraphic"/></feMerge></filter>`;
+  defs.innerHTML = `<filter id="${id}" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"><feGaussianBlur in="SourceAlpha" stdDeviation="1.5" result="blur"/><feFlood flood-color="${color}" flood-opacity="0.75" result="color"/><feComposite in="color" in2="blur" operator="in" result="halo"/><feMerge><feMergeNode in="halo"/><feMergeNode in="SourceGraphic"/></feMerge></filter>`;
   svg.append(defs);
   mark.setAttribute(GLOW_STYLE_ATTRIBUTE, JSON.stringify({
     filter: [mark.style.getPropertyValue("filter"), mark.style.getPropertyPriority("filter")],

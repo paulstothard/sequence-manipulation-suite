@@ -1,5 +1,5 @@
 import { boxPlotColumns } from "../../core/plot-tools.js";
-import { makeAxisLimitsGroup } from "../plot-axis-options.js";
+import { makeAxisLimitsGroup, makePublicationPlotGroup } from "../plot-axis-options.js";
 
 export const boxPlotMetadata = {
   id: "box-plot",
@@ -45,6 +45,7 @@ export const boxPlotMetadata = {
       ]
     },
     makeAxisLimitsGroup({ x: false, y: true }),
+    makePublicationPlotGroup(),
     {
       type: "group",
       label: "Output format",

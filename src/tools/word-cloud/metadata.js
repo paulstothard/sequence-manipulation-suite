@@ -1,4 +1,5 @@
 import { wordCloudColumns } from "../../core/text-word-cloud.js";
+import { makePublicationPlotGroup } from "../plot-axis-options.js";
 
 export const wordCloudMetadata = {
   id: "word-cloud",
@@ -42,6 +43,7 @@ export const wordCloudMetadata = {
         { id: "title", type: "text", label: "Plot title", defaultValue: "Lab notes word cloud" }
       ]
     },
+    makePublicationPlotGroup({ x: false, y: false, grid: false }),
     {
       type: "group",
       label: "Output format",

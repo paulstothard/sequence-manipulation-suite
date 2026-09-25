@@ -1112,8 +1112,8 @@ export function makeMultipleAlignmentSvg(alignment, options = {}) {
     lineWidth: options.lineWidth,
     maxCells: options.maxCells,
     legend: isCodingDna
-      ? "Green codon translates to a fully conserved amino acid; blue codon translates to a majority-conserved amino acid; red variable; gray codon gap."
-      : "Green fully conserved; blue majority conserved; red variable; gray gap column.",
+      ? "Teal codon translates to a fully conserved amino acid; blue codon translates to a majority-conserved amino acid; orange variable; gray codon gap."
+      : "Teal fully conserved; blue majority conserved; orange variable; gray gap column.",
     summary: isCodingDna
       ? "Protein-guided codon alignment; displayed sequence and coordinates are nucleotide-space."
       : "Consensus: * fully conserved, : majority conserved, . variable.",

@@ -1880,6 +1880,9 @@ export function createWorkflowBuilderController({
         input.name = option.id;
         input.min = option.min;
         input.max = option.max;
+        if (option.step !== undefined) {
+          input.step = option.step;
+        }
         input.value = step.options[option.id] ?? option.defaultValue;
         input.addEventListener("change", () => {
           updateSelectedWorkflowStep(

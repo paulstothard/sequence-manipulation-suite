@@ -3,6 +3,12 @@ import { findColumn, parseDelimitedTable } from "./table.js";
 import { escapeXml } from "./plot-renderer.js";
 import { isNumericStatisticsColumn, parseStatisticsNumber } from "./statistics-utils.js";
 import { effectiveToolLimit } from "./tool-limit-policy.js";
+import {
+  makePublicationPlotStyle,
+  publicationPlotCss,
+  publicationSvgAttributes,
+  SMS3_PLOT_THEME
+} from "./publication-plot-style.js";
 
 export const permutationTestResultColumns = [
   { id: "test", label: "Test", type: "string" },
@@ -141,8 +147,10 @@ function makeHistogram(values, observed, title = "Permutation null distribution"
   const plotHeight = height - margin.top - margin.bottom;
   const finite = values.filter(Number.isFinite);
   if (finite.length === 0) {
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}"><text x="24" y="40" font-size="18" font-family="Arial, sans-serif">${escapeXml(title)}</text><text x="24" y="80" font-size="13" font-family="Arial, sans-serif">No permutation values were available.</text></svg>`;
+    const emptyStyle = makePublicationPlotStyle(width, height);
+    return `<svg xmlns="http://www.w3.org/2000/svg" ${publicationSvgAttributes(emptyStyle)} viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-sms3-publication-theme="default" data-grid-lines="hidden"><style>${publicationPlotCss(emptyStyle)}</style><rect width="${width}" height="${height}" fill="${SMS3_PLOT_THEME.surface}"/><text class="title" x="24" y="40">${escapeXml(title)}</text><text class="note" x="24" y="80">No permutation values were available.</text></svg>`;
   }
+  const style = makePublicationPlotStyle(width, height);
   let rawMin = Math.min(...finite, observed);
   let rawMax = Math.max(...finite, observed);
   let min = rawMin;
@@ -176,30 +184,31 @@ function makeHistogram(values, observed, title = "Permutation null distribution"
     const x1 = x(bin.start);
     const x2 = x(bin.end);
     const barY = y(bin.count);
-    return `<rect class="permutation-histogram-bar" data-sms3-inspection-highlight="shade" x="${x1.toFixed(2)}" y="${barY.toFixed(2)}" width="${Math.max(1, x2 - x1 - 1).toFixed(2)}" height="${(margin.top + plotHeight - barY).toFixed(2)}" fill="#93c5fd"><title>${escapeXml(`${round(bin.start, 4)} to ${round(bin.end, 4)}: ${bin.count} permuted statistic${bin.count === 1 ? "" : "s"}`)}</title></rect>`;
+    return `<rect class="permutation-histogram-bar" data-sms3-inspection-highlight="shade" x="${x1.toFixed(2)}" y="${barY.toFixed(2)}" width="${Math.max(1, x2 - x1 - 1).toFixed(2)}" height="${(margin.top + plotHeight - barY).toFixed(2)}" fill="${SMS3_PLOT_THEME.categorical[4]}"><title>${escapeXml(`${round(bin.start, 4)} to ${round(bin.end, 4)}: ${bin.count} permuted statistic${bin.count === 1 ? "" : "s"}`)}</title></rect>`;
   }).join("");
   const ticks = Array.from({ length: 5 }, (_, index) => rawMin + ((rawMax - rawMin) * index) / 4);
   const tickMarks = ticks.map((tick) => {
     const tickX = x(tick);
-    return `<line x1="${tickX.toFixed(2)}" y1="${margin.top + plotHeight}" x2="${tickX.toFixed(2)}" y2="${margin.top + plotHeight + 6}" stroke="#475569"/><text x="${tickX.toFixed(2)}" y="${margin.top + plotHeight + 24}" text-anchor="middle" font-size="11" font-family="Arial, sans-serif" fill="#334155">${escapeXml(round(tick, 3))}</text>`;
+    return `<line class="axis-tick" x1="${tickX.toFixed(2)}" y1="${margin.top + plotHeight}" x2="${tickX.toFixed(2)}" y2="${margin.top + plotHeight + style.tickLength}"/><text class="tick" x="${tickX.toFixed(2)}" y="${margin.top + plotHeight + style.tickLength + style.bodyFontSize + 4}" text-anchor="middle">${escapeXml(round(tick, 3))}</text>`;
   }).join("");
   const yTickMarks = yAxis.ticks.map((tick) => {
     const tickY = y(tick);
-    return `<line x1="${margin.left}" y1="${tickY.toFixed(2)}" x2="${margin.left + plotWidth}" y2="${tickY.toFixed(2)}" stroke="#e2e8f0"/><line x1="${margin.left - 6}" y1="${tickY.toFixed(2)}" x2="${margin.left}" y2="${tickY.toFixed(2)}" stroke="#475569"/><text data-y-axis-tick="true" x="${margin.left - 12}" y="${(tickY + 4).toFixed(2)}" text-anchor="end" font-size="11" font-family="Arial, sans-serif" fill="#334155">${tick}</text>`;
+    return `<line class="axis-tick" x1="${margin.left - style.tickLength}" y1="${tickY.toFixed(2)}" x2="${margin.left}" y2="${tickY.toFixed(2)}"/><text class="tick" data-y-axis-tick="true" x="${margin.left - style.tickLength - 6}" y="${(tickY + style.bodyFontSize * 0.34).toFixed(2)}" text-anchor="end">${tick}</text>`;
   }).join("");
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-renderer="sms3" data-sms3-plot-kind="permutation-histogram">
-  <rect width="${width}" height="${height}" fill="#ffffff"/>
-  <text x="24" y="32" font-size="18" font-family="Arial, sans-serif" font-weight="700" fill="#0f172a">${escapeXml(title)}</text>
-  <text x="24" y="52" font-size="12" font-family="Arial, sans-serif" fill="#475569">Bars show permuted statistics; the red marker shows the observed statistic.</text>
+  return `<svg xmlns="http://www.w3.org/2000/svg" ${publicationSvgAttributes(style)} viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-renderer="sms3" data-sms3-plot-kind="permutation-histogram" data-sms3-publication-theme="default" data-grid-lines="hidden">
+  <style>${publicationPlotCss(style)}.observed{stroke:${SMS3_PLOT_THEME.categorical[1]};fill:${SMS3_PLOT_THEME.categorical[1]}}</style>
+  <rect width="${width}" height="${height}" fill="${SMS3_PLOT_THEME.surface}"/>
+  <text class="title" x="24" y="32">${escapeXml(title)}</text>
+  <text class="note" x="24" y="52">Bars show permuted statistics; the orange marker shows the observed statistic.</text>
   ${yTickMarks}
-  <line x1="${margin.left}" y1="${margin.top + plotHeight}" x2="${margin.left + plotWidth}" y2="${margin.top + plotHeight}" stroke="#475569"/>
-  <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + plotHeight}" stroke="#475569"/>
+  <line class="axis" x1="${margin.left}" y1="${margin.top + plotHeight}" x2="${margin.left + plotWidth}" y2="${margin.top + plotHeight}"/>
+  <line class="axis" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + plotHeight}"/>
   ${bars}
-  <line data-observed-statistic-marker="true" x1="${observedX.toFixed(2)}" y1="${margin.top}" x2="${observedX.toFixed(2)}" y2="${margin.top + plotHeight}" stroke="#dc2626" stroke-width="2"><title>${escapeXml(`Observed statistic: ${round(observed, 6)}`)}</title></line>
-  <text x="${observedX.toFixed(2)}" y="${margin.top - 8}" text-anchor="middle" font-size="11" font-family="Arial, sans-serif" fill="#dc2626">observed</text>
+  <line class="observed" data-observed-statistic-marker="true" x1="${observedX.toFixed(2)}" y1="${margin.top}" x2="${observedX.toFixed(2)}" y2="${margin.top + plotHeight}" stroke-width="${style.dataStrokeWidth}"><title>${escapeXml(`Observed statistic: ${round(observed, 6)}`)}</title></line>
+  <text class="tick observed" x="${observedX.toFixed(2)}" y="${margin.top - 8}" text-anchor="middle">observed</text>
   ${tickMarks}
-  <text x="${margin.left + plotWidth / 2}" y="${height - 16}" text-anchor="middle" font-size="12" font-family="Arial, sans-serif" fill="#334155">Permuted statistic</text>
-  <text x="18" y="${margin.top + plotHeight / 2}" transform="rotate(-90 18 ${margin.top + plotHeight / 2})" text-anchor="middle" font-size="12" font-family="Arial, sans-serif" fill="#334155">Count</text>
+  <text class="label" x="${margin.left + plotWidth / 2}" y="${height - 16}" text-anchor="middle">Permuted statistic</text>
+  <text class="label" x="18" y="${margin.top + plotHeight / 2}" transform="rotate(-90 18 ${margin.top + plotHeight / 2})" text-anchor="middle">Count</text>
 </svg>`;
 }
 

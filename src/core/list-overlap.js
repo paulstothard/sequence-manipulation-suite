@@ -187,6 +187,8 @@ export function makeListOverlapVennSvg(result, options = {}) {
   const listCount = result.listCount ?? 2;
   return makeVennDiagramSvg({
     title: options.title || "Venn diagram",
+    publicationWidthMm: options.publicationWidthMm,
+    showTitle: options.showTitle !== false,
     setLabels: Array.from({ length: listCount }, (_, index) => listName(index)),
     setSizes: result.listSizes ?? [],
     intersections: result.categoryRows ?? []
@@ -209,6 +211,8 @@ export function makeListOverlapUpsetSvg(result, options = {}) {
     })),
     maxIntersections,
     scaleMode: options.scaleMode,
+    publicationWidthMm: options.publicationWidthMm,
+    showTitle: options.showTitle !== false,
     ariaLabel: "UpSet-style list overlap plot"
   });
 }

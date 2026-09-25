@@ -1,5 +1,11 @@
 import { geneticCodes } from "../../core/genetic-code.js";
-import { LARGE_TEXT_ORF_THRESHOLD, SVG_OVERVIEW_BASE_THRESHOLD, SVG_OVERVIEW_ORF_THRESHOLD, orfTableColumns } from "./run.js";
+import {
+  LARGE_TEXT_ORF_THRESHOLD,
+  SVG_OVERVIEW_BASE_THRESHOLD,
+  SVG_OVERVIEW_HEIGHT_THRESHOLD,
+  SVG_OVERVIEW_ORF_THRESHOLD,
+  orfTableColumns
+} from "./run.js";
 
 export const orfFinderMetadata = {
   id: "orf-finder",
@@ -117,8 +123,8 @@ export const orfFinderMetadata = {
       id: "advancedLimits", type: "group", label: "Limits", collapsible: true, collapsed: true,
       options: [
         { type: "limit-value", label: "Detailed text report", value: `${LARGE_TEXT_ORF_THRESHOLD.toLocaleString("en-US")} ORFs`, detail: "Larger results switch to a summary; the table retains all found ORFs." },
-        { type: "limit-value", label: "ORF overview plot", value: `${SVG_OVERVIEW_ORF_THRESHOLD.toLocaleString("en-US")} ORFs and ${SVG_OVERVIEW_BASE_THRESHOLD.toLocaleString("en-US")} input bases`, detail: "The plot is withheld above either bound." },
-        { type: "note", text: `Above ${LARGE_TEXT_ORF_THRESHOLD.toLocaleString("en-US")} ORFs, the text report switches to a summary; the ORF table retains all found ORFs. Above either overview bound, the plot is replaced with an explanation; choose the table or narrow the input to see all results.` }
+        { type: "limit-value", label: "ORF overview plot", value: `${SVG_OVERVIEW_ORF_THRESHOLD.toLocaleString("en-US")} ORFs, ${SVG_OVERVIEW_BASE_THRESHOLD.toLocaleString("en-US")} bases, and ${SVG_OVERVIEW_HEIGHT_THRESHOLD.toLocaleString("en-US")} px planned height`, detail: "The plot is withheld above any bound after optimally packing the visible intervals into lanes." },
+        { type: "note", text: `Above ${LARGE_TEXT_ORF_THRESHOLD.toLocaleString("en-US")} ORFs, the text report switches to a summary; the ORF table retains all found ORFs. An overview that exceeds its ORF, base, or packed-height bound is replaced with an explanation; choose the table, first-start nested ORFs, or narrower filters to see a drawable overview.` }
       ]
     },
     {

@@ -1,6 +1,13 @@
 import { fitSideLegendLabel, sideLegendLayout } from "./plot-side-legend.js";
+import {
+  makePlotAxisLabel,
+  makePublicationPlotStyle,
+  publicationPlotCss,
+  publicationSvgAttributes,
+  SMS3_PLOT_THEME
+} from "./publication-plot-style.js";
 
-const DEFAULT_COLORS = ["#0f766e", "#2563eb", "#a33a3a", "#7c3aed", "#b7791f", "#64748b"];
+const DEFAULT_COLORS = SMS3_PLOT_THEME.categorical;
 
 function escapeXml(value) {
   return String(value ?? "")
@@ -94,6 +101,7 @@ export function renderLinePlotSpecToSvg(spec, options = {}) {
   const height = Math.max(options.height ?? 0, 420, margin.top + margin.bottom + Math.max(270, 24 + seriesValues.length * 20));
   const plotWidth = width - margin.left - margin.right;
   const plotHeight = height - margin.top - margin.bottom;
+  const style = makePublicationPlotStyle(width, height);
   const scaleX = (value) => margin.left + ((value - xMin) / Math.max(1, xMax - xMin)) * plotWidth;
   const scaleY = (value) => margin.top + ((yMax - value) / (yMax - yMin)) * plotHeight;
   const rowsBySeries = new Map(seriesValues.map((value) => [value, []]));
@@ -103,22 +111,23 @@ export function renderLinePlotSpecToSvg(spec, options = {}) {
   }
 
   const parts = [
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(spec.title)}">`,
-    "<style>text{font-family:Inter,Arial,sans-serif;font-size:12px;fill:#172026}.title{font-size:18px;font-weight:700}.axis{stroke:#5c6b75;stroke-width:1}.grid{stroke:#dfe7ec;stroke-width:1}.line{fill:none;stroke-width:2.4}.dot{stroke:#fff;stroke-width:1}.label{font-size:11px}</style>",
-    `<rect width="${width}" height="${height}" fill="#ffffff"></rect>`,
-    `<text class="title" x="28" y="28">${escapeXml(spec.title)}</text>`
+    `<svg xmlns="http://www.w3.org/2000/svg" ${publicationSvgAttributes(style)} viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(spec.title)}" data-plot-foundation="d3" data-plot-renderer="sms3-d3" data-sms3-publication-theme="default" data-grid-lines="hidden">`,
+    `<style>${publicationPlotCss(style)}.line{fill:none;stroke-width:${style.dataStrokeWidth}}.dot{stroke:${SMS3_PLOT_THEME.surface};stroke-width:${style.axisStrokeWidth}}</style>`,
+    `<rect width="${width}" height="${height}" fill="${SMS3_PLOT_THEME.surface}"></rect>`,
+    `<text class="title" x="28" y="28">${escapeXml(spec.title)}</text>`,
+    `<text class="note" x="28" y="48">${escapeXml(spec.note || `${makePlotAxisLabel(spec.encoding.x.label)} vs ${makePlotAxisLabel(spec.encoding.y.label)}`)}</text>`
   ];
 
   for (const tick of niceTicks(yMin, yMax)) {
     const y = scaleY(tick);
-    parts.push(`<line class="grid" x1="${margin.left}" y1="${y.toFixed(2)}" x2="${width - margin.right}" y2="${y.toFixed(2)}"></line>`);
-    parts.push(`<text x="14" y="${(y + 4).toFixed(2)}">${Number(tick.toFixed(3))}</text>`);
+    parts.push(`<line class="axis-tick" x1="${margin.left - style.tickLength}" y1="${y.toFixed(2)}" x2="${margin.left}" y2="${y.toFixed(2)}"></line>`);
+    parts.push(`<text class="tick" x="${margin.left - style.tickLength - 6}" y="${(y + style.bodyFontSize * 0.34).toFixed(2)}" text-anchor="end">${Number(tick.toFixed(3))}</text>`);
   }
 
   for (const tick of niceTicks(xMin, xMax)) {
     const x = scaleX(tick);
-    parts.push(`<line class="grid" x1="${x.toFixed(2)}" y1="${margin.top}" x2="${x.toFixed(2)}" y2="${height - margin.bottom}"></line>`);
-    parts.push(`<text x="${(x - 8).toFixed(2)}" y="${height - margin.bottom + 18}">${Math.round(tick)}</text>`);
+    parts.push(`<line class="axis-tick" x1="${x.toFixed(2)}" y1="${height - margin.bottom}" x2="${x.toFixed(2)}" y2="${height - margin.bottom + style.tickLength}"></line>`);
+    parts.push(`<text class="tick" x="${x.toFixed(2)}" y="${height - margin.bottom + style.tickLength + style.bodyFontSize + 4}" text-anchor="middle">${Math.round(tick)}</text>`);
   }
 
   parts.push(`<line class="axis" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}"></line>`);
@@ -145,12 +154,13 @@ export function renderLinePlotSpecToSvg(spec, options = {}) {
       const color = DEFAULT_COLORS[index % DEFAULT_COLORS.length];
       const legendY = margin.top + 12 + index * legend.rowHeight;
       parts.push(`<line stroke="${color}" stroke-width="3" x1="${legend.legendX}" y1="${legendY}" x2="${legend.legendX + 26}" y2="${legendY}"></line>`);
-      parts.push(`<text class="label" x="${legend.labelX}" y="${legendY + 4}">${escapeXml(fitSideLegendLabel(seriesName, legend.labelWidth))}<title>${escapeXml(seriesName)}</title></text>`);
+      parts.push(`<text class="legend" x="${legend.labelX}" y="${legendY + 4}">${escapeXml(fitSideLegendLabel(seriesName, legend.labelWidth))}<title>${escapeXml(seriesName)}</title></text>`);
     });
     parts.push(`</g>`);
   }
 
-  parts.push(`<text x="28" y="${height - 20}">${escapeXml(spec.note || `${spec.encoding.x.label} vs ${spec.encoding.y.label}`)}</text>`);
+  parts.push(`<text class="label" x="${margin.left + plotWidth / 2}" y="${height - 16}" text-anchor="middle">${escapeXml(makePlotAxisLabel(spec.encoding.x.label))}</text>`);
+  parts.push(`<text class="label" transform="translate(18 ${margin.top + plotHeight / 2}) rotate(-90)" text-anchor="middle">${escapeXml(makePlotAxisLabel(spec.encoding.y.label))}</text>`);
   parts.push("</svg>");
   return parts.join("\n");
 }

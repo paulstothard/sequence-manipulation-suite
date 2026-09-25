@@ -1,12 +1,10 @@
 import "../vendor/d3/d3.min.js";
 import { escapeXml } from "./plot-renderer.js";
+import { makePublicationPlotStyle, publicationSvgAttributes, SMS3_PLOT_THEME } from "./publication-plot-style.js";
 
 export const VENN_DIAGRAM_MAX_LISTS = 3;
 
-const COLORS = ["#2563eb", "#f59e0b", "#10b981"];
-const REGION_LABEL_FONT_SIZE = 9.5;
-const REGION_COUNT_FONT_SIZE = 17;
-const REGION_COUNT_MIN_FONT_SIZE = 10.5;
+const COLORS = SMS3_PLOT_THEME.venn;
 
 function formatCompactNumber(value) {
   const number = Number(value);
@@ -22,7 +20,7 @@ function estimateTextWidth(text, fontSize) {
   return String(text ?? "").length * fontSize * 0.56;
 }
 
-function fittedFontSize(text, preferredSize, maxWidth, minSize = REGION_COUNT_MIN_FONT_SIZE) {
+function fittedFontSize(text, preferredSize, maxWidth, minSize) {
   const width = estimateTextWidth(text, preferredSize);
   if (!Number.isFinite(width) || width <= 0 || width <= maxWidth) return preferredSize;
   return Math.max(minSize, Math.floor((preferredSize * maxWidth / width) * 10) / 10);
@@ -47,15 +45,15 @@ function regionMaxWidth(membership, setCount, label, countText, labelFontSize, p
   return Math.min(capWidth, Math.max(baseWidth, neededWidth));
 }
 
-function regionLabelMetrics(region, setLabels, countMap, setCount) {
+function regionLabelMetrics(region, setLabels, countMap, setCount, typography) {
   const key = membershipKey(region.membership);
   const count = countMap.get(key) ?? 0;
   const label = membershipLabel(region.membership, setLabels);
   const countText = formatCompactNumber(count);
-  const labelFontSize = region.compact ? 8.8 : REGION_LABEL_FONT_SIZE;
-  const preferredCountFontSize = region.compact ? 15.5 : REGION_COUNT_FONT_SIZE;
+  const labelFontSize = region.compact ? typography.small * 0.92 : typography.small;
+  const preferredCountFontSize = region.compact ? typography.body : typography.axisLabel;
   const maxWidth = regionMaxWidth(region.membership, setCount, label, countText, labelFontSize, preferredCountFontSize);
-  const countFontSize = fittedFontSize(countText, preferredCountFontSize, maxWidth);
+  const countFontSize = fittedFontSize(countText, preferredCountFontSize, maxWidth, typography.small);
   const boxWidth = Math.max(
     estimateTextWidth(label, labelFontSize),
     estimateTextWidth(countText, countFontSize)
@@ -153,9 +151,9 @@ function findRegionLabelPosition(circles, membership, metrics) {
   return { x: Math.round(best.x), y: Math.round(best.y) };
 }
 
-function positionRegions(layout, setLabels, countMap, setCount) {
+function positionRegions(layout, setLabels, countMap, setCount, typography) {
   return layout.regions.map((region) => {
-    const metrics = regionLabelMetrics(region, setLabels, countMap, setCount);
+    const metrics = regionLabelMetrics(region, setLabels, countMap, setCount, typography);
     const position = findRegionLabelPosition(layout.circles, region.membership, metrics);
     return { ...region, ...metrics, ...position };
   });
@@ -251,30 +249,40 @@ export function makeVennDiagramSvg({
   title = "Venn diagram",
   setLabels = [],
   setSizes = [],
-  intersections = []
+  intersections = [],
+  publicationWidthMm,
+  showTitle = true
 } = {}) {
   const requestedCount = setLabels.length;
   if (requestedCount > VENN_DIAGRAM_MAX_LISTS) {
     const width = 760;
     const height = 260;
-    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="d3-venn-svg" data-plot-renderer="sms3-d3" data-venn-status="too-many-lists"><style>.title{font:700 19px system-ui,sans-serif;fill:#111827}.message{font:13px system-ui,sans-serif;fill:#334155}.hint{font:12px system-ui,sans-serif;fill:#64748b}</style><text class="title" x="32" y="40">${escapeXml(title)}</text><text class="message" x="32" y="84">Venn diagrams are limited to ${VENN_DIAGRAM_MAX_LISTS} lists in SMS3.</text><text class="hint" x="32" y="112">Use the UpSet Plot for ${requestedCount} lists; it shows exact intersections without forcing them into misleading circles.</text></svg>`;
+    const style = makePublicationPlotStyle(width, height, { publicationWidthMm, showTitle });
+    return `<svg xmlns="http://www.w3.org/2000/svg" ${publicationSvgAttributes(style)} viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="d3-venn-svg" data-plot-renderer="sms3-d3" data-sms3-publication-theme="default" data-venn-status="too-many-lists"><style>text{font-family:${style.fontFamily};fill:${SMS3_PLOT_THEME.text};stroke:none;text-shadow:none;paint-order:normal}.title{font-size:${style.titleFontSize}px;font-weight:600}.message{font-size:${style.bodyFontSize}px}.hint{font-size:${style.smallFontSize}px;fill:${SMS3_PLOT_THEME.textMuted}}</style><rect width="${width}" height="${height}" fill="${SMS3_PLOT_THEME.surface}"/>${style.showTitle ? `<text class="title" x="32" y="40">${escapeXml(title)}</text>` : ""}<text class="message" x="32" y="84">Venn diagrams are limited to ${VENN_DIAGRAM_MAX_LISTS} lists in SMS3.</text><text class="hint" x="32" y="112">Use the UpSet Plot for ${requestedCount} lists; it shows exact intersections without forcing them into misleading circles.</text></svg>`;
   }
   if (requestedCount < 2) {
     const width = 760;
     const height = 220;
-    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="d3-venn-svg" data-plot-renderer="sms3-d3" data-venn-status="too-few-lists"><style>.title{font:700 19px system-ui,sans-serif;fill:#111827}.message{font:13px system-ui,sans-serif;fill:#334155}</style><text class="title" x="32" y="40">${escapeXml(title)}</text><text class="message" x="32" y="84">Provide 2 or 3 lists to draw a Venn diagram.</text></svg>`;
+    const style = makePublicationPlotStyle(width, height, { publicationWidthMm, showTitle });
+    return `<svg xmlns="http://www.w3.org/2000/svg" ${publicationSvgAttributes(style)} viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="d3-venn-svg" data-plot-renderer="sms3-d3" data-sms3-publication-theme="default" data-venn-status="too-few-lists"><style>text{font-family:${style.fontFamily};fill:${SMS3_PLOT_THEME.text};stroke:none;text-shadow:none;paint-order:normal}.title{font-size:${style.titleFontSize}px;font-weight:600}.message{font-size:${style.bodyFontSize}px}</style><rect width="${width}" height="${height}" fill="${SMS3_PLOT_THEME.surface}"/>${style.showTitle ? `<text class="title" x="32" y="40">${escapeXml(title)}</text>` : ""}<text class="message" x="32" y="84">Provide 2 or 3 lists to draw a Venn diagram.</text></svg>`;
   }
   const shownCount = requestedCount;
   const shownLabels = setLabels.slice(0, shownCount);
   const shownSizes = setSizes.slice(0, shownCount).map((value) => Math.max(0, Number(value) || 0));
   const layout = layoutForSetCount(shownCount, shownLabels, shownSizes);
   const { width, height, circles } = layout;
+  const style = makePublicationPlotStyle(width, height, { publicationWidthMm, showTitle });
+  const typography = {
+    small: style.smallFontSize,
+    body: style.bodyFontSize,
+    axisLabel: style.axisLabelFontSize
+  };
   const countMap = intersectionCountMap(intersections, shownCount);
   const exactRows = exactIntersections(intersections, shownLabels, shownCount);
   const circleSvg = circles.map((node, index) =>
-    `<circle data-sms3-membership-index="${index}" cx="${node.x.toFixed(1)}" cy="${node.y.toFixed(1)}" r="${node.r.toFixed(1)}" fill="${node.color}" fill-opacity="0.26" stroke="${node.color}" stroke-width="2.2"><title>${escapeXml(`${node.label}: ${node.size} distinct items`)}</title></circle>`
+    `<circle data-sms3-membership-index="${index}" cx="${node.x.toFixed(1)}" cy="${node.y.toFixed(1)}" r="${node.r.toFixed(1)}" fill="${node.color}" fill-opacity="0.26" stroke="${node.color}" stroke-width="${style.dataStrokeWidth}"><title>${escapeXml(`${node.label}: ${node.size} distinct items`)}</title></circle>`
   ).join("");
-  const positionedRegions = positionRegions(layout, shownLabels, countMap, shownCount);
+  const positionedRegions = positionRegions(layout, shownLabels, countMap, shownCount, typography);
   const countSvg = positionedRegions.map((region) => makeRegionLabel(region)).join("");
   const rightX = shownCount === 2 ? 600 : 640;
   const setTotalsSvg = circles.map((node, index) => {
@@ -288,5 +296,5 @@ export function makeVennDiagramSvg({
   }).join("");
   const note = "Region counts are exact; circle areas are schematic.";
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="d3-venn-svg" data-plot-renderer="sms3-d3" data-venn-set-count="${shownCount}" data-sms3-spatial-inspection="circle-membership"><style>.title{font:700 19px system-ui,sans-serif;fill:#111827}.subtitle,.note{font:12px system-ui,sans-serif;fill:#475569}.region-name{font:600 ${REGION_LABEL_FONT_SIZE}px system-ui,sans-serif;fill:#334155;paint-order:stroke;stroke:#f8fafc;stroke-width:1.25px;stroke-opacity:.82;stroke-linejoin:round}.region-count{font:750 ${REGION_COUNT_FONT_SIZE}px system-ui,sans-serif;fill:#111827;paint-order:stroke;stroke:#f8fafc;stroke-width:1.7px;stroke-opacity:.78;stroke-linejoin:round}.side-title{font:700 13px system-ui,sans-serif;fill:#111827}.intersection-label{font:12px system-ui,sans-serif;fill:#334155}.intersection-count{font:700 12px system-ui,sans-serif;fill:#111827}</style><text class="title" x="32" y="34">${escapeXml(title)}</text><text class="subtitle" x="32" y="55">Exact overlap counts for ${shownCount} list${shownCount === 1 ? "" : "s"}</text>${circleSvg}${countSvg}<text class="side-title" x="${rightX}" y="82">Set totals</text><line x1="${rightX}" y1="94" x2="${width - 34}" y2="94" stroke="#cbd5e1"></line>${setTotalsSvg}<text class="side-title" x="${rightX}" y="${exactY}">Exact regions</text><line x1="${rightX}" y1="${exactY + 12}" x2="${width - 34}" y2="${exactY + 12}" stroke="#cbd5e1"></line>${exactSvg}<text class="note" x="32" y="${height - 26}">${escapeXml(note)}</text></svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" ${publicationSvgAttributes(style)} viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="d3-venn-svg" data-plot-renderer="sms3-d3" data-sms3-publication-theme="default" data-venn-set-count="${shownCount}" data-sms3-spatial-inspection="circle-membership"><style>text{font-family:${style.fontFamily};fill:${SMS3_PLOT_THEME.text};stroke:none;text-shadow:none;paint-order:normal}.title{font-size:${style.titleFontSize}px;font-weight:600}.subtitle,.note{font-size:${style.smallFontSize}px;fill:${SMS3_PLOT_THEME.textMuted}}.region-name{font-weight:400;fill:${SMS3_PLOT_THEME.textMuted}}.region-count{font-weight:600;fill:${SMS3_PLOT_THEME.text}}.side-title{font-size:${style.axisLabelFontSize}px;font-weight:600}.intersection-label{font-size:${style.bodyFontSize}px;fill:${SMS3_PLOT_THEME.textMuted}}.intersection-count{font-size:${style.bodyFontSize}px;font-weight:600}</style><rect width="${width}" height="${height}" fill="${SMS3_PLOT_THEME.surface}"/>${style.showTitle ? `<text class="title" x="32" y="34">${escapeXml(title)}</text>` : ""}<text class="subtitle" x="32" y="55">Exact overlap counts for ${shownCount} list${shownCount === 1 ? "" : "s"}</text>${circleSvg}${countSvg}<text class="side-title" x="${rightX}" y="82">Set totals</text><line x1="${rightX}" y1="94" x2="${width - 34}" y2="94" stroke="${SMS3_PLOT_THEME.missingOutline}" stroke-width="${style.axisStrokeWidth}"></line>${setTotalsSvg}<text class="side-title" x="${rightX}" y="${exactY}">Exact regions</text><line x1="${rightX}" y1="${exactY + 12}" x2="${width - 34}" y2="${exactY + 12}" stroke="${SMS3_PLOT_THEME.missingOutline}" stroke-width="${style.axisStrokeWidth}"></line>${exactSvg}<text class="note" x="32" y="${height - 26}">${escapeXml(note)}</text></svg>`;
 }

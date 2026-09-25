@@ -32,6 +32,28 @@ function reverseComplement(sequence) {
   return Array.from(complementDnaRnaSequence(sequence, { preserveCase: false })).reverse().join("");
 }
 
+const COMPUTED_TRANSLATION_FRAMES = [
+  { value: "frame-plus-1", label: "Frame +1 only", frame: "+1", displayFrame: "+1", frameOffset: 0, strand: "+" },
+  { value: "frame-plus-2", label: "Frame +2 only", frame: "+2", displayFrame: "+2", frameOffset: 1, strand: "+" },
+  { value: "frame-plus-3", label: "Frame +3 only", frame: "+3", displayFrame: "+3", frameOffset: 2, strand: "+" },
+  { value: "frame-minus-1", label: "Frame −1 only", frame: "-1", displayFrame: "−1", frameOffset: 0, strand: "-" },
+  { value: "frame-minus-2", label: "Frame −2 only", frame: "-2", displayFrame: "−2", frameOffset: 1, strand: "-" },
+  { value: "frame-minus-3", label: "Frame −3 only", frame: "-3", displayFrame: "−3", frameOffset: 2, strand: "-" }
+];
+
+export const SEQUENCE_EXTRACTOR_TRANSLATION_DISPLAY_CHOICES = [
+  { value: "cds", label: "Annotated CDS translations" },
+  { value: "six-frame", label: "Six reading frames" },
+  ...COMPUTED_TRANSLATION_FRAMES.map(({ value, label }) => ({ value, label })),
+  { value: "none", label: "Hidden" }
+];
+
+export function sequenceExtractorComputedFramesForDisplay(mode) {
+  if (mode === "six-frame") return COMPUTED_TRANSLATION_FRAMES;
+  const selected = COMPUTED_TRANSLATION_FRAMES.find((frame) => frame.value === mode);
+  return selected ? [selected] : [];
+}
+
 function safeFilename(value) {
   return String(value || "sequence-extractor-selection")
     .replace(/[^A-Za-z0-9_.-]+/g, "_")
@@ -1366,7 +1388,7 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
   translationLabel.textContent = "Translation";
   const translationSelect = document.createElement("select");
   translationSelect.setAttribute("aria-label", "Translation display");
-  for (const [value, label] of [["cds", "Annotated CDS translations"], ["six-frame", "Six reading frames"], ["none", "Hidden"]]) {
+  for (const { value, label } of SEQUENCE_EXTRACTOR_TRANSLATION_DISPLAY_CHOICES) {
     const option = document.createElement("option");
     option.value = value;
     option.textContent = label;
@@ -3144,6 +3166,9 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
     const label = document.createElement("span");
     label.className = "sequence-extractor-row-label";
     const frame = `${strand}${frameOffset + 1}`;
+    row.dataset.frame = frame;
+    row.dataset.strand = strand;
+    row.setAttribute("aria-label", `Computed reading frame ${frame}`);
     label.textContent = `${frame} · calc`;
     label.title = `${frame} computed with NCBI genetic code ${selectedGeneticCode.id}. ${selectedGeneticCode.name}`;
     const cells = document.createElement("div");
@@ -3307,14 +3332,18 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
     const record = activeRecord();
     const recordCdsFeatures = featureItems(record).filter((item) => String(item.type || item.featureType).toUpperCase() === "CDS");
     const translatedCdsCount = recordCdsFeatures.filter((item) => String(item.translation || "").replace(/\s+/g, "")).length;
+    const computedFrames = sequenceExtractorComputedFramesForDisplay(translationMode);
     translationNote.className = `sequence-extractor-translation-note is-${translationMode}`;
+    translationNote.classList.toggle("is-computed-frame", computedFrames.length > 0);
     translationNote.textContent = translationMode === "cds"
       ? translatedCdsCount > 0
         ? `Annotated CDS translations · ${translatedCdsCount}/${recordCdsFeatures.length} CDS with /translation · genetic code setting is not applied`
         : `No annotated CDS /translation in this panel · genetic code setting is not applied`
       : translationMode === "six-frame"
         ? `Computed six-frame translation · NCBI table ${selectedGeneticCode.id}: ${selectedGeneticCode.name}`
-        : "Translations hidden";
+        : computedFrames.length === 1
+          ? `Computed reading frame ${computedFrames[0].displayFrame} only · NCBI table ${selectedGeneticCode.id}: ${selectedGeneticCode.name}`
+          : "Translations hidden";
     status.textContent = `${records.length > 1 ? `panel ${recordIndex + 1}/${records.length} · ` : ""}${record.length.toLocaleString()} bp · ${selectionTopology} selections · arrows point 5′→3′ · click bases, amino acids, primers, or restriction sites`;
     const preferredLineWidth = Number(extractor.lineWidth) || 60;
     const mainWidth = main.getBoundingClientRect().width || shell.getBoundingClientRect().width;
@@ -3340,15 +3369,10 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
       if (featureRow) block.append(featureRow);
       if (primerRow) block.append(primerRow);
       if (restrictionRow) block.append(restrictionRow);
-      if (translationMode === "six-frame") {
-        block.append(
-          makeFrameTranslationRow(record, blockStart, blockEnd, 0, "+"),
-          makeFrameTranslationRow(record, blockStart, blockEnd, 1, "+"),
-          makeFrameTranslationRow(record, blockStart, blockEnd, 2, "+"),
-          makeFrameTranslationRow(record, blockStart, blockEnd, 0, "-"),
-          makeFrameTranslationRow(record, blockStart, blockEnd, 1, "-"),
-          makeFrameTranslationRow(record, blockStart, blockEnd, 2, "-")
-        );
+      if (computedFrames.length > 0) {
+        block.append(...computedFrames.map((frame) =>
+          makeFrameTranslationRow(record, blockStart, blockEnd, frame.frameOffset, frame.strand)
+        ));
       } else if (translationMode === "cds") {
         const cdsRows = makeCdsTranslationRows(record, blockStart, blockEnd);
         if (cdsRows.length > 0) block.append(...cdsRows);

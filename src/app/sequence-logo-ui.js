@@ -34,7 +34,17 @@ function svgElement(name, attributes = {}, text = "") {
 }
 
 function addText(parent, attributes, text) {
-  parent.append(svgElement("text", attributes, text));
+  const fontSize = attributes["font-size"];
+  const explicitFontStyle = [
+    attributes.style,
+    attributes["font-family"] ? `font-family: ${attributes["font-family"]}` : "",
+    fontSize !== undefined ? `font-size: ${Number.isFinite(Number(fontSize)) ? `${fontSize}px` : fontSize}` : "",
+    attributes["font-weight"] !== undefined ? `font-weight: ${attributes["font-weight"]}` : ""
+  ].filter(Boolean).join("; ");
+  parent.append(svgElement("text", {
+    ...attributes,
+    ...(explicitFontStyle ? { style: explicitFontStyle } : {})
+  }, text));
 }
 
 function measureLogoGlyph(symbol) {
@@ -56,6 +66,14 @@ function formatNumber(value, digits = 3) {
   if (value === null || value === undefined || value === "" || !Number.isFinite(Number(value))) return "n/a";
   const number = Number(value);
   return number.toFixed(digits).replace(/\.0+$/u, "").replace(/(\.\d*?)0+$/u, "$1");
+}
+
+function nicePositionTickStep(columnCount) {
+  const requestedStep = Math.max(1, Math.ceil((Math.max(1, columnCount) - 1) / 8));
+  const magnitude = 10 ** Math.floor(Math.log10(requestedStep));
+  const normalized = requestedStep / magnitude;
+  const niceStep = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
+  return niceStep * magnitude;
 }
 
 function colorForSymbol(symbol, state, alphabet) {
@@ -219,14 +237,14 @@ function addLetterStack(svg, column, logo, state, geometry) {
     const pixelHeight = Math.max(0, (value / yMax) * plotHeight);
     if (pixelHeight < 0.35) continue;
     const { ascent, descent } = measureLogoGlyph(symbol);
-    const measuredHeight = Math.max(LOGO_GLYPH_HEIGHT, ascent + descent);
+    const measuredHeight = ascent + descent > 0 ? ascent + descent : LOGO_GLYPH_HEIGHT;
     const fill = colorForSymbol(symbol, state, logo.symbols);
     const text = svgElement("text", {
       class: "sequence-logo-letter",
       x: 0,
       y: 0,
       fill,
-      style: `fill: ${fill}`,
+      style: `fill: ${fill}; font-family: ${FIGURE_FONT}; font-size: 100px; font-weight: 800`,
       "font-family": FIGURE_FONT,
       "font-size": 100,
       "font-weight": 800,
@@ -407,11 +425,39 @@ function buildLogoSvg(logo, state, availableWidth) {
   renderedRows.forEach((row, rowIndex) => {
     const rowTop = titleHeight + rowIndex * rowHeight;
     const baselineY = rowTop + plotHeight;
+    const positionTickStep = nicePositionTickStep(row.length);
     if (state.showAxis) {
-      svg.append(svgElement("line", { x1: left, y1: rowTop, x2: left, y2: baselineY, stroke: "#53636d", "stroke-width": 0.75 }));
+      svg.append(
+        svgElement("line", {
+          class: "sequence-logo-y-axis",
+          x1: left,
+          y1: rowTop,
+          x2: left,
+          y2: baselineY,
+          stroke: "#53636d",
+          "stroke-width": 0.75
+        }),
+        svgElement("line", {
+          class: "sequence-logo-baseline",
+          x1: left,
+          y1: baselineY,
+          x2: left + row.length * cellWidth,
+          y2: baselineY,
+          stroke: "#53636d",
+          "stroke-width": 0.8
+        })
+      );
       for (const fraction of [0, 0.5, 1]) {
         const y = baselineY - fraction * plotHeight;
-        svg.append(svgElement("line", { x1: left - 3, y1: y, x2: left + row.length * cellWidth, y2: y, stroke: fraction === 0 ? "#53636d" : "#dbe1e5", "stroke-width": fraction === 0 ? 0.8 : 0.55 }));
+        svg.append(svgElement("line", {
+          class: "sequence-logo-y-tick",
+          x1: left - 3,
+          y1: y,
+          x2: left + 3,
+          y2: y,
+          stroke: "#53636d",
+          "stroke-width": 0.75
+        }));
         addText(svg, { x: left - 7, y: y + 3, fill: "#4f5d66", "font-family": FIGURE_FONT, "font-size": 8, "text-anchor": "end" }, formatNumber(yMax * fraction, state.mode === "frequency" ? 1 : 2));
       }
       addText(svg, {
@@ -425,15 +471,40 @@ function buildLogoSvg(logo, state, availableWidth) {
         transform: `rotate(-90 13 ${rowTop + plotHeight / 2})`
       }, state.mode === "frequency" ? "Frequency" : "Bits");
     } else {
-      svg.append(svgElement("line", { x1: left, y1: baselineY, x2: left + row.length * cellWidth, y2: baselineY, stroke: "#53636d", "stroke-width": 0.8 }));
+      svg.append(svgElement("line", {
+        class: "sequence-logo-baseline",
+        x1: left,
+        y1: baselineY,
+        x2: left + row.length * cellWidth,
+        y2: baselineY,
+        stroke: "#53636d",
+        "stroke-width": 0.8
+      }));
     }
     row.forEach((column, index) => {
       const centerX = left + (index + 0.5) * cellWidth;
       addLetterStack(svg, column, logo, state, { centerX, baselineY, plotHeight, yMax, cellWidth, maxCoverage });
-      if (state.showNumbering && (index === 0 || index === row.length - 1 || index % Math.max(1, Math.ceil(row.length / 10)) === 0)) {
+      const position = Number(column.position);
+      const showPositionTick = state.showNumbering && (
+        index === 0
+        || index === row.length - 1
+        || (Number.isFinite(position) && position % positionTickStep === 0)
+      );
+      if (showPositionTick) {
+        svg.append(svgElement("line", {
+          class: "sequence-logo-x-tick",
+          x1: centerX,
+          y1: baselineY,
+          x2: centerX,
+          y2: baselineY + 4,
+          stroke: "#53636d",
+          "stroke-width": 0.75,
+          "data-logo-position": column.position
+        }));
         addText(svg, {
-          x: centerX, y: baselineY + 15, fill: "#44525b", "font-family": FIGURE_FONT,
-          "font-size": 8.2, "text-anchor": "middle"
+          class: "sequence-logo-position-label",
+          x: centerX, y: baselineY + 16, fill: "#44525b", "font-family": FIGURE_FONT,
+          "font-size": 8.2, "text-anchor": "middle", "data-logo-position": column.position
         }, String(column.position));
       }
     });

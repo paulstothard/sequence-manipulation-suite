@@ -55,6 +55,7 @@ import {
   linearDnaViewerExample
 } from "../examples/dna-viewer-examples.js";
 import { defaultSequenceExtractorExample } from "../examples/sequence-extractor-examples.js";
+import { orfFinderExample } from "../examples/orf-finder-example.js";
 import { proteinSequenceViewerMetadata } from "./protein-sequence-viewer/metadata.js";
 import { runProteinSequenceViewer } from "./protein-sequence-viewer/run.js";
 import { alignmentViewerMetadata } from "./alignment-viewer/metadata.js";
@@ -2259,9 +2260,6 @@ augcaunn`
   {
     metadata: orfFinderMetadata,
     run: runOrfFinder,
-    example: `>NC_001422.1_phiX174_fragment
-AAAGTTTATCGCTTCCATGACGCAGAAGTTAACACTTTCGGTGGAAATGTTGATGGAGTTC
-ATGCCCGGTGATGACGATGAGGCTACTGCTGACTCTCAACATTCTACTCCTCCAAAAAAGA
-AGAGAAAGGTAGAAGACCCCAAGGACTTTCCTTCAGAATTGCTAAGTTTTTTGAGTCATGCTAA`
+    example: orfFinderExample
   }
 ];

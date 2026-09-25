@@ -21,6 +21,7 @@ import {
 } from "./dna-viewer-canvas.js";
 import { downloadText } from "./file-download.js";
 import { copyTextWithFeedback, showCopiedFeedback } from "./copy-feedback.js";
+import { getRangeAnchorChoices } from "./dna-viewer-interactions.js";
 import {
   makeViewerSequenceInitialState,
   normalizeViewerSequenceChoices,
@@ -163,12 +164,20 @@ function renderSequenceEditorWorkspace(previousState = null) {
 
   const editorPanel = document.createElement("aside");
   editorPanel.className = "sequence-editor-settings";
+  editorPanel.setAttribute("aria-label", "Sequence editor inspector");
+  const editorHeader = document.createElement("div");
+  editorHeader.className = "sequence-editor-inspector-heading";
+  const editorHeaderText = document.createElement("div");
+  editorHeaderText.className = "sequence-editor-inspector-heading-text";
   const editorHeading = document.createElement("h3");
-  editorHeading.textContent = "Selection and edit";
+  editorHeading.textContent = "Inspector";
   const editorIntro = document.createElement("p");
   editorIntro.className = "sequence-editor-inspector-intro";
-  editorIntro.textContent =
-    "Click something in the viewer, build a range when needed, then edit the target shown below.";
+  editorIntro.textContent = "Inspect sequence items and edit the selected target";
+  editorHeaderText.append(editorHeading, editorIntro);
+  editorHeader.append(editorHeaderText);
+  const editorBody = document.createElement("div");
+  editorBody.className = "sequence-editor-inspector-body";
   const appBody = document.createElement("div");
   appBody.className = "sequence-editor-app-body";
 
@@ -412,18 +421,17 @@ function renderSequenceEditorWorkspace(previousState = null) {
   effectsPanel.append(effectsTitle, effectsBody);
 
   changeStatusShell.append(changePanel, baselineButton);
-  viewerPanel.append(changeStatusShell, viewerNavigation, viewerContainer, sourceDetails);
-  editorPanel.append(
-    editorHeading,
-    editorIntro,
+  viewerPanel.append(viewerHeader, toolbar, changeStatusShell, viewerNavigation, viewerContainer, sourceDetails);
+  editorBody.append(
     status,
     quickEditPanel,
     selectionPanel,
     effectsPanel,
     coordinatePanel
   );
+  editorPanel.append(editorHeader, editorBody);
   appBody.append(viewerPanel, editorPanel);
-  shell.append(viewerHeader, toolbar, appBody, contextMenu);
+  shell.append(appBody, contextMenu);
   elements.markdownWorkspace.append(shell);
 
   let prepared = null;
@@ -782,12 +790,14 @@ function renderSequenceEditorWorkspace(previousState = null) {
     const actionRow = document.createElement("div");
     actionRow.className = "sequence-editor-selection-actions";
     if (selectedItem.target) {
-      renderSelectionActionButton(
-        actionRow,
-        "Add as range anchor",
-        () => selection?.actions?.addRangeAnchor?.(selectedItem.target),
-        `Added ${selectedItem.label} as a range anchor.`
-      );
+      for (const choice of getRangeAnchorChoices(selectedItem.target)) {
+        renderSelectionActionButton(
+          actionRow,
+          choice.actionLabel,
+          () => selection?.actions?.addRangeAnchor?.(selectedItem.target, choice.endpoint),
+          `Added the ${choice.endpoint === "position" ? "selected coordinate" : `${choice.endpoint} of ${selectedItem.label}`} as a range anchor.`
+        );
+      }
       renderSelectionActionButton(
         actionRow,
         "Zoom to selection",

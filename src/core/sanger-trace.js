@@ -59,6 +59,10 @@ const SANGER_SVG_TEXT_STYLE = `<style>
 .sanger-svg .sanger-difference-gap{stroke:#475569;stroke-linecap:round;shape-rendering:geometricPrecision}
 </style>`;
 
+const WRAPPED_SANGER_QUALITY_GAP = 10;
+const WRAPPED_SANGER_QUALITY_HEIGHT = 42;
+const WRAPPED_SANGER_QUALITY_LABEL_GAP = 12;
+
 function sangerInspectionShadeSvg(x, y, width, height) {
   return `<rect class="sanger-inspection-shade" x="${Number(x).toFixed(2)}" y="${Number(y).toFixed(2)}" width="${Number(width).toFixed(2)}" height="${Number(height).toFixed(2)}" fill="#2563eb" fill-opacity="0" pointer-events="none" aria-hidden="true"/>`;
 }
@@ -2854,23 +2858,54 @@ function sangerCallInspectionText(call) {
   return `Base ${call.displayIndex}: ${call.base}${originalBase}; trace position ${call.tracePosition}; original trace position ${call.originalTracePosition}; ${quality}${edited}`;
 }
 
+export function calculateWrappedSangerQualityLayout({
+  plotBottom,
+  qualityMax,
+  lowQualityThreshold,
+  qualityGap = WRAPPED_SANGER_QUALITY_GAP,
+  qualityHeight = WRAPPED_SANGER_QUALITY_HEIGHT,
+  minimumLabelGap = WRAPPED_SANGER_QUALITY_LABEL_GAP
+}) {
+  const qualityTop = plotBottom + qualityGap;
+  const qualityBottom = qualityTop + qualityHeight;
+  const thresholdY = qualityBottom
+    - (lowQualityThreshold / Math.max(1, qualityMax)) * qualityHeight;
+  const maxLabelY = qualityTop + 6;
+  const zeroLabelY = qualityBottom - 5;
+  const thresholdLabelY = clampNumber(
+    thresholdY,
+    qualityTop + qualityHeight / 2,
+    maxLabelY + minimumLabelGap,
+    zeroLabelY - minimumLabelGap
+  );
+  return {
+    qualityTop,
+    qualityBottom,
+    qualityHeight,
+    qualityGap,
+    thresholdY,
+    maxLabelY,
+    thresholdLabelY,
+    zeroLabelY,
+    minimumLabelGap
+  };
+}
+
 function makeWrappedSangerTraceSvg(result, options = {}) {
   const view = result.view;
   const width = Math.max(860, Number.parseInt(options.width, 10) || 1180);
   const basesPerRow = Math.max(40, Math.min(110, Number.parseInt(options.basesPerRow, 10) || 80));
   const translationFrames = selectedSangerTranslationFrames(result.sequence, result.options);
   const translationHeight = translationFrames.length * SANGER_TRANSLATION_ROW_HEIGHT;
-  const rowHeight = 220 + translationHeight;
+  const rowHeight = 238 + translationHeight;
   const rowCount = Math.ceil(view.baseCalls.length / basesPerRow);
   const height = Math.max(440, 74 + rowCount * rowHeight + 20);
   const margin = { left: 70, right: 34 };
   const plotWidth = width - margin.left - margin.right;
   const plotHeight = 142;
-  const qualityHeight = 26;
   const rowLabelYWithinRow = 14;
   const baseLabelYWithinRow = 26;
   const plotTopWithinRow = 32 + translationHeight;
-  const qualityGap = 8;
   const qualityMax = qualityAxisMax(view.baseCalls, result.options.lowQualityThreshold);
   const rows = [];
 
@@ -2917,17 +2952,19 @@ function makeWrappedSangerTraceSvg(result, options = {}) {
       const x = xForPosition(call.tracePosition);
       return `<line x1="${x.toFixed(2)}" x2="${x.toFixed(2)}" y1="${plot.top + plot.height}" y2="${plot.top + plot.height + 4}" stroke="#cbd5e1" stroke-width="0.8"/>`;
     }).join("\n");
-    const qualityTop = plot.top + plot.height + qualityGap;
-    const qualityScale = qualityHeight / qualityMax;
-    const qualityBottom = qualityTop + qualityHeight;
-    const thresholdY = qualityBottom - result.options.lowQualityThreshold * qualityScale;
+    const qualityLayout = calculateWrappedSangerQualityLayout({
+      plotBottom: plot.top + plot.height,
+      qualityMax,
+      lowQualityThreshold: result.options.lowQualityThreshold
+    });
+    const qualityScale = qualityLayout.qualityHeight / qualityMax;
     const axisLabelX = plot.left - 8;
     const qualityBars = rowCalls.map((call) => {
       const x = xForPosition(call.tracePosition);
       const quality = Math.min(call.quality ?? 0, qualityMax);
       const barHeight = quality * qualityScale;
       const fill = quality < result.options.lowQualityThreshold ? "#f59e0b" : "#64748b";
-      return `<rect x="${(x - 1.8).toFixed(2)}" y="${(qualityTop + qualityHeight - barHeight).toFixed(2)}" width="3.6" height="${barHeight.toFixed(2)}" fill="${fill}" opacity="0.9"/>`;
+      return `<rect x="${(x - 1.8).toFixed(2)}" y="${(qualityLayout.qualityBottom - barHeight).toFixed(2)}" width="3.6" height="${barHeight.toFixed(2)}" fill="${fill}" opacity="0.9"/>`;
     }).join("\n");
     const inspectionTargets = rowCalls.map((call, callIndex) => {
       const x = xForPosition(call.tracePosition);
@@ -2936,7 +2973,7 @@ function makeWrappedSangerTraceSvg(result, options = {}) {
       const targetLeft = callIndex > 0 ? (previousX + x) / 2 : plot.left;
       const targetRight = callIndex < rowCalls.length - 1 ? (x + nextX) / 2 : plot.left + plot.width;
       const targetWidth = Math.max(2, targetRight - targetLeft);
-      const targetHeight = Math.max(1, qualityBottom - rowTop - 16);
+      const targetHeight = Math.max(1, qualityLayout.qualityBottom - rowTop - 16);
       return `<rect class="sanger-base-inspection-target" data-sanger-inspection-target="" data-sms3-inspection-highlight="fill" data-sanger-base="${call.displayIndex}" x="${targetLeft.toFixed(2)}" y="${rowTop + 16}" width="${targetWidth.toFixed(2)}" height="${targetHeight.toFixed(2)}" fill="transparent"><title>${escapeXml(sangerCallInspectionText(call))}</title></rect>${sangerInspectionShadeSvg(targetLeft, rowTop + 16, targetWidth, targetHeight)}`;
     }).join("\n");
     const translationTracks = makeSangerTranslationTracksSvg({
@@ -2960,17 +2997,17 @@ ${translationTracks}
 ${baseTicks}
 ${channelPaths}
 <text x="${plot.left - 12}" y="${plot.top + 4}" text-anchor="end" font-size="10" fill="#64748b">signal</text>
-<rect class="sanger-quality-strip" x="${plot.left}" y="${qualityTop}" width="${plot.width}" height="${qualityHeight}" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect class="sanger-quality-strip" x="${plot.left}" y="${qualityLayout.qualityTop}" width="${plot.width}" height="${qualityLayout.qualityHeight}" fill="#f8fafc" stroke="#e2e8f0"/>
 ${qualityBars}
-<line x1="${plot.left}" x2="${plot.left + plot.width}" y1="${thresholdY.toFixed(2)}" y2="${thresholdY.toFixed(2)}" stroke="#f59e0b" stroke-width="0.8" stroke-dasharray="4 4" opacity="0.7"/>
-<text x="${axisLabelX}" y="${qualityTop + 3}" text-anchor="end" font-size="7" fill="#64748b">Q${qualityMax}</text>
-<text x="${axisLabelX}" y="${thresholdY.toFixed(2)}" text-anchor="end" dominant-baseline="middle" font-size="7" fill="#b45309">Q${result.options.lowQualityThreshold}</text>
-<text x="${axisLabelX}" y="${qualityBottom - 1}" text-anchor="end" font-size="7" fill="#64748b">Q0</text>
+<line x1="${plot.left}" x2="${plot.left + plot.width}" y1="${qualityLayout.thresholdY.toFixed(2)}" y2="${qualityLayout.thresholdY.toFixed(2)}" stroke="#f59e0b" stroke-width="0.8" stroke-dasharray="4 4" opacity="0.7"/>
+<text x="${axisLabelX}" y="${qualityLayout.maxLabelY.toFixed(2)}" text-anchor="end" dominant-baseline="middle" font-size="8" fill="#64748b">Q${qualityMax}</text>
+<text x="${axisLabelX}" y="${qualityLayout.thresholdLabelY.toFixed(2)}" text-anchor="end" dominant-baseline="middle" font-size="8" fill="#b45309">Q${result.options.lowQualityThreshold}</text>
+<text x="${axisLabelX}" y="${qualityLayout.zeroLabelY.toFixed(2)}" text-anchor="end" dominant-baseline="middle" font-size="8" fill="#64748b">Q0</text>
 ${inspectionTargets}
 </g>`);
   }
 
-  return `<svg class="sanger-svg" xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(view.record)} wrapped Sanger trace" data-row-height="${rowHeight}" data-row-label-to-base-gap="${baseLabelYWithinRow - rowLabelYWithinRow}" data-base-label-to-plot-gap="${plotTopWithinRow - baseLabelYWithinRow}" data-quality-gap="${qualityGap}">
+  return `<svg class="sanger-svg" xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(view.record)} wrapped Sanger trace" data-row-height="${rowHeight}" data-row-label-to-base-gap="${baseLabelYWithinRow - rowLabelYWithinRow}" data-base-label-to-plot-gap="${plotTopWithinRow - baseLabelYWithinRow}" data-quality-gap="${WRAPPED_SANGER_QUALITY_GAP}" data-quality-height="${WRAPPED_SANGER_QUALITY_HEIGHT}" data-quality-label-gap="${WRAPPED_SANGER_QUALITY_LABEL_GAP}">
 ${SANGER_SVG_TEXT_STYLE}
 <rect width="${width}" height="${height}" fill="#ffffff"/>
 <text x="${margin.left}" y="28" font-size="18" font-weight="700" fill="#0f172a">${escapeXml(view.record)}</text>

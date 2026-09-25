@@ -120,7 +120,7 @@ export function runReverseTranslate(input, options = {}, context = {}) {
     : getCodonUsageReference(codonUsageReferences, options.referenceId ?? defaultReferenceId);
   const outputFormat = ["tsv", "report", "plot"].includes(options.outputFormat) ? options.outputFormat : "fasta";
   const lineWidth = options.lineWidth ?? 60;
-  const plotResiduesPerRow = Math.max(20, Math.min(160, Number.parseInt(options.plotResiduesPerRow, 10) || 60));
+  const plotResiduesPerRow = Math.max(20, Math.min(40, Number.parseInt(options.plotResiduesPerRow, 10) || 30));
   const plotMaxResidues = Math.max(10, Math.min(5000, Number.parseInt(options.plotMaxResidues, 10) || 1000));
   const warnings = [];
 

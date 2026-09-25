@@ -1,6 +1,11 @@
 import "../vendor/d3/d3.min.js";
 import { annotatePointCrowding, pointCrowdingFact } from "./point-plot-inspection.js";
 import { fitSideLegendLabel, sideLegendLayout } from "./plot-side-legend.js";
+import {
+  makePublicationPlotStyle,
+  publicationSvgAttributes,
+  SMS3_PLOT_THEME
+} from "./publication-plot-style.js";
 
 export const PLOT_FOUNDATION = {
   name: "Observable Plot",
@@ -18,14 +23,27 @@ export const PLOT_FOUNDATION = {
   }
 };
 
-const DEFAULT_COLORS = ["#0f766e", "#2563eb", "#a33a3a", "#7c3aed", "#64748b", "#d97706", "#0369a1", "#be123c"];
+const DEFAULT_COLORS = SMS3_PLOT_THEME.categorical;
 const FIGURE_TEXT_X = 28;
 const FIGURE_TEXT_PADDING = FIGURE_TEXT_X * 2;
-const FIGURE_TITLE_Y = 42;
-const FIGURE_SUBTITLE_FIRST_Y = 68;
-const FIGURE_TEXT_LINE_HEIGHT = 16;
-const FIGURE_HEADER_GAP = 36;
 export const HEATMAP_LEGEND_LABEL_GAP = 12;
+export const HEATMAP_LEGEND_GUTTER = 24;
+export const HEATMAP_LEGEND_BAR_WIDTH = 18;
+export const HEATMAP_CELL_GUTTER_PX = 1;
+
+export function heatmapLegendLayout({ matrixX, matrixY, matrixWidth, matrixHeight }) {
+  const safeHeight = Math.max(0, Number(matrixHeight) || 0);
+  const height = Math.min(
+    safeHeight,
+    Math.max(80, Math.min(180, safeHeight * 0.58))
+  );
+  return {
+    x: Number(matrixX) + Number(matrixWidth) + HEATMAP_LEGEND_GUTTER,
+    y: Number(matrixY) + (safeHeight - height) / 2,
+    width: HEATMAP_LEGEND_BAR_WIDTH,
+    height
+  };
+}
 
 export function renderHeatmapLegendRamp({ x, y, width, height, colorAt }) {
   const intervals = 64;
@@ -61,13 +79,14 @@ export function makePlaceholderSvg(title, lines, options = {}) {
   const width = options.width ?? 760;
   const safeLines = lines.map((line) => escapeXml(line));
   const height = 120 + safeLines.length * 20;
+  const style = makePublicationPlotStyle(width, height, options);
   return [
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="d3" data-plot-backend="d3" data-plot-renderer="sms3-d3">`,
+    `<svg xmlns="http://www.w3.org/2000/svg" ${publicationSvgAttributes(style)} viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="d3" data-plot-backend="d3" data-plot-renderer="sms3-d3" data-sms3-publication-theme="default">`,
     "<style>",
-    ".title{font:700 18px system-ui,sans-serif;fill:#263238}",
-    ".note{font:12px system-ui,sans-serif;fill:#5c6b75}",
+    `.title{font:600 ${style.titleFontSize}px ${style.fontFamily};fill:${SMS3_PLOT_THEME.text}}`,
+    `.note{font:${style.bodyFontSize}px ${style.fontFamily};fill:${SMS3_PLOT_THEME.textMuted}}`,
     "</style>",
-    `<rect x="0" y="0" width="${width}" height="${height}" fill="white"/>`,
+    `<rect x="0" y="0" width="${width}" height="${height}" fill="${SMS3_PLOT_THEME.surface}"/>`,
     `<text class="title" x="24" y="34">${escapeXml(title)}</text>`,
     ...safeLines.map((line, index) => `<text class="note" x="24" y="${66 + index * 20}">${line}</text>`),
     "</svg>"
@@ -86,6 +105,9 @@ export function makeLinePlotSpec({
   showLegend = true,
   pointMarkers = "auto",
   pointMarkerThreshold = 120,
+  publicationWidthMm,
+  showGridLines = false,
+  showTitle = true,
   bands = [],
   notes = []
 }) {
@@ -102,6 +124,9 @@ export function makeLinePlotSpec({
     showLegend,
     pointMarkers,
     pointMarkerThreshold,
+    publicationWidthMm,
+    showGridLines,
+    showTitle,
     bands: bands.map((item, index) => ({
       id: item.id ?? `band-${index + 1}`,
       label: item.label ?? item.id ?? `Band ${index + 1}`,
@@ -137,6 +162,9 @@ export function makeCategoricalBarPlotSpec({
   barWidthMode = "compact",
   barLayout = "grouped",
   barFillOpacity = 1,
+  publicationWidthMm,
+  showGridLines = false,
+  showTitle = true,
   notes = []
 }) {
   return {
@@ -154,6 +182,9 @@ export function makeCategoricalBarPlotSpec({
     barWidthMode,
     barLayout: barLayout === "stacked" ? "stacked" : "grouped",
     barFillOpacity,
+    publicationWidthMm,
+    showGridLines,
+    showTitle,
     categories: categories.map((item, index) => ({
       id: item.id ?? item.label ?? `category-${index + 1}`,
       label: item.label ?? item.id ?? `Category ${index + 1}`,
@@ -229,6 +260,8 @@ export function makeHeatmapPlotSpec({
   missingCells = [],
   width,
   height,
+  publicationWidthMm,
+  showTitle = true,
   notes = []
 }) {
   return {
@@ -243,6 +276,8 @@ export function makeHeatmapPlotSpec({
     colorScheme,
     width,
     height,
+    publicationWidthMm,
+    showTitle,
     xCategories: xCategories.map((item, index) => ({
       id: item.id ?? item.label ?? `x-${index + 1}`,
       label: item.label ?? item.id ?? `X ${index + 1}`
@@ -280,14 +315,20 @@ export function makeObservablePlotConfig(spec) {
     }));
     return {
       title: spec.title,
-      x: { label: spec.xLabel },
-      y: { label: spec.yLabel },
+      x: { label: spec.xLabel, padding: 0 },
+      y: { label: spec.yLabel, padding: 0 },
       color: { label: spec.valueLabel, domain: spec.valueDomain, legend: true },
       marks: [
         {
           type: "cell",
           data: rows,
-          options: { x: "x", y: "y", fill: "value", title: "title" }
+          options: {
+            x: "x",
+            y: "y",
+            fill: "value",
+            title: "title",
+            inset: HEATMAP_CELL_GUTTER_PX / 2
+          }
         }
       ]
     };
@@ -367,12 +408,13 @@ export function renderCategoricalBarPlotSvg(spec) {
   const d3 = getD3();
   const width = spec.width ?? 1120;
   const noteLines = (spec.notes ?? []).flatMap((note) => wrapText(note, figureWrapCharacters(width)));
-  const header = figureHeaderLayout(width, spec.subtitle);
+  const header = figureHeaderLayout(width, spec.subtitle, spec);
+  const style = header.style;
   const series = spec.series ?? [];
   const categories = spec.categories ?? [];
   const showLegend = spec.showLegend !== false;
   const legend = showLegend && series.length > 0
-    ? sideLegendLayout(width, series.map((item) => item.label), { left: 78 })
+    ? sideLegendLayout(width, series.map((item) => item.label), { left: 78, fontSize: style.bodyFontSize })
     : null;
   const splitCodonLabels = spec.xTickLabelMode !== "horizontal";
   const margin = {
@@ -382,6 +424,7 @@ export function renderCategoricalBarPlotSvg(spec) {
     left: 78
   };
   const height = Math.max(spec.height ?? 0, 520, margin.top + margin.bottom + Math.max(330, 24 + (legend ? series.length : 0) * 20) + Math.max(0, noteLines.length - 1) * 14);
+  style.heightMm = Number((style.widthMm * height / width).toFixed(3));
   const plotWidth = width - margin.left - margin.right;
   const plotHeight = height - margin.top - margin.bottom;
   const values = spec.bars.map((bar) => Number(bar.value)).filter((value) => Number.isFinite(value));
@@ -412,12 +455,12 @@ export function renderCategoricalBarPlotSvg(spec) {
     ? yScale.ticks(4)
     : [0, yMax * 0.25, yMax * 0.5, yMax * 0.75, yMax];
   const parts = [
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(spec.title)}" data-plot-foundation="observable-plot" data-plot-backend="d3" data-plot-renderer="sms3" data-sms3-plot-kind="categorical-bar-plot" data-sms3-plot-width-mode="${wideBars ? "histogram" : "compact"}" data-sms3-bar-layout="${stackedBars ? "stacked" : "grouped"}">`,
-    "<style>text{font-family:Inter,Arial,sans-serif;font-size:12px;fill:#172026}.title{font-size:18px;font-weight:700}.axis{stroke:#5c6b75;stroke-width:1}.grid{stroke:#dfe7ec;stroke-width:1}.bar{shape-rendering:crispEdges;stroke:none}.codon-bar{shape-rendering:geometricPrecision;stroke:none}.histogram-bar{shape-rendering:auto;stroke:#ffffff;stroke-width:1}.codon-label{font-family:Inter,Arial,sans-serif;font-size:9px;text-anchor:middle}.x-tick{font-size:11px;text-anchor:middle;fill:#334155}.aa-label{font-size:10px;text-anchor:middle;fill:#64748b}.legend-label{font-size:11px}.note{font-size:11px;fill:#64748b}</style>",
-    `<rect width="${width}" height="${height}" fill="#ffffff"></rect>`,
-    `<text class="title" x="${FIGURE_TEXT_X}" y="${FIGURE_TITLE_Y}">${escapeXml(spec.title)}</text>`,
+    `<svg xmlns="http://www.w3.org/2000/svg" ${publicationSvgAttributes(style)} viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(spec.title)}" data-plot-foundation="observable-plot" data-plot-backend="d3" data-plot-renderer="sms3" data-sms3-publication-theme="default" data-grid-lines="${spec.showGridLines === true ? "shown" : "hidden"}" data-sms3-plot-kind="categorical-bar-plot" data-sms3-plot-width-mode="${wideBars ? "histogram" : "compact"}" data-sms3-bar-layout="${stackedBars ? "stacked" : "grouped"}">`,
+    `<style>text{font-family:${style.fontFamily};font-size:${style.bodyFontSize}px;fill:${SMS3_PLOT_THEME.text};stroke:none;text-shadow:none;paint-order:normal}.title{font-size:${style.titleFontSize}px;font-weight:600}.axis,.axis-tick{stroke:${SMS3_PLOT_THEME.axis};stroke-width:${style.axisStrokeWidth}}.grid{stroke:${SMS3_PLOT_THEME.grid};stroke-width:${style.axisStrokeWidth}}.axis-label{font-size:${style.axisLabelFontSize}px}.bar{shape-rendering:crispEdges;stroke:none}.codon-bar{shape-rendering:geometricPrecision;stroke:none}.histogram-bar{shape-rendering:auto;stroke:${SMS3_PLOT_THEME.surface};stroke-width:1}.codon-label{font-family:${style.sequenceFontFamily};font-size:${style.smallFontSize}px;font-variant-ligatures:none;text-anchor:middle}.x-tick{font-size:${style.bodyFontSize}px;text-anchor:middle;fill:${SMS3_PLOT_THEME.axis}}.aa-label{font-family:${style.sequenceFontFamily};font-size:${style.smallFontSize}px;font-variant-ligatures:none;text-anchor:middle;fill:${SMS3_PLOT_THEME.textMuted}}.legend-label{font-size:${style.bodyFontSize}px}.note{font-size:${style.bodyFontSize}px;fill:${SMS3_PLOT_THEME.textMuted}}</style>`,
+    `<rect width="${width}" height="${height}" fill="${SMS3_PLOT_THEME.surface}"></rect>`,
+    ...(style.showTitle ? [`<text class="title" x="${FIGURE_TEXT_X}" y="${header.titleY}">${escapeXml(spec.title)}</text>`] : []),
     ...header.subtitleLines.map((line, index) =>
-      `<text class="note" x="${FIGURE_TEXT_X}" y="${FIGURE_SUBTITLE_FIRST_Y + index * FIGURE_TEXT_LINE_HEIGHT}" data-plot-subtitle="true">${escapeXml(line)}</text>`
+      `<text class="note" x="${FIGURE_TEXT_X}" y="${header.subtitleFirstY + index * header.textLineHeight}" data-plot-subtitle="true">${escapeXml(line)}</text>`
     )
   ];
 
@@ -425,7 +468,7 @@ export function renderCategoricalBarPlotSvg(spec) {
     parts.push(`<g aria-label="Legend">`);
     series.forEach((item, index) => {
       const y = margin.top + 12 + index * legend.rowHeight;
-      const label = fitSideLegendLabel(item.label, legend.labelWidth);
+      const label = fitSideLegendLabel(item.label, legend.labelWidth, style.bodyFontSize);
       parts.push(`<rect x="${legend.legendX}" y="${y - 8}" width="24" height="10" fill="${item.color}"></rect>`);
       parts.push(`<text class="legend-label" x="${legend.labelX}" y="${y + 1}">${escapeXml(label)}<title>${escapeXml(item.label)}</title></text>`);
     });
@@ -434,8 +477,9 @@ export function renderCategoricalBarPlotSvg(spec) {
 
   for (const tick of yTicks) {
     const y = scaleY(tick);
-    parts.push(`<line class="grid" x1="${margin.left}" y1="${y.toFixed(2)}" x2="${width - margin.right}" y2="${y.toFixed(2)}"></line>`);
-    parts.push(`<text x="${margin.left - 14}" y="${(y + 4).toFixed(2)}" text-anchor="end">${escapeXml(formatTick(tick))}</text>`);
+    if (spec.showGridLines === true) parts.push(`<line class="grid" x1="${margin.left}" y1="${y.toFixed(2)}" x2="${width - margin.right}" y2="${y.toFixed(2)}"></line>`);
+    parts.push(`<line class="axis-tick" x1="${margin.left}" y1="${y.toFixed(2)}" x2="${margin.left - style.tickLength}" y2="${y.toFixed(2)}"></line>`);
+    parts.push(`<text x="${margin.left - style.tickLength - 6}" y="${(y + style.bodyFontSize * 0.34).toFixed(2)}" text-anchor="end">${escapeXml(formatTick(tick))}</text>`);
   }
   parts.push(`<line class="axis" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}"></line>`);
   parts.push(`<line class="axis" x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}"></line>`);
@@ -443,6 +487,7 @@ export function renderCategoricalBarPlotSvg(spec) {
   categories.forEach((category, categoryIndex) => {
     const categoryLeft = margin.left + categoryIndex * categoryWidth;
     const center = categoryLeft + categoryWidth / 2;
+    parts.push(`<line class="axis-tick" x1="${center.toFixed(2)}" y1="${height - margin.bottom}" x2="${center.toFixed(2)}" y2="${height - margin.bottom + style.tickLength}"></line>`);
     let stackOffset = 0;
     series.forEach((item, seriesIndex) => {
       const bar = barsByKey.get(`${category.id}\t${item.id}`);
@@ -474,10 +519,10 @@ export function renderCategoricalBarPlotSvg(spec) {
   });
 
   for (const [index, note] of noteLines.entries()) {
-    parts.push(`<text x="${FIGURE_TEXT_X}" y="${height - 56 + index * 14}" style="font-size:11px;fill:#64748b">${escapeXml(note)}</text>`);
+    parts.push(`<text class="note" x="${FIGURE_TEXT_X}" y="${height - 56 + index * 14}">${escapeXml(note)}</text>`);
   }
-  parts.push(`<text x="${margin.left + plotWidth / 2}" y="${height - 18}" text-anchor="middle">${escapeXml(spec.xLabel)}</text>`);
-  parts.push(`<text transform="translate(18 ${margin.top + plotHeight / 2}) rotate(-90)" text-anchor="middle">${escapeXml(spec.yLabel)}</text>`);
+  parts.push(`<text class="axis-label" x="${margin.left + plotWidth / 2}" y="${height - 18}" text-anchor="middle">${escapeXml(spec.xLabel)}</text>`);
+  parts.push(`<text class="axis-label" transform="translate(18 ${margin.top + plotHeight / 2}) rotate(-90)" text-anchor="middle">${escapeXml(spec.yLabel)}</text>`);
   parts.push("</svg>");
   return parts.join("\n");
 }
@@ -519,13 +564,13 @@ function truncateLabel(label, maxLength = 42) {
   return text.length > maxLength ? `${text.slice(0, maxLength - 1)}...` : text;
 }
 
+function hexToRgb(value) {
+  const text = String(value ?? "").replace(/^#/u, "");
+  return [0, 2, 4].map((offset) => Number.parseInt(text.slice(offset, offset + 2), 16));
+}
+
 function interpolateLightViridis(t) {
-  return interpolateRgbStops([
-    [241, 245, 249],
-    [187, 219, 224],
-    [72, 187, 143],
-    [253, 231, 37]
-  ], t);
+  return interpolateRgbStops(SMS3_PLOT_THEME.heatmapScales.lightViridis.map(hexToRgb), t);
 }
 
 function interpolateRgbStops(stops, t) {
@@ -546,12 +591,12 @@ function interpolateColor(value, domain = [0, 100], colorScheme = "light-viridis
     return interpolateLightViridis(t);
   }
   if (colorScheme === "blue") {
-    return interpolateRgbStops([[239, 246, 255], [96, 165, 250], [29, 78, 216]], t);
+    return interpolateRgbStops(SMS3_PLOT_THEME.heatmapScales.blue.map(hexToRgb), t);
   }
   if (colorScheme === "red-blue") {
     const limit = Math.max(Math.abs(min), Math.abs(max), 1e-9);
     const centered = 0.5 + Math.max(-0.5, Math.min(0.5, Number(value) / (2 * limit)));
-    return interpolateRgbStops([[185, 28, 28], [248, 250, 252], [37, 99, 235]], centered);
+    return interpolateRgbStops(SMS3_PLOT_THEME.heatmapScales.redBlue.map(hexToRgb), centered);
   }
   const d3 = getD3();
   if (d3?.scaleSequential) {
@@ -569,10 +614,10 @@ function interpolateColor(value, domain = [0, 100], colorScheme = "light-viridis
     }
   }
   const stopsByScheme = {
-    blue: [[239, 246, 255], [96, 165, 250], [29, 78, 216]],
-    "light-viridis": [[241, 245, 249], [187, 219, 224], [72, 187, 143], [253, 231, 37]],
-    "red-blue": [[185, 28, 28], [248, 250, 252], [37, 99, 235]],
-    viridis: [[68, 1, 84], [49, 104, 142], [53, 183, 121], [253, 231, 37]]
+    blue: SMS3_PLOT_THEME.heatmapScales.blue.map(hexToRgb),
+    "light-viridis": SMS3_PLOT_THEME.heatmapScales.lightViridis.map(hexToRgb),
+    "red-blue": SMS3_PLOT_THEME.heatmapScales.redBlue.map(hexToRgb),
+    viridis: SMS3_PLOT_THEME.heatmapScales.viridis.map(hexToRgb)
   };
   const stops = stopsByScheme[colorScheme] ?? stopsByScheme.viridis;
   return interpolateRgbStops(stops, t);
@@ -583,13 +628,13 @@ export function renderHeatmapPlotSvg(spec) {
   const yCategories = spec.yCategories ?? [];
   const cellCount = xCategories.length * yCategories.length;
   if (cellCount === 0) {
-    return makePlaceholderSvg(spec.title ?? "Heatmap", ["No heatmap cells were available to draw."]);
+    return makePlaceholderSvg(spec.title ?? "Heatmap", ["No heatmap cells were available to draw."], spec);
   }
   if (cellCount > 900) {
     return makePlaceholderSvg(spec.title ?? "Heatmap", [
       `The heatmap has ${cellCount.toLocaleString()} cells.`,
       "Use the matrix table output for this many comparisons."
-    ]);
+    ], spec);
   }
 
   const renderedXLabels = xCategories.map((item) => truncateLabel(item.label, 24));
@@ -598,7 +643,7 @@ export function renderHeatmapPlotSvg(spec) {
   const maxYLabel = Math.max(...yCategories.map((item) => textWidthEstimate(item.label, 11)), 48);
   const cell = Math.max(22, Math.min(84, Math.floor(680 / Math.max(xCategories.length, yCategories.length))));
   const rawNotes = spec.notes ?? [];
-  const legendBarWidth = 16;
+  const legendBarWidth = HEATMAP_LEGEND_BAR_WIDTH;
   const legendLabelGap = HEATMAP_LEGEND_LABEL_GAP;
   const legendTitle = truncateLabel(spec.valueLabel, 18);
   const legendTickLabelWidth = Math.max(
@@ -609,7 +654,7 @@ export function renderHeatmapPlotSvg(spec) {
     legendBarWidth + legendLabelGap + legendTickLabelWidth,
     textWidthEstimate(legendTitle, 12)
   );
-  const legendGutter = 42;
+  const legendGutter = HEATMAP_LEGEND_GUTTER;
   const plotWidth = xCategories.length * cell;
   const plotHeight = yCategories.length * cell;
   const marginRight = Math.max(150, Math.ceil(legendGutter + legendBlockWidth + 18));
@@ -617,11 +662,12 @@ export function renderHeatmapPlotSvg(spec) {
   const contentWidth = Math.ceil(marginLeft + plotWidth + marginRight);
   const width = spec.width ?? Math.max(1040, contentWidth);
   const extraWidth = Math.max(0, width - contentWidth);
-  const header = figureHeaderLayout(width, spec.subtitle);
+  const header = figureHeaderLayout(width, spec.subtitle, spec);
+  const style = header.style;
   const hasSubtitle = header.subtitleLines.length > 0;
   const headerTop = hasSubtitle
     ? header.contentTop
-    : Math.max(FIGURE_TITLE_Y + 20, header.contentTop - 18);
+    : Math.max(header.titleY + 20, header.contentTop - 18);
   const xLabelBand = Math.min(
     hasSubtitle ? 78 : 60,
     maxXLabel * (hasSubtitle ? 0.5 : 0.4) + (hasSubtitle ? 18 : 8)
@@ -635,15 +681,16 @@ export function renderHeatmapPlotSvg(spec) {
   const noteLines = rawNotes.flatMap((note) => wrapText(note, figureWrapCharacters(width)));
   const plotBottom = margin.top + plotHeight;
   const height = spec.height ?? Math.ceil(plotBottom + margin.bottom + noteLines.length * 14);
+  style.heightMm = Number((style.widthMm * height / width).toFixed(3));
   const cellMap = new Map((spec.cells ?? []).map((item) => [`${item.x}\t${item.y}`, item]));
   const parts = [
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(spec.title)}" data-plot-foundation="observable-plot" data-plot-backend="d3" data-plot-renderer="sms3" data-sms3-plot-kind="heatmap">`,
-    "<style>[data-plot-renderer=\"sms3\"] text{font-family:Inter,Arial,sans-serif;font-size:11px;fill:#172026;stroke:none!important;stroke-width:0!important;text-shadow:none!important;paint-order:normal!important;font-weight:400}[data-plot-renderer=\"sms3\"] .title{font-size:18px;font-weight:700}[data-plot-renderer=\"sms3\"] .axis-label{font-size:12px;fill:#334155;font-weight:500}[data-plot-renderer=\"sms3\"] .tick{font-size:11px;fill:#334155;font-weight:500}[data-plot-renderer=\"sms3\"] .heatmap-cell{shape-rendering:crispEdges;stroke:#ffffff;stroke-width:1}[data-plot-renderer=\"sms3\"] .heatmap-cell-highlight-marker{fill:#0f766e;fill-opacity:.88}[data-plot-renderer=\"sms3\"] .value{font-size:10px;text-anchor:middle;dominant-baseline:central;fill:#111827;font-weight:500}[data-plot-renderer=\"sms3\"] .note{font-size:11px;fill:#64748b}</style>",
-    `<rect width="${width}" height="${height}" fill="#ffffff"></rect>`,
-    `<text class="title" x="${FIGURE_TEXT_X}" y="${FIGURE_TITLE_Y}">${escapeXml(spec.title)}</text>`
+    `<svg xmlns="http://www.w3.org/2000/svg" ${publicationSvgAttributes(style)} viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(spec.title)}" data-plot-foundation="observable-plot" data-plot-backend="d3" data-plot-renderer="sms3" data-sms3-publication-theme="default" data-sms3-plot-kind="heatmap" data-heatmap-cell-gutter-px="${HEATMAP_CELL_GUTTER_PX}">`,
+    `<style>[data-plot-renderer="sms3"] text{font-family:${style.fontFamily};font-size:${style.bodyFontSize}px;fill:${SMS3_PLOT_THEME.text};stroke:none!important;stroke-width:0!important;text-shadow:none!important;paint-order:normal!important;font-weight:400}[data-plot-renderer="sms3"] .title{font-size:${style.titleFontSize}px;font-weight:600}[data-plot-renderer="sms3"] .axis-label{font-size:${style.axisLabelFontSize}px;fill:${SMS3_PLOT_THEME.text};font-weight:400}[data-plot-renderer="sms3"] .tick{font-size:${style.bodyFontSize}px;fill:${SMS3_PLOT_THEME.axis};font-weight:400}[data-plot-renderer="sms3"] .heatmap-cell{shape-rendering:crispEdges;stroke:${SMS3_PLOT_THEME.surface};stroke-width:${HEATMAP_CELL_GUTTER_PX}}[data-plot-renderer="sms3"] .heatmap-cell-highlight-marker{fill:${SMS3_PLOT_THEME.highlight};fill-opacity:.88}[data-plot-renderer="sms3"] .value{font-size:${style.smallFontSize}px;text-anchor:middle;dominant-baseline:central;fill:${SMS3_PLOT_THEME.outline};font-weight:500}[data-plot-renderer="sms3"] .note{font-size:${style.bodyFontSize}px;fill:${SMS3_PLOT_THEME.textMuted}}</style>`,
+    `<rect width="${width}" height="${height}" fill="${SMS3_PLOT_THEME.surface}"></rect>`,
+    ...(style.showTitle ? [`<text class="title" x="${FIGURE_TEXT_X}" y="${header.titleY}">${escapeXml(spec.title)}</text>`] : [])
   ];
   header.subtitleLines.forEach((line, index) => {
-    parts.push(`<text class="note" x="${FIGURE_TEXT_X}" y="${FIGURE_SUBTITLE_FIRST_Y + index * FIGURE_TEXT_LINE_HEIGHT}" data-plot-subtitle="true">${escapeXml(line)}</text>`);
+    parts.push(`<text class="note" x="${FIGURE_TEXT_X}" y="${header.subtitleFirstY + index * header.textLineHeight}" data-plot-subtitle="true">${escapeXml(line)}</text>`);
   });
 
   xCategories.forEach((category, index) => {
@@ -655,12 +702,12 @@ export function renderHeatmapPlotSvg(spec) {
     parts.push(`<text class="tick" x="${(margin.left - 8).toFixed(2)}" y="${y.toFixed(2)}" text-anchor="end" dominant-baseline="middle">${escapeXml(renderedYLabels[index])}</text>`);
   });
 
-  parts.push(`<rect data-heatmap-matrix="true" x="${margin.left}" y="${margin.top}" width="${plotWidth}" height="${plotHeight}" fill="#f8fafc"></rect>`);
+  parts.push(`<rect data-heatmap-matrix="true" x="${margin.left}" y="${margin.top}" width="${plotWidth}" height="${plotHeight}" fill="${SMS3_PLOT_THEME.surfaceMuted}"></rect>`);
   yCategories.forEach((yCategory, yIndex) => {
     xCategories.forEach((xCategory, xIndex) => {
       const cellRecord = cellMap.get(`${xCategory.id}\t${yCategory.id}`);
       const value = Number(cellRecord?.value ?? NaN);
-      const fill = Number.isFinite(value) ? interpolateColor(value, spec.valueDomain, spec.colorScheme) : "#f1f5f9";
+      const fill = Number.isFinite(value) ? interpolateColor(value, spec.valueDomain, spec.colorScheme) : SMS3_PLOT_THEME.missing;
       const x = margin.left + xIndex * cell;
       const y = margin.top + yIndex * cell;
       const isHighlighted = cellRecord?.highlight === true;
@@ -683,9 +730,15 @@ export function renderHeatmapPlotSvg(spec) {
     });
   });
 
-  const legendX = margin.left + plotWidth + legendGutter;
-  const legendY = margin.top + 8;
-  const legendHeight = Math.max(80, Math.min(180, plotHeight));
+  const legendLayout = heatmapLegendLayout({
+    matrixX: margin.left,
+    matrixY: margin.top,
+    matrixWidth: plotWidth,
+    matrixHeight: plotHeight
+  });
+  const legendX = legendLayout.x;
+  const legendY = legendLayout.y;
+  const legendHeight = legendLayout.height;
   parts.push(renderHeatmapLegendRamp({
     x: legendX,
     y: legendY,
@@ -741,14 +794,23 @@ function figureWrapCharacters(width) {
   return Math.max(52, Math.floor((width - FIGURE_TEXT_PADDING) / 7));
 }
 
-function figureHeaderLayout(width, subtitle = "") {
+function figureHeaderLayout(width, subtitle = "", options = {}) {
+  const style = makePublicationPlotStyle(width, width, options);
+  const titleY = Math.max(34, style.titleFontSize + 22);
+  const subtitleFirstY = style.showTitle ? titleY + style.bodyFontSize + 12 : Math.max(28, style.bodyFontSize + 18);
+  const textLineHeight = Math.max(15, style.bodyFontSize * 1.35);
+  const headerGap = Math.max(32, style.axisLabelFontSize * 2.7);
   const subtitleLines = subtitle ? wrapText(subtitle, figureWrapCharacters(width)) : [];
   const lastTextY = subtitleLines.length > 0
-    ? FIGURE_SUBTITLE_FIRST_Y + (subtitleLines.length - 1) * FIGURE_TEXT_LINE_HEIGHT
-    : FIGURE_TITLE_Y;
+    ? subtitleFirstY + (subtitleLines.length - 1) * textLineHeight
+    : style.showTitle ? titleY : 0;
   return {
     subtitleLines,
-    contentTop: lastTextY + FIGURE_HEADER_GAP
+    contentTop: lastTextY + headerGap,
+    style,
+    titleY,
+    subtitleFirstY,
+    textLineHeight
   };
 }
 
@@ -760,14 +822,15 @@ export function renderLinePlotSvg(spec) {
   );
   const width = spec.width ?? 920;
   const noteLines = (spec.notes ?? []).flatMap((note) => wrapText(note, figureWrapCharacters(width)));
-  const header = figureHeaderLayout(width, spec.subtitle);
+  const header = figureHeaderLayout(width, spec.subtitle, spec);
+  const style = header.style;
   const showLegend = spec.showLegend !== false;
   const legendItems = [
     ...bands.map((band) => ({ ...band, kind: "band" })),
     ...series.map((item) => ({ ...item, kind: "line" }))
   ];
   const legend = showLegend && legendItems.length > 0
-    ? sideLegendLayout(width, legendItems.map((item) => item.label), { left: 86 })
+    ? sideLegendLayout(width, legendItems.map((item) => item.label), { left: 86, fontSize: style.bodyFontSize })
     : null;
   const margin = {
     top: header.contentTop,
@@ -776,6 +839,7 @@ export function renderLinePlotSvg(spec) {
     left: 86
   };
   const height = Math.max(spec.height ?? 0, 460, margin.top + margin.bottom + Math.max(280, 24 + (legend ? legendItems.length : 0) * 20) + Math.max(0, noteLines.length - 1) * 14);
+  style.heightMm = Number((style.widthMm * height / width).toFixed(3));
   const plotWidth = width - margin.left - margin.right;
   const plotHeight = height - margin.top - margin.bottom;
   const allPoints = [
@@ -828,12 +892,12 @@ export function renderLinePlotSvg(spec) {
           xMax
         ])].filter((tick) => tick >= xMin && tick <= xMax);
   const parts = [
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(spec.title)}" data-plot-foundation="observable-plot" data-plot-backend="d3" data-plot-renderer="sms3">`,
-    "<style>text{font-family:Inter,Arial,sans-serif;font-size:12px;fill:#172026}.title{font-size:18px;font-weight:700}.axis{stroke:#5c6b75;stroke-width:1}.grid{stroke:#dfe7ec;stroke-width:1}.zero{stroke:#172026;stroke-width:1.2}.line{fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}.band{stroke:none}.dot{stroke:none}.legend-label{font-size:11px}.note{font-size:11px;fill:#64748b}</style>",
-    `<rect width="${width}" height="${height}" fill="#ffffff"></rect>`,
-    `<text class="title" x="${FIGURE_TEXT_X}" y="${FIGURE_TITLE_Y}">${escapeXml(spec.title)}</text>`,
+    `<svg xmlns="http://www.w3.org/2000/svg" ${publicationSvgAttributes(style)} viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(spec.title)}" data-plot-foundation="observable-plot" data-plot-backend="d3" data-plot-renderer="sms3" data-sms3-publication-theme="default" data-grid-lines="${spec.showGridLines === true ? "shown" : "hidden"}">`,
+    `<style>text{font-family:${style.fontFamily};font-size:${style.bodyFontSize}px;fill:${SMS3_PLOT_THEME.text};stroke:none;text-shadow:none;paint-order:normal}.title{font-size:${style.titleFontSize}px;font-weight:600}.axis,.axis-tick{stroke:${SMS3_PLOT_THEME.axis};stroke-width:${style.axisStrokeWidth}}.axis-label{font-size:${style.axisLabelFontSize}px}.grid{stroke:${SMS3_PLOT_THEME.grid};stroke-width:${style.axisStrokeWidth}}.zero{stroke:${SMS3_PLOT_THEME.reference};stroke-width:${style.axisStrokeWidth}}.line{fill:none;stroke-width:${style.dataStrokeWidth};stroke-linecap:round;stroke-linejoin:round}.band{stroke:none}.dot{stroke:none}.legend-label{font-size:${style.bodyFontSize}px}.note{font-size:${style.bodyFontSize}px;fill:${SMS3_PLOT_THEME.textMuted}}</style>`,
+    `<rect width="${width}" height="${height}" fill="${SMS3_PLOT_THEME.surface}"></rect>`,
+    ...(style.showTitle ? [`<text class="title" x="${FIGURE_TEXT_X}" y="${header.titleY}">${escapeXml(spec.title)}</text>`] : []),
     ...header.subtitleLines.map((line, index) =>
-      `<text class="note" x="${FIGURE_TEXT_X}" y="${FIGURE_SUBTITLE_FIRST_Y + index * FIGURE_TEXT_LINE_HEIGHT}" data-plot-subtitle="true">${escapeXml(line)}</text>`
+      `<text class="note" x="${FIGURE_TEXT_X}" y="${header.subtitleFirstY + index * header.textLineHeight}" data-plot-subtitle="true">${escapeXml(line)}</text>`
     )
   ];
 
@@ -847,7 +911,7 @@ export function renderLinePlotSvg(spec) {
         const dash = item.strokeDasharray ? ` stroke-dasharray="${escapeXml(item.strokeDasharray)}"` : "";
         parts.push(`<line stroke="${item.color}" stroke-width="${item.strokeWidth ?? 3}"${dash} x1="${legend.legendX}" y1="${y}" x2="${legend.legendX + 26}" y2="${y}"></line>`);
       }
-      const label = fitSideLegendLabel(item.label, legend.labelWidth);
+      const label = fitSideLegendLabel(item.label, legend.labelWidth, style.bodyFontSize);
       parts.push(`<text class="legend-label" x="${legend.labelX}" y="${y + 4}">${escapeXml(label)}<title>${escapeXml(item.label)}</title></text>`);
     });
     parts.push(`</g>`);
@@ -855,14 +919,16 @@ export function renderLinePlotSvg(spec) {
 
   for (const tick of yTicks) {
     const y = scaleY(tick);
-    parts.push(`<line class="grid" x1="${margin.left}" y1="${y.toFixed(2)}" x2="${width - margin.right}" y2="${y.toFixed(2)}"></line>`);
-    parts.push(`<text x="${margin.left - 16}" y="${(y + 4).toFixed(2)}" text-anchor="end">${escapeXml(formatTick(tick))}</text>`);
+    if (spec.showGridLines === true) parts.push(`<line class="grid" x1="${margin.left}" y1="${y.toFixed(2)}" x2="${width - margin.right}" y2="${y.toFixed(2)}"></line>`);
+    parts.push(`<line class="axis-tick" x1="${margin.left}" y1="${y.toFixed(2)}" x2="${margin.left - style.tickLength}" y2="${y.toFixed(2)}"></line>`);
+    parts.push(`<text x="${margin.left - style.tickLength - 6}" y="${(y + style.bodyFontSize * 0.34).toFixed(2)}" text-anchor="end">${escapeXml(formatTick(tick))}</text>`);
   }
 
   for (const tick of xTicks) {
     const x = scaleX(tick);
-    parts.push(`<line class="grid" x1="${x.toFixed(2)}" y1="${margin.top}" x2="${x.toFixed(2)}" y2="${height - margin.bottom}"></line>`);
-    parts.push(`<text x="${x.toFixed(2)}" y="${height - margin.bottom + 18}" text-anchor="middle">${escapeXml(formatTick(tick))}</text>`);
+    if (spec.showGridLines === true) parts.push(`<line class="grid" x1="${x.toFixed(2)}" y1="${margin.top}" x2="${x.toFixed(2)}" y2="${height - margin.bottom}"></line>`);
+    parts.push(`<line class="axis-tick" x1="${x.toFixed(2)}" y1="${height - margin.bottom}" x2="${x.toFixed(2)}" y2="${height - margin.bottom + style.tickLength}"></line>`);
+    parts.push(`<text x="${x.toFixed(2)}" y="${height - margin.bottom + style.tickLength + style.bodyFontSize + 4}" text-anchor="middle">${escapeXml(formatTick(tick))}</text>`);
   }
 
   parts.push(`<line class="axis" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}"></line>`);
@@ -895,8 +961,8 @@ export function renderLinePlotSvg(spec) {
             .y((point) => scaleY(point.y))(pointRows)
         : "";
       parts.push(linePath
-        ? `<path class="line" stroke="${item.color}" stroke-width="${item.strokeWidth ?? 2.2}"${item.strokeDasharray ? ` stroke-dasharray="${escapeXml(item.strokeDasharray)}"` : ""} d="${linePath}"></path>`
-        : `<polyline class="line" stroke="${item.color}" stroke-width="${item.strokeWidth ?? 2.2}"${item.strokeDasharray ? ` stroke-dasharray="${escapeXml(item.strokeDasharray)}"` : ""} points="${points.join(" ")}"></polyline>`
+        ? `<path class="line" stroke="${item.color}" stroke-width="${item.strokeWidth ?? style.dataStrokeWidth}"${item.strokeDasharray ? ` stroke-dasharray="${escapeXml(item.strokeDasharray)}"` : ""} d="${linePath}"></path>`
+        : `<polyline class="line" stroke="${item.color}" stroke-width="${item.strokeWidth ?? style.dataStrokeWidth}"${item.strokeDasharray ? ` stroke-dasharray="${escapeXml(item.strokeDasharray)}"` : ""} points="${points.join(" ")}"></polyline>`
       );
     }
     const showPointMarkers = shouldShowPointMarkersForSeries(spec, item);
@@ -919,10 +985,10 @@ export function renderLinePlotSvg(spec) {
     parts.push(`<text x="${margin.left}" y="${margin.top + 28}">No plottable windows.</text>`);
   }
   for (const [index, note] of noteLines.entries()) {
-    parts.push(`<text x="${FIGURE_TEXT_X}" y="${height - 50 + index * 14}" style="font-size:11px;fill:#64748b">${escapeXml(note)}</text>`);
+    parts.push(`<text class="note" x="${FIGURE_TEXT_X}" y="${height - 50 + index * 14}">${escapeXml(note)}</text>`);
   }
-  parts.push(`<text x="${margin.left + plotWidth / 2}" y="${height - 18}" text-anchor="middle">${escapeXml(spec.xLabel)}</text>`);
-  parts.push(`<text transform="translate(18 ${margin.top + plotHeight / 2}) rotate(-90)" text-anchor="middle">${escapeXml(spec.yLabel)}</text>`);
+  parts.push(`<text class="axis-label" x="${margin.left + plotWidth / 2}" y="${height - 18}" text-anchor="middle">${escapeXml(spec.xLabel)}</text>`);
+  parts.push(`<text class="axis-label" transform="translate(18 ${margin.top + plotHeight / 2}) rotate(-90)" text-anchor="middle">${escapeXml(spec.yLabel)}</text>`);
   parts.push("</svg>");
   return parts.join("\n");
 }

@@ -1,6 +1,11 @@
 import "../vendor/d3/d3.min.js";
 import { getCodonsForCode } from "./genetic-code.js";
 import { escapeXml } from "./plot-renderer.js";
+import {
+  makePublicationPlotStyle,
+  publicationSvgAttributes,
+  PUBLICATION_SEQUENCE_FONT_FAMILY
+} from "./publication-plot-style.js";
 
 const DNA_IUPAC_BY_BASES = new Map([
   ["A", "A"],
@@ -282,9 +287,17 @@ function chunkRows(rows, size) {
   return chunks;
 }
 
+function nicePositionTickStep(columnCount) {
+  const requestedStep = Math.max(1, Math.ceil((Math.max(1, columnCount) - 1) / 8));
+  const magnitude = 10 ** Math.floor(Math.log10(requestedStep));
+  const normalized = requestedStep / magnitude;
+  const niceStep = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
+  return niceStep * magnitude;
+}
+
 export function renderReverseTranslateProbabilitySvg(records, options = {}) {
   const title = options.title ?? "Reverse translation codon base probability plot";
-  const residuesPerRow = clampInteger(options.residuesPerRow, 60, 20, 160);
+  const residuesPerRow = clampInteger(options.residuesPerRow, 30, 20, 40);
   const maxResidues = clampInteger(options.maxResidues, 1000, 10, 5000);
   const visibleRecords = (records ?? []).map((record) => {
     const sourceRows = record.rows ?? [];
@@ -318,8 +331,7 @@ export function renderReverseTranslateProbabilitySvg(records, options = {}) {
   const continuationTopGap = 56;
   const rowLabelGap = 36;
   const residueLabelGap = 12;
-  const showCodons = residueWidth >= 20;
-  const codonTextWidth = Math.min(16, Math.max(13, residueWidth - 4));
+  const showCodons = true;
   const probabilityScale = getD3()?.scaleLinear?.().domain([0, 1]).range([0, barHeight]);
   const left = 112;
   const right = 34;
@@ -352,13 +364,15 @@ export function renderReverseTranslateProbabilitySvg(records, options = {}) {
     });
   }
   const height = Math.max(260, cursorY + bottom);
+  const publicationStyle = makePublicationPlotStyle(width, height, options);
+  const positionTickStep = nicePositionTickStep(residuesPerRow);
   const methodLabel = options.mode === "degenerate"
     ? `Degenerate IUPAC codons; genetic code ${options.geneticCodeLabel ?? ""}`.trim()
     : `Most likely codons; ${options.referenceLabel ?? ""}`.trim();
   const parts = [
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="d3-reverse-translate-probability" data-plot-renderer="sms3-d3" data-sms3-inspection-highlight="none">`,
+    `<svg xmlns="http://www.w3.org/2000/svg" ${publicationSvgAttributes(publicationStyle)} viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="d3-reverse-translate-probability" data-plot-renderer="sms3-d3" data-sms3-publication-theme="default" data-grid-lines="hidden" data-sms3-inspection-highlight="none">`,
     "<style>",
-    ".title{font:700 19px system-ui,sans-serif;fill:#172026}.subtitle,.note{font:12px system-ui,sans-serif;fill:#526273}.record{font:700 13px system-ui,sans-serif;fill:#172026}.row-label{font:700 11px system-ui,sans-serif;fill:#334155}.axis{stroke:#8393a3;stroke-width:1}.grid{stroke:#e2e8f0;stroke-width:1}.tick{font:10px system-ui,sans-serif;fill:#64748b}.residue{font:700 11px ui-monospace,SFMono-Regular,Menlo,monospace;fill:#172026;text-anchor:middle}.codon{font:10px ui-monospace,SFMono-Regular,Menlo,monospace;fill:#475569;text-anchor:middle}.legend{font:12px system-ui,sans-serif;fill:#334155}.bar{stroke:none;shape-rendering:geometricPrecision}.bar-outline{fill:none;stroke:#334155;stroke-opacity:.22;stroke-width:.55;vector-effect:non-scaling-stroke;shape-rendering:geometricPrecision}.fixed{fill:#f8fafc;stroke:#cbd5e1}.omit{font:11px system-ui,sans-serif;fill:#7c2d12}",
+    `.title{font:600 ${publicationStyle.titleFontSize}px ${publicationStyle.fontFamily};fill:#172026}.subtitle,.note{font:${publicationStyle.smallFontSize}px ${publicationStyle.fontFamily};fill:#526273}.record{font:600 ${publicationStyle.bodyFontSize}px ${publicationStyle.fontFamily};fill:#172026}.row-label{font:600 ${publicationStyle.smallFontSize}px ${publicationStyle.fontFamily};fill:#334155}.axis,.axis-tick{stroke:#374151;stroke-width:${publicationStyle.axisStrokeWidth}}.tick{font:${publicationStyle.smallFontSize}px ${publicationStyle.fontFamily};fill:#475569}.residue{font:600 ${publicationStyle.bodyFontSize}px ${PUBLICATION_SEQUENCE_FONT_FAMILY};font-variant-ligatures:none;fill:#172026;text-anchor:middle}.codon{font:${publicationStyle.smallFontSize}px ${PUBLICATION_SEQUENCE_FONT_FAMILY};font-variant-ligatures:none;fill:#475569;text-anchor:middle}.legend{font:${publicationStyle.bodyFontSize}px ${publicationStyle.fontFamily};fill:#334155}.bar{stroke:none;shape-rendering:geometricPrecision}.bar-outline{fill:none;stroke:#334155;stroke-opacity:.22;stroke-width:.55;vector-effect:non-scaling-stroke;shape-rendering:geometricPrecision}.fixed{fill:#f8fafc;stroke:#cbd5e1}.omit{font:${publicationStyle.smallFontSize}px ${publicationStyle.fontFamily};fill:#7c2d12}`,
     "</style>",
     `<rect width="${width}" height="${height}" fill="#ffffff"></rect>`,
     `<text class="title" x="28" y="34">${escapeXml(title)}</text>`,
@@ -389,24 +403,28 @@ export function renderReverseTranslateProbabilitySvg(records, options = {}) {
 
     const plotWidth = Math.max(1, chunk.rows.length * residueWidth);
     parts.push(`<line class="axis" x1="${left}" x2="${left + plotWidth}" y1="${axisY}" y2="${axisY}"></line>`);
-    [0.25, 0.5, 0.75, 1].forEach((tick) => {
+    parts.push(`<line class="axis" x1="${left}" x2="${left}" y1="${barTop}" y2="${axisY}"></line>`);
+    [0, 0.5, 1].forEach((tick) => {
       const y = barTop + (1 - tick) * barHeight;
-      parts.push(`<line class="grid" x1="${left}" x2="${left + plotWidth}" y1="${y.toFixed(2)}" y2="${y.toFixed(2)}"></line>`);
+      parts.push(`<line class="axis-tick y-tick" x1="${left - 5}" x2="${left}" y1="${y.toFixed(2)}" y2="${y.toFixed(2)}"></line>`);
+      parts.push(`<text class="tick" x="${left - 9}" y="${(y + publicationStyle.smallFontSize * 0.34).toFixed(2)}" text-anchor="end">${tick === 1 ? "1.0" : tick}</text>`);
     });
-    parts.push(`<text class="tick" x="${left - 9}" y="${barTop + 4}" text-anchor="end">1.0</text>`);
-    parts.push(`<text class="tick" x="${left - 9}" y="${axisY + 4}" text-anchor="end">0</text>`);
 
     chunk.rows.forEach((row, rowIndex) => {
       const groupX = left + rowIndex * residueWidth;
       const centerX = groupX + residueWidth / 2;
-      if (rowIndex % Math.max(1, Math.ceil(chunk.rows.length / 16)) === 0) {
-        parts.push(`<text class="tick" x="${centerX.toFixed(2)}" y="${axisY + 18}" text-anchor="middle">${row.position}</text>`);
+      const showPositionTick = rowIndex === 0
+        || rowIndex === chunk.rows.length - 1
+        || row.position % positionTickStep === 0;
+      if (showPositionTick) {
+        parts.push(`<line class="axis-tick position-tick" data-position="${row.position}" x1="${centerX.toFixed(2)}" x2="${centerX.toFixed(2)}" y1="${axisY}" y2="${axisY + 4}"></line>`);
+        parts.push(`<text class="tick position-tick-label" data-position="${row.position}" x="${centerX.toFixed(2)}" y="${axisY + 18}" text-anchor="middle">${row.position}</text>`);
       }
       if (residueWidth >= 14 || rowIndex % 2 === 0) {
         parts.push(`<text class="residue" x="${centerX.toFixed(2)}" y="${barTop - residueLabelGap}">${escapeXml(row.residue)}</text>`);
       }
       if (showCodons) {
-        parts.push(`<text class="codon" x="${centerX.toFixed(2)}" y="${axisY + 34}" textLength="${codonTextWidth}" lengthAdjust="spacing">${escapeXml(row.codon)}</text>`);
+        parts.push(`<text class="codon" x="${centerX.toFixed(2)}" y="${axisY + 35}">${escapeXml(row.codon)}</text>`);
       }
 
       (row.base_probabilities ?? []).forEach((positionProbability, positionIndex) => {

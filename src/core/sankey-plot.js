@@ -1,8 +1,14 @@
 import "../vendor/d3/d3.min.js";
 import { escapeXml } from "./plot-renderer.js";
+import {
+  makePublicationPlotStyle,
+  publicationPlotCss,
+  publicationSvgAttributes,
+  SMS3_PLOT_THEME
+} from "./publication-plot-style.js";
 import { findColumn, parseDelimitedTable } from "./table.js";
 
-const COLORS = ["#2563eb", "#0f766e", "#a33a3a", "#7c3aed", "#d97706", "#0369a1", "#be123c", "#475569"];
+const COLORS = SMS3_PLOT_THEME.categorical;
 
 export const sankeyFlowColumns = [
   { id: "source", label: "Source", type: "string" },
@@ -319,6 +325,7 @@ export function makeSankeyPlot(input, options = {}) {
 export function renderSankeySvg(rows, warnings = [], options = {}) {
   const width = Number(options.width ?? 1040) || 1040;
   const height = Number(options.height ?? 640) || 640;
+  const style = makePublicationPlotStyle(width, height, options);
   const margin = { top: 104, right: 190, bottom: 50, left: 190 };
   const nodeWidth = 20;
   const nodeGap = 30;
@@ -417,12 +424,12 @@ export function renderSankeySvg(rows, warnings = [], options = {}) {
   const subtitle = rows.length === 0
     ? warnings[0] ?? "No positive flows to draw."
     : `${presentation.subtitle}; node labels show the larger of incoming or outgoing flow.`;
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="sms3-sankey-svg" data-plot-backend="d3" data-plot-renderer="sms3-d3">
+  return `<svg xmlns="http://www.w3.org/2000/svg" ${publicationSvgAttributes(style)} viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="sms3-sankey-svg" data-plot-backend="d3" data-plot-renderer="sms3-d3" data-sms3-publication-theme="default">
   <style>
-    text{font-family:Inter,Arial,sans-serif;fill:#0f172a}.title{font-size:22px;font-weight:700}.subtitle{font-size:12.5px;fill:#475569}.node-label{font-size:11.5px;font-weight:500;paint-order:stroke;stroke:#f8fafc;stroke-width:1.1px;stroke-opacity:.65;stroke-linejoin:round}.sankey-link{mix-blend-mode:multiply;stroke:none}.sankey-node{shape-rendering:geometricPrecision}
+    ${publicationPlotCss(style)}.subtitle{font-size:${style.bodyFontSize}px}.node-label{font-size:${style.bodyFontSize}px;font-weight:400}.sankey-link{mix-blend-mode:multiply;stroke:none}.sankey-node{shape-rendering:geometricPrecision}
   </style>
-  <rect width="${width}" height="${height}" fill="#ffffff"/>
-  <text x="28" y="34" class="title">${escapeXml(title)}</text>
+  <rect width="${width}" height="${height}" fill="${SMS3_PLOT_THEME.surface}"/>
+  ${style.showTitle ? `<text x="28" y="34" class="title">${escapeXml(title)}</text>` : ""}
   <text x="28" y="56" class="subtitle">${escapeXml(subtitle)}</text>
   <g>${flowElements}</g>
   <g>${nodeRects}</g>

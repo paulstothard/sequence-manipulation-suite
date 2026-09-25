@@ -1,5 +1,5 @@
 import { pcaLoadingColumns, pcaScoreColumns, pcaVarianceColumns } from "../../core/pca-plot.js";
-import { makeAxisLimitsGroup } from "../plot-axis-options.js";
+import { makeAxisLimitsGroup, makePublicationPlotGroup } from "../plot-axis-options.js";
 
 export const pcaPlotMetadata = {
   id: "pca-plot",
@@ -72,6 +72,7 @@ export const pcaPlotMetadata = {
       ]
     },
     makeAxisLimitsGroup({ x: true, y: true }),
+    makePublicationPlotGroup(),
     {
       type: "group",
       label: "Output format",

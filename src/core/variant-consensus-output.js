@@ -1,6 +1,12 @@
 import '../vendor/d3/d3.min.js';
 import { checkpoint } from './variant-consensus.js';
 import { makeDnaViewerData } from './dna-viewer-data.js';
+import {
+  makePublicationPlotStyle,
+  publicationPlotCss,
+  publicationSvgAttributes,
+  SMS3_PLOT_THEME
+} from './publication-plot-style.js';
 export const CONSENSUS_TABLE_CHARACTERS = 20_000_000;
 export const CONSENSUS_VIEWER_MAX_RECORDS = 12;
 // Count the shared TSV encoder's output before allocating a potentially huge export.
@@ -28,12 +34,12 @@ export const consensusAuditColumns=columns([['sample','Sample'],['sequence_id','
 export const consensusCoordinateColumns=columns([['sample','Sample'],['sequence_id','Sequence ID'],['chrom','Reference'],['path','Allele path'],['phase_set','Phase set'],['reference_start0','Reference start (0-based)','number'],['reference_end0','Reference end (exclusive)','number'],['output_start0','Output start (0-based)','number'],['output_end0','Output end (exclusive)','number'],['kind','Mapping'],['vcf_line','VCF line','number']]);
 const escape=text=>String(text).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
 const SITE_STYLES = {
-  applied: { color: '#0072b2', label: 'Applied ALT' },
-  ambiguous: { color: '#cc79a7', label: 'Ambiguous IUPAC' },
-  masked: { color: '#d55e00', label: 'Missing call: masked with N' },
-  'retained-reference': { color: '#b57c00', label: 'Missing call: reference kept' },
-  reference: { color: '#758595', label: 'Reference allele' },
-  skipped: { color: '#485464', label: 'Skipped call' }
+  applied: { color: SMS3_PLOT_THEME.categorical[0], label: 'Applied ALT' },
+  ambiguous: { color: SMS3_PLOT_THEME.categorical[3], label: 'Ambiguous IUPAC' },
+  masked: { color: SMS3_PLOT_THEME.direction.positive, label: 'Missing call: masked with N' },
+  'retained-reference': { color: SMS3_PLOT_THEME.significance, label: 'Missing call: reference kept' },
+  reference: { color: SMS3_PLOT_THEME.direction.neutral, label: 'Reference allele' },
+  skipped: { color: SMS3_PLOT_THEME.axis, label: 'Skipped call' }
 };
 const siteColor=status=>SITE_STYLES[status]?.color??SITE_STYLES.applied.color;
 function legendLabelWidth(label) {
@@ -130,30 +136,32 @@ export function renderConsensusMap(a) {
   const legend=Object.entries(SITE_STYLES).filter(([status])=>shownStatuses.has(status));
   const legendRows=Math.max(1,Math.ceil(legend.length/3));
   const height=150+a.outputs.length*105+(legendRows-1)*25;
-  const p=[`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 ${height}" role="img" aria-label="Variant consensus map" data-plot-foundation="d3"><rect width="100%" height="100%" fill="white"/><g font-family="Arial,sans-serif" fill="#172b3a"><text x="30" y="32" font-size="21" font-weight="bold">Variant consensus map</text><text x="30" y="58" font-size="13">Reference positions (1-based); marks show calls, not output sequence spacing.</text>`];
+  const width=960;
+  const publicationStyle=makePublicationPlotStyle(width,height);
+  const p=[`<svg xmlns="http://www.w3.org/2000/svg" ${publicationSvgAttributes(publicationStyle)} viewBox="0 0 ${width} ${height}" role="img" aria-label="Variant consensus map" data-plot-foundation="d3" data-plot-renderer="sms3-d3" data-sms3-publication-theme="variant-map" data-grid-lines="hidden"><style>${publicationPlotCss(publicationStyle)}.variant-consensus-row-label{font-size:${publicationStyle.bodyFontSize}px;font-weight:600}.variant-consensus-reference-axis{stroke:${SMS3_PLOT_THEME.axis};stroke-width:${publicationStyle.dataStrokeWidth}}.variant-consensus-legend-title{font-size:${publicationStyle.bodyFontSize}px;font-weight:600;fill:${SMS3_PLOT_THEME.textMuted}}</style><rect width="100%" height="100%" fill="${SMS3_PLOT_THEME.surface}"/><g><text class="title" x="30" y="32">Variant consensus map</text><text class="note" x="30" y="58">Reference positions (1-based); marks show calls, not output sequence spacing.</text>`];
   for(const [i,o] of a.outputs.entries()) {
     const y=100+i*105, x=globalThis.d3.scaleLinear().domain([o.start,o.end===o.start?o.end+1:o.end]).range([40,910]);
     const label=consensusDisplayLabel(a.sample,o);
     const clipped=[...label].length>60;
     const displayLabel=clipped?[...label].slice(0,57).join('')+'…':label;
-    p.push(`<text class="variant-consensus-row-label" x="30" y="${y}" font-size="14" aria-label="${escape(label)}" data-sms3-inspection-highlight="none">${clipped?`<title>${escape(label)}</title>`:''}${escape(displayLabel)}</text><line x1="40" x2="910" y1="${y+26}" y2="${y+26}" stroke="#718096" stroke-width="3"/>`);
-    for(const tick of x.ticks(6).filter(t=>Number.isInteger(t)&&t<=o.end)) p.push(`<text x="${x(tick)}" y="${y+55}" font-size="11" text-anchor="middle">${tick}</text>`);
+    p.push(`<text class="variant-consensus-row-label" x="30" y="${y}" aria-label="${escape(label)}" data-sms3-inspection-highlight="none">${clipped?`<title>${escape(label)}</title>`:''}${escape(displayLabel)}</text><line class="variant-consensus-reference-axis" x1="40" x2="910" y1="${y+26}" y2="${y+26}"/>`);
+    for(const tick of x.ticks(6).filter(t=>Number.isInteger(t)&&t<=o.end)) p.push(`<line class="axis-tick" x1="${x(tick)}" x2="${x(tick)}" y1="${y+26}" y2="${y+26+publicationStyle.tickLength}"/><text class="tick" x="${x(tick)}" y="${y+47+publicationStyle.tickLength}" text-anchor="middle">${tick}</text>`);
     for(const r of rowsByOutput[i]) {
       const status=SITE_STYLES[r.status]??SITE_STYLES.applied;
-      p.push(`<circle data-sms3-nearest-point="true" cx="${x(Math.max(o.start,r.pos))}" cy="${y+26}" r="5" fill="${status.color}" stroke="white"><title>${escape(`${r.chrom}:${r.pos} ${r.ref}→${r.alt}; genotype ${r.gt}; ${status.label}${r.reason?'; '+r.reason:''}`)}</title></circle>`);
+      p.push(`<circle data-sms3-nearest-point="true" cx="${x(Math.max(o.start,r.pos))}" cy="${y+26}" r="5" fill="${status.color}" stroke="${SMS3_PLOT_THEME.surface}" stroke-width="${publicationStyle.axisStrokeWidth}"><title>${escape(`${r.chrom}:${r.pos} ${r.ref}→${r.alt}; genotype ${r.gt}; ${status.label}${r.reason?'; '+r.reason:''}`)}</title></circle>`);
     }
   }
   const legendTitleY=height-(legendRows===1?70:95);
   if(!legend.length) {
-    p.push(`<text x="30" y="${legendTitleY+27}" font-size="12" fill="#526171">No variant calls in this region</text></g></svg>`);
+    p.push(`<text class="note" x="30" y="${legendTitleY+27}">No variant calls in this region</text></g></svg>`);
     return p.join('');
   }
-  p.push(`<g class="variant-consensus-legend" aria-label="Call status"><text x="30" y="${legendTitleY}" font-size="12" font-weight="bold" fill="#526171">Call status</text>`);
+  p.push(`<g class="variant-consensus-legend" aria-label="Call status"><text class="variant-consensus-legend-title" x="30" y="${legendTitleY}">Call status</text>`);
   let legendX=30;
   for(const [index,[status,style]] of legend.entries()) {
     if(index%3===0) legendX=30;
     const x=legendX, y=legendTitleY+27+Math.floor(index/3)*28;
-    p.push(`<rect class="variant-consensus-legend-swatch" data-status="${status}" x="${x}" y="${y-10}" width="12" height="12" rx="2" fill="${style.color}"/><text x="${x+20}" y="${y}" font-size="12">${escape(style.label)}</text>`);
+    p.push(`<rect class="variant-consensus-legend-swatch" data-status="${status}" x="${x}" y="${y-10}" width="12" height="12" rx="2" fill="${style.color}"/><text class="legend" x="${x+20}" y="${y}">${escape(style.label)}</text>`);
     legendX+=20+Math.ceil(legendLabelWidth(style.label))+14;
   }
   p.push('</g></g></svg>');return p.join('');

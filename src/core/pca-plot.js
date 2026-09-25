@@ -1,4 +1,5 @@
 import { axisRenderOptions, renderScatterSvg, stratifiedRowsForSvg } from "./plot-tools.js";
+import { makePlotAxisLabel } from "./publication-plot-style.js";
 import { isNumericStatisticsColumn, parseStatisticsNumber } from "./statistics-utils.js";
 import { findColumn, parseColumnList, parseDelimitedTable } from "./table.js";
 
@@ -255,8 +256,8 @@ export function makePcaPlot(input, options = {}) {
     report: makePcaReport({ columns, rows: scoreRows, varianceRows, warnings, scaleColumns }),
     svg: renderScatterSvg(svgRows, {
       title: options.title || "PCA plot",
-      xLabel: `PC1 (${pc1Percent}%)`,
-      yLabel: `PC2 (${pc2Percent}%)`,
+      xLabel: makePlotAxisLabel(`PC1 (${pc1Percent}%)`, options.xAxisLabel, options.xAxisUnit),
+      yLabel: makePlotAxisLabel(`PC2 (${pc2Percent}%)`, options.yAxisLabel, options.yAxisUnit),
       showLegend: groupColumn !== null,
       totalPointCount: scoreRows.length,
       sampleMethod: "group-stratified",

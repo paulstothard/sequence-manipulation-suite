@@ -1,4 +1,5 @@
 import { listOverlapColumns, VENN_DIAGRAM_MAX_LISTS } from "../../core/list-overlap.js";
+import { makePublicationPlotGroup } from "../plot-axis-options.js";
 
 export const vennDiagramMetadata = {
   id: "venn-diagram",
@@ -45,6 +46,7 @@ export const vennDiagramMetadata = {
         { id: "ignoreCommentLines", type: "checkbox", label: "Ignore comment lines starting with #", defaultValue: true }
       ]
     },
+    makePublicationPlotGroup({ x: false, y: false, grid: false }),
     {
       type: "group",
       label: "Output format",

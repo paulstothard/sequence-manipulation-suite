@@ -18,6 +18,7 @@ import {
   createViewerSearchControls,
   getViewerFeatureTypeStyle,
   getViewerHitTargets,
+  getSelectionTranslation,
   getViewerTrackItems,
   getViewerTargetClientPosition,
   getVisibleViewerTracks,
@@ -25,6 +26,7 @@ import {
   hasHiddenViewerItemTypes,
   hitTestRegions,
   makeTooltipText,
+  makeRangeAnchor,
   makeViewerItemTargetDetails,
   makeTargetKey,
   makeViewerFeatureSuggestions,
@@ -1449,15 +1451,6 @@ function copyViewerText(text) {
   return navigator.clipboard.writeText(String(text));
 }
 
-function makeRangeAnchor(target) {
-  const position = Number(target.position ?? target.start);
-  if (!Number.isFinite(position) || position < 1) return null;
-  return {
-    position: Math.round(position),
-    label: target.label || target.enzyme || target.base || target.codon || target.kind
-  };
-}
-
 function getRangeState(state, record) {
   const anchors = state.rangeAnchors || [];
   if (anchors.length < 2) return { anchors, ready: false };
@@ -1966,7 +1959,7 @@ function installViewer(panel, record, options = {}) {
       recordIndex: options.recordIndex ?? 0,
       viewer: "linear",
       actions: {
-        addRangeAnchor: (selected = target) => selectionActions().addRangeAnchor(selected),
+        addRangeAnchor: (selected = target, endpoint = "start") => selectionActions().addRangeAnchor(selected, endpoint),
         clearRange: () => {
           state.rangeAnchors = [];
           renderCurrentRange();
@@ -2038,14 +2031,24 @@ function installViewer(panel, record, options = {}) {
   function selectionActions() {
     return {
       clearSelection: () => selectTarget(null),
-      addRangeAnchor: (selected) => {
-        const anchor = makeRangeAnchor(selected);
+      addRangeAnchor: (selected, endpoint = "start") => {
+        const anchor = makeRangeAnchor(selected, endpoint);
         if (!anchor) return;
         state.rangeAnchors = [...state.rangeAnchors, anchor].slice(-2);
         renderCurrentRange();
       },
       copyText: copyViewerText,
       copySequence: (selected) => copyViewerText(getLinearSequence(record, selected)),
+      canCopyTranslation: (selected, translation = getSelectionTranslation(selected)) =>
+        !proteinViewer && Boolean(translation || getLinearSequence(record, selected).length >= 3),
+      copyTranslation: (selected) => {
+        const translation = getSelectionTranslation(selected) || translateRange(
+          getLinearSequence(record, selected),
+          "+1",
+          getViewerGeneticCode(record, state)
+        );
+        return copyViewerText(translation);
+      },
       zoomToTarget: (selected) => zoomToTargetAnimated(selected),
       canZoomToMate: (selected) => Boolean(findMateTarget(selected)),
       zoomToMate: (selected) => {

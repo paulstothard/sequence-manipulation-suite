@@ -1240,6 +1240,7 @@ export function createReferencePageController({
     const topic =
       referenceTopics.find((item) => item.id === state.selectedReference) ?? referenceTopics[0];
     state.showcaseRenderToken = null;
+    elements.selectedReferenceBody._sms3ShowcaseCleanup?.();
     for (const preview of elements.selectedReferenceBody.querySelectorAll(".showcase-preview")) {
       preview._sms3InspectionCleanup?.();
       preview._sms3VisualCleanup?.();

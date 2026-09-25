@@ -1,5 +1,5 @@
 import { qqPlotColumns } from "../../core/plot-tools.js";
-import { makeAxisLimitsGroup } from "../plot-axis-options.js";
+import { makeAxisLimitsGroup, makePublicationPlotGroup } from "../plot-axis-options.js";
 
 export const qqPlotMetadata = {
   id: "qq-plot",
@@ -45,6 +45,7 @@ export const qqPlotMetadata = {
       ]
     },
     makeAxisLimitsGroup({ x: true, y: true }),
+    makePublicationPlotGroup(),
     {
       type: "group",
       label: "Output format",

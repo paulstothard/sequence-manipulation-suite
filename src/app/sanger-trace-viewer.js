@@ -123,6 +123,16 @@ export function calculateSangerTraceCanvasLayout({ showForwardTranslations = fal
   };
 }
 
+export function calculateSangerSelectedBaseMarker(x, baselineY) {
+  return {
+    left: x - 6.5,
+    top: baselineY - 9,
+    width: 13,
+    height: 18,
+    radius: 3
+  };
+}
+
 function makeButton(label, title = label) {
   const button = document.createElement("button");
   button.type = "button";
@@ -645,25 +655,28 @@ function drawTrace(canvas, state) {
       context.fillRect(x - 6, plot.baseLabelY - 15, 12, plot.height + plot.top - plot.baseLabelY + 20);
     }
     if (isSelected) {
+      const marker = calculateSangerSelectedBaseMarker(x, plot.baseLabelY);
       context.save();
       context.fillStyle = theme.selectedFill;
       context.strokeStyle = theme.selectedStroke;
-      context.lineWidth = 1.5;
+      context.lineWidth = 1.25;
       context.shadowColor = theme.selectedStroke;
-      context.shadowBlur = theme.dark ? 4 : 3;
+      context.shadowBlur = theme.dark ? 2 : 1.5;
       context.beginPath();
       if (typeof context.roundRect === "function") {
-        context.roundRect(x - 8, plot.baseLabelY - 11, 16, 22, 4);
+        context.roundRect(marker.left, marker.top, marker.width, marker.height, marker.radius);
       } else {
-        context.moveTo(x - 4, plot.baseLabelY - 11);
-        context.lineTo(x + 4, plot.baseLabelY - 11);
-        context.quadraticCurveTo(x + 8, plot.baseLabelY - 11, x + 8, plot.baseLabelY - 7);
-        context.lineTo(x + 8, plot.baseLabelY + 7);
-        context.quadraticCurveTo(x + 8, plot.baseLabelY + 11, x + 4, plot.baseLabelY + 11);
-        context.lineTo(x - 4, plot.baseLabelY + 11);
-        context.quadraticCurveTo(x - 8, plot.baseLabelY + 11, x - 8, plot.baseLabelY + 7);
-        context.lineTo(x - 8, plot.baseLabelY - 7);
-        context.quadraticCurveTo(x - 8, plot.baseLabelY - 11, x - 4, plot.baseLabelY - 11);
+        const right = marker.left + marker.width;
+        const bottom = marker.top + marker.height;
+        context.moveTo(marker.left + marker.radius, marker.top);
+        context.lineTo(right - marker.radius, marker.top);
+        context.quadraticCurveTo(right, marker.top, right, marker.top + marker.radius);
+        context.lineTo(right, bottom - marker.radius);
+        context.quadraticCurveTo(right, bottom, right - marker.radius, bottom);
+        context.lineTo(marker.left + marker.radius, bottom);
+        context.quadraticCurveTo(marker.left, bottom, marker.left, bottom - marker.radius);
+        context.lineTo(marker.left, marker.top + marker.radius);
+        context.quadraticCurveTo(marker.left, marker.top, marker.left + marker.radius, marker.top);
         context.closePath();
       }
       context.fill();

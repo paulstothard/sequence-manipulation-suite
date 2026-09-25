@@ -1,22 +1,46 @@
 import { formatFastaRecord, parseSequenceInput } from "../../core/fasta.js";
 import { getGeneticCode, getStartCodons, getStopCodons, makeCodonMap } from "../../core/genetic-code.js";
 import { makeDnaViewerData, makeDnaViewerStream } from "../../core/dna-viewer-data.js";
+import { featureArrowHeadLength } from "../../core/directional-feature-geometry.js";
 import { cleanDnaRnaSequence, complementDnaRnaSequence } from "../../core/sequence.js";
 import { makeTableStream, makeTextStream, makeToolResult } from "../../core/workflow.js";
 
 export const LARGE_TEXT_ORF_THRESHOLD = 2000;
 export const SVG_OVERVIEW_ORF_THRESHOLD = 1500;
 export const SVG_OVERVIEW_BASE_THRESHOLD = 500000;
+export const SVG_OVERVIEW_HEIGHT_THRESHOLD = 2400;
 const ORF_OVERVIEW_PLOT_ATTRIBUTE = `data-sms3-plot="orf-overview" data-plot-renderer="sms3-orf-overview"`;
+const ORF_CHEVRON_SPACING = 24;
+const ORF_LABEL_CHEVRON_GAP = 7;
+const ORF_OVERVIEW_WIDTH = 980;
+const ORF_OVERVIEW_LEFT = 90;
+const ORF_OVERVIEW_RIGHT = 64;
+const ORF_OVERVIEW_ROW_HEIGHT = 18;
+const ORF_OVERVIEW_BAND_PADDING = 3;
+const ORF_OVERVIEW_FRAME_GAP = 3;
+const ORF_OVERVIEW_RECORD_GAP = 38;
+const ORF_OVERVIEW_TITLE_HEIGHT = 30;
+const ORF_OVERVIEW_FRAMES = ["+1", "+2", "+3", "-1", "-2", "-3"];
 const ORF_OVERVIEW_STYLE = [
   `[data-sms3-plot="orf-overview"] text{font-family:Inter,Arial,sans-serif;font-size:12px;fill:#172026;stroke:none;text-shadow:none;paint-order:normal}`,
+  `[data-sms3-plot="orf-overview"] .orf-overview-title{font-size:16px;font-weight:750}`,
+  `[data-sms3-plot="orf-overview"] .orf-overview-subtitle{font-size:10px;fill:#64748b}`,
+  `[data-sms3-plot="orf-overview"] .orf-overview-record-title{font-size:13px;font-weight:650}`,
+  `[data-sms3-plot="orf-overview"] .orf-overview-frame-label{font-size:11px;font-weight:700;fill:#334155}`,
+  `[data-sms3-plot="orf-overview"] .orf-overview-frame-band{fill:#f8fafc;stroke:#e2e8f0;stroke-width:.8}`,
   `[data-sms3-plot="orf-overview"] .orf-overview-axis{stroke:#475569;stroke-width:1.4}`,
   `[data-sms3-plot="orf-overview"] .orf-overview-axis-tick{stroke:#475569;stroke-width:1}`,
   `[data-sms3-plot="orf-overview"] .orf-overview-axis-minor-tick{stroke:#94a3b8;stroke-width:.75}`,
   `[data-sms3-plot="orf-overview"] .orf-overview-axis-label{font-size:11px;fill:#475569;stroke:none;text-shadow:none;paint-order:normal}`,
-  `[data-sms3-plot="orf-overview"] .complete{fill:#0f766e}`,
-  `[data-sms3-plot="orf-overview"] .partial{fill:#b7791f}`,
-  `[data-sms3-plot="orf-overview"] .orf-overview-lane{stroke:#eef2f5;stroke-width:8;stroke-linecap:round}`
+  `[data-sms3-plot="orf-overview"] .orf-overview-lane{stroke:#dbe4ea;stroke-width:2;stroke-linecap:round}`,
+  `[data-sms3-plot="orf-overview"] .orf-overview-mark{stroke-width:1.1;stroke-linejoin:round}`,
+  `[data-sms3-plot="orf-overview"] .orf-overview-mark.complete{fill:#0f766e;stroke:#115e59}`,
+  `[data-sms3-plot="orf-overview"] .orf-overview-mark.partial{fill:#b45309;stroke:#92400e}`,
+  `[data-sms3-plot="orf-overview"] .orf-overview-mark.is-tiny{stroke-width:1.4}`,
+  `[data-sms3-plot="orf-overview"] .orf-overview-chevron{fill:none;stroke:#fff;stroke-width:1.25;stroke-linecap:round;stroke-linejoin:round;stroke-opacity:.6;pointer-events:none}`,
+  `[data-sms3-plot="orf-overview"] .orf-overview-mark-label{fill:#fff;font-size:9px;font-weight:600;text-anchor:middle;dominant-baseline:middle;pointer-events:none}`,
+  `[data-sms3-plot="orf-overview"] .orf-overview-legend text{font-size:10px;fill:#475569}`,
+  `[data-sms3-plot="orf-overview"] .orf-overview-legend-note{font-size:10px;fill:#64748b}`
 ].join("");
 
 const FORWARD_FRAMES = [
@@ -626,55 +650,263 @@ function appendOverviewRuler(parts, { y, left, rightX, plotWidth, sequenceLength
   }
 }
 
-function makeSvgOverview(records) {
-  const width = 980;
-  const left = 90;
-  const right = 64;
-  const laneHeight = 26;
-  const recordGap = 36;
-  const titleHeight = 28;
-  const plotWidth = width - left - right;
-  const frames = ["+1", "+2", "+3", "-1", "-2", "-3"];
-  let y = 24;
-  const parts = [
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} 1" role="img" aria-label="ORF overview" ${ORF_OVERVIEW_PLOT_ATTRIBUTE}>`,
-    `<style>${ORF_OVERVIEW_STYLE}</style>`
-  ];
+export function packOrfOverviewMarks(marks, gap = 3) {
+  const laneEnds = [];
+  const packed = [...marks]
+    .sort((left, right) => left.x1 - right.x1 || right.x2 - left.x2 || left.index - right.index)
+    .map((mark) => {
+      let lane = laneEnds.findIndex((laneEnd) => mark.x1 > laneEnd + gap);
+      if (lane === -1) lane = laneEnds.length;
+      laneEnds[lane] = Math.max(laneEnds[lane] ?? Number.NEGATIVE_INFINITY, mark.x2);
+      return { ...mark, lane };
+    });
+  return { marks: packed, laneCount: Math.max(1, laneEnds.length) };
+}
 
-  for (const record of records) {
+function minimumWidthInterval(x1, x2, left, right, minimumWidth = 7) {
+  const naturalWidth = Math.max(0, x2 - x1);
+  if (naturalWidth >= minimumWidth) return { x1, x2, naturalWidth, minimumWidthApplied: false };
+  const center = (x1 + x2) / 2;
+  const drawX1 = Math.max(left, Math.min(right - minimumWidth, center - minimumWidth / 2));
+  return {
+    x1: drawX1,
+    x2: drawX1 + minimumWidth,
+    naturalWidth,
+    minimumWidthApplied: true
+  };
+}
+
+export function makeOrfOverviewLayout(records) {
+  const plotWidth = ORF_OVERVIEW_WIDTH - ORF_OVERVIEW_LEFT - ORF_OVERVIEW_RIGHT;
+  let y = 24 + 60;
+  let maxFrameLaneCount = 1;
+  const recordLayouts = records.map((record) => {
     const sequenceLength = Math.max(1, record.sequence.length, ...record.orfs.map((orf) => orf.end));
-    parts.push(`<text x="16" y="${y}">${escapeXml(record.title)} (${record.orfs.length} ORFs)</text>`);
-    y += titleHeight;
+    const titleY = y;
+    y += ORF_OVERVIEW_TITLE_HEIGHT;
+    const frameLayouts = ORF_OVERVIEW_FRAMES.map((frame) => {
+      const frameMarks = record.orfs.map((orf, index) => ({ orf, index }))
+        .filter(({ orf }) => orf.frame === frame)
+        .map(({ orf, index }) => {
+          const naturalX1 = intervalStartToX(orf.start, sequenceLength, ORF_OVERVIEW_LEFT, plotWidth);
+          const naturalX2 = intervalEndToX(orf.end, sequenceLength, ORF_OVERVIEW_LEFT, plotWidth);
+          const interval = minimumWidthInterval(
+            naturalX1,
+            naturalX2,
+            ORF_OVERVIEW_LEFT,
+            ORF_OVERVIEW_WIDTH - ORF_OVERVIEW_RIGHT
+          );
+          return { ...interval, orf, index };
+        });
+      const packed = packOrfOverviewMarks(frameMarks);
+      maxFrameLaneCount = Math.max(maxFrameLaneCount, packed.laneCount);
+      const frameHeight = ORF_OVERVIEW_BAND_PADDING * 2
+        + packed.laneCount * ORF_OVERVIEW_ROW_HEIGHT;
+      const frameLayout = {
+        frame,
+        y,
+        frameHeight,
+        frameCenter: y + frameHeight / 2,
+        packed
+      };
+      y += frameHeight + ORF_OVERVIEW_FRAME_GAP;
+      if (frame === "+3") y += 5;
+      return frameLayout;
+    });
+    const rulerY = y + 5;
+    y += ORF_OVERVIEW_RECORD_GAP + 5;
+    return { record, sequenceLength, titleY, frameLayouts, rulerY };
+  });
+  return {
+    width: ORF_OVERVIEW_WIDTH,
+    left: ORF_OVERVIEW_LEFT,
+    right: ORF_OVERVIEW_RIGHT,
+    plotWidth,
+    height: Math.max(120, y),
+    maxFrameLaneCount,
+    records: recordLayouts
+  };
+}
 
-    for (const frame of frames) {
-      const laneY = y + laneHeight / 2;
-      parts.push(`<text x="24" y="${laneY + 4}">${frame}</text>`);
-      parts.push(`<line class="orf-overview-lane" x1="${left}" y1="${laneY}" x2="${width - right}" y2="${laneY}"></line>`);
+function orfArrowPath(x1, x2, y, strand, height = 12) {
+  const half = height / 2;
+  const width = Math.max(1, x2 - x1);
+  const head = featureArrowHeadLength(width, height, strand);
+  if (!(head > 0)) {
+    const radius = Math.min(2.5, half, width / 2);
+    return {
+      d: [
+        `M${(x1 + radius).toFixed(2)} ${(y - half).toFixed(2)}`,
+        `H${(x2 - radius).toFixed(2)}`,
+        `Q${x2.toFixed(2)} ${(y - half).toFixed(2)} ${x2.toFixed(2)} ${(y - half + radius).toFixed(2)}`,
+        `V${(y + half - radius).toFixed(2)}`,
+        `Q${x2.toFixed(2)} ${(y + half).toFixed(2)} ${(x2 - radius).toFixed(2)} ${(y + half).toFixed(2)}`,
+        `H${(x1 + radius).toFixed(2)}`,
+        `Q${x1.toFixed(2)} ${(y + half).toFixed(2)} ${x1.toFixed(2)} ${(y + half - radius).toFixed(2)}`,
+        `V${(y - half + radius).toFixed(2)}`,
+        `Q${x1.toFixed(2)} ${(y - half).toFixed(2)} ${(x1 + radius).toFixed(2)} ${(y - half).toFixed(2)}`,
+        "Z"
+      ].join(" "),
+      bodyStart: x1,
+      bodyEnd: x2,
+      hasArrowhead: false
+    };
+  }
+  if (strand === "-") {
+    return {
+      d: `M${x2.toFixed(2)} ${(y - half).toFixed(2)} H${(x1 + head).toFixed(2)} L${x1.toFixed(2)} ${y.toFixed(2)} L${(x1 + head).toFixed(2)} ${(y + half).toFixed(2)} H${x2.toFixed(2)} Z`,
+      bodyStart: x1 + head,
+      bodyEnd: x2,
+      hasArrowhead: true
+    };
+  }
+  return {
+    d: `M${x1.toFixed(2)} ${(y - half).toFixed(2)} H${(x2 - head).toFixed(2)} L${x2.toFixed(2)} ${y.toFixed(2)} L${(x2 - head).toFixed(2)} ${(y + half).toFixed(2)} H${x1.toFixed(2)} Z`,
+    bodyStart: x1,
+    bodyEnd: x2 - head,
+    hasArrowhead: true
+  };
+}
 
-      for (const orf of record.orfs.filter((item) => item.frame === frame)) {
-        const x = intervalStartToX(orf.start, sequenceLength, left, plotWidth);
-        const x2 = intervalEndToX(orf.end, sequenceLength, left, plotWidth);
-        const rectWidth = Math.max(2, x2 - x);
-        const className = orf.complete ? "complete" : "partial";
-        parts.push(
-          `<rect class="${className}" x="${x.toFixed(2)}" y="${laneY - 6}" width="${rectWidth.toFixed(2)}" height="12" rx="2"><title>${escapeXml(`${record.title} ${orf.frame} ${orf.start}-${orf.end} ${orf.aaLength} aa ${orf.complete ? "complete" : "partial"}`)}</title></rect>`
-        );
+function orfChevronPath(bodyStart, bodyEnd, y, strand, exclusion = null) {
+  const available = bodyEnd - bodyStart;
+  if (available < 24) return "";
+  const chevronBounds = strand === "-" ? { min: -1, max: 3 } : { min: -3, max: 1 };
+  const edgeInset = 7;
+  const centers = [];
+  if (exclusion) {
+    const leftStart = exclusion.x1 - ORF_LABEL_CHEVRON_GAP - chevronBounds.max;
+    const rightStart = exclusion.x2 + ORF_LABEL_CHEVRON_GAP - chevronBounds.min;
+    for (let x = leftStart; x + chevronBounds.min >= bodyStart + edgeInset; x -= ORF_CHEVRON_SPACING) centers.push(x);
+    centers.reverse();
+    for (let x = rightStart; x + chevronBounds.max <= bodyEnd - edgeInset; x += ORF_CHEVRON_SPACING) centers.push(x);
+  } else {
+    for (let x = bodyStart + 10; x <= bodyEnd - edgeInset; x += ORF_CHEVRON_SPACING) centers.push(x);
+  }
+  const parts = [];
+  for (const x of centers) {
+    if (strand === "-") {
+      parts.push(`M${(x + 3).toFixed(2)} ${(y - 3.5).toFixed(2)} L${(x - 1).toFixed(2)} ${y.toFixed(2)} L${(x + 3).toFixed(2)} ${(y + 3.5).toFixed(2)}`);
+    } else {
+      parts.push(`M${(x - 3).toFixed(2)} ${(y - 3.5).toFixed(2)} L${(x + 1).toFixed(2)} ${y.toFixed(2)} L${(x - 3).toFixed(2)} ${(y + 3.5).toFixed(2)}`);
+    }
+  }
+  if (parts.length < 2) return "";
+  return parts.join(" ");
+}
+
+function sequenceEndpointFacts(label, sequence, flankLength) {
+  const value = String(sequence ?? "").replace(/\s+/g, "");
+  if (!value) return [];
+  if (value.length <= flankLength * 2) return [`${label}: ${value}`];
+  return [
+    `${label} start: ${value.slice(0, flankLength)}`,
+    `${label} end: ${value.slice(-flankLength)}`
+  ];
+}
+
+function makeOrfOverviewInspection(record, orf, index, geneticCode, minimumWidthApplied) {
+  return [
+    `ORF ${index + 1}: ${record.title}`,
+    `frame: ${orf.frame}`,
+    `coordinates: ${orf.start.toLocaleString()}–${orf.end.toLocaleString()}`,
+    `strand: ${orf.strand}`,
+    `status: ${orf.complete ? "complete" : "partial; no terminal stop"}`,
+    `length: ${orf.ntLength.toLocaleString()} bp / ${orf.aaLength.toLocaleString()} aa`,
+    `start codon: ${orf.startCodon || "none"}`,
+    `stop codon: ${orf.stopCodon || "none"}`,
+    `genetic code: NCBI table ${geneticCode}`,
+    ...sequenceEndpointFacts("coding DNA", orf.nucleotide, 9),
+    ...sequenceEndpointFacts("protein", orf.protein, 7),
+    ...(minimumWidthApplied ? ["displayed with a minimum-width marker"] : [])
+  ].join("; ");
+}
+
+function appendOrfOverviewLegend(parts) {
+  const complete = orfArrowPath(590, 626, 59, "+", 10);
+  const partial = orfArrowPath(690, 726, 59, "+", 10);
+  parts.push(
+    `<g class="orf-overview-legend" aria-label="ORF status legend">`,
+    `<path class="orf-overview-mark complete" d="${complete.d}"></path>`,
+    `<text x="632" y="63">Complete</text>`,
+    `<path class="orf-overview-mark partial" d="${partial.d}"></path>`,
+    `<text x="732" y="63">Partial</text>`,
+    `<text class="orf-overview-legend-note" x="812" y="63">chevrons: 5′→3′</text>`,
+    `</g>`
+  );
+}
+
+function makeSvgOverview(records, options = {}, suppliedLayout = null) {
+  const layout = suppliedLayout ?? makeOrfOverviewLayout(records);
+  const { width, left, right, plotWidth } = layout;
+  const geneticCode = String(options.geneticCode ?? "1");
+  const parts = [
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${layout.height}" role="img" aria-label="ORF overview using NCBI translation table ${escapeXml(geneticCode)}" style="color-scheme:light;background:#ffffff" data-overview-height="${layout.height}" data-max-frame-lanes="${layout.maxFrameLaneCount}" ${ORF_OVERVIEW_PLOT_ATTRIBUTE}>`,
+    `<style>${ORF_OVERVIEW_STYLE}</style>`,
+    `<rect class="orf-overview-background" width="100%" height="100%" fill="#ffffff"></rect>`
+  ];
+  parts.push(
+    `<text class="orf-overview-title" x="16" y="24">ORF overview</text>`,
+    `<text class="orf-overview-subtitle" x="16" y="42">NCBI translation table ${escapeXml(geneticCode)} · hover or use arrow keys for sequence endpoints</text>`
+  );
+  appendOrfOverviewLegend(parts);
+
+  for (const recordLayout of layout.records) {
+    const { record, sequenceLength } = recordLayout;
+    const orfCountLabel = `${record.orfs.length} ORF${record.orfs.length === 1 ? "" : "s"}`;
+    parts.push(`<text class="orf-overview-record-title" x="16" y="${recordLayout.titleY}">${escapeXml(record.title)} (${orfCountLabel})</text>`);
+
+    for (const frameLayout of recordLayout.frameLayouts) {
+      const { frame, y, frameHeight, frameCenter, packed } = frameLayout;
+      parts.push(`<rect class="orf-overview-frame-band" x="${left - 5}" y="${y}" width="${plotWidth + 10}" height="${frameHeight}" rx="5"></rect>`);
+      parts.push(`<text class="orf-overview-frame-label" x="24" y="${frameCenter + 4}">${frame}</text>`);
+      for (let lane = 0; lane < packed.laneCount; lane += 1) {
+        const laneY = y + ORF_OVERVIEW_BAND_PADDING
+          + lane * ORF_OVERVIEW_ROW_HEIGHT
+          + ORF_OVERVIEW_ROW_HEIGHT / 2;
+        parts.push(`<line class="orf-overview-lane" x1="${left}" y1="${laneY}" x2="${width - right}" y2="${laneY}"></line>`);
       }
 
-      y += laneHeight;
+      for (const mark of packed.marks) {
+        const laneY = y + ORF_OVERVIEW_BAND_PADDING
+          + mark.lane * ORF_OVERVIEW_ROW_HEIGHT
+          + ORF_OVERVIEW_ROW_HEIGHT / 2;
+        const arrow = orfArrowPath(mark.x1, mark.x2, laneY, mark.orf.strand);
+        const width = mark.x2 - mark.x1;
+        const markLabel = `ORF ${mark.index + 1} · ${mark.orf.aaLength} aa`;
+        const estimatedLabelWidth = Math.max(50, markLabel.length * 5.1);
+        const showLabel = width >= estimatedLabelWidth + 28;
+        const labelCenter = (mark.x1 + mark.x2) / 2;
+        const labelExclusion = showLabel
+          ? { x1: labelCenter - estimatedLabelWidth / 2 - 6, x2: labelCenter + estimatedLabelWidth / 2 + 6 }
+          : null;
+        const chevrons = arrow.hasArrowhead
+          ? orfChevronPath(arrow.bodyStart, arrow.bodyEnd, laneY, mark.orf.strand, labelExclusion)
+          : "";
+        const className = mark.orf.complete ? "complete" : "partial";
+        const directionClass = mark.orf.strand === "-" ? "reverse" : "forward";
+        const tinyClass = mark.minimumWidthApplied ? " is-tiny" : "";
+        const inspection = makeOrfOverviewInspection(record, mark.orf, mark.index, geneticCode, mark.minimumWidthApplied);
+        parts.push(
+          `<path class="orf-overview-mark ${className} ${directionClass}${tinyClass}" data-record="${escapeXml(record.title)}" data-orf="${mark.index + 1}" data-frame="${escapeXml(frame)}" data-overview-lane="${mark.lane}" data-direction-shape="${arrow.hasArrowhead ? "arrow" : "bar"}" data-start="${mark.orf.start}" data-end="${mark.orf.end}" d="${arrow.d}"><title>${escapeXml(inspection)}</title></path>`
+        );
+        if (chevrons) parts.push(`<path class="orf-overview-chevron" data-record="${escapeXml(record.title)}" data-orf="${mark.index + 1}" d="${chevrons}"></path>`);
+        if (showLabel) {
+          parts.push(`<text class="orf-overview-mark-label" data-record="${escapeXml(record.title)}" data-orf="${mark.index + 1}" x="${labelCenter.toFixed(2)}" y="${laneY.toFixed(2)}">${escapeXml(markLabel)}</text>`);
+        }
+      }
+
     }
 
     appendOverviewRuler(parts, {
-      y,
+      y: recordLayout.rulerY,
       left,
       rightX: width - right,
       plotWidth,
       sequenceLength
     });
-    y += recordGap;
   }
 
-  parts[0] = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${Math.max(120, y)}" role="img" aria-label="ORF overview" ${ORF_OVERVIEW_PLOT_ATTRIBUTE}>`;
   parts.push("</svg>");
   return parts.join("\n");
 }
@@ -788,6 +1020,9 @@ function makeOrfViewerData(records, options = {}) {
               color: orf.complete ? "#0f766e" : "#b7791f",
               strand: orf.strand,
               frame: orf.frame,
+              translation: orf.protein,
+              translationSource: "ORF Finder",
+              translationTable: String(options.geneticCode ?? "1"),
               slot: FRAME_SLOT.get(orf.frame) ?? 0
             }))
           }
@@ -815,21 +1050,31 @@ function makeOrfFinderResult({ analyzedRecords, warnings, recordsProcessed, base
   const proteinFastaOutput = outputFormat === "protein-fasta"
     ? makeProteinFasta(analyzedRecords, options.includeStopInProtein === true)
     : "";
-  const shouldDrawSvg = outputFormat === "svg-overview" &&
-    totalOrfs <= SVG_OVERVIEW_ORF_THRESHOLD &&
+  const withinOverviewSizeLimits = totalOrfs <= SVG_OVERVIEW_ORF_THRESHOLD &&
     basesProcessed <= SVG_OVERVIEW_BASE_THRESHOLD;
+  const overviewLayout = outputFormat === "svg-overview" && withinOverviewSizeLimits
+    ? makeOrfOverviewLayout(analyzedRecords)
+    : null;
+  const overviewLayoutTooTall = overviewLayout?.height > SVG_OVERVIEW_HEIGHT_THRESHOLD;
+  const shouldDrawSvg = outputFormat === "svg-overview" &&
+    withinOverviewSizeLimits &&
+    !overviewLayoutTooTall;
   let svgOverviewOutput = "";
   const viewer = isInteractiveViewerFormat(outputFormat) ? makeOrfViewerData(analyzedRecords, options) : null;
   if (shouldDrawSvg) {
-    svgOverviewOutput = makeSvgOverview(analyzedRecords);
+    svgOverviewOutput = makeSvgOverview(analyzedRecords, options, overviewLayout);
   } else if (outputFormat === "svg-overview") {
-    warnings.push(
-      `The ORF overview plot was not drawn because this run has ${totalOrfs} ORFs across ${basesProcessed} bases. Use table output or stricter ORF filters for dense analyses.`
-    );
+    const layoutDetail = overviewLayoutTooTall
+      ? ` The densest reading frame needs ${overviewLayout.maxFrameLaneCount.toLocaleString()} non-overlapping display lanes, which would make the plot ${overviewLayout.height.toLocaleString()} px tall.`
+      : "";
+    warnings.push(`The ORF overview plot was not drawn because this run has ${totalOrfs} ORFs across ${basesProcessed} bases.${layoutDetail} Use table output, first-start nested ORFs, or stricter ORF filters for dense analyses.`);
     svgOverviewOutput = makePlaceholderSvg("ORF overview not drawn", [
       `${totalOrfs} ORFs across ${basesProcessed} bases.`,
-      "The graphical overview is suppressed for dense outputs to keep the browser responsive.",
-      "Use the ORF table or raise the minimum amino acid length for a drawable overview."
+      ...(overviewLayoutTooTall
+        ? [`The densest reading frame needs ${overviewLayout.maxFrameLaneCount.toLocaleString()} lanes; the full plot would be ${overviewLayout.height.toLocaleString()} px tall.`]
+        : []),
+      "The graphical overview is suppressed for dense outputs to keep the figure usable.",
+      "Use the ORF table, first start codon per stop region, or raise the minimum amino acid length."
     ]);
   }
   const output = outputFormat === "tsv"

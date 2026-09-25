@@ -283,6 +283,10 @@ export function makeViewerItemTargetDetails(item = {}) {
     sample: item.sample,
     status: item.status,
     note: item.note,
+    translation: item.translation,
+    translationSource: item.translationSource,
+    translationTable: item.translationTable,
+    codonStart: item.codonStart,
     details: normalizeViewerDetailRows(item.details)
   };
 }
@@ -789,10 +793,26 @@ export function renderSelectionPanel(panel, target, actions = {}) {
 
   const buttons = document.createElement("div");
   buttons.className = "dna-viewer-selection-actions";
-  addAction(buttons, target.position ? "Add as range anchor" : "Add start as range anchor", () => actions.addRangeAnchor?.(target), canUseAsRangeAnchor(target));
+  for (const choice of getRangeAnchorChoices(target)) {
+    addAction(
+      buttons,
+      choice.actionLabel,
+      () => actions.addRangeAnchor?.(target, choice.endpoint),
+      true
+    );
+  }
   addAction(buttons, "Copy coordinates", () => actions.copyText?.(formatCoordinates(target)), Boolean(target.position || target.start || target.end));
   addAction(buttons, "Copy sequence", () => actions.copySequence?.(target), Boolean(target.start || target.end || target.position));
-  addAction(buttons, "Copy translation", () => actions.copyText?.(target.aminoAcid || ""), Boolean(target.aminoAcid));
+  const translation = getSelectionTranslation(target);
+  const canCopyTranslation = actions.canCopyTranslation
+    ? actions.canCopyTranslation(target, translation)
+    : Boolean(translation);
+  addAction(
+    buttons,
+    "Copy translation",
+    () => actions.copyTranslation?.(target) ?? actions.copyText?.(translation),
+    canCopyTranslation
+  );
   addAction(buttons, "Zoom to selection", () => actions.zoomToTarget?.(target), Boolean(target.start || target.end || target.position));
   addAction(buttons, "Zoom to mate", () => actions.zoomToMate?.(target), actions.canZoomToMate?.(target) ?? Boolean(target.matePresentInViewer));
   if (target.kind === "restriction-site" && target.enzyme) {
@@ -802,9 +822,47 @@ export function renderSelectionPanel(panel, target, actions = {}) {
   panel.append(heading, rows, buttons);
 }
 
-export function canUseAsRangeAnchor(target) {
-  const position = Number(target?.position ?? target?.start);
-  return Number.isFinite(position) && position > 0;
+export function getSelectionTranslation(target) {
+  if (!target || target.alphabet === "protein") return "";
+  const translation = String(target.translation ?? "").replace(/\s+/g, "");
+  if (translation) return translation;
+  return String(target.aminoAcid ?? "").replace(/\s+/g, "");
+}
+
+function positiveCoordinate(value) {
+  const coordinate = Number(value);
+  return Number.isFinite(coordinate) && coordinate > 0 ? coordinate : null;
+}
+
+export function getRangeAnchorChoices(target) {
+  const start = positiveCoordinate(target?.start);
+  const end = positiveCoordinate(target?.end);
+  if (start !== null && end !== null && start !== end) {
+    return [
+      { endpoint: "start", position: start, actionLabel: "Add start as range anchor" },
+      { endpoint: "end", position: end, actionLabel: "Add end as range anchor" }
+    ];
+  }
+
+  const position = positiveCoordinate(target?.position) ?? start ?? end;
+  return position === null
+    ? []
+    : [{ endpoint: "position", position, actionLabel: "Add as range anchor" }];
+}
+
+export function makeRangeAnchor(target, endpoint = "start") {
+  const choices = getRangeAnchorChoices(target);
+  const choice = choices.find((candidate) => candidate.endpoint === endpoint) ?? choices[0];
+  if (!choice) return null;
+  const itemLabel = target?.label || target?.enzyme || target?.base || target?.codon || target?.kind;
+  return {
+    position: Math.round(choice.position),
+    label: choices.length > 1 && itemLabel ? `${itemLabel} ${choice.endpoint}` : itemLabel
+  };
+}
+
+export function canUseAsRangeAnchor(target, endpoint = "start") {
+  return Boolean(makeRangeAnchor(target, endpoint));
 }
 
 export function formatCoordinates(target) {
@@ -966,6 +1024,9 @@ export function makeDetailRows(target) {
     ["Coordinates", formatCoordinates(target)],
     ["Strand", target.strand],
     ["Frame", target.frame],
+    ["Translation table", target.translationTable],
+    ["Translation source", target.translationSource],
+    ["Codon start", target.codonStart],
     [target.alphabet === "protein" ? "Residue" : "Base", target.base],
     ["Codon", target.codon],
     ["Amino acid", target.aminoAcid],

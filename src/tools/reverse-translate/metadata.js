@@ -78,12 +78,12 @@ export const reverseTranslateMetadata = {
           id: "plotResiduesPerRow",
           type: "number",
           label: "Residues per plot row",
-          defaultValue: 60,
+          defaultValue: 30,
           min: 20,
-          max: 160,
+          max: 40,
           step: 10,
           visibleWhen: { option: "outputFormat", value: "plot" },
-          help: "Wraps each protein record across multiple plot rows so longer sequences remain readable."
+          help: "Wraps each protein record across multiple plot rows so amino-acid and codon labels remain readable. Choose 20, 30, or 40 residues per row."
         },
         {
           id: "plotMaxResidues",
