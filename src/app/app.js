@@ -111,7 +111,6 @@ import {
 } from "../core/workspace-layers.js";
 import { appVersion } from "../app-version.js";
 import { alignmentViewerReferenceExample } from "../examples/alignment-viewer-example.js";
-import { installInlineSvgStyleIsolation } from "./inline-svg-style-scope.js";
 
 const state = {
   selectedTool: tools[0],
@@ -6171,7 +6170,6 @@ elements.downloadPngOutput.addEventListener("click", async () => {
     elements.downloadPngOutput.disabled = false;
   }
 });
-installInlineSvgStyleIsolation(document.body);
 appLayout.mount();
 window.addEventListener("popstate", applyRouteFromHash);
 window.addEventListener("hashchange", applyRouteFromHash);

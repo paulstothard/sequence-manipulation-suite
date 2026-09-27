@@ -315,6 +315,18 @@ export function installVisualInspection(container, {
     pendingPointer = null;
   }
 
+  function isDegeneratePrimitive(mark, tag) {
+    const numberAttribute = (name) => Number(mark.getAttribute(name) ?? 0);
+    if (tag === "rect") {
+      return numberAttribute("width") < 1 || numberAttribute("height") < 1;
+    }
+    if (tag === "circle") return numberAttribute("r") * 2 < 1;
+    if (tag === "ellipse") {
+      return numberAttribute("rx") * 2 < 1 || numberAttribute("ry") * 2 < 1;
+    }
+    return false;
+  }
+
   function prepareTitle(title) {
     const mark = title.parentElement;
     const text = normalizedText(title.textContent);
@@ -325,13 +337,8 @@ export function installVisualInspection(container, {
     const tag = mark.tagName?.toLowerCase();
     if (tag === "line") {
       mark.setAttribute(NEARBY_ATTRIBUTE, "line");
-    } else if (["rect", "circle", "ellipse", "path", "polygon", "polyline"].includes(tag)) {
-      try {
-        const box = mark.getBBox();
-        if (box.width < 1 || box.height < 1) mark.setAttribute(NEARBY_ATTRIBUTE, "degenerate");
-      } catch {
-        // Some detached SVG engines do not expose geometry until the next frame.
-      }
+    } else if (isDegeneratePrimitive(mark, tag)) {
+      mark.setAttribute(NEARBY_ATTRIBUTE, "degenerate");
     }
     title.textContent = "";
   }
