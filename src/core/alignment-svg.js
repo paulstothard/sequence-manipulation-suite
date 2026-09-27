@@ -103,7 +103,29 @@ function relationFill(relation, consensusSymbol, hasGap) {
   return SMS3_PLOT_THEME.alignment.mismatch;
 }
 
-function alignmentSvgRootAttributes(style, ariaLabel) {
+function alignmentTypographyCss(style) {
+  const figure = `[data-sms3-figure-family="${ALIGNMENT_FIGURE_FAMILY}"]`;
+  return [
+    `${figure} .title{font-weight:600;font-size:var(--alignment-title-font-size);font-family:${style.fontFamily};fill:${SMS3_PLOT_THEME.text}}`,
+    `${figure}[data-alignment-variant="message"] .note{font-weight:400;font-size:var(--alignment-body-font-size);font-family:${style.fontFamily};fill:${SMS3_PLOT_THEME.textMuted}}`,
+    `${figure}[data-alignment-variant="figure"] .note{font-weight:400;font-size:var(--alignment-small-font-size);font-family:${style.fontFamily};fill:${SMS3_PLOT_THEME.textMuted}}`,
+    `${figure} .label{font-weight:400;font-size:var(--alignment-small-font-size);font-family:${style.fontFamily};dominant-baseline:central;fill:${SMS3_PLOT_THEME.text}}`,
+    `${figure} .coord{font-weight:400;font-size:var(--alignment-small-font-size);font-family:${style.sequenceFontFamily};dominant-baseline:central;fill:${SMS3_PLOT_THEME.textMuted}}`,
+    `${figure} .coord-start{text-anchor:end}`,
+    `${figure} .coord-end{text-anchor:start}`,
+    `${figure} .cell{font-weight:400;font-size:var(--alignment-cell-font-size);font-family:${style.sequenceFontFamily};text-anchor:middle;dominant-baseline:central;fill:${SMS3_PLOT_THEME.text}}`,
+    `${figure} .consensus{font-weight:400;font-size:var(--alignment-small-font-size);font-family:${style.sequenceFontFamily};fill:${SMS3_PLOT_THEME.text};text-anchor:middle;dominant-baseline:central}`,
+    `${figure} .legend{font-weight:400;font-size:var(--alignment-body-font-size);font-family:${style.fontFamily};fill:${SMS3_PLOT_THEME.textMuted}}`
+  ].join("");
+}
+
+function alignmentSvgRootAttributes(style, ariaLabel, variant) {
+  const typographyVariables = [
+    `--alignment-title-font-size:${style.titleFontSize}px`,
+    `--alignment-body-font-size:${style.bodyFontSize}px`,
+    `--alignment-small-font-size:${style.smallFontSize}px`,
+    `--alignment-cell-font-size:${style.smallFontSize}px`
+  ].join(";");
   return [
     'xmlns="http://www.w3.org/2000/svg"',
     publicationSvgAttributes(style),
@@ -111,6 +133,8 @@ function alignmentSvgRootAttributes(style, ariaLabel) {
     'role="img"',
     `aria-label="${escapeXml(ariaLabel)}"`,
     `data-sms3-figure-family="${ALIGNMENT_FIGURE_FAMILY}"`,
+    `data-alignment-variant="${variant}"`,
+    `style="${typographyVariables}"`,
     'data-sms3-publication-theme="alignment"'
   ].join(" ");
 }
@@ -124,8 +148,8 @@ function makeAlignmentMessageSvg({ title, lines, ariaLabel, height }) {
   };
   const lineHeight = style.bodyFontSize + 8;
   return [
-    `<svg ${alignmentSvgRootAttributes(style, ariaLabel)}>`,
-    `<style>.title{font:600 ${style.titleFontSize}px ${style.fontFamily};fill:${SMS3_PLOT_THEME.text}}.note{font:400 ${style.bodyFontSize}px ${style.fontFamily};fill:${SMS3_PLOT_THEME.textMuted}}</style>`,
+    `<svg ${alignmentSvgRootAttributes(style, ariaLabel, "message")}>`,
+    `<style>${alignmentTypographyCss(style)}</style>`,
     `<rect width="100%" height="100%" fill="${SMS3_PLOT_THEME.surface}"/>`,
     `<text class="title" x="32" y="48">${escapeXml(title)}</text>`,
     ...lines.map((line, index) => `<text class="note" x="32" y="${82 + index * lineHeight}">${escapeXml(line)}</text>`),
@@ -138,6 +162,7 @@ export function makeAlignmentSvg({
   note = "Coordinates count bases or amino acids and ignore gaps.",
   rows = [],
   consensus = "",
+  showConsensusLine = true,
   columnRelations = [],
   lineWidth = DEFAULT_ALIGNMENT_BLOCK_COLUMNS,
   maxCells = DEFAULT_ALIGNMENT_SVG_CELL_LIMIT,
@@ -173,7 +198,7 @@ export function makeAlignmentSvg({
   const endCoordinatePadding = 4;
   const blocks = Math.ceil(alignmentLength / blockWidth);
   const renderedBlockColumns = Math.min(blockWidth, alignmentLength);
-  const hasConsensus = consensus.length > 0;
+  const hasConsensus = showConsensusLine && consensus.length > 0;
   const blockGap = hasConsensus ? CONSENSUS_BLOCK_GAP_PX : ALIGNMENT_BLOCK_GAP_PX;
   const coordinateCharacters = coordinateWidthForRows(rows);
   let cellWidth = 14;
@@ -222,18 +247,8 @@ export function makeAlignmentSvg({
     viewBoxHeight: height
   };
   const parts = [
-    `<svg ${alignmentSvgRootAttributes(publicationStyle, ariaLabel)} data-block-gap-px="${blockGap}" data-alignment-block-columns="${renderedBlockColumns}" data-alignment-cell-width-px="${cellWidth}" data-alignment-cell-height-px="${cellHeight}" data-alignment-label-width-px="${labelPixelWidth}">`,
-    "<style>",
-    `.title{font:600 ${publicationStyle.titleFontSize}px ${publicationStyle.fontFamily};fill:${SMS3_PLOT_THEME.text}}`,
-    `.note{font:400 ${publicationStyle.smallFontSize}px ${publicationStyle.fontFamily};fill:${SMS3_PLOT_THEME.textMuted}}`,
-    `.label{font:400 ${publicationStyle.smallFontSize}px ${publicationStyle.fontFamily};dominant-baseline:central;fill:${SMS3_PLOT_THEME.text}}`,
-    `.coord{font:400 ${publicationStyle.smallFontSize}px ${publicationStyle.sequenceFontFamily};dominant-baseline:central;fill:${SMS3_PLOT_THEME.textMuted}}`,
-    ".coord-start{text-anchor:end}",
-    ".coord-end{text-anchor:start}",
-    `.cell{font:400 ${publicationStyle.smallFontSize}px ${publicationStyle.sequenceFontFamily};text-anchor:middle;dominant-baseline:central;fill:${SMS3_PLOT_THEME.text}}`,
-    `.consensus{font:400 ${publicationStyle.smallFontSize}px ${publicationStyle.sequenceFontFamily};fill:${SMS3_PLOT_THEME.text};text-anchor:middle;dominant-baseline:central}`,
-    `.legend{font:400 ${publicationStyle.bodyFontSize}px ${publicationStyle.fontFamily};fill:${SMS3_PLOT_THEME.textMuted}}`,
-    "</style>",
+    `<svg ${alignmentSvgRootAttributes(publicationStyle, ariaLabel, "figure")} data-block-gap-px="${blockGap}" data-alignment-block-columns="${renderedBlockColumns}" data-alignment-cell-width-px="${cellWidth}" data-alignment-cell-height-px="${cellHeight}" data-alignment-label-width-px="${labelPixelWidth}">`,
+    `<style>${alignmentTypographyCss(publicationStyle)}</style>`,
     `<rect width="100%" height="100%" fill="${SMS3_PLOT_THEME.surface}"/>`,
     ...titleLines.map((line, index) => `<text class="title" x="24" y="${30 + index * titleLineHeight}">${escapeXml(line)}</text>`)
   ];

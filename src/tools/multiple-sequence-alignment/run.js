@@ -118,7 +118,8 @@ async function runMultipleAlignment(input, options = {}, alphabet, context = {})
   const svg = makeMultipleAlignmentSvg(prepared.alignment, {
     alphabet,
     lineWidth: options.lineWidth,
-    maxCells: options.maxTotalSymbols
+    maxCells: options.maxTotalSymbols,
+    showConsensusLine: options.showConsensusLine !== false
   });
   const logoCalculation = outputFormat === "sequence-logo"
     ? await calculateSequenceLogo(

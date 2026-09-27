@@ -111,6 +111,7 @@ import {
 } from "../core/workspace-layers.js";
 import { appVersion } from "../app-version.js";
 import { alignmentViewerReferenceExample } from "../examples/alignment-viewer-example.js";
+import { installInlineSvgStyleIsolation } from "./inline-svg-style-scope.js";
 
 const state = {
   selectedTool: tools[0],
@@ -183,6 +184,7 @@ const SEQUENCE_EXTRACTOR_TOOL_ID = "sequence-extractor";
 const PROTEIN_STRUCTURE_VIEWER_TOOL_ID = "protein-structure-viewer";
 const PROTEIN_CONSERVATION_STRUCTURE_VIEWER_TOOL_ID = "protein-conservation-structure-viewer";
 const SHOWCASE_REFERENCE_ID = "sms3-showcase";
+const CITATION_REFERENCE_ID = "citation-guidance";
 const toolWorkerClient = new ToolWorkerClient();
 
 const elements = {
@@ -772,13 +774,25 @@ function renderHomeView() {
   const showcase = document.createElement("a");
   showcase.href = `#reference=${SHOWCASE_REFERENCE_ID}`;
   showcase.textContent = "SMS3 showcase";
-  start.append("Browse example outputs in the ", showcase, ", or choose a tool from the sidebar to work with your own data.");
+  start.append(
+    "Browse example outputs in the ",
+    showcase,
+    ", or choose a tool from the sidebar to work with your own data."
+  );
 
   const note = document.createElement("p");
   note.className = "home-note";
   note.textContent =
     "Sequences, files, inputs, and results stay in this browser. The public site uses self-hosted, cookieless Plausible Analytics for aggregate usage statistics without persistent identifiers or cross-site tracking.";
-  elements.homeBody.append(summary, start, note);
+
+  const citationNote = document.createElement("p");
+  citationNote.className = "home-citation";
+  const citation = document.createElement("a");
+  citation.href = `#reference=${CITATION_REFERENCE_ID}`;
+  citation.textContent = "citation page";
+  citationNote.append("For information on citing SMS3, see the ", citation, ".");
+
+  elements.homeBody.append(summary, start, note, citationNote);
 }
 
 function renderActiveView() {
@@ -4856,7 +4870,7 @@ async function loadAlignmentViewerRegion(region, { onProgress } = {}) {
     if (!isCurrent()) {
       throw new Error("The selected tool changed before the region finished loading.");
     }
-    await displayToolResult(result, inputText, options, isCurrent);
+    await displayToolResult(result, inputText, options, isCurrent, abortController.signal);
     return result;
   } catch (error) {
     if (!isCurrent()) throw error;
@@ -4966,8 +4980,8 @@ function renderVisualOutput(scope, svg, options = {}) {
   return outputShell.renderVisualOutput(scope, svg, options);
 }
 
-function renderGeneratedToolOutputChoice(result) {
-  outputShell.renderGeneratedToolOutputChoice(result);
+function renderGeneratedToolOutputChoice(result, options = {}) {
+  return outputShell.renderGeneratedToolOutputChoice(result, options);
 }
 
 function clearToolInputOutput(...args) {
@@ -5639,7 +5653,7 @@ async function runSelectedWorkflow() {
     elements.workflowOutputSummary.textContent = formatted.summary;
     setOutputFormatLabel("workflow", formatted.outputLabel);
     renderWorkflowTableOutput(formatted.tableStream, Boolean(formatted.tableStream));
-    renderVisualOutput("workflow", formatted.svg, {
+    await Promise.resolve(renderVisualOutput("workflow", formatted.svg, {
       viewer: formatted.viewer,
       figure: formatted.figure,
       proteinFigure: formatted.proteinFigure,
@@ -5647,8 +5661,10 @@ async function runSelectedWorkflow() {
       sequenceExtractor: formatted.sequenceExtractor,
       treeViewer: formatted.treeViewer,
       plateLayout: formatted.plateLayout,
-      editorDocument: formatted.editorDocument
-    });
+      editorDocument: formatted.editorDocument,
+      signal: abortController.signal
+    }));
+    if (!isCurrent() || abortController.signal.aborted) throw makeRunAbortError("Workflow run was cancelled.");
     elements.workflowOutput.hidden = Boolean(formatted.tableStream || hasWorkflowVisual);
     setOutputSearchRowVisible("workflow", Boolean(formatted.tableStream || (!hasWorkflowVisual && formatted.text)));
     updateOutputActions("workflow", {
@@ -5695,7 +5711,7 @@ async function runSelectedWorkflow() {
   }
 }
 
-async function displayToolResult(result, inputText, options, isCurrent = () => true) {
+async function displayToolResult(result, inputText, options, isCurrent = () => true, signal = null) {
   if (!isCurrent()) return;
   // Retain material import warnings (for example ignored Excel worksheets) with
   // results only while the same tool and unchanged imported source are in use.
@@ -5707,8 +5723,11 @@ async function displayToolResult(result, inputText, options, isCurrent = () => t
   }
   const description = await buildToolOutputDescription(result, inputText, options);
   if (!isCurrent()) return;
+  if (signal?.aborted) throw makeRunAbortError();
   state.currentToolDescription = description;
-  renderGeneratedToolOutputChoice(result);
+  await renderGeneratedToolOutputChoice(result, { signal });
+  if (!isCurrent()) return;
+  if (signal?.aborted) throw makeRunAbortError();
   renderMessages(result);
 }
 
@@ -5754,17 +5773,19 @@ async function runSelectedTool() {
       }),
       inputText,
       options,
-      isCurrent
+      isCurrent,
+      abortController.signal
     );
     if (isCurrent()) {
       trackPlausibleToolRun(tool.metadata, appVersion);
     }
   } catch (error) {
     if (!isCurrent()) return;
-    resetToolOutputViewer("Run did not produce output.");
     if (error.name === "AbortError" || abortController.signal.aborted) {
+      resetToolOutputViewer(`${tool.metadata.name} run cancelled. Input and settings were kept.`);
       addMessage(`${tool.metadata.name} run cancelled.`);
     } else {
+      resetToolOutputViewer("Run did not produce output.");
       addMessage(`Could not run ${tool.metadata.name}: ${error.message}`, "warning");
     }
   } finally {
@@ -6150,6 +6171,7 @@ elements.downloadPngOutput.addEventListener("click", async () => {
     elements.downloadPngOutput.disabled = false;
   }
 });
+installInlineSvgStyleIsolation(document.body);
 appLayout.mount();
 window.addEventListener("popstate", applyRouteFromHash);
 window.addEventListener("hashchange", applyRouteFromHash);
@@ -6212,7 +6234,7 @@ async function openEditorDocument(doc, {recovered = false} = {}) {
     if (doc.tool === 'tree-viewer') elements.sequenceInput.value=JSON.stringify(doc.state.document,null,2);
     if (doc.tool === 'sequence-editor') elements.sequenceInput.value=String(doc.source.input||'');
     if (doc.tool === 'plate-layout-planner') elements.sequenceInput.value=doc.source.input;
-    renderVisualOutput('tool', null, {[key]:doc.source, editorDocument:doc});
+    await Promise.resolve(renderVisualOutput('tool', null, {[key]:doc.source, editorDocument:doc}));
     elements.toolOutputEmpty.hidden = true;
   }
   addMessage(recovered ? 'Recovered your browser changes.' : 'Opened SMS3 document.');

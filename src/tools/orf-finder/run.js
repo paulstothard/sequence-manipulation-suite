@@ -12,10 +12,13 @@ export const SVG_OVERVIEW_HEIGHT_THRESHOLD = 2400;
 const ORF_OVERVIEW_PLOT_ATTRIBUTE = `data-sms3-plot="orf-overview" data-plot-renderer="sms3-orf-overview"`;
 const ORF_CHEVRON_SPACING = 24;
 const ORF_LABEL_CHEVRON_GAP = 7;
+const ORF_CHEVRON_HALF_HEIGHT = 3.5;
+const ORF_ARROW_HEAD_SCALE = 0.75;
 const ORF_OVERVIEW_WIDTH = 980;
 const ORF_OVERVIEW_LEFT = 90;
 const ORF_OVERVIEW_RIGHT = 64;
 const ORF_OVERVIEW_ROW_HEIGHT = 18;
+const ORF_OVERVIEW_MARK_HEIGHT = 14;
 const ORF_OVERVIEW_BAND_PADDING = 3;
 const ORF_OVERVIEW_FRAME_GAP = 3;
 const ORF_OVERVIEW_RECORD_GAP = 38;
@@ -27,12 +30,11 @@ const ORF_OVERVIEW_STYLE = [
   `[data-sms3-plot="orf-overview"] .orf-overview-subtitle{font-size:10px;fill:#64748b}`,
   `[data-sms3-plot="orf-overview"] .orf-overview-record-title{font-size:13px;font-weight:650}`,
   `[data-sms3-plot="orf-overview"] .orf-overview-frame-label{font-size:11px;font-weight:700;fill:#334155}`,
-  `[data-sms3-plot="orf-overview"] .orf-overview-frame-band{fill:#f8fafc;stroke:#e2e8f0;stroke-width:.8}`,
+  `[data-sms3-plot="orf-overview"] .orf-overview-frame-slot{fill:#f8fafc;stroke:#e2e8f0;stroke-width:.8}`,
   `[data-sms3-plot="orf-overview"] .orf-overview-axis{stroke:#475569;stroke-width:1.4}`,
   `[data-sms3-plot="orf-overview"] .orf-overview-axis-tick{stroke:#475569;stroke-width:1}`,
   `[data-sms3-plot="orf-overview"] .orf-overview-axis-minor-tick{stroke:#94a3b8;stroke-width:.75}`,
   `[data-sms3-plot="orf-overview"] .orf-overview-axis-label{font-size:11px;fill:#475569;stroke:none;text-shadow:none;paint-order:normal}`,
-  `[data-sms3-plot="orf-overview"] .orf-overview-lane{stroke:#dbe4ea;stroke-width:2;stroke-linecap:round}`,
   `[data-sms3-plot="orf-overview"] .orf-overview-mark{stroke-width:1.1;stroke-linejoin:round}`,
   `[data-sms3-plot="orf-overview"] .orf-overview-mark.complete{fill:#0f766e;stroke:#115e59}`,
   `[data-sms3-plot="orf-overview"] .orf-overview-mark.partial{fill:#b45309;stroke:#92400e}`,
@@ -728,10 +730,11 @@ export function makeOrfOverviewLayout(records) {
   };
 }
 
-function orfArrowPath(x1, x2, y, strand, height = 12) {
+function orfArrowPath(x1, x2, y, strand, height = ORF_OVERVIEW_MARK_HEIGHT) {
   const half = height / 2;
   const width = Math.max(1, x2 - x1);
-  const head = featureArrowHeadLength(width, height, strand);
+  const naturalHead = featureArrowHeadLength(width, height, strand);
+  const head = naturalHead > 0 ? Math.max(3, naturalHead * ORF_ARROW_HEAD_SCALE) : 0;
   if (!(head > 0)) {
     const radius = Math.min(2.5, half, width / 2);
     return {
@@ -749,7 +752,9 @@ function orfArrowPath(x1, x2, y, strand, height = 12) {
       ].join(" "),
       bodyStart: x1,
       bodyEnd: x2,
-      hasArrowhead: false
+      hasArrowhead: false,
+      headLength: 0,
+      height
     };
   }
   if (strand === "-") {
@@ -757,21 +762,27 @@ function orfArrowPath(x1, x2, y, strand, height = 12) {
       d: `M${x2.toFixed(2)} ${(y - half).toFixed(2)} H${(x1 + head).toFixed(2)} L${x1.toFixed(2)} ${y.toFixed(2)} L${(x1 + head).toFixed(2)} ${(y + half).toFixed(2)} H${x2.toFixed(2)} Z`,
       bodyStart: x1 + head,
       bodyEnd: x2,
-      hasArrowhead: true
+      hasArrowhead: true,
+      headLength: head,
+      height
     };
   }
   return {
     d: `M${x1.toFixed(2)} ${(y - half).toFixed(2)} H${(x2 - head).toFixed(2)} L${x2.toFixed(2)} ${y.toFixed(2)} L${(x2 - head).toFixed(2)} ${(y + half).toFixed(2)} H${x1.toFixed(2)} Z`,
     bodyStart: x1,
     bodyEnd: x2 - head,
-    hasArrowhead: true
+    hasArrowhead: true,
+    headLength: head,
+    height
   };
 }
 
-function orfChevronPath(bodyStart, bodyEnd, y, strand, exclusion = null) {
+function orfChevronPath(bodyStart, bodyEnd, y, strand, headLength, arrowHeight, exclusion = null) {
   const available = bodyEnd - bodyStart;
   if (available < 24) return "";
-  const chevronBounds = strand === "-" ? { min: -1, max: 3 } : { min: -3, max: 1 };
+  const arrowHalfHeight = Math.max(1, arrowHeight / 2);
+  const chevronRun = Math.max(2, headLength * ORF_CHEVRON_HALF_HEIGHT / arrowHalfHeight);
+  const chevronBounds = { min: -chevronRun / 2, max: chevronRun / 2 };
   const edgeInset = 7;
   const centers = [];
   if (exclusion) {
@@ -786,9 +797,9 @@ function orfChevronPath(bodyStart, bodyEnd, y, strand, exclusion = null) {
   const parts = [];
   for (const x of centers) {
     if (strand === "-") {
-      parts.push(`M${(x + 3).toFixed(2)} ${(y - 3.5).toFixed(2)} L${(x - 1).toFixed(2)} ${y.toFixed(2)} L${(x + 3).toFixed(2)} ${(y + 3.5).toFixed(2)}`);
+      parts.push(`M${(x + chevronRun / 2).toFixed(2)} ${(y - ORF_CHEVRON_HALF_HEIGHT).toFixed(2)} L${(x - chevronRun / 2).toFixed(2)} ${y.toFixed(2)} L${(x + chevronRun / 2).toFixed(2)} ${(y + ORF_CHEVRON_HALF_HEIGHT).toFixed(2)}`);
     } else {
-      parts.push(`M${(x - 3).toFixed(2)} ${(y - 3.5).toFixed(2)} L${(x + 1).toFixed(2)} ${y.toFixed(2)} L${(x - 3).toFixed(2)} ${(y + 3.5).toFixed(2)}`);
+      parts.push(`M${(x - chevronRun / 2).toFixed(2)} ${(y - ORF_CHEVRON_HALF_HEIGHT).toFixed(2)} L${(x + chevronRun / 2).toFixed(2)} ${y.toFixed(2)} L${(x - chevronRun / 2).toFixed(2)} ${(y + ORF_CHEVRON_HALF_HEIGHT).toFixed(2)}`);
     }
   }
   if (parts.length < 2) return "";
@@ -858,13 +869,10 @@ function makeSvgOverview(records, options = {}, suppliedLayout = null) {
 
     for (const frameLayout of recordLayout.frameLayouts) {
       const { frame, y, frameHeight, frameCenter, packed } = frameLayout;
-      parts.push(`<rect class="orf-overview-frame-band" x="${left - 5}" y="${y}" width="${plotWidth + 10}" height="${frameHeight}" rx="5"></rect>`);
       parts.push(`<text class="orf-overview-frame-label" x="24" y="${frameCenter + 4}">${frame}</text>`);
       for (let lane = 0; lane < packed.laneCount; lane += 1) {
-        const laneY = y + ORF_OVERVIEW_BAND_PADDING
-          + lane * ORF_OVERVIEW_ROW_HEIGHT
-          + ORF_OVERVIEW_ROW_HEIGHT / 2;
-        parts.push(`<line class="orf-overview-lane" x1="${left}" y1="${laneY}" x2="${width - right}" y2="${laneY}"></line>`);
+        const slotY = y + ORF_OVERVIEW_BAND_PADDING + lane * ORF_OVERVIEW_ROW_HEIGHT;
+        parts.push(`<rect class="orf-overview-frame-slot" data-record="${escapeXml(record.title)}" data-frame="${escapeXml(frame)}" data-overview-lane="${lane}" x="${left}" y="${slotY}" width="${plotWidth}" height="${ORF_OVERVIEW_ROW_HEIGHT}"></rect>`);
       }
 
       for (const mark of packed.marks) {
@@ -881,7 +889,7 @@ function makeSvgOverview(records, options = {}, suppliedLayout = null) {
           ? { x1: labelCenter - estimatedLabelWidth / 2 - 6, x2: labelCenter + estimatedLabelWidth / 2 + 6 }
           : null;
         const chevrons = arrow.hasArrowhead
-          ? orfChevronPath(arrow.bodyStart, arrow.bodyEnd, laneY, mark.orf.strand, labelExclusion)
+          ? orfChevronPath(arrow.bodyStart, arrow.bodyEnd, laneY, mark.orf.strand, arrow.headLength, arrow.height, labelExclusion)
           : "";
         const className = mark.orf.complete ? "complete" : "partial";
         const directionClass = mark.orf.strand === "-" ? "reverse" : "forward";

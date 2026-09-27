@@ -11,7 +11,7 @@ export const DEFAULT_PRESENTATION = Object.freeze({
   layout: "rectangular",
   metric: "auto",
   orientation: "right",
-  fontFamily: "Arial, sans-serif",
+  fontFamily: "Arial,Helvetica,sans-serif",
   fontSize: 12,
   branchWidth: 1.5,
   branchColor: "#334155",

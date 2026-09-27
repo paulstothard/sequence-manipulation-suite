@@ -19,7 +19,10 @@ export async function runSequenceExtractor(input, options = {}, context = {}) {
     geneticCode: extractor.geneticCode,
     records: extractor.records
   };
-  const output = JSON.stringify(extractor, null, 2);
+  // The interactive viewer already carries the structured extractor object.
+  // Keep the compatibility/download JSON compact so large annotated records do
+  // not also cross the worker boundary as a second, heavily indented payload.
+  const output = JSON.stringify(extractor);
   context.reportProgress?.({ phase: "finished", progress: 1 });
   return makeToolResult({
     output,

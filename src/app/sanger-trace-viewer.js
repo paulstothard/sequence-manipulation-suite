@@ -1,4 +1,7 @@
 import { createEditorSession } from './editor-session.js';
+import { createEditorPanelTabs } from './editor-panel-tabs.js';
+import { installControlHelp } from './control-help.js';
+import { calculateBaseSelectionMarker as calculateSangerSelectedBaseMarker } from './base-selection-marker.js';
 import { addTimestampToFilename, downloadCanvasPng, downloadCanvasSvg, makeSafeFileStem } from "./canvas-export.js";
 import { geneticCodes } from "../core/genetic-code.js";
 import { makeSixFrameTranslations } from "../core/translation.js";
@@ -109,35 +112,29 @@ export function calculateSangerTraceQualityLayout({ plotTop, plotHeight, quality
 export function calculateSangerTraceCanvasLayout({ showForwardTranslations = false, showReverseTranslations = false } = {}) {
   const translationFrameCount = (showForwardTranslations ? 3 : 0) + (showReverseTranslations ? 3 : 0);
   const translationRowHeight = 20;
-  const translationTop = 54;
+  const forwardTranslationHeight = showForwardTranslations ? 3 * translationRowHeight : 0;
+  const baseLabelY = 38 + forwardTranslationHeight;
   const translationHeight = translationFrameCount * translationRowHeight;
   return {
     baseHeight: 370,
-    baseLabelY: 38,
+    baseLabelY,
     canvasHeight: 370 + translationHeight,
     plotTop: 86 + translationHeight,
     translationFrameCount,
     translationHeight,
     translationRowHeight,
-    translationTop
+    forwardTranslationTop: 26,
+    reverseTranslationTop: baseLabelY + 16
   };
 }
 
-export function calculateSangerSelectedBaseMarker(x, baselineY) {
-  return {
-    left: x - 6.5,
-    top: baselineY - 9,
-    width: 13,
-    height: 18,
-    radius: 3
-  };
-}
+export { calculateSangerSelectedBaseMarker };
 
 function makeButton(label, title = label) {
   const button = document.createElement("button");
   button.type = "button";
   button.textContent = label;
-  button.title = title;
+  if (title !== label) button.dataset.controlHelp = title;
   return button;
 }
 
@@ -169,8 +166,7 @@ function downloadText(text, filename, mimeType) {
   URL.revokeObjectURL(url);
 }
 
-function sequenceTitle(state) {
-  const calls = displayedCalls(state);
+function sequenceTitle(state, calls = retainedCalls(state)) {
   const first = calls[0]?.originalIndex ?? state.clipStart;
   const last = calls[calls.length - 1]?.originalIndex ?? state.clipEnd;
   const start = Math.min(first, last);
@@ -179,12 +175,16 @@ function sequenceTitle(state) {
   return `${makeSafeFileStem(state.data.record, "sanger-trace")}_bases_${start}_${end}_${state.data.orientation}${edited}`;
 }
 
-function displayedCalls(state) {
+function retainedCalls(state) {
   return state.calls.filter((call) => call.displayIndex >= state.clipStart && call.displayIndex <= state.clipEnd);
 }
 
+function exportCalls(state) {
+  return state.excludeClippedBases ? retainedCalls(state) : state.calls;
+}
+
 function sequenceForState(state) {
-  return displayedCalls(state).map((call) => call.base).join("");
+  return exportCalls(state).map((call) => call.base).join("");
 }
 
 function fullSequenceForState(state) {
@@ -263,7 +263,7 @@ function qualityText(call) {
 
 export function describeSangerInspectionTarget(target, state = {}) {
   if (target?.kind === "clip-handle") {
-    return `Drag the ${target.type === "clip-start" ? "5'" : "3'"} clip handle or click a base and set that clip boundary.`;
+    return `Drag the ${target.type === "clip-start" ? "5'" : "3'"} clip handle to change the ${target.type === "clip-start" ? "first" : "last"} unclipped base. Clipped bases are shaded, not deleted. Changes apply immediately; Undo restores the previous range.`;
   }
   if (target?.kind === "translation") {
     return `${target.frameLabel}: ${target.aminoAcid}; codon ${target.codon}; displayed bases ${target.directStart}-${target.directEnd}; genetic code ${state.geneticCode || "1"}.`;
@@ -384,11 +384,15 @@ function updateDetails(panel, state) {
     details.textContent = "Click a base label or peak to select a base call.";
     return;
   }
-  details.textContent = `Selected base ${call.displayIndex}: ${call.base}; original base ${call.originalBase}; original trace position ${call.originalTracePosition}; ${qualityText(call)}${call.edited ? "; edited" : ""}.`;
+  const selected = document.createElement("strong");
+  selected.textContent = `Selected base ${call.displayIndex.toLocaleString()}: ${call.base}${call.edited ? " · edited" : ""}`;
+  const context = document.createElement("span");
+  context.textContent = `${qualityText(call)} · Original base ${call.originalBase} · Trace position ${call.originalTracePosition.toLocaleString()}`;
+  details.replaceChildren(selected, context);
 }
 
 function syncControls(panel, state) {
-  // Resizing and theme redraws must not overwrite an unapplied control value.
+  // Resizing and theme redraws must not overwrite a draft control value.
   const syncValue = (name, value, key = value) => {
     const input = panel.querySelector(`[data-sanger-control="${name}"]`);
     if (input.dataset.syncedValue !== String(key)) {
@@ -403,7 +407,16 @@ function syncControls(panel, state) {
   const visibleStart = Math.floor(state.visibleStart);
   const visibleEnd = Math.min(state.calls.length, visibleStart + basesPerVisibleWidth(state) - 1);
   panel.querySelector("[data-sanger-control='viewInfo']").textContent =
-    `View ${visibleStart.toLocaleString()}-${visibleEnd.toLocaleString()} of ${state.calls.length.toLocaleString()} bases; zoom ${state.zoom.toFixed(1)}x; export keeps ${state.clipStart.toLocaleString()}-${state.clipEnd.toLocaleString()}.`;
+    `View ${visibleStart.toLocaleString()}-${visibleEnd.toLocaleString()} of ${state.calls.length.toLocaleString()} bases; zoom ${state.zoom.toFixed(1)}x.`;
+  for (const label of panel.querySelectorAll('[data-sanger-control="retainedRange"]')) {
+    label.textContent = `Retained bases ${state.clipStart.toLocaleString()}-${state.clipEnd.toLocaleString()} (${(state.clipEnd - state.clipStart + 1).toLocaleString()} bases)`;
+  }
+  panel.querySelector('[data-sanger-control="clippingSummary"]').textContent =
+    `${(state.clipEnd - state.clipStart + 1).toLocaleString()} of ${state.calls.length.toLocaleString()} bases unclipped`;
+  panel.querySelector('[data-sanger-control="excludeClippedBases"]').checked = state.excludeClippedBases;
+  panel.querySelector('[data-sanger-control="exportRange"]').textContent = state.excludeClippedBases
+    ? `Bases ${state.clipStart.toLocaleString()}–${state.clipEnd.toLocaleString()} (${(state.clipEnd - state.clipStart + 1).toLocaleString()} bases)`
+    : `All ${state.calls.length.toLocaleString()} bases`;
   const forwardButton = panel.querySelector("[data-sanger-control='forwardTranslations']");
   const reverseButton = panel.querySelector("[data-sanger-control='reverseTranslations']");
   const geneticCode = panel.querySelector("[data-sanger-control='geneticCode']");
@@ -440,32 +453,33 @@ function drawTranslationTracks(context, state, calls, plot, xForPosition, layout
   const lastVisible = calls[calls.length - 1].displayIndex;
   const boundaryForIndex = (position, side) => {
     const call = state.calls[position - 1];
-    if (!call) return side === "left" ? plot.left : plot.left + plot.width;
     const x = xForPosition(call.tracePosition);
     const neighbor = state.calls[position - 1 + (side === "left" ? -1 : 1)];
-    if (!neighbor || (position === firstVisible && side === "left") || (position === lastVisible && side === "right")) {
-      return side === "left" ? plot.left : plot.left + plot.width;
-    }
-    return (x + xForPosition(neighbor.tracePosition)) / 2;
+    if (neighbor) return (x + xForPosition(neighbor.tracePosition)) / 2;
+    const innerNeighbor = state.calls[position - 1 + (side === "left" ? 1 : -1)];
+    return x + (x - xForPosition(innerNeighbor.tracePosition)) / 2;
   };
 
   context.save();
   context.font = "700 10px ui-monospace, SFMono-Regular, Menlo, monospace";
   context.textBaseline = "middle";
-  frames.forEach((frame, frameIndex) => {
-    const top = layout.translationTop + frameIndex * layout.translationRowHeight;
+  frames.forEach((frame) => {
+    const strandTop = frame.strand === "+" ? layout.forwardTranslationTop : layout.reverseTranslationTop;
+    const top = strandTop + frame.offset * layout.translationRowHeight;
     const centerY = top + 8;
     context.textAlign = "right";
     context.fillStyle = frame.strand === "+" ? theme.translationForwardText : theme.translationReverseText;
     context.fillText(frame.label, plot.left - 7, centerY);
     const visibleCodons = frame.codons.filter((codon) =>
       Math.max(firstVisible, codon.directStart) <= Math.min(lastVisible, codon.directEnd));
+    context.save();
+    context.beginPath();
+    context.rect(plot.left, top - 1, plot.width, 18);
+    context.clip();
     for (const codon of visibleCodons) {
-      const segmentStart = Math.max(firstVisible, codon.directStart);
-      const segmentEnd = Math.min(lastVisible, codon.directEnd);
-      if (segmentStart > segmentEnd) continue;
-      const left = clamp(boundaryForIndex(segmentStart, "left"), plot.left, plot.left + plot.width);
-      const right = clamp(boundaryForIndex(segmentEnd, "right"), plot.left, plot.left + plot.width);
+      // Crop the complete codon at the viewport edge without reshaping its arrow.
+      const left = boundaryForIndex(codon.directStart, "left");
+      const right = boundaryForIndex(codon.directEnd, "right");
       const colors = translationColors(theme, frame, codon.aminoAcid);
       const clipped = codon.directStart < state.clipStart || codon.directEnd > state.clipEnd;
       context.globalAlpha = clipped ? 0.42 : 1;
@@ -487,12 +501,13 @@ function drawTranslationTracks(context, state, calls, plot, xForPosition, layout
         ...codon,
         frame: frame.frame,
         frameLabel: frame.label,
-        left,
-        right,
+        left: Math.max(left, plot.left),
+        right: Math.min(right, plot.left + plot.width),
         top,
         bottom: top + 16
       });
     }
+    context.restore();
   });
   context.restore();
 }
@@ -655,13 +670,13 @@ function drawTrace(canvas, state) {
       context.fillRect(x - 6, plot.baseLabelY - 15, 12, plot.height + plot.top - plot.baseLabelY + 20);
     }
     if (isSelected) {
-      const marker = calculateSangerSelectedBaseMarker(x, plot.baseLabelY);
+      const neighbors = [state.calls[call.displayIndex - 2], state.calls[call.displayIndex]].filter(Boolean);
+      const spacing = Math.min(...neighbors.map(neighbor => Math.abs(xForPosition(neighbor.tracePosition) - x)));
+      const marker = calculateSangerSelectedBaseMarker(x, plot.baseLabelY, context.measureText(call.base), spacing);
       context.save();
       context.fillStyle = theme.selectedFill;
       context.strokeStyle = theme.selectedStroke;
-      context.lineWidth = 1.25;
-      context.shadowColor = theme.selectedStroke;
-      context.shadowBlur = theme.dark ? 2 : 1.5;
+      context.lineWidth = 1;
       context.beginPath();
       if (typeof context.roundRect === "function") {
         context.roundRect(marker.left, marker.top, marker.width, marker.height, marker.radius);
@@ -785,7 +800,7 @@ function setClipBoundary(state, type, index) {
   state.selectedIndex = state.clipEnd;
 }
 
-function renderSingleSangerTraceViewer(container, data) {
+function renderSingleSangerTraceViewer(container, data, documentActions) {
   const cleanupController = new AbortController();
   const listenerOptions = { signal: cleanupController.signal };
   const passiveWheelOptions = { passive: false, signal: cleanupController.signal };
@@ -803,20 +818,32 @@ function renderSingleSangerTraceViewer(container, data) {
 
   const zoomOut = makeButton("-", "Zoom out");
   const zoomIn = makeButton("+", "Zoom in");
-  const reset = makeButton("Reset", "Reset view");
-  const previousBase = makeButton("<", "Previous selected base");
-  const nextBase = makeButton(">", "Next selected base");
-  const jumpStart = makeButton("5' end", "Jump to the 5' end of the read");
-  const jumpEnd = makeButton("3' end", "Jump to the 3' end of the read");
-  const forwardTranslations = makeButton("+ translation", "Show or hide forward translation frames +1, +2, and +3");
+  zoomOut.setAttribute("aria-label", "Zoom out");
+  zoomIn.setAttribute("aria-label", "Zoom in");
+  const reset = makeButton("Reset view", "Restore the default zoom and show the start of the retained read. Edits and clipping are preserved.");
+  const previousBase = makeButton("‹", "Select the previous base in the read.");
+  previousBase.setAttribute("aria-label", "Previous base");
+  const nextBase = makeButton("›", "Select the next base in the read.");
+  nextBase.setAttribute("aria-label", "Next base");
+  const jumpStart = makeButton("Go to 5′ end", "Show and select the first base of the full read.");
+  const jumpEnd = makeButton("Go to 3′ end", "Show and select the last base of the full read.");
+  const forwardTranslations = makeButton("+ translations", "Show or hide forward translation frames +1, +2, and +3");
   forwardTranslations.dataset.sangerControl = "forwardTranslations";
-  const reverseTranslations = makeButton("− translation", "Show or hide reverse-complement translation frames -1, -2, and -3");
+  const reverseTranslations = makeButton("− translations", "Show or hide reverse-complement translation frames -1, -2, and -3");
   reverseTranslations.dataset.sangerControl = "reverseTranslations";
+  for (const button of [forwardTranslations, reverseTranslations]) {
+    button.setAttribute("aria-label", button.textContent);
+    const check = document.createElement("span");
+    check.className = "sanger-trace-toggle-check";
+    check.setAttribute("aria-hidden", "true");
+    check.textContent = "✓";
+    button.prepend(check);
+  }
   const geneticCode = document.createElement("select");
   geneticCode.className = "sanger-trace-genetic-code";
   geneticCode.dataset.sangerControl = "geneticCode";
   geneticCode.setAttribute("aria-label", "Trace translation genetic code");
-  geneticCode.title = "Genetic code for the trace translation tracks";
+  geneticCode.dataset.controlHelp = "Genetic code for the trace translation tracks.";
   for (const code of geneticCodes) {
     const option = document.createElement("option");
     option.value = code.id;
@@ -830,14 +857,12 @@ function renderSingleSangerTraceViewer(container, data) {
     zoomIn,
     reset,
     jumpStart,
-    jumpEnd,
-    previousBase,
-    nextBase,
-    forwardTranslations,
-    reverseTranslations,
-    geneticCode
+    jumpEnd
   );
-  toolbar.append(title, navGroup, viewInfo);
+  toolbar.append(title);
+  const navigation = document.createElement("div");
+  navigation.className = "sanger-trace-navigation";
+  navigation.append(navGroup, viewInfo);
 
   const canvas = document.createElement("canvas");
   canvas.className = "sanger-trace-canvas";
@@ -851,15 +876,16 @@ function renderSingleSangerTraceViewer(container, data) {
   clipStart.type = "number";
   clipStart.min = "1";
   clipStart.max = String(data.baseCalls.length);
-  clipStart.title = "First retained base call in the exported read.";
+  clipStart.dataset.controlHelp = "First unclipped base, numbered from 1 and included in the range. Earlier bases are shaded, not deleted. Valid changes apply as you type.";
   clipStart.dataset.sangerControl = "clipStart";
   const clipEnd = document.createElement("input");
   clipEnd.type = "number";
   clipEnd.min = "1";
   clipEnd.max = String(data.baseCalls.length);
-  clipEnd.title = "Last retained base call in the exported read.";
+  clipEnd.dataset.controlHelp = "Last unclipped base, included in the range. Later bases are shaded, not deleted. Valid changes apply as you type.";
   clipEnd.dataset.sangerControl = "clipEnd";
-  const applyClip = makeButton("Apply clipping", "Apply 5' and 3' clipping coordinates");
+  clipStart.required = true;
+  clipEnd.required = true;
 
   const editBase = document.createElement("select");
   editBase.dataset.sangerControl = "editBase";
@@ -869,11 +895,7 @@ function renderSingleSangerTraceViewer(container, data) {
     option.textContent = base;
     editBase.append(option);
   }
-  const applyEdit = makeButton("Apply base edit", "Replace the selected base call");
-  const setClipStart = makeButton("Set 5' clip", "Set the 5' clip boundary to the selected base");
-  setClipStart.dataset.sangerControl = "setClipStart";
-  const setClipEnd = makeButton("Set 3' clip", "Set the 3' clip boundary to the selected base");
-  setClipEnd.dataset.sangerControl = "setClipEnd";
+  const applyEdit = makeButton("Replace base", "Replace the selected base with the chosen letter. Undo restores the previous base call.");
 
   const copyFasta = makeButton("Copy FASTA");
   const copyFastq = makeButton("Copy FASTQ");
@@ -885,6 +907,9 @@ function renderSingleSangerTraceViewer(container, data) {
   searchInput.type = "search";
   searchInput.placeholder = "ACGT...";
   searchInput.autocomplete = "off";
+  searchInput.setAttribute("autocorrect", "off");
+  searchInput.setAttribute("autocapitalize", "off");
+  searchInput.setAttribute("writingsuggestions", "false");
   searchInput.spellcheck = false;
   searchInput.dataset.sangerControl = "search";
   const previousMatch = makeButton("Prev", "Previous sequence search match");
@@ -894,14 +919,14 @@ function renderSingleSangerTraceViewer(container, data) {
   searchInfo.className = "sanger-trace-search-info";
   searchInfo.dataset.sangerControl = "searchInfo";
 
-  const addGroup = (titleText) => {
+  const addGroup = (parent, titleText) => {
     const group = document.createElement("div");
     group.className = "sanger-trace-control-group";
     const heading = document.createElement("div");
     heading.className = "sanger-trace-control-heading";
     heading.textContent = titleText;
     group.append(heading);
-    controls.append(group);
+    parent.append(group);
     return group;
   };
   const addField = (parent, labelText, control, labelClassName = "") => {
@@ -915,37 +940,122 @@ function renderSingleSangerTraceViewer(container, data) {
     label.append(span, control);
     parent.append(label);
   };
-  const clipGroup = addGroup("Clipping");
-  addField(clipGroup, "Clip 5'", clipStart, "sanger-trace-clip-start-label");
-  addField(clipGroup, "Clip 3'", clipEnd, "sanger-trace-clip-end-label");
-  clipGroup.append(applyClip, setClipStart, setClipEnd);
-
-  const editGroup = addGroup("Base call");
-  addField(editGroup, "Selected base", editBase);
-  editGroup.append(applyEdit);
-
-  const searchGroup = addGroup("Find");
-  addField(searchGroup, "Sequence", searchInput);
-  searchGroup.append(previousMatch, nextMatch, clearSearch, searchInfo);
-
-  const exportGroup = addGroup("Export");
-  exportGroup.append(copyFasta, copyFastq, downloadFasta, downloadFastq, downloadPng, downloadSvg);
-
+  const editPanel = document.createElement("div");
+  editPanel.className = "sanger-trace-tab-panel";
+  const displayPanel = document.createElement("div");
+  displayPanel.className = "sanger-trace-tab-panel";
+  const exportPanel = document.createElement("div");
+  exportPanel.className = "sanger-trace-tab-panel sanger-trace-export-panel";
+  const tabs = createEditorPanelTabs("Sanger trace controls", [
+    { id: "edit", label: "Edit", panel: editPanel },
+    { id: "display", label: "Display", panel: displayPanel },
+    { id: "export", label: "Export", panel: exportPanel }
+  ]);
+  const editGroup = addGroup(editPanel, "Base call");
   const details = document.createElement("p");
   details.className = "sanger-trace-details";
   details.dataset.sangerControl = "details";
+  editGroup.classList.add("sanger-trace-base-edit");
+  const baseActions = document.createElement("div");
+  baseActions.className = "sanger-trace-base-actions";
+  const baseNavigation = document.createElement("div");
+  baseNavigation.className = "sanger-trace-base-navigation";
+  baseNavigation.append(previousBase, nextBase);
+  baseActions.append(baseNavigation);
+  addField(baseActions, "New base", editBase);
+  baseActions.append(applyEdit);
+  editGroup.append(details, baseActions);
+  const clipGroup = addGroup(editPanel, "Clipping");
+  clipGroup.classList.add("sanger-trace-clipping");
+  const clippingSummary = document.createElement("p");
+  clippingSummary.className = "sanger-trace-clipping-summary";
+  clippingSummary.dataset.sangerControl = "clippingSummary";
+  const clippingHint = document.createElement("p");
+  clippingHint.className = "sanger-trace-clipping-hint";
+  clippingHint.textContent = "Drag the bars or type coordinates. Bases outside this range are shaded, not deleted.";
+  const coordinateFields = document.createElement("div");
+  coordinateFields.className = "sanger-trace-clip-fields";
+  addField(coordinateFields, "5′ clip", clipStart, "sanger-trace-clip-start-label");
+  addField(coordinateFields, "3′ clip", clipEnd, "sanger-trace-clip-end-label");
+  const clippingError = document.createElement("p");
+  clippingError.className = "sanger-trace-clip-error";
+  clippingError.setAttribute("role", "alert");
+  clippingError.hidden = true;
+  clipGroup.append(coordinateFields, clippingSummary, clippingHint, clippingError);
+
+  const searchGroup = document.createElement("div");
+  searchGroup.className = "sanger-trace-search";
+  addField(searchGroup, "Find sequence", searchInput);
+  searchGroup.append(previousMatch, nextMatch, clearSearch, searchInfo);
+  const translations = addGroup(displayPanel, "Translation tracks");
+  translations.classList.add("sanger-trace-translations");
+  const translationToggles = document.createElement("div");
+  translationToggles.className = "sanger-trace-translation-toggles";
+  translationToggles.append(forwardTranslations, reverseTranslations);
+  translations.append(translationToggles);
+  addField(translations, "Genetic code", geneticCode);
+  const addExportRow = (titleText) => {
+    const row = addGroup(exportPanel, titleText);
+    const description = document.createElement("div");
+    description.className = "sanger-trace-export-description";
+    description.append(row.firstElementChild);
+    row.append(description);
+    return { row, description };
+  };
+  const sequenceExport = addExportRow("Sequence");
+  const exportRange = document.createElement("span");
+  exportRange.className = "sanger-trace-export-scope";
+  exportRange.dataset.sangerControl = "exportRange";
+  const exportClipLabel = document.createElement("label");
+  exportClipLabel.className = "sanger-trace-export-clipping";
+  const excludeClipped = document.createElement("input");
+  excludeClipped.type = "checkbox";
+  excludeClipped.dataset.sangerControl = "excludeClippedBases";
+  excludeClipped.dataset.controlHelp = "Apply the clipping boundaries to copied and downloaded FASTA/FASTQ. Uncheck to include all base calls. Figure and editable-document exports are unchanged.";
+  const exportClipText = document.createElement("span");
+  exportClipText.textContent = "Exclude clipped bases";
+  exportClipLabel.append(excludeClipped, exportClipText);
+  const sequenceExportActions = document.createElement("div");
+  sequenceExportActions.className = "sanger-trace-export-actions";
+  sequenceExportActions.append(copyFasta, downloadFasta, copyFastq, downloadFastq);
+  sequenceExport.description.append(exportRange, exportClipLabel);
+  sequenceExport.row.append(sequenceExportActions);
+  const figureExport = addExportRow("Figure");
+  const figureScope = document.createElement("span");
+  figureScope.className = "sanger-trace-export-scope";
+  figureScope.textContent = "Current view";
+  const figureExportActions = document.createElement("div");
+  figureExportActions.className = "sanger-trace-export-actions";
+  figureExportActions.append(downloadPng, downloadSvg);
+  figureExport.description.append(figureScope);
+  figureExport.row.append(figureExportActions);
+  const documentExport = addExportRow("SMS3 document");
+  const documentScope = document.createElement("span");
+  documentScope.className = "sanger-trace-export-scope";
+  documentScope.textContent = "Full trace and edits; reopen in SMS3";
+  documentExport.description.append(documentScope);
+  documentExport.row.append(documentActions);
+  const tabPanels = document.createElement("div");
+  tabPanels.className = "sanger-trace-tab-panels";
+  tabPanels.append(editPanel, displayPanel, exportPanel);
+  controls.append(tabs.element, tabPanels);
+  const retainedRange = document.createElement("p");
+  retainedRange.className = "sanger-trace-retained-range";
+  retainedRange.dataset.sangerControl = "retainedRange";
   const status = document.createElement("p");
   status.className = "sanger-trace-status";
   status.dataset.sangerControl = "status";
 
-  panel.append(toolbar, canvas, controls, details, status);
+  panel.append(toolbar, searchGroup, navigation, controls, canvas, retainedRange, status);
   container.append(panel);
+  installControlHelp(panel, { signal: cleanupController.signal });
 
   const state = {
     data,
     calls: data.baseCalls.map((call) => ({ ...call, originalBase: call.originalBase ?? call.base })),
     clipStart: data.clipStart ?? 1,
     clipEnd: data.clipEnd ?? data.baseCalls.length,
+    excludeClippedBases: true,
     selectedIndex: data.clipStart ?? 1,
     visibleStart: data.clipStart ?? 1,
     zoom: data.baseCalls.length > 180 ? 1.4 : 2.2,
@@ -967,10 +1077,15 @@ function renderSingleSangerTraceViewer(container, data) {
     }
     canvas.dataset.translationFrames = String(layout.translationFrameCount);
     canvas.dataset.geneticCode = state.geneticCode;
-    syncControls(panel, state);
     drawTrace(canvas, state);
+    // Drawing clamps the visible window to the read, including short reads.
+    syncControls(panel, state);
     if (message) setStatus(panel, message);
   };
+  excludeClipped.addEventListener("change", () => {
+    state.excludeClippedBases = excludeClipped.checked;
+    render(state.excludeClippedBases ? "FASTA/FASTQ exports exclude clipped bases." : "FASTA/FASTQ exports include all bases.");
+  }, listenerOptions);
   let resizeFrame = 0;
   const scheduleRender = (message = "") => {
     if (resizeFrame) return;
@@ -1015,7 +1130,7 @@ function renderSingleSangerTraceViewer(container, data) {
   reset.addEventListener("click", () => {
     state.zoom = data.baseCalls.length > 180 ? 1.4 : 2.2;
     state.visibleStart = state.clipStart;
-    render("View reset.");
+    render("Default zoom restored; showing the start of the retained read.");
   }, listenerOptions);
   jumpStart.addEventListener("click", () => {
     state.selectedIndex = 1;
@@ -1221,7 +1336,7 @@ function renderSingleSangerTraceViewer(container, data) {
     canvas.releasePointerCapture?.(event.pointerId);
     canvas.classList.remove("dragging", "clipping");
     if (finished.type !== "pan") {
-      render(`Export keeps bases ${state.clipStart}-${state.clipEnd}.`);
+      render(`Clipping boundaries: bases ${state.clipStart}-${state.clipEnd}.`);
       return;
     }
     if (Math.abs(finished.totalX) < 5) {
@@ -1259,35 +1374,27 @@ function renderSingleSangerTraceViewer(container, data) {
   window.addEventListener("resize", () => scheduleRender(), listenerOptions);
   window.addEventListener("sms3-theme-change", () => scheduleRender(), listenerOptions);
 
-  applyClip.addEventListener("click", () => {
-    const start = clamp(Number.parseInt(clipStart.value, 10) || 1, 1, state.calls.length);
-    const end = clamp(Number.parseInt(clipEnd.value, 10) || state.calls.length, start, state.calls.length);
+  const updateClippingCoordinates = () => {
+    const start = Number(clipStart.value);
+    const end = Number(clipEnd.value);
+    if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end > state.calls.length || start > end) {
+      clippingError.textContent = `Clipping unchanged. Enter whole-number coordinates from 1 to ${state.calls.length.toLocaleString()}, with the first base no greater than the last.`;
+      clippingError.hidden = false;
+      return;
+    }
+    clippingError.hidden = true;
+    if (state.clipStart === start && state.clipEnd === end) return;
     state.clipStart = start;
     state.clipEnd = end;
-    clipStart.value = String(start);
-    clipEnd.value = String(end);
-    state.visibleStart = start;
-    state.selectedIndex = start;
-    render(`Export keeps bases ${start}-${end}.`);
-  }, listenerOptions);
-  setClipStart.addEventListener("click", () => {
-    setClipBoundary(state, "clip-start", state.selectedIndex);
-    state.visibleStart = clamp(
-      state.clipStart - Math.floor(basesPerVisibleWidth(state) / 3),
-      1,
-      Math.max(1, state.calls.length - basesPerVisibleWidth(state) + 1)
-    );
-    render(`5' clip set to base ${state.clipStart}.`);
-  }, listenerOptions);
-  setClipEnd.addEventListener("click", () => {
-    setClipBoundary(state, "clip-end", state.selectedIndex);
-    state.visibleStart = clamp(
-      state.clipEnd - Math.floor((basesPerVisibleWidth(state) * 2) / 3),
-      1,
-      Math.max(1, state.calls.length - basesPerVisibleWidth(state) + 1)
-    );
-    render(`3' clip set to base ${state.clipEnd}.`);
-  }, listenerOptions);
+    // Updating a coordinate must not move the view or change the base being edited.
+    render(`Clipping boundaries: bases ${start}-${end}.`);
+  };
+  for (const input of [clipStart, clipEnd]) {
+    input.addEventListener("input", updateClippingCoordinates, listenerOptions);
+    input.addEventListener("keydown", event => {
+      if (event.key === "Enter") { event.preventDefault(); updateClippingCoordinates(); }
+    }, listenerOptions);
+  }
   applyEdit.addEventListener("click", () => {
     const call = selectedCall(state);
     if (!call) {
@@ -1299,23 +1406,25 @@ function renderSingleSangerTraceViewer(container, data) {
     render(`Changed base ${call.displayIndex} to ${call.base}.`);
   }, listenerOptions);
 
-  const getFasta = () => formatFasta(sequenceTitle(state), sequenceForState(state));
-  const getFastq = () => makeFastq(sequenceTitle(state), displayedCalls(state));
+  const exportTitle = () => sequenceTitle(state, exportCalls(state));
+  const exportScope = () => state.excludeClippedBases ? "clipped bases excluded" : "all bases";
+  const getFasta = () => formatFasta(exportTitle(), sequenceForState(state));
+  const getFastq = () => makeFastq(exportTitle(), exportCalls(state));
   copyFasta.addEventListener("click", async () => {
     await copyTextWithFeedback(copyFasta, getFasta());
-    setStatus(panel, "Copied clipped FASTA.");
+    setStatus(panel, `Copied FASTA (${exportScope()}).`);
   }, listenerOptions);
   copyFastq.addEventListener("click", async () => {
     await copyTextWithFeedback(copyFastq, getFastq());
-    setStatus(panel, "Copied clipped FASTQ.");
+    setStatus(panel, `Copied FASTQ (${exportScope()}).`);
   }, listenerOptions);
   downloadFasta.addEventListener("click", () => {
-    downloadText(getFasta(), `${sequenceTitle(state)}.fasta`, "text/x-fasta;charset=utf-8");
-    setStatus(panel, "Downloaded clipped FASTA.");
+    downloadText(getFasta(), `${exportTitle()}.fasta`, "text/x-fasta;charset=utf-8");
+    setStatus(panel, `Downloaded FASTA (${exportScope()}).`);
   }, listenerOptions);
   downloadFastq.addEventListener("click", () => {
-    downloadText(getFastq(), `${sequenceTitle(state)}.fastq`, "text/x-fastq;charset=utf-8");
-    setStatus(panel, "Downloaded clipped FASTQ.");
+    downloadText(getFastq(), `${exportTitle()}.fastq`, "text/x-fastq;charset=utf-8");
+    setStatus(panel, `Downloaded FASTQ (${exportScope()}).`);
   }, listenerOptions);
   downloadPng.addEventListener("click", () => {
     downloadCanvasPng(canvas, `${sequenceTitle(state)}-trace.png`);
@@ -1342,12 +1451,13 @@ function renderSingleSangerTraceViewer(container, data) {
     cleanupController.abort();
   };
   container._sms3TraceState = {
-    read:() => ({bases:state.calls.map(c=>c.base).join(''),clipStart:state.clipStart,clipEnd:state.clipEnd,geneticCode:state.geneticCode,showForwardTranslations:state.showForwardTranslations,showReverseTranslations:state.showReverseTranslations}),
+    read:() => ({bases:state.calls.map(c=>c.base).join(''),clipStart:state.clipStart,clipEnd:state.clipEnd,excludeClippedBases:state.excludeClippedBases,geneticCode:state.geneticCode,showForwardTranslations:state.showForwardTranslations,showReverseTranslations:state.showReverseTranslations}),
     apply:snapshot => {
       if (typeof snapshot.bases !== 'string' || snapshot.bases.length !== state.calls.length || /[^ACGTRYSWKMBDHVN]/i.test(snapshot.bases)) throw new Error('Invalid edited trace calls.');
       if (!Number.isInteger(snapshot.clipStart) || !Number.isInteger(snapshot.clipEnd) || snapshot.clipStart < 1 || snapshot.clipEnd > state.calls.length || snapshot.clipStart > snapshot.clipEnd) throw new Error('Invalid trace clipping coordinates.');
       state.calls.forEach((call,i) => {call.base=snapshot.bases[i];call.edited=call.base!==call.originalBase;});
       state.clipStart=snapshot.clipStart;state.clipEnd=snapshot.clipEnd;state.selectedIndex=state.clipStart;state.visibleStart=state.clipStart;
+      state.excludeClippedBases=snapshot.excludeClippedBases!==false;
       state.geneticCode=String(snapshot.geneticCode||data.geneticCode||'1');state.showForwardTranslations=snapshot.showForwardTranslations===true;state.showReverseTranslations=snapshot.showReverseTranslations===true;
       render('Trace edits restored.');
     }
@@ -1355,7 +1465,7 @@ function renderSingleSangerTraceViewer(container, data) {
   render("Interactive trace ready. Click a base to inspect or edit it.");
 }
 
-function renderSangerTraceSetViewer(container, data) {
+function renderSangerTraceSetViewer(container, data, documentActions) {
   const cleanupController = new AbortController();
   const listenerOptions = { signal: cleanupController.signal };
   const panel = document.createElement("section");
@@ -1367,22 +1477,26 @@ function renderSangerTraceSetViewer(container, data) {
   title.className = "sanger-trace-title";
   title.textContent = "Sanger trace set";
   const summary = document.createElement("span");
-  summary.className = "sanger-trace-view-info";
+  summary.className = "sanger-trace-set-summary";
   summary.textContent = `${data.traceViews.length.toLocaleString()} traces loaded${data.reference ? `; reference ${data.reference.title}` : ""}`;
 
   const selectorLabel = document.createElement("label");
   selectorLabel.className = "sanger-trace-set-selector";
+  const selectorHeading = document.createElement("span");
+  selectorHeading.className = "sanger-trace-set-selector-heading";
   const selectorText = document.createElement("span");
   selectorText.textContent = "Trace";
   const selector = document.createElement("select");
+  selector.setAttribute("aria-label", "Trace");
   data.traceViews.forEach((trace, index) => {
     const option = document.createElement("option");
     option.value = String(index);
     option.textContent = `${index + 1}. ${trace.record || `Trace ${index + 1}`} (${trace.baseCalls.length.toLocaleString()} bases)`;
     selector.append(option);
   });
-  selectorLabel.append(selectorText, selector);
-  header.append(title, summary, selectorLabel);
+  selectorHeading.append(selectorText, summary);
+  selectorLabel.append(selectorHeading, selector);
+  header.append(title, selectorLabel);
 
   const traceHost = document.createElement("div");
   traceHost.className = "sanger-trace-set-host";
@@ -1402,7 +1516,7 @@ function renderSangerTraceSetViewer(container, data) {
     traceHost._sms3VisualCleanup?.();
     traceHost.innerHTML = "";
     const index = clamp(Number.parseInt(selector.value, 10) || 0, 0, data.traceViews.length - 1);
-    renderSingleSangerTraceViewer(traceHost, data.traceViews[index]);
+    renderSingleSangerTraceViewer(traceHost, data.traceViews[index], documentActions);
     if (traceStates.has(index)) traceHost._sms3TraceState.apply(traceStates.get(index));
     previousIndex = index;
   };
@@ -1423,10 +1537,12 @@ function renderSangerTraceSetViewer(container, data) {
 }
 
 export function renderSangerTraceViewer(container, data, editorDocument) {
-  if (Array.isArray(data?.traceViews) && data.traceViews.length > 0) renderSangerTraceSetViewer(container, data);
-  else renderSingleSangerTraceViewer(container, data);
+  const documentActions = document.createElement('div');
+  documentActions.className = 'sanger-trace-document-export';
+  if (Array.isArray(data?.traceViews) && data.traceViews.length > 0) renderSangerTraceSetViewer(container, data, documentActions);
+  else renderSingleSangerTraceViewer(container, data, documentActions);
   const toolbar = container.querySelector('.sanger-trace-set-toolbar,.sanger-trace-toolbar');
-  const session = createEditorSession({host:container, toolbar, tool:'sanger-trace-viewer', source:data, initial:editorDocument?.state,
+  const session = createEditorSession({host:container, toolbar, downloadHost:documentActions, tool:'sanger-trace-viewer', source:data, initial:editorDocument?.state,
     read:() => container._sms3TraceState.read(), apply:snapshot => container._sms3TraceState.apply(snapshot)
   });
   const cleanup = container._sms3VisualCleanup;

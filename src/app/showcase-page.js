@@ -606,7 +606,7 @@ async function renderShowcaseCard(card, item, token, context) {
       sharedInspection = true;
     } else if (result.visual?.sequenceExtractor) {
       preview.classList.add("showcase-preview-viewer");
-      renderSequenceExtractorWorkspace(preview, result.visual.sequenceExtractor);
+      await renderSequenceExtractorWorkspace(preview, result.visual.sequenceExtractor);
     } else if (result.visual?.sangerTrace) {
       preview.classList.add("showcase-preview-viewer");
       renderSangerTraceViewer(preview, result.visual.sangerTrace);

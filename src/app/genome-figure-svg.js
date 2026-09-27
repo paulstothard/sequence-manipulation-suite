@@ -3611,7 +3611,7 @@ function installFigureEditor(panel, sourceRecords, figure, editorDocument) {
   labelsPanel.className = "genome-figure-label-panel";
   labelsPanel.append(labelsGroup, selectedLabelGroup);
   const tabs = makeSettingsTabs([
-    { id: "appearance", label: "Appearance", content: figureControls },
+    { id: "appearance", label: "Style", content: figureControls },
     { id: "features", label: "Features", content: featureControls },
     { id: "labels", label: "Labels", content: labelsPanel }
   ], "appearance");

@@ -1733,8 +1733,10 @@ function renderVisualOutput(scope, svg, options = {}) {
     return "";
   }
   if (options.sequenceExtractor) {
-    renderSequenceExtractorWorkspace(visualOutput, options.sequenceExtractor, {editorDocument:options.editorDocument});
-    return "";
+    return renderSequenceExtractorWorkspace(visualOutput, options.sequenceExtractor, {
+      editorDocument: options.editorDocument,
+      signal: options.signal
+    }).then(() => "");
   }
   if (options.proteinStructure) {
     renderProteinStructureViewer(visualOutput, options.proteinStructure);
@@ -1810,7 +1812,7 @@ function renderVisualOutput(scope, svg, options = {}) {
   return displayedSvg;
 }
 
-function applyToolOutputChoice(choice) {
+async function applyToolOutputChoice(choice, options = {}) {
   const hasVisualOutput = Boolean(choice.svg || choice.viewer || choice.figure || choice.proteinFigure || choice.sequenceLogo || choice.proteinStructure || choice.notebook || choice.sangerTrace || choice.sequenceEditor || choice.sequenceExtractor || choice.treeViewer || choice.plateLayout);
   const hasPrimaryOutput = Boolean(choice.text || choice.tableStream || hasVisualOutput);
   elements.toolOutput.dataset.rawOutput = choice.text;
@@ -1823,7 +1825,7 @@ function applyToolOutputChoice(choice) {
   elements.toolOutput.dataset.mimeType = choice.download.mimeType ?? "text/plain";
   setOutputFormatLabel("tool", choice.label);
   renderTableOutputForScope("tool", choice.tableStream, Boolean(choice.tableStream));
-  const displayedSvg = renderVisualOutput("tool", choice.svg, {
+  const displayedSvg = await Promise.resolve(renderVisualOutput("tool", choice.svg, {
     pngDownload: choice.pngDownload,
     filename: choice.download.filename,
     plotSpec: choice.plotSpec,
@@ -1838,8 +1840,14 @@ function applyToolOutputChoice(choice) {
     sequenceEditor: choice.sequenceEditor,
     sequenceExtractor: choice.sequenceExtractor,
     treeViewer: choice.treeViewer,
-    plateLayout: choice.plateLayout
-  });
+    plateLayout: choice.plateLayout,
+    signal: options.signal
+  }));
+  if (options.signal?.aborted) {
+    const error = new Error("Tool run was cancelled.");
+    error.name = "AbortError";
+    throw error;
+  }
   if (choice.svg && displayedSvg) {
     elements.toolOutput.dataset.rawOutput = displayedSvg;
     elements.toolOutput.value = displayedSvg;
@@ -1888,7 +1896,7 @@ function getResultSequenceSearchDescriptor(result, choice, selectedFormat) {
   });
 }
 
-function renderGeneratedToolOutputChoice(result) {
+async function renderGeneratedToolOutputChoice(result, options = {}) {
   const selectedFormat = getSelectedToolOutputFormat(state.selectedTool) ?? "primary";
   const selectedChoice = getSelectedToolOutputChoice(state.selectedTool);
   const download = result.download ?? { filename: "sms3-output.txt", mimeType: "text/plain" };
@@ -1951,7 +1959,7 @@ function renderGeneratedToolOutputChoice(result) {
   elements.outputFormatSelect.textContent = "";
   elements.outputFormatSelect.closest("label").hidden = true;
   elements.outputViewTabs.hidden = false;
-  applyToolOutputChoice(choice);
+  await applyToolOutputChoice(choice, options);
 }
 
   return {

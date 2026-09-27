@@ -11,6 +11,7 @@ import {
 import { downloadCanvasPng, downloadCanvasSvg, makeSafeFileStem } from "./canvas-export.js";
 import {
   addRectHit,
+  appendAutomaticRangeAnchor,
   createRangePanel,
   createSelectionPanel,
   createViewerInspectorWorkspace,
@@ -18,6 +19,7 @@ import {
   createViewerSearchControls,
   getViewerFeatureTypeStyle,
   getViewerHitTargets,
+  getViewerRangeSequence,
   getSelectionTranslation,
   getViewerTrackItems,
   getViewerTargetClientPosition,
@@ -27,12 +29,14 @@ import {
   hitTestRegions,
   makeTooltipText,
   makeRangeAnchor,
+  makeViewerRangeState,
   makeViewerItemTargetDetails,
   makeTargetKey,
   makeViewerFeatureSuggestions,
   normalizeViewerDetailRows,
   renderRangePanel,
   renderSelectionPanel,
+  rangeAnchorMatchesTarget,
   searchResultUsesFeatureGlyph,
   updateViewerSearchControls,
   viewerTargetsMatch
@@ -57,10 +61,10 @@ import {
 } from "./viewer-inertia.js";
 import { installCanvasVisualInspection } from "./visual-inspection.js";
 import { installCanvasPinchZoom } from "./viewer-pinch-zoom.js";
+import { calculateBaseSelectionMarker } from "./base-selection-marker.js";
 
 const PLOT_LEFT = 118;
 const PLOT_RIGHT_GUTTER = 34;
-const MIN_LINEAR_PLOT_WIDTH = 260;
 const MIN_LINEAR_VIEW_SPAN = 10;
 const LINEAR_SEQUENCE_LETTER_EDGE_PADDING = 9;
 const LINEAR_TRACK_LABEL_LEFT_PADDING = 6;
@@ -70,12 +74,12 @@ const ZOOM_LIMIT_WHEEL_PAN_MAX_FRACTION = 0.24;
 const FEATURE_SLOT_HEIGHT = 18;
 const SQUISHED_FEATURE_SLOT_HEIGHT = 10;
 const FEATURE_SLOT_MAX = 16;
+const FEATURE_SLOT_MIN_GAP_UNITS = 12;
 const RESTRICTION_SITE_LABEL_PX_PER_BP = 10;
 const RESTRICTION_SITE_LABEL_GAP = 8;
 const ALIGNED_READ_BASE_PX_PER_BP = 9;
 const ALIGNED_READ_BASE_TEXT_Y_OFFSET = 1;
 const DENSITY_ITEM_THRESHOLD = 700;
-const DENSITY_PX_PER_UNIT_THRESHOLD = 0.03;
 const renderedViewerSessions = new WeakMap();
 const ICONS = {
   zoomIn: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.25"/><path d="m15.25 15.25 4.25 4.25"/><path d="M10.5 7.75v5.5M7.75 10.5h5.5"/></svg>',
@@ -261,7 +265,7 @@ function coordinateUnit(record) {
 }
 
 function getLinearPlotBounds(width) {
-  const safeWidth = Math.max(PLOT_LEFT + PLOT_RIGHT_GUTTER + MIN_LINEAR_PLOT_WIDTH, Number(width) || 0);
+  const safeWidth = Math.max(PLOT_LEFT + PLOT_RIGHT_GUTTER + 1, Number(width) || 0);
   return {
     plotLeft: PLOT_LEFT,
     plotRight: safeWidth - PLOT_RIGHT_GUTTER
@@ -394,28 +398,42 @@ function viewerTargetMatches(state, target) {
   return viewerTargetsMatch(state.selectedTarget, target) || viewerTargetsMatch(state.inspectedTarget, target);
 }
 
+function viewerTargetIsRangeAnchor(state, target) {
+  return (state.rangeAnchors || []).some((anchor) => rangeAnchorMatchesTarget(anchor, target));
+}
+
 function searchTargetMatches(state, target) {
   return state.activeSearchTarget?.key && state.activeSearchTarget.key === makeTargetKey(target);
 }
 
-function drawLinearSelectedBaseMarker(ctx, { x, y, pxPerBp, theme }) {
-  const width = Math.max(16, Math.min(30, pxPerBp + 8));
-  const height = 24;
-  const left = x - width / 2;
-  const top = y - height / 2;
+function drawLinearSelectedBaseMarker(ctx, { x, y, base, pxPerBp, theme }) {
+  const { left, top, width, height, radius } = calculateBaseSelectionMarker(x, y, ctx.measureText(base), pxPerBp);
   ctx.save();
   ctx.fillStyle = theme.selectedFill;
   ctx.strokeStyle = theme.selectedStroke;
-  ctx.lineWidth = 2.4;
-  ctx.shadowColor = theme.selectedStroke;
-  ctx.shadowBlur = theme.dark ? 7 : 4;
+  ctx.lineWidth = 1;
   if (typeof ctx.roundRect === "function") {
     ctx.beginPath();
-    ctx.roundRect(left, top, width, height, 5);
+    ctx.roundRect(left, top, width, height, radius);
     ctx.fill();
     ctx.stroke();
   } else {
     ctx.fillRect(left, top, width, height);
+    ctx.strokeRect(left, top, width, height);
+  }
+  ctx.restore();
+}
+
+function drawLinearBaseAnchorOutline(ctx, { x, y, base, pxPerBp, theme }) {
+  const { left, top, width, height, radius } = calculateBaseSelectionMarker(x, y, ctx.measureText(base), pxPerBp);
+  ctx.save();
+  ctx.strokeStyle = theme.selectedStroke;
+  ctx.lineWidth = 1.8;
+  if (typeof ctx.roundRect === "function") {
+    ctx.beginPath();
+    ctx.roundRect(left, top, width, height, radius);
+    ctx.stroke();
+  } else {
     ctx.strokeRect(left, top, width, height);
   }
   ctx.restore();
@@ -435,6 +453,19 @@ function drawLinearSelectedCodonMarker(ctx, { x1, x2, y, strand, theme }) {
   ctx.shadowBlur = theme.dark ? 6 : 3;
   traceTranslationArrow(ctx, left, top, width, height, strand);
   ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawLinearCodonAnchorOutline(ctx, { x1, x2, y, strand, theme }) {
+  const left = x1 + 1;
+  const width = Math.max(1, x2 - x1 - 2);
+  const height = 22;
+  ctx.save();
+  ctx.strokeStyle = theme.selectedStroke;
+  ctx.lineWidth = 2;
+  ctx.lineJoin = "round";
+  traceTranslationArrow(ctx, left, y - height / 2, width, height, strand);
   ctx.stroke();
   ctx.restore();
 }
@@ -545,14 +576,56 @@ export function shouldUseLinearTrackSummary(track, state, pxPerBp, visibleItemCo
   if (mode === "full" || mode === "squished") return false;
   const itemCount = track.summary?.itemCount ?? track.items?.length ?? 0;
   const visibleCount = Number.isFinite(Number(visibleItemCount)) ? Number(visibleItemCount) : itemCount;
-  return visibleCount > DENSITY_ITEM_THRESHOLD ||
-    (itemCount > DENSITY_ITEM_THRESHOLD && pxPerBp < DENSITY_PX_PER_UNIT_THRESHOLD);
+  return visibleCount > DENSITY_ITEM_THRESHOLD;
 }
 
 function drawTrackSummaryBins(ctx, track, options) {
   const summary = track.summary;
   if (!summary?.bins?.length) return false;
   const { plotLeft, plotRight, viewStart, viewEnd, y, color } = options;
+  const plusSummary = summary.strands?.find((entry) => entry.strand === "+");
+  const minusSummary = summary.strands?.find((entry) => entry.strand === "-");
+  if (plusSummary?.bins?.length && minusSummary?.bins?.length) {
+    const unstrandedSummary = summary.strands?.find((entry) => entry.strand === "");
+    const strandSummaries = [
+      { summary: plusSummary, label: "+" },
+      ...(unstrandedSummary?.bins?.length ? [{ summary: unstrandedSummary, label: "·" }] : []),
+      { summary: minusSummary, label: "−" }
+    ];
+    const laneGap = 1;
+    const laneHeight = (20 - laneGap * (strandSummaries.length - 1)) / strandSummaries.length;
+    const lanes = strandSummaries.map((entry, index) => ({
+      ...entry,
+      top: y - 10 + index * (laneHeight + laneGap),
+      bottom: y - 10 + index * (laneHeight + laneGap) + laneHeight
+    }));
+    const previousAlpha = ctx.globalAlpha;
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.1;
+    for (const lane of lanes) {
+      ctx.fillRect(plotLeft, lane.top, plotRight - plotLeft, lane.bottom - lane.top);
+    }
+    for (const lane of lanes) {
+      for (const bin of lane.summary.bins) {
+        if (bin.end < viewStart || bin.start > viewEnd) continue;
+        const binWidth = Math.max(1, Number(bin.end) - Number(bin.start));
+        const coverage = Math.max(0, Math.min(1, Number(bin.bases || 0) / binWidth));
+        if (coverage <= 0) continue;
+        const x1 = Math.max(plotLeft, bpToX(Math.max(bin.start, viewStart), plotLeft, plotRight, viewStart, viewEnd));
+        const x2 = Math.min(plotRight, bpToX(Math.min(bin.end, viewEnd), plotLeft, plotRight, viewStart, viewEnd));
+        ctx.globalAlpha = 0.38 + 0.5 * Math.sqrt(coverage);
+        ctx.fillRect(x1, lane.top, Math.max(1, x2 - x1), lane.bottom - lane.top);
+      }
+    }
+    ctx.globalAlpha = previousAlpha;
+    ctx.font = "9px system-ui, sans-serif";
+    ctx.fillStyle = options.theme?.muted || "#64748b";
+    ctx.textAlign = "left";
+    for (const lane of lanes) {
+      ctx.fillText(lane.label, plotRight + 4, lane.bottom - 1);
+    }
+    return true;
+  }
   const maxValue = Math.max(1, summary.mode === "intervals" ? summary.maxBases || summary.maxCount : summary.maxCount);
   let drew = false;
   for (const bin of summary.bins) {
@@ -660,7 +733,9 @@ function drawLinearQuantitativeTrack(ctx, track, state, layout, rowLayout, theme
 }
 
 function drawLinearSearchMarkers(ctx, state, layout, theme) {
-  const results = state.searchResults || [];
+  const results = state.selectedTarget?.coordinateSelection
+    ? [...(state.searchResults || []), state.selectedTarget]
+    : state.searchResults || [];
   if (results.length === 0) return;
   const { plotLeft, plotRight, markerTop, markerBottom } = layout;
   for (const result of results) {
@@ -672,7 +747,7 @@ function drawLinearSearchMarkers(ctx, state, layout, theme) {
     const x1 = Math.max(plotLeft, bpToX(start - 1, plotLeft, plotRight, state.viewStart, state.viewEnd));
     const x2 = Math.min(plotRight, bpToX(end, plotLeft, plotRight, state.viewStart, state.viewEnd));
     const width = Math.max(3, x2 - x1);
-    const active = state.activeSearchTarget?.key === result.key;
+    const active = result.coordinateSelection || state.activeSearchTarget?.key === result.key;
     ctx.fillStyle = active ? theme.searchActiveFill : theme.searchFill;
     ctx.strokeStyle = active ? theme.searchActiveStroke : theme.searchStroke;
     ctx.lineWidth = active ? 2 : 1;
@@ -692,15 +767,7 @@ function visibleTrackItemCount(track, state, viewStart, viewEnd) {
 function buildLinearTrackLayouts(record, state, pxPerBp) {
   return getVisibleViewerTracks(record, state).map((track) => {
     const displayMode = getViewerTrackDisplayMode(track, state);
-    const itemCount = track.summary?.itemCount ?? track.items?.length ?? 0;
-    const canDecideFromSummary =
-      track.summary?.bins?.length &&
-      displayMode === "auto" &&
-      itemCount > DENSITY_ITEM_THRESHOLD &&
-      pxPerBp < DENSITY_PX_PER_UNIT_THRESHOLD;
-    const visibleCount = canDecideFromSummary
-      ? itemCount
-      : visibleTrackItemCount(track, state, state.viewStart, state.viewEnd);
+    const visibleCount = visibleTrackItemCount(track, state, state.viewStart, state.viewEnd);
     if (isQuantitativeTrack(track)) {
       return {
         track,
@@ -773,6 +840,7 @@ function getCachedLinearSlotLayout(record, state, track) {
   const layout = createStackedIntervalLayout(trackItems, {
     length: record.length,
     maxSlots: FEATURE_SLOT_MAX,
+    minGapUnits: trackItems.length > DENSITY_ITEM_THRESHOLD ? FEATURE_SLOT_MIN_GAP_UNITS : 0,
     fixedSlotsByType: track.fixedSlotsByType || track.slotByType,
     allowFixedSlotOverlaps: track.allowFixedSlotOverlaps === true
   });
@@ -951,6 +1019,7 @@ function drawTranslationRow(ctx, record, state, y, frameLabel, frameOffset, stra
     };
     addRectHit(state, { x1, y1: y - 13, x2, y2: y + 13 }, target);
     const selected = viewerTargetMatches(state, target);
+    const anchored = viewerTargetIsRangeAnchor(state, target);
     const searchActive = searchTargetMatches(state, target);
     ctx.strokeStyle = aa === "*" ? theme.stopStroke : isStart ? theme.startStroke : theme.aminoAcidStroke;
     ctx.fillStyle = aa === "*" ? theme.stopFill : isStart ? theme.startFill : theme.aminoAcidFill;
@@ -966,6 +1035,9 @@ function drawTranslationRow(ctx, record, state, y, frameLabel, frameOffset, stra
     ctx.fillStyle = aa === "*" ? theme.stopText : isStart ? theme.startText : theme.aminoAcidText;
     ctx.textAlign = "center";
     ctx.fillText(aa, (x1 + x2) / 2, y);
+    if (anchored) {
+      drawLinearCodonAnchorOutline(ctx, { x1, x2, y, strand, theme });
+    }
   }
 }
 
@@ -1293,10 +1365,13 @@ function drawViewer(ctx, canvas, status, record, state) {
       };
       addRectHit(state, { x1: x - pxPerBp / 2, y1: dnaTopY - 12, x2: x + pxPerBp / 2, y2: dnaTopY + 12 }, target);
       if (viewerTargetMatches(state, target)) {
-        drawLinearSelectedBaseMarker(ctx, { x, y: dnaTopY, pxPerBp, theme });
+        drawLinearSelectedBaseMarker(ctx, { x, y: dnaTopY, base, pxPerBp, theme });
       }
       ctx.fillStyle = proteinViewer ? getViewerResidueColor(theme, base) : getViewerBaseColor(theme, base);
       ctx.fillText(base, x, dnaTopY);
+      if (viewerTargetIsRangeAnchor(state, target)) {
+        drawLinearBaseAnchorOutline(ctx, { x, y: dnaTopY, base, pxPerBp, theme });
+      }
       if (showSecondStrand) {
         const complement = complementBase(base);
         const complementTarget = {
@@ -1310,10 +1385,13 @@ function drawViewer(ctx, canvas, status, record, state) {
         };
         addRectHit(state, { x1: x - pxPerBp / 2, y1: dnaBottomY - 12, x2: x + pxPerBp / 2, y2: dnaBottomY + 12 }, complementTarget);
         if (viewerTargetMatches(state, complementTarget)) {
-          drawLinearSelectedBaseMarker(ctx, { x, y: dnaBottomY, pxPerBp, theme });
+          drawLinearSelectedBaseMarker(ctx, { x, y: dnaBottomY, base: complement, pxPerBp, theme });
         }
         ctx.fillStyle = getViewerBaseColor(theme, complement);
         ctx.fillText(complement, x, dnaBottomY);
+        if (viewerTargetIsRangeAnchor(state, complementTarget)) {
+          drawLinearBaseAnchorOutline(ctx, { x, y: dnaBottomY, base: complement, pxPerBp, theme });
+        }
       }
     }
   } else {
@@ -1338,7 +1416,9 @@ function drawViewer(ctx, canvas, status, record, state) {
       : showForwardTranslations || showReverseTranslations
         ? "zoom in to reveal DNA bases and amino acid letters"
         : "zoom in to reveal DNA bases";
-    ctx.fillText(revealText, (plotLeft + plotRight) / 2, showSecondStrand ? dnaBottomY + 24 : dnaTopY + 24);
+    const fittedRevealText = ctx.measureText(revealText).width <= plotRight - plotLeft
+      ? revealText : proteinViewer ? "Zoom in to reveal residues" : "Zoom in to reveal bases";
+    ctx.fillText(fittedRevealText, (plotLeft + plotRight) / 2, showSecondStrand ? dnaBottomY + 24 : dnaTopY + 24);
   }
   if (!record.hideSequenceInterpretationControls) {
     ctx.font = "12px system-ui, sans-serif";
@@ -1452,27 +1532,13 @@ function copyViewerText(text) {
 }
 
 function getRangeState(state, record) {
-  const anchors = state.rangeAnchors || [];
-  if (anchors.length < 2) return { anchors, ready: false };
-  const start = Math.max(1, Math.min(record.length, anchors[0].position));
-  const end = Math.max(1, Math.min(record.length, anchors[1].position));
-  const rangeStart = Math.min(start, end);
-  const rangeEnd = Math.max(start, end);
-  return {
-    anchors,
-    ready: true,
-    start: rangeStart,
-    end: rangeEnd,
-    length: rangeEnd - rangeStart + 1,
-    wraps: false,
-    canSwap: false,
-    label: `${rangeStart.toLocaleString()}-${rangeEnd.toLocaleString()}`
-  };
+  return makeViewerRangeState(state.rangeAnchors, record.length, {
+    oppositePath: state.useOppositeRangePath
+  });
 }
 
 function getRangeForwardDna(record, range) {
-  if (!range?.ready) return "";
-  return record.sequence.slice(range.start - 1, range.end);
+  return getViewerRangeSequence(record.sequence, range);
 }
 
 function translateRange(sequence, frame, geneticCode) {
@@ -1677,6 +1743,7 @@ function makeLinearViewerSnapshot(record, state, searchControls) {
     composition: snapshotViewerCompositionState(state),
     trackDisplayModes: Array.from(state.trackDisplayModes || []),
     rangeAnchors: Array.isArray(state.rangeAnchors) ? state.rangeAnchors.map((anchor) => ({ ...anchor })) : [],
+    useOppositeRangePath: state.useOppositeRangePath === true,
     searchScope: searchControls?.scope?.value || "",
     searchQuery: searchControls?.input?.value || ""
   };
@@ -1762,6 +1829,7 @@ function installViewer(panel, record, options = {}) {
     reverseTranslationToggle.label.hidden = true;
     geneticCodeControl.control.hidden = true;
   }
+  if (options.showGeneticCodeControl === false) geneticCodeControl.control.hidden = true;
   toolbar.append(leftControls, toggles, menuControls);
 
   const canvas = document.createElement("canvas");
@@ -1792,6 +1860,7 @@ function installViewer(panel, record, options = {}) {
     rangeAnchors: Array.isArray(preserved?.rangeAnchors)
       ? preserved.rangeAnchors.filter((anchor) => Number(anchor?.position) >= 1 && Number(anchor?.position) <= record.length).slice(-2)
       : [],
+    useOppositeRangePath: preserved?.useOppositeRangePath === true,
     searchResults: [],
     activeSearchIndex: -1,
     activeSearchTarget: null,
@@ -1962,7 +2031,8 @@ function installViewer(panel, record, options = {}) {
         addRangeAnchor: (selected = target, endpoint = "start") => selectionActions().addRangeAnchor(selected, endpoint),
         clearRange: () => {
           state.rangeAnchors = [];
-          renderCurrentRange();
+          state.useOppositeRangePath = false;
+          renderCurrentRange({ redraw: true });
         },
         copyRangeCoordinates: () => currentRange?.ready && copyViewerText(currentRange.label),
         copyRangeSequence: () => currentRange?.ready && copyViewerText(getRangeForwardDna(record, currentRange)),
@@ -1971,11 +2041,22 @@ function installViewer(panel, record, options = {}) {
         zoomToRange: () => {
           cancelInertia();
           if (!currentRange?.ready) return;
+          if (currentRange.wraps) {
+            state.viewStart = 0;
+            state.viewEnd = record.length;
+            drawViewer(ctx, canvas, status, record, state);
+            return;
+          }
           const padding = Math.max(MIN_LINEAR_VIEW_SPAN / 2, currentRange.length * 0.5);
           state.viewStart = currentRange.start - 1 - padding;
           state.viewEnd = currentRange.end + padding;
           clampView(state, record.length);
           drawViewer(ctx, canvas, status, record, state);
+        },
+        swapRange: () => {
+          if (!currentRange?.canSwap) return;
+          state.useOppositeRangePath = !state.useOppositeRangePath;
+          renderCurrentRange({ redraw: true });
         },
         zoomToTarget: (selected = target) => selected && zoomToTargetAnimated(selected)
       }
@@ -2035,7 +2116,8 @@ function installViewer(panel, record, options = {}) {
         const anchor = makeRangeAnchor(selected, endpoint);
         if (!anchor) return;
         state.rangeAnchors = [...state.rangeAnchors, anchor].slice(-2);
-        renderCurrentRange();
+        state.useOppositeRangePath = false;
+        renderCurrentRange({ redraw: true });
       },
       copyText: copyViewerText,
       copySequence: (selected) => copyViewerText(getLinearSequence(record, selected)),
@@ -2070,19 +2152,29 @@ function installViewer(panel, record, options = {}) {
   function selectTarget(target, selectOptions = {}) {
     const nextTarget = target ? { ...target, key: target.key || makeTargetKey(target) } : null;
     state.selectedTarget = nextTarget && (selectOptions.keepIfSame || state.selectedTarget?.key !== nextTarget.key) ? nextTarget : null;
+    const nextAnchors = selectOptions.autoRangeAnchor && nextTarget
+      ? appendAutomaticRangeAnchor(state.rangeAnchors, nextTarget)
+      : state.rangeAnchors;
+    const rangeChanged = nextAnchors !== state.rangeAnchors;
+    if (rangeChanged) {
+      state.rangeAnchors = nextAnchors;
+      state.useOppositeRangePath = false;
+    }
     renderSelectionPanel(selectionPanel, state.selectedTarget, selectionActions());
+    if (rangeChanged) renderCurrentRange({ notify: false });
     drawViewer(ctx, canvas, status, record, state);
-    notifySelectionChange();
+    notifySelectionChange({ preferredSelection: getRangeState(state, record).ready ? "range" : "target" });
   }
   function notifySelectionChange(payloadOptions = {}) {
     options.onSelectionChange?.(makeSelectionPayload(state.selectedTarget, payloadOptions));
   }
-  function renderCurrentRange() {
+  function renderCurrentRange(renderOptions = {}) {
     const range = getRangeState(state, record);
     renderRangePanel(rangePanel, range, {
       clearRange: () => {
         state.rangeAnchors = [];
-        renderCurrentRange();
+        state.useOppositeRangePath = false;
+        renderCurrentRange({ redraw: true });
       },
       copyCoordinates: () => copyViewerText(range.label),
       copyForwardDna: () => copyViewerText(getRangeForwardDna(record, range)),
@@ -2090,21 +2182,35 @@ function installViewer(panel, record, options = {}) {
       copyTranslation: (frame) => copyViewerText(proteinViewer ? "" : translateRange(getRangeForwardDna(record, range), frame, getViewerGeneticCode(record, state))),
       zoomToRange: () => {
         cancelInertia();
+        if (range.wraps) {
+          state.viewStart = 0;
+          state.viewEnd = record.length;
+          drawViewer(ctx, canvas, status, record, state);
+          return;
+        }
         const padding = Math.max(MIN_LINEAR_VIEW_SPAN / 2, range.length * 0.5);
         state.viewStart = range.start - 1 - padding;
         state.viewEnd = range.end + padding;
         clampView(state, record.length);
         drawViewer(ctx, canvas, status, record, state);
       },
+      swapRange: () => {
+        if (!range.canSwap) return;
+        state.useOppositeRangePath = !state.useOppositeRangePath;
+        renderCurrentRange({ redraw: true });
+      },
       unitLabel: coordinateUnit(record),
       copySequenceLabel: proteinViewer ? "Copy protein sequence" : "Copy forward DNA",
       showReverseComplement: !proteinViewer,
       showTranslation: !proteinViewer,
       emptyText: proteinViewer
-        ? "Add two anchors from selected coordinates, residues, or features to build a protein range."
-        : "Add two anchors from selected coordinates, bases, sites, or codons to build a forward-DNA range."
+        ? "Click two residues to build a protein range."
+        : "Click two bases or amino acids to build a forward-DNA range."
     });
-    notifySelectionChange({ preferredSelection: range.ready ? "range" : "target" });
+    if (renderOptions.redraw) drawViewer(ctx, canvas, status, record, state);
+    if (renderOptions.notify !== false) {
+      notifySelectionChange({ preferredSelection: range.ready ? "range" : "target" });
+    }
   }
   const searchOptions = proteinViewer
       ? {
@@ -2198,7 +2304,7 @@ function installViewer(panel, record, options = {}) {
     getText: makeTooltipText,
     getKey: (target) => target.key || makeTargetKey(target),
     getPosition: (target) => getViewerTargetClientPosition(state, target, canvas),
-    onActivate: (target) => selectTarget(target, { keepIfSame: true }),
+    onActivate: (target) => selectTarget(target, { keepIfSame: true, autoRangeAnchor: true }),
     onActiveChange: (target) => {
       state.inspectedTarget = target;
       drawViewer(ctx, canvas, status, record, state);
@@ -2207,7 +2313,9 @@ function installViewer(panel, record, options = {}) {
   });
   canvas.addEventListener("click", (event) => {
     if (state.dragging) return;
-    selectTarget(hitTestRegions(state, event.clientX, event.clientY, canvas));
+    selectTarget(hitTestRegions(state, event.clientX, event.clientY, canvas), {
+      autoRangeAnchor: true
+    });
   });
   canvas.addEventListener("contextmenu", (event) => {
     const target = hitTestRegions(state, event.clientX, event.clientY, canvas);
@@ -2306,6 +2414,16 @@ function installViewer(panel, record, options = {}) {
   } else {
     panel.append(toolbar, searchControls.element, canvas);
   }
+  options.onCoordinateSelectionReady?.((start, end) => {
+    if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start || end > record.length) return false;
+    cancelInertia();
+    state.rangeAnchors = [];
+    state.useOppositeRangePath = false;
+    selectTarget(start === end
+      ? { kind: "base", type: "Base", position: start, start, end, base: record.sequence[start - 1], strand: "+" }
+      : { kind: "search-result", type: "Selected bases", start, end, strand: "+", label: `Bases ${start}-${end}`, coordinateSelection: true }, { keepIfSame: true });
+    return true;
+  });
   scheduleResize();
   return {
     cleanup: () => {

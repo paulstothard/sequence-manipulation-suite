@@ -760,7 +760,7 @@ export function makeBiologicalRecordViewerRecords(records, options = {}) {
         label: "Features",
         layout: "stacked",
         items: record.features
-          .filter((feature) => feature.parsedLocation?.supported && feature.parsedLocation.start && feature.parsedLocation.end)
+          .filter((feature) => feature.feature !== "source" && feature.parsedLocation?.supported && feature.parsedLocation.start && feature.parsedLocation.end)
           .map((feature) => {
             const standardName = firstQualifier(feature, "standard_name");
             return {

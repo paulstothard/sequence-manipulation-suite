@@ -94,6 +94,14 @@ function buildMetadata(alphabet) {
       { id: "gapOpen", type: "number", label: "Gap opening penalty", defaultValue: 10, min: 0, step: 1, visibleWhen: pairwiseScoringVisibleWhen },
       { id: "gapExtend", type: "number", label: "Gap extension penalty", defaultValue: 1, min: 0, step: 1, visibleWhen: pairwiseScoringVisibleWhen },
       {
+        id: "showConsensusLine",
+        type: "checkbox",
+        label: "Show consensus line",
+        defaultValue: true,
+        visibleWhen: { option: "outputFormat", value: "svg-color" },
+        help: "Shows the per-column conservation symbols beneath each block of the colored alignment figure. This changes only the figure display; alignment data and other output formats are unchanged."
+      },
+      {
         id: "outputFormat",
         type: "radio",
         label: "Output format",

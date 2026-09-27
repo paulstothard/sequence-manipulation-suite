@@ -1,3 +1,10 @@
+import {
+  makePublicationPlotStyle,
+  publicationPlotCss,
+  publicationSvgAttributes,
+  SMS3_PLOT_THEME
+} from "./publication-plot-style.js";
+
 function escapeXml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -265,13 +272,14 @@ export function renderPhylogramSvg(newick, {
   const root = rooting === "midpoint" ? midpointRootTree(parsedRoot) : parsedRoot;
   const leaves = collectLeaves(root);
   if (leaves.length === 0) {
-    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 140" role="img" aria-label="${escapeXml(title)}"><style>.title{font:600 18px system-ui,sans-serif;fill:#111827}.note{font:13px system-ui,sans-serif;fill:#475569}</style><rect width="100%" height="100%" fill="white"/><text class="title" x="32" y="48">${escapeXml(title)}</text><text class="note" x="32" y="82">No tree leaves were available to draw.</text></svg>`;
+    const width = 760;
+    const height = 140;
+    const style = makePublicationPlotStyle(width, height);
+    return `<svg xmlns="http://www.w3.org/2000/svg" ${publicationSvgAttributes(style)} viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="sms3-publication" data-sms3-publication-theme="phylogram" data-grid-lines="hidden"><style>${publicationPlotCss(style)}.bg{fill:${SMS3_PLOT_THEME.surface}}</style><rect class="bg" width="100%" height="100%"/><text class="title" x="32" y="48">${escapeXml(title)}</text><text class="note" x="32" y="82">No tree leaves were available to draw.</text></svg>`;
   }
 
   const rowSpacing = Math.max(24, Math.min(38, 32 - Math.floor(leaves.length / 12)));
-  const tipFontSize = Math.max(11, Math.min(15, 16 - Math.floor(leaves.length / 10)));
   const labelMap = new Map(leaves.map((leaf) => [leaf, displayLabel(leaf.label)]));
-  const maxLabelWidth = Math.max(...[...labelMap.values()].map((label) => textWidthPx(label, tipFontSize)), 64);
   const depths = setDepths(root);
   let maxDepth = Math.max(...depths.values(), 0);
   const unavailableMetric = collectNodes(root).some(node => node !== root && (node.length == null || !Number.isFinite(node.length) || node.length < 0));
@@ -295,8 +303,20 @@ export function renderPhylogramSvg(newick, {
   const labelGap = 16;
   const branchAreaWidth = Math.max(260, Math.min(920, 140 + maxDepth * 420));
   const labelX = leftMargin + branchAreaWidth + labelGap;
-  const width = Math.ceil(labelX + maxLabelWidth + rightMargin);
   const height = Math.ceil(topMargin + (leaves.length - 1) * rowSpacing + bottomMargin);
+  let width = Math.ceil(labelX + 120 + rightMargin);
+  let style = makePublicationPlotStyle(width, height);
+  for (let iteration = 0; iteration < 8; iteration += 1) {
+    const maxLabelWidth = Math.max(
+      ...[...labelMap.values()].map((label) => textWidthPx(label, style.bodyFontSize)),
+      64
+    );
+    const nextWidth = Math.ceil(labelX + maxLabelWidth + rightMargin);
+    if (nextWidth === width) break;
+    width = nextWidth;
+    style = makePublicationPlotStyle(width, height);
+  }
+  style = makePublicationPlotStyle(width, height);
   const tipY = new Map(leaves.map((leaf, leafIndex) => [leaf, topMargin + leafIndex * rowSpacing]));
   const positions = new Map();
 
@@ -316,15 +336,14 @@ export function renderPhylogramSvg(newick, {
 
   if (unavailableMetric) note = "Cladogram: missing or negative lengths; branch distances are not represented.";
   const parts = [
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}">`,
+    `<svg xmlns="http://www.w3.org/2000/svg" ${publicationSvgAttributes(style)} viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(title)}" data-plot-foundation="sms3-publication" data-sms3-publication-theme="phylogram" data-grid-lines="hidden">`,
     "<style>",
-    ".bg{fill:#ffffff}",
-    ".title{font:600 18px system-ui,sans-serif;fill:#111827}",
-    ".note{font:12px system-ui,sans-serif;fill:#475569}",
-    ".branch{stroke:#20262e;stroke-width:1.6;fill:none;stroke-linecap:square}",
-    ".tip-link{stroke:#cbd5e1;stroke-width:1.1;fill:none;stroke-linecap:square}",
-    `.tip{fill:#101418;font: ${tipFontSize}px system-ui,sans-serif;dominant-baseline:middle}`,
-    ".scale{fill:#313841;font:11px system-ui,sans-serif}",
+    publicationPlotCss(style),
+    `.bg{fill:${SMS3_PLOT_THEME.surface}}`,
+    `.branch{stroke:${SMS3_PLOT_THEME.outline};stroke-width:${style.dataStrokeWidth};fill:none;stroke-linecap:square}`,
+    `.tip-link{stroke:${SMS3_PLOT_THEME.missingOutline};stroke-width:${style.axisStrokeWidth};fill:none;stroke-linecap:square}`,
+    `.tip{fill:${SMS3_PLOT_THEME.text};font-size:${style.bodyFontSize}px;dominant-baseline:middle}`,
+    `.scale{fill:${SMS3_PLOT_THEME.axis};font-size:${style.smallFontSize}px}`,
     "</style>",
     `<rect class="bg" x="0" y="0" width="${width}" height="${height}"/>`,
     `<text class="title" x="24" y="30">${escapeXml(title)}</text>`,

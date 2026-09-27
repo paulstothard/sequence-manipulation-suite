@@ -1,4 +1,5 @@
 import { createEditorSession } from './editor-session.js';
+import { createEditorPanelTabs } from './editor-panel-tabs.js';
 import { formatFastaRecord } from "../core/fasta.js";
 import { geneticCodes, getCodonsForCode } from "../core/genetic-code.js";
 import { cleanDnaRnaSequence } from "../core/sequence.js";
@@ -21,7 +22,6 @@ import {
 } from "./dna-viewer-canvas.js";
 import { downloadText } from "./file-download.js";
 import { copyTextWithFeedback, showCopiedFeedback } from "./copy-feedback.js";
-import { getRangeAnchorChoices } from "./dna-viewer-interactions.js";
 import {
   makeViewerSequenceInitialState,
   normalizeViewerSequenceChoices,
@@ -83,53 +83,74 @@ function renderSequenceEditorChangeSummary(container, changeSummary) {
   const headline = document.createElement("p");
   headline.className = "sequence-editor-change-headline";
   headline.textContent = changeSummary.headline;
-  const metrics = document.createElement("div");
+  const metrics = document.createElement("dl");
   metrics.className = "sequence-editor-change-metrics";
   const metricItems = [
-    ["Current", `${changeSummary.currentRecords.toLocaleString()} record(s), ${changeSummary.currentBases.toLocaleString()} bp`],
-    ["Delta", `${changeSummary.lengthDelta > 0 ? "+" : ""}${changeSummary.lengthDelta.toLocaleString()} bp`],
-    ["Edits", `${changeSummary.changedRecords.toLocaleString()} record(s)`],
-    ["State", changeSummary.changedRecords > 0 ? "changed, ready to export" : "baseline"],
-    ["Code", `${changeSummary.geneticCode}. ${changeSummary.geneticCodeName}`]
+    ["Sequence length", `${changeSummary.currentBases.toLocaleString()} bp`],
+    ["Length change", `${changeSummary.lengthDelta > 0 ? "+" : ""}${changeSummary.lengthDelta.toLocaleString()} bp`],
+    ["Current records", changeSummary.currentRecords.toLocaleString()],
+    ["Changed records", changeSummary.changedRecords.toLocaleString()],
+    ["Genetic code", `${changeSummary.geneticCode}. ${changeSummary.geneticCodeName}`]
   ];
   for (const [label, value] of metricItems) {
-    const item = document.createElement("span");
-    const strong = document.createElement("strong");
-    strong.textContent = label;
-    item.append(strong, ` ${value}`);
-    metrics.append(item);
+    const term = document.createElement("dt");
+    const description = document.createElement("dd");
+    term.textContent = label;
+    description.textContent = value;
+    metrics.append(term, description);
   }
   container.append(title, headline, metrics);
 
+  if (changeSummary.firstChange?.beforePreview || changeSummary.firstChange?.afterPreview) {
+    const comparison = document.createElement("section");
+    comparison.className = "sequence-editor-change-section";
+    const heading = document.createElement("h5");
+    heading.textContent = changeSummary.changedRecords > 1 ? "First changed record" : "Sequence comparison";
+    const preview = document.createElement("div");
+    preview.className = "sequence-editor-change-preview";
+    for (const [label, sequence] of [["Before", changeSummary.firstChange.beforePreview], ["After", changeSummary.firstChange.afterPreview]]) {
+      const row = document.createElement("div");
+      const labelElement = document.createElement("span");
+      labelElement.className = "sequence-editor-preview-label";
+      labelElement.textContent = label;
+      const bases = document.createElement("pre");
+      bases.setAttribute("aria-label", `${label} sequence`);
+      bases.textContent = sequence || "";
+      row.append(labelElement, bases);
+      preview.append(row);
+    }
+    const help = document.createElement("p");
+    help.className = "sequence-editor-comparison-help";
+    help.textContent = "Changed bases are uppercase; | marks an empty segment.";
+    comparison.append(heading, preview, help);
+    container.append(comparison);
+  }
+
+  const effects = document.createElement("section");
+  effects.className = "sequence-editor-change-section sequence-editor-change-effects";
+  const effectsTitle = document.createElement("h5");
+  effectsTitle.textContent = "Effects";
+  effects.append(effectsTitle);
+  function appendEffect(label, text) {
+    const item = document.createElement("div");
+    const heading = document.createElement("h6");
+    heading.textContent = label;
+    const note = document.createElement("p");
+    note.className = "sequence-editor-frame-note";
+    note.textContent = text;
+    item.append(heading, note);
+    effects.append(item);
+  }
   if (changeSummary.changedRecords > 1) {
-    const frame = document.createElement("p");
-    frame.className = "sequence-editor-frame-note";
-    frame.textContent = "Multiple records changed; reset the comparison baseline after loading the intended sequence before interpreting reading-frame impact.";
-    container.append(frame);
+    appendEffect("Reading frame", "Multiple records changed; reset the comparison baseline after loading the intended sequence before interpreting reading-frame impact.");
   } else if (changeSummary.firstChange?.frameImpact) {
-    const frame = document.createElement("p");
-    frame.className = "sequence-editor-frame-note";
-    frame.textContent = changeSummary.firstChange.frameImpact;
-    container.append(frame);
+    appendEffect("Reading frame", changeSummary.firstChange.frameImpact);
   }
 
   if (changeSummary.firstChange?.restrictionImpact?.summary) {
-    const restriction = document.createElement("p");
-    restriction.className = "sequence-editor-frame-note";
-    restriction.textContent = changeSummary.firstChange.restrictionImpact.summary;
-    container.append(restriction);
+    appendEffect("Restriction sites", changeSummary.firstChange.restrictionImpact.summary);
   }
-
-  if (changeSummary.firstChange?.beforePreview || changeSummary.firstChange?.afterPreview) {
-    const preview = document.createElement("div");
-    preview.className = "sequence-editor-change-preview";
-    const before = document.createElement("pre");
-    before.textContent = `Before: ${changeSummary.firstChange.beforePreview || ""}`;
-    const after = document.createElement("pre");
-    after.textContent = `After:  ${changeSummary.firstChange.afterPreview || ""}`;
-    preview.append(before, after);
-    container.append(preview);
-  }
+  if (effects.childElementCount > 1) container.append(effects);
 }
 
 function renderSequenceEditorWorkspace(previousState = null) {
@@ -150,9 +171,7 @@ function renderSequenceEditorWorkspace(previousState = null) {
   const headerText = document.createElement("div");
   const heading = document.createElement("h3");
   heading.textContent = "Sequence Editor";
-  const guidance = document.createElement("p");
-  guidance.textContent = "Inspect and edit one DNA/RNA sequence in the live viewer workspace. Coordinate edits, translations, search, range selection, and downloaded FASTA stay synchronized.";
-  headerText.append(heading, guidance);
+  headerText.append(heading);
   const summary = document.createElement("p");
   summary.className = "sequence-editor-summary";
   viewerHeader.append(headerText, summary);
@@ -164,18 +183,7 @@ function renderSequenceEditorWorkspace(previousState = null) {
 
   const editorPanel = document.createElement("aside");
   editorPanel.className = "sequence-editor-settings";
-  editorPanel.setAttribute("aria-label", "Sequence editor inspector");
-  const editorHeader = document.createElement("div");
-  editorHeader.className = "sequence-editor-inspector-heading";
-  const editorHeaderText = document.createElement("div");
-  editorHeaderText.className = "sequence-editor-inspector-heading-text";
-  const editorHeading = document.createElement("h3");
-  editorHeading.textContent = "Inspector";
-  const editorIntro = document.createElement("p");
-  editorIntro.className = "sequence-editor-inspector-intro";
-  editorIntro.textContent = "Inspect sequence items and edit the selected target";
-  editorHeaderText.append(editorHeading, editorIntro);
-  editorHeader.append(editorHeaderText);
+  editorPanel.setAttribute("aria-label", "Sequence editor controls");
   const editorBody = document.createElement("div");
   editorBody.className = "sequence-editor-inspector-body";
   const appBody = document.createElement("div");
@@ -194,7 +202,7 @@ function renderSequenceEditorWorkspace(previousState = null) {
   sourceSummary.textContent = "Raw sequence input";
   const sourceHelp = document.createElement("p");
   sourceHelp.className = "sequence-editor-source-help";
-  sourceHelp.textContent = "Paste or edit DNA/RNA or FASTA here, then the viewer updates after cleaning the text. Use the viewer and inspector for coordinate edits.";
+  sourceHelp.textContent = "Paste or edit DNA/RNA or FASTA here, then the viewer updates after cleaning the text. Use the viewer and Edit tab for coordinate edits.";
   sourceDetails.append(sourceSummary, sourceHelp, editor);
 
   const geneticCodeSelect = document.createElement("select");
@@ -230,47 +238,17 @@ function renderSequenceEditorWorkspace(previousState = null) {
   lineWidthInput.value = String(Math.min(120, Math.max(20, Number.parseInt(previousState?.lineWidth, 10) || 60)));
   lineWidthInput.dataset.sequenceEditorControl = "lineWidth";
 
-  const coordinatePanel = document.createElement("details");
+  const coordinatePanel = document.createElement("div");
   coordinatePanel.className = "sequence-editor-coordinate-panel";
-  const coordinateHeading = document.createElement("summary");
-  coordinateHeading.textContent = "Edit by typed coordinates";
   const coordinateHelp = document.createElement("p");
   coordinateHelp.className = "sequence-editor-coordinate-help";
-  coordinateHelp.textContent =
-    "Use this precise editor when you already know the record and 1-based coordinate(s). The main edit panel above is usually easier because it follows the viewer selection.";
-  const coordinateNote = document.createElement("p");
-  coordinateNote.className = "sequence-editor-coordinate-note";
-  coordinateNote.textContent =
-    "Delete, replace, and reverse-complement use inclusive start/end coordinates. Insert uses the position after which bases are inserted; use 0 to insert before the first base.";
-  const coordinateGrid = document.createElement("div");
-  coordinateGrid.className = "sequence-editor-coordinate-grid";
-
-  const coordinateOperation = document.createElement("select");
-  coordinateOperation.dataset.sequenceEditorControl = "coordinateOperation";
-  for (const [value, label] of [
-    ["insert-after", "Insert typed bases after coordinate"],
-    ["delete-range", "Delete bases from start to end"],
-    ["replace-range", "Replace start-to-end range"],
-    ["reverse-complement-range", "Reverse-complement start-to-end range"]
-  ]) {
-    const option = document.createElement("option");
-    option.value = value;
-    option.textContent = label;
-    coordinateOperation.append(option);
-  }
-
-  const coordinateRecord = document.createElement("input");
-  coordinateRecord.type = "number";
-  coordinateRecord.min = "1";
-  coordinateRecord.step = "1";
-  coordinateRecord.value = "1";
-  coordinateRecord.dataset.sequenceEditorControl = "coordinateRecord";
+  coordinateHelp.textContent = "Select in the viewer or enter 1-based, inclusive coordinates.";
 
   const coordinateStart = document.createElement("input");
   coordinateStart.type = "number";
-  coordinateStart.min = "0";
+  coordinateStart.min = "1";
   coordinateStart.step = "1";
-  coordinateStart.value = "0";
+  coordinateStart.value = "1";
   coordinateStart.dataset.sequenceEditorControl = "coordinateStart";
 
   const coordinateEnd = document.createElement("input");
@@ -280,35 +258,17 @@ function renderSequenceEditorWorkspace(previousState = null) {
   coordinateEnd.value = "1";
   coordinateEnd.dataset.sequenceEditorControl = "coordinateEnd";
 
-  const coordinateSequence = document.createElement("textarea");
-  coordinateSequence.className = "sequence-editor-coordinate-sequence";
-  coordinateSequence.rows = 3;
-  coordinateSequence.spellcheck = false;
-  coordinateSequence.wrap = "off";
-  coordinateSequence.placeholder = "Bases to insert or use as replacement";
-  coordinateSequence.dataset.sequenceEditorControl = "coordinateSequence";
-
-  const operationField = createMarkdownWorkspaceField("Operation", coordinateOperation);
-  const recordField = createMarkdownWorkspaceField("Record number", coordinateRecord);
-  const startField = createMarkdownWorkspaceField("Insert after base", coordinateStart);
-  const endField = createMarkdownWorkspaceField("End coordinate (inclusive)", coordinateEnd);
-  const sequenceField = createMarkdownWorkspaceField("Bases to insert/replace", coordinateSequence);
-  sequenceField.classList.add("sequence-editor-coordinate-wide");
-  const useViewerSelectionButton = createMarkdownWorkspaceButton("Copy edit target to fields");
-  useViewerSelectionButton.classList.add("sequence-editor-coordinate-use-selection");
-  const applyCoordinateEditButton = createMarkdownWorkspaceButton("Apply typed coordinate edit", "primary-button");
-  applyCoordinateEditButton.classList.add("sequence-editor-coordinate-apply");
-  const coordinateActions = document.createElement("div");
-  coordinateActions.className = "sequence-editor-coordinate-actions";
-  coordinateActions.append(useViewerSelectionButton, applyCoordinateEditButton);
-  const viewerSelectionHint = document.createElement("p");
-  viewerSelectionHint.className = "sequence-editor-selection-hint";
+  const startField = createMarkdownWorkspaceField("Start", coordinateStart);
+  const endField = createMarkdownWorkspaceField("End (inclusive)", coordinateEnd);
   const contextMenu = document.createElement("div");
   contextMenu.className = "sequence-editor-context-menu";
   contextMenu.hidden = true;
   contextMenu.setAttribute("role", "menu");
-  coordinateGrid.append(operationField, recordField, startField, endField, sequenceField);
-  coordinatePanel.append(coordinateHeading, coordinateHelp, coordinateNote, viewerSelectionHint, coordinateGrid, coordinateActions);
+  coordinatePanel.append(startField, endField);
+  const coordinateError = document.createElement("p");
+  coordinateError.className = "sequence-editor-coordinate-error";
+  coordinateError.setAttribute("role", "alert");
+  coordinateError.hidden = true;
 
   const toolbar = document.createElement("div");
   toolbar.className = "sequence-editor-actions sequence-editor-toolbar";
@@ -317,7 +277,7 @@ function renderSequenceEditorWorkspace(previousState = null) {
   const historyActions = document.createElement("div");
   historyActions.className = "sequence-editor-toolbar-group sequence-editor-toolbar-group-history";
   const exportActions = document.createElement("div");
-  exportActions.className = "sequence-editor-toolbar-group sequence-editor-toolbar-group-export";
+  exportActions.className = "sequence-editor-export-actions";
   const viewerActions = document.createElement("div");
   viewerActions.className = "sequence-editor-toolbar-group sequence-editor-toolbar-group-view";
   const cleanButton = createMarkdownWorkspaceButton("Clean");
@@ -325,26 +285,35 @@ function renderSequenceEditorWorkspace(previousState = null) {
   const undoButton = createMarkdownWorkspaceButton("Undo");
   const redoButton = createMarkdownWorkspaceButton("Redo");
   const copyButton = createMarkdownWorkspaceButton("Copy FASTA");
-  const downloadButton = createMarkdownWorkspaceButton("Download FASTA", "primary-button");
-  const exportDetails = document.createElement("details");
-  exportDetails.className = "sequence-editor-export-options";
-  const exportSummary = document.createElement("summary");
-  exportSummary.textContent = "Export options";
-  const exportPanel = document.createElement("div");
-  exportPanel.className = "sequence-editor-export-popover";
-  exportPanel.append(
-    createMarkdownWorkspaceField("Download name", filenameInput),
-    createMarkdownWorkspaceField("FASTA line width", lineWidthInput)
-  );
-  exportDetails.append(exportSummary, exportPanel);
+  const downloadButton = createMarkdownWorkspaceButton("Download FASTA");
+  const exportOptions = document.createElement("div");
+  exportOptions.className = "sequence-editor-export-options";
+  const lineWidthField = createMarkdownWorkspaceField("Bases per line", lineWidthInput);
+  lineWidthField.classList.add("sequence-editor-line-width-field");
+  exportOptions.append(createMarkdownWorkspaceField("File name", filenameInput), lineWidthField);
   documentActions.append(cleanButton, reverseComplementButton);
   historyActions.append(undoButton, redoButton);
-  exportActions.append(copyButton, downloadButton, exportDetails);
+  exportActions.append(copyButton, downloadButton);
   viewerActions.append(
     createMarkdownWorkspaceField("Viewer", viewerLayoutSelect),
     createMarkdownWorkspaceField("Genetic code", geneticCodeSelect)
   );
-  toolbar.append(documentActions, historyActions, exportActions, viewerActions);
+  const sequenceActionsMenu = document.createElement("details");
+  sequenceActionsMenu.className = "sequence-editor-sequence-actions";
+  const sequenceActionsSummary = document.createElement("summary");
+  sequenceActionsSummary.textContent = "Sequence actions";
+  sequenceActionsMenu.append(sequenceActionsSummary, documentActions);
+  const displayMenu = document.createElement("details");
+  displayMenu.className = "sequence-editor-display-menu";
+  const displaySummary = document.createElement("summary");
+  displaySummary.textContent = "Display";
+  const displayBody = document.createElement("div");
+  displayBody.className = "sequence-editor-display-body";
+  const viewerDisplayControls = document.createElement("div");
+  viewerDisplayControls.className = "sequence-editor-viewer-display-controls dna-viewer-toolbar";
+  displayBody.append(viewerActions, viewerDisplayControls);
+  displayMenu.append(displaySummary, displayBody);
+  toolbar.append(historyActions, sequenceActionsMenu, displayMenu);
 
   const status = document.createElement("p");
   status.className = "sequence-editor-status";
@@ -358,10 +327,12 @@ function renderSequenceEditorWorkspace(previousState = null) {
   const selectionPanel = document.createElement("section");
   selectionPanel.className = "sequence-editor-selection-panel";
   const selectionTitle = document.createElement("h4");
-  selectionTitle.textContent = "Clicked item / anchor";
+  selectionTitle.textContent = "Selection details";
   const selectionBody = document.createElement("div");
   selectionBody.className = "sequence-editor-selection-body";
   selectionPanel.append(selectionTitle, selectionBody);
+  const selectionActions = document.createElement("div");
+  selectionActions.className = "sequence-editor-selection-actions";
 
   const rangePanel = document.createElement("section");
   rangePanel.className = "sequence-editor-range-panel";
@@ -379,9 +350,6 @@ function renderSequenceEditorWorkspace(previousState = null) {
   quickEditPanel.className = "sequence-editor-quick-edit-panel";
   const quickEditTitle = document.createElement("h4");
   quickEditTitle.textContent = "Edit selected target";
-  const quickEditHelp = document.createElement("p");
-  quickEditHelp.className = "sequence-editor-quick-help";
-  quickEditHelp.textContent = "Use the viewer to choose what the buttons edit. A completed range appears here and becomes the target until you clear it.";
   const quickTargetSummary = document.createElement("div");
   quickTargetSummary.className = "sequence-editor-quick-target";
   const quickSequenceInput = document.createElement("textarea");
@@ -396,8 +364,6 @@ function renderSequenceEditorWorkspace(previousState = null) {
   const insertAfterButton = createMarkdownWorkspaceButton("Insert after");
   const deleteSelectionButton = createMarkdownWorkspaceButton("Delete");
   const reverseSelectionButton = createMarkdownWorkspaceButton("Reverse complement");
-  const copySelectionButton = createMarkdownWorkspaceButton("Copy");
-  const downloadSelectionButton = createMarkdownWorkspaceButton("Export");
   const quickEditActions = document.createElement("div");
   quickEditActions.className = "sequence-editor-quick-actions";
   quickEditActions.append(
@@ -405,12 +371,11 @@ function renderSequenceEditorWorkspace(previousState = null) {
     insertBeforeButton,
     insertAfterButton,
     deleteSelectionButton,
-    reverseSelectionButton,
-    copySelectionButton,
-    downloadSelectionButton
+    reverseSelectionButton
   );
   rangePanel.classList.add("sequence-editor-range-panel-inline");
-  quickEditPanel.append(quickEditTitle, quickEditHelp, quickTargetSummary, rangePanel, quickSequenceInput, quickEditActions);
+  quickEditPanel.append(quickEditTitle, coordinatePanel, coordinateHelp, coordinateError, quickTargetSummary, selectionActions, rangePanel,
+    createMarkdownWorkspaceField("New bases", quickSequenceInput));
 
   const effectsPanel = document.createElement("section");
   effectsPanel.className = "sequence-editor-effects-panel";
@@ -419,19 +384,75 @@ function renderSequenceEditorWorkspace(previousState = null) {
   const effectsBody = document.createElement("div");
   effectsBody.className = "sequence-editor-effects-body";
   effectsPanel.append(effectsTitle, effectsBody);
+  quickEditPanel.append(effectsPanel, quickEditActions);
 
-  changeStatusShell.append(changePanel, baselineButton);
-  viewerPanel.append(viewerHeader, toolbar, changeStatusShell, viewerNavigation, viewerContainer, sourceDetails);
-  editorBody.append(
-    status,
-    quickEditPanel,
-    selectionPanel,
-    effectsPanel,
-    coordinatePanel
-  );
-  editorPanel.append(editorHeader, editorBody);
+  const baselineActions = document.createElement("section");
+  baselineActions.className = "sequence-editor-baseline-actions";
+  const baselineTitle = document.createElement("h4");
+  baselineTitle.textContent = "Comparison baseline";
+  const baselineHelp = document.createElement("p");
+  baselineHelp.textContent = "Compare future changes against the current sequence.";
+  baselineActions.append(baselineTitle, baselineHelp, baselineButton);
+  changeStatusShell.append(changePanel, baselineActions);
+  const editPanel = document.createElement("div");
+  editPanel.className = "sequence-editor-tab-panel";
+  editPanel.append(quickEditPanel, selectionPanel);
+  const changesPanel = document.createElement("div");
+  changesPanel.className = "sequence-editor-tab-panel";
+  const historyDetails = document.createElement("details");
+  historyDetails.className = "sequence-editor-history";
+  const historySummary = document.createElement("summary");
+  historySummary.textContent = "History";
+  const historyList = document.createElement("ol");
+  historyDetails.append(historySummary, historyList);
+  changesPanel.append(changeStatusShell, historyDetails);
+  const exportPanel = document.createElement("div");
+  exportPanel.className = "sequence-editor-tab-panel sequence-editor-export-panel";
+  const exportScope = document.createElement("select");
+  exportScope.setAttribute("aria-label", "Sequence export");
+  for (const [value, label] of [["whole", "Whole sequence"], ["selection", "Selected bases"]]) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    exportScope.append(option);
+  }
+  const sequenceExports = document.createElement("section");
+  sequenceExports.className = "sequence-editor-sequence-exports";
+  const scopeField = createMarkdownWorkspaceField("Sequence export", exportScope);
+  scopeField.classList.add("sequence-editor-export-scope");
+  sequenceExports.append(scopeField, exportOptions, exportActions);
+  const figureExports = document.createElement("section");
+  figureExports.className = "sequence-editor-figure-exports";
+  const figureTitle = document.createElement("h4");
+  figureTitle.textContent = "Figure";
+  const figureDescription = document.createElement("p");
+  figureDescription.textContent = "Current view";
+  const figureButtons = document.createElement("div");
+  figureButtons.className = "sequence-editor-figure-buttons";
+  figureExports.append(figureTitle, figureDescription, figureButtons);
+  const documentExports = document.createElement("section");
+  documentExports.className = "sequence-editor-document-exports";
+  const documentTitle = document.createElement("h4");
+  documentTitle.textContent = "Continue editing";
+  const documentDescription = document.createElement("p");
+  documentDescription.textContent = "Reopen your sequence, annotations and settings in SMS3.";
+  documentExports.append(documentTitle, documentDescription);
+  exportPanel.append(sequenceExports, figureExports, documentExports);
+  const inspectorTabs = createEditorPanelTabs("Sequence editor controls", [
+    { id: "edit", label: "Edit", panel: editPanel },
+    { id: "changes", label: "Changes", panel: changesPanel },
+    { id: "export", label: "Export", panel: exportPanel }
+  ]);
+  editorBody.append(editPanel, changesPanel, exportPanel);
+  editorPanel.append(inspectorTabs.element, editorBody);
+  const viewRegion = document.createElement("details");
+  viewRegion.className = "sequence-editor-view-region";
+  const viewRegionSummary = document.createElement("summary");
+  viewRegionSummary.textContent = "View region";
+  viewRegion.append(viewRegionSummary, viewerNavigation);
+  viewerPanel.append(viewerHeader, toolbar, viewRegion, viewerContainer, sourceDetails);
   appBody.append(viewerPanel, editorPanel);
-  shell.append(appBody, contextMenu);
+  shell.append(appBody, status, contextMenu);
   elements.markdownWorkspace.append(shell);
 
   let prepared = null;
@@ -448,12 +469,25 @@ function renderSequenceEditorWorkspace(previousState = null) {
   let renderedViewerLayout = viewerLayoutSelect.value;
   const viewerStates = new Map();
   let lastInspectorSelectionKey = "";
+  let selectViewerCoordinates = null;
+  let coordinateDraftInvalid = false;
   function setEditorStatus(message) {
     status.textContent = message;
   }
   function updateHistoryButtons() {
     undoButton.disabled = undoStack.length === 0;
     redoButton.disabled = redoStack.length === 0;
+    historyList.replaceChildren();
+    for (const item of undoStack.slice(-20)) {
+      const li = document.createElement("li");
+      li.textContent = item.label || "Edit";
+      historyList.append(li);
+    }
+    if (!undoStack.length) {
+      const li = document.createElement("li");
+      li.textContent = "No edits yet";
+      historyList.append(li);
+    }
   }
   function snapshotEditorState(label) {
     return {
@@ -576,11 +610,10 @@ function renderSequenceEditorWorkspace(previousState = null) {
     } else {
       quickEditTitle.textContent = "Edit selected target";
     }
-    quickEditHelp.textContent = capabilities.reason;
     quickTargetSummary.textContent = describeSequenceEditorEditTarget(active);
-    quickSequenceInput.disabled = !capabilities.canEditSequence;
+    quickSequenceInput.disabled = !prepared?.records?.length;
     quickSequenceInput.placeholder = !active
-      ? "Select a base or range first"
+      ? "Type bases, then choose a target"
       : active.wraps
         ? "Split origin-spanning ranges before editing"
         : capabilities.canEditSequence
@@ -592,8 +625,11 @@ function renderSequenceEditorWorkspace(previousState = null) {
     deleteSelectionButton.disabled = !capabilities.canEditSequence;
     reverseSelectionButton.hidden = !capabilities.canReverseComplement;
     reverseSelectionButton.disabled = !capabilities.canReverseComplement;
-    copySelectionButton.disabled = !capabilities.canCopy;
-    downloadSelectionButton.disabled = !capabilities.canExport;
+    exportScope.querySelector('[value="selection"]').disabled = !capabilities.canExport;
+    updateExportScope();
+    if (coordinateDraftInvalid) {
+      for (const button of [replaceSelectionButton, insertBeforeButton, insertAfterButton, deleteSelectionButton, reverseSelectionButton]) button.disabled = true;
+    }
   }
   function renderSelectionEffects(active = getActiveEditorSelection()) {
     effectsBody.textContent = "";
@@ -686,10 +722,11 @@ function renderSequenceEditorWorkspace(previousState = null) {
     rangeBody.textContent = "";
     const range = selection?.currentRange;
     const actions = selection?.actions || {};
+    rangePanel.hidden = !range?.anchors?.length;
     if (!range?.anchors?.length) {
       const empty = document.createElement("p");
       empty.className = "sequence-editor-range-empty";
-      empty.textContent = "No range yet. Click a viewer item, then use Add as range anchor in Clicked item / anchor.";
+      empty.textContent = "No range yet. Click two bases, residues, or amino acids in the viewer.";
       rangeBody.append(empty);
       return;
     }
@@ -708,7 +745,7 @@ function renderSequenceEditorWorkspace(previousState = null) {
       rows.push(["Wraps origin", range.wraps ? "yes" : "no"]);
       rows.push(["Current target", "Range is active"]);
     } else {
-      rows.push(["Next step", "Select another viewer item and add it as the second anchor."]);
+      rows.push(["Next step", "Click another base, residue, or amino acid to set the second anchor."]);
     }
     appendInspectorRows(rangeBody, rows);
     if (range.ready) {
@@ -727,7 +764,7 @@ function renderSequenceEditorWorkspace(previousState = null) {
       renderSelectionActionButton(buttons, "Copy reverse complement", actions.copyRangeReverseComplement);
       renderSelectionActionButton(buttons, "Zoom to range", actions.zoomToRange);
       if (range.canSwap) {
-        renderSelectionActionButton(buttons, "Use opposite path", actions.swapRange);
+        renderSelectionActionButton(buttons, range.oppositePath ? "Use direct path" : "Use opposite path", actions.swapRange);
       }
     }
     if (buttons.childElementCount > 0) {
@@ -751,13 +788,14 @@ function renderSequenceEditorWorkspace(previousState = null) {
       lastInspectorSelectionKey = nextKey;
     }
     selectionBody.textContent = "";
+    selectionActions.replaceChildren();
     setQuickEditButtonsEnabled(active);
     if (!selectedItem) {
       const empty = document.createElement("p");
       empty.className = "sequence-editor-selection-empty";
       empty.textContent = active?.kind === "range"
         ? "Range is active. Click another viewer item to inspect it here, or clear the range to edit clicked items directly."
-        : "Click a base, codon, feature, or restriction site. Use Add as range anchor when you want an interval.";
+        : "Click a base, codon, feature, or restriction site. Two sequence-symbol clicks create a range automatically.";
       selectionBody.append(empty);
       renderSelectionEffects(active);
       return;
@@ -790,14 +828,6 @@ function renderSequenceEditorWorkspace(previousState = null) {
     const actionRow = document.createElement("div");
     actionRow.className = "sequence-editor-selection-actions";
     if (selectedItem.target) {
-      for (const choice of getRangeAnchorChoices(selectedItem.target)) {
-        renderSelectionActionButton(
-          actionRow,
-          choice.actionLabel,
-          () => selection?.actions?.addRangeAnchor?.(selectedItem.target, choice.endpoint),
-          `Added the ${choice.endpoint === "position" ? "selected coordinate" : `${choice.endpoint} of ${selectedItem.label}`} as a range anchor.`
-        );
-      }
       renderSelectionActionButton(
         actionRow,
         "Zoom to selection",
@@ -805,7 +835,7 @@ function renderSequenceEditorWorkspace(previousState = null) {
       );
     }
     if (actionRow.childElementCount > 0) {
-      selectionBody.append(actionRow);
+      selectionActions.append(...actionRow.childNodes);
     }
     if (selectedItem.kind === "site") {
       const note = document.createElement("p");
@@ -830,15 +860,29 @@ function renderSequenceEditorWorkspace(previousState = null) {
     }
     renderSelectionEffects(active);
   }
-  function refreshCoordinateEditControls() {
-    const operation = coordinateOperation.value;
-    const startLabel = startField.querySelector("span");
-    if (startLabel) {
-      startLabel.textContent = operation === "insert-after" ? "Insert after base" : "Start coordinate";
+  function commitCoordinateTarget() {
+    const record = getSelectionRecord(activeViewerSequence?.index ?? 0);
+    const start = Number(coordinateStart.value);
+    const end = Number(coordinateEnd.value);
+    if (!record || !Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start || end > record.sequence.length) {
+      coordinateDraftInvalid = true;
+      coordinateError.hidden = false;
+      coordinateError.textContent = `Enter a start and end within 1-${record?.sequence.length || 1}, with start no greater than end.`;
+      setQuickEditButtonsEnabled(getActiveEditorSelection());
+      return false;
     }
-    coordinateStart.min = operation === "insert-after" ? "0" : "1";
-    endField.hidden = operation === "insert-after";
-    sequenceField.hidden = operation === "delete-range" || operation === "reverse-complement-range";
+    coordinateDraftInvalid = false;
+    coordinateError.hidden = true;
+    const active = getActiveEditorSelection();
+    if (active && active.start === start && active.end === end && !active.wraps) {
+      setQuickEditButtonsEnabled(active);
+      return true;
+    }
+    const draft = quickSequenceInput.value;
+    const applied = selectViewerCoordinates?.(start, end) === true;
+    quickSequenceInput.value = draft;
+    renderSelectionEffects();
+    return applied;
   }
   function describeViewerSelection(selection) {
     const active = getActiveEditorSelection(selection);
@@ -876,9 +920,9 @@ function renderSequenceEditorWorkspace(previousState = null) {
     return `Selected ${kindLabel} ${active.label}${coordinateText}.${editText}`;
   }
   function updateViewerSelectionState(selection) {
+    coordinateDraftInvalid = false;
+    coordinateError.hidden = true;
     viewerSelection = selection?.target || selection?.currentRange?.anchors?.length || selection?.currentRange?.ready ? selection : null;
-    viewerSelectionHint.textContent = describeViewerSelection(viewerSelection);
-    useViewerSelectionButton.disabled = !getActiveEditorSelection(viewerSelection);
     if (viewerSelection) {
       applyViewerSelectionToCoordinateControls(viewerSelection, { silent: true });
       const statusMessage = describeViewerSelectionStatus(viewerSelection);
@@ -908,13 +952,10 @@ function renderSequenceEditorWorkspace(previousState = null) {
     }
     const rangeStart = Math.min(start, end);
     const rangeEnd = Math.max(start, end);
-    coordinateRecord.value = String(active.recordIndex + 1);
-    if (coordinateOperation.value === "insert-after") {
-      coordinateStart.value = String(rangeEnd);
-    } else {
-      coordinateStart.value = String(rangeStart);
-      coordinateEnd.value = String(rangeEnd);
-    }
+    coordinateStart.value = String(rangeStart);
+    coordinateEnd.value = String(rangeEnd);
+    coordinateStart.max = String(getSelectionRecord(active.recordIndex)?.sequence.length || rangeEnd);
+    coordinateEnd.max = coordinateStart.max;
     if (!options.silent) setEditorStatus(`${describeViewerSelection(selection)} Filled coordinate edit fields.`);
     return true;
   }
@@ -959,28 +1000,25 @@ function renderSequenceEditorWorkspace(previousState = null) {
       setEditorStatus("Select a range of two or more bases to reverse-complement.");
       return false;
     }
-    coordinateOperation.value = operation;
-    refreshCoordinateEditControls();
+    inspectorTabs.select("edit");
     return applyViewerSelectionToCoordinateControls(selection);
   }
-  function applyCoordinateEditFromControls(statusPrefix = "") {
-    if (coordinateOperation.value === "reverse-complement-range") {
-      const start = Number(coordinateStart.value);
-      const end = Number(coordinateEnd.value);
-      if (Number.isFinite(start) && Number.isFinite(end) && Math.abs(end - start) + 1 < 2) {
-        setEditorStatus("Enter or select a range of two or more bases to reverse-complement. For one base, use Replace with the complementary base.");
-        return;
-      }
-    }
+  function applyCoordinateEdit(operation, active, sequence = "", statusPrefix = "") {
+    const insertAfter = operation === "insert-before" ? active.start - 1 : active.end;
+    const inserting = operation === "insert-before" || operation === "insert-after";
+    const editedStart = inserting ? insertAfter + 1 : active.start;
+    const editedLength = operation === "delete-range" ? 1
+      : operation === "reverse-complement-range" ? active.end - active.start + 1
+      : sequence.length;
     clearTimeout(debounceTimer);
     pushUndoState("coordinate edit");
     const editResult = applySequenceEditorCoordinateEdit(editor.value, {
-      operation: coordinateOperation.value,
-      recordNumber: coordinateRecord.value,
-      insertAfter: coordinateStart.value,
-      start: coordinateStart.value,
-      end: coordinateEnd.value,
-      editSequence: coordinateSequence.value,
+      operation: inserting ? "insert-after" : operation,
+      recordNumber: active.recordIndex + 1,
+      insertAfter,
+      start: active.start,
+      end: active.end,
+      editSequence: sequence,
       lineWidth: getLineWidth(),
       featureTrackOverrides
     });
@@ -993,11 +1031,19 @@ function renderSequenceEditorWorkspace(previousState = null) {
     }
     clearTimeout(debounceTimer);
     redrawViewer();
+    if (editResult.edit?.applied) {
+      const length = getSelectionRecord(activeViewerSequence?.index ?? 0)?.sequence.length || 0;
+      if (length) {
+        const start = Math.max(1, Math.min(length, editedStart));
+        selectViewerCoordinates?.(start, Math.min(length, start + Math.max(1, editedLength) - 1));
+      }
+    }
     const featureText = editResult.edit.featureUpdateSummary ? ` Features: ${editResult.edit.featureUpdateSummary}.` : "";
     const warningText = editResult.warnings.length > 0 ? ` ${editResult.warnings[0]}` : "";
     setEditorStatus(`${statusPrefix}${editResult.edit.summary}${featureText}${warningText}`);
   }
-  function prepareInspectorEdit(operation) {
+  function applyInspectorEdit(operation) {
+    if (!commitCoordinateTarget()) return;
     const active = getActiveEditorSelection();
     if (!active) {
       setEditorStatus("Select a base, codon, feature, site, or range before applying an edit.");
@@ -1018,53 +1064,13 @@ function renderSequenceEditorWorkspace(previousState = null) {
       setEditorStatus("Type bases in the edit field before inserting or replacing sequence.");
       return false;
     }
-    coordinateRecord.value = String(active.recordIndex + 1);
-    if (operation === "insert-before" || operation === "insert-after") {
-      coordinateOperation.value = "insert-after";
-      coordinateStart.value = String(operation === "insert-before" ? Math.max(0, active.start - 1) : active.end);
-      coordinateSequence.value = cleaned.sequence;
-    } else {
-      coordinateOperation.value = operation;
-      coordinateStart.value = String(active.start);
-      coordinateEnd.value = String(active.end);
-      coordinateSequence.value = cleaned.sequence;
-    }
-    refreshCoordinateEditControls();
-    return true;
-  }
-  function applyInspectorEdit(operation) {
-    if (!prepareInspectorEdit(operation)) {
-      return;
-    }
-    applyCoordinateEditFromControls("Applied from selection: ");
-  }
-  async function copyInspectorSelection() {
-    const active = getActiveEditorSelection();
-    const text = active?.selectedSequence || "";
-    if (!text) {
-      setEditorStatus("The selected item does not have copyable sequence.");
-      return;
-    }
-    await copyTextWithFeedback(copySelectionButton, text);
-    setEditorStatus(`Copied ${text.length.toLocaleString()} selected base${text.length === 1 ? "" : "s"}.`);
-  }
-  function downloadInspectorSelection() {
-    const active = getActiveEditorSelection();
-    const text = active?.selectedSequence || "";
-    if (!active || !text) {
-      setEditorStatus("The selected item does not have downloadable sequence.");
-      return;
-    }
-    const safeTitle = `${active.recordTitle || "selected_sequence"}_${active.start}_${active.end}`.replace(/[^A-Za-z0-9_.-]+/g, "_");
-    const fasta = formatFastaRecord(safeTitle, text, getLineWidth()).trimEnd();
-    downloadText(fasta, normalizeSequenceEditorFilename(`${safeTitle}.fasta`), "text/x-fasta;charset=utf-8");
-    setEditorStatus(`Exported ${text.length.toLocaleString()} selected base${text.length === 1 ? "" : "s"}.`);
+    applyCoordinateEdit(operation, active, cleaned.sequence, "Applied from selection: ");
   }
   function applyContextEditNow(selection, operation) {
     if (!prepareContextEdit(selection, operation)) {
       return;
     }
-    applyCoordinateEditFromControls("Applied from viewer selection: ");
+    applyCoordinateEdit(operation, getDirectEditorSelection(selection) || getActiveEditorSelection(selection), "", "Applied from viewer selection: ");
   }
   async function copyContextSelection(selection) {
     const text = selection?.selectedSequence || "";
@@ -1088,7 +1094,7 @@ function renderSequenceEditorWorkspace(previousState = null) {
       ? `Clicked ${active.label}${Number.isFinite(active.start) ? ` (${active.start === active.end ? active.start.toLocaleString() : `${active.start.toLocaleString()}-${active.end.toLocaleString()}`})` : ""}.`
       : describeViewerSelection(selection);
     contextMenu.append(title);
-    addContextMenuButton("Copy to typed-coordinate fields", () => applyViewerSelectionToCoordinateControls(selection));
+    addContextMenuButton("Edit selected coordinates", () => { inspectorTabs.select("edit"); applyViewerSelectionToCoordinateControls(selection); });
     if (capabilities.canEditSequence) {
       addContextMenuButton("Prepare insert after", () => prepareContextEdit(selection, "insert-after"));
       addContextMenuButton("Prepare replace", () => prepareContextEdit(selection, "replace-range"));
@@ -1119,6 +1125,7 @@ function renderSequenceEditorWorkspace(previousState = null) {
     if (snapshot) viewerStates.set(viewerStateKey(activeViewerSequence), snapshot);
   }
   function cleanupEditorViewer() {
+    selectViewerCoordinates = null;
     cleanupRenderedDnaViewer(viewerContainer);
     cleanupRenderedCircularDnaViewer(viewerContainer);
   }
@@ -1148,7 +1155,6 @@ function renderSequenceEditorWorkspace(previousState = null) {
     if (!prepared?.viewer || !selection) return;
     if (captureCurrent) captureActiveViewerState();
     activeViewerSequence = selection;
-    coordinateRecord.value = String(selection.index + 1);
     cleanupEditorViewer();
     viewerContainer.textContent = "";
     updateViewerSelectionState(null);
@@ -1169,6 +1175,8 @@ function renderSequenceEditorWorkspace(previousState = null) {
       onSelectionChange: (payload) => updateViewerSelectionState(remapSelection(payload)),
       onTargetContextMenu: (payload) => showSequenceEditorContextMenu(remapSelection(payload)),
       showInspectorPanels: false,
+      showGeneticCodeControl: false,
+      onCoordinateSelectionReady: (select) => { selectViewerCoordinates = select; },
       embedded: true,
       showRecordTitle: false
     };
@@ -1178,6 +1186,17 @@ function renderSequenceEditorWorkspace(previousState = null) {
       renderDnaViewer(viewerContainer, selectedViewer, selectionOptions);
     }
     renderedViewerLayout = layout;
+    // Move the actual renderer controls, preserving their handlers and export semantics.
+    viewerDisplayControls.replaceChildren();
+    for (const selector of [".dna-viewer-toggles", ".dna-viewer-menu-controls"]) {
+      const controls = viewerContainer.querySelector(selector);
+      if (controls) viewerDisplayControls.append(controls);
+    }
+    const figureDownloads = viewerContainer.querySelectorAll(".dna-viewer-export-button");
+    for (const button of figureDownloads) {
+      button.textContent = button.getAttribute("aria-label").replace(" current view as", "");
+    }
+    figureButtons.replaceChildren(...figureDownloads);
   }
   function redrawViewer() {
     clearTimeout(debounceTimer);
@@ -1193,6 +1212,9 @@ function renderSequenceEditorWorkspace(previousState = null) {
     lastDocumentSnapshot = snapshotEditorState("manual edit");
     const changeSummary = summarizeSequenceEditorChanges(baselineText, editor.value, { geneticCode: geneticCodeSelect.value });
     renderSequenceEditorChangeSummary(changePanel, changeSummary);
+    viewRegionSummary.textContent = prepared.records.length === 1
+      ? `${prepared.records[0].title || "Sequence"} · view region`
+      : "Choose sequence / view region";
     updateHiddenInput();
     viewerNavigation.textContent = "";
     if (prepared.viewer) {
@@ -1248,33 +1270,40 @@ function renderSequenceEditorWorkspace(previousState = null) {
       (event.shiftKey || key === "y" ? redoButton : undoButton).click();
     }
   });
-  const recordSettingChange = label => {
+  const recordSettingChange = (label, { renderViewer = true } = {}) => {
     if (lastDocumentSnapshot) pushUndoState(label, lastDocumentSnapshot);
-    redrawViewer();
+    if (renderViewer) {
+      redrawViewer();
+    } else {
+      // Export formatting does not change the viewer or its selected target.
+      if (prepared && !preparedIsDirty) {
+        prepared.fasta = prepared.records
+          .map(record => formatFastaRecord(record.title, record.sequence, getLineWidth()).trimEnd())
+          .join("\n");
+      }
+      lastDocumentSnapshot = snapshotEditorState(label);
+    }
   };
   geneticCodeSelect.addEventListener("change", () => recordSettingChange("genetic code"));
   viewerLayoutSelect.addEventListener("change", () => recordSettingChange("viewer layout"));
-  lineWidthInput.addEventListener("change", () => recordSettingChange("line width"));
-  filenameInput.addEventListener("change", () => recordSettingChange("filename"));
+  lineWidthInput.addEventListener("change", () => recordSettingChange("line width", { renderViewer: false }));
+  filenameInput.addEventListener("change", () => recordSettingChange("filename", { renderViewer: false }));
   quickSequenceInput.addEventListener("input", () => renderSelectionEffects(getActiveEditorSelection()));
-  coordinateOperation.addEventListener("change", refreshCoordinateEditControls);
-  useViewerSelectionButton.addEventListener("click", () => {
-    if (applyViewerSelectionToCoordinateControls()) showCopiedFeedback(useViewerSelectionButton);
-  });
+  for (const field of [coordinateStart, coordinateEnd]) {
+    field.addEventListener("change", commitCoordinateTarget);
+    field.addEventListener("keydown", event => {
+      if (event.key === "Enter") { event.preventDefault(); commitCoordinateTarget(); }
+    });
+  }
   replaceSelectionButton.addEventListener("click", () => applyInspectorEdit("replace-range"));
   insertBeforeButton.addEventListener("click", () => applyInspectorEdit("insert-before"));
   insertAfterButton.addEventListener("click", () => applyInspectorEdit("insert-after"));
   deleteSelectionButton.addEventListener("click", () => applyInspectorEdit("delete-range"));
   reverseSelectionButton.addEventListener("click", () => applyInspectorEdit("reverse-complement-range"));
-  copySelectionButton.addEventListener("click", () => copyInspectorSelection());
-  downloadSelectionButton.addEventListener("click", () => downloadInspectorSelection());
   shell.addEventListener("click", hideSequenceEditorContextMenu);
   shell.addEventListener("keydown", (event) => {
     if (event.key === "Escape") hideSequenceEditorContextMenu();
   });
-	  applyCoordinateEditButton.addEventListener("click", () => {
-	    applyCoordinateEditFromControls();
-	  });
 	  cleanButton.addEventListener("click", () => {
 	    pushUndoState("clean sequence");
 	    const current = getPrepared();
@@ -1314,20 +1343,40 @@ function renderSequenceEditorWorkspace(previousState = null) {
   });
   copyButton.addEventListener("click", async () => {
     const current = getPrepared();
-    await copyTextWithFeedback(copyButton, current.fasta || "");
-    setEditorStatus("Copied cleaned FASTA.");
+    const text = sequenceExportText(current);
+    if (text === null) return;
+    await copyTextWithFeedback(copyButton, text);
+    setEditorStatus(exportScope.value === "selection" ? "Copied selected FASTA." : "Copied cleaned FASTA.");
   });
   downloadButton.addEventListener("click", () => {
     const current = getPrepared();
-    downloadText(current.fasta || "", normalizeSequenceEditorFilename(filenameInput.value), "text/x-fasta;charset=utf-8");
-    setEditorStatus("Downloaded cleaned FASTA.");
+    const text = sequenceExportText(current);
+    if (text === null) return;
+    downloadText(text, normalizeSequenceEditorFilename(filenameInput.value), "text/x-fasta;charset=utf-8");
+    setEditorStatus(exportScope.value === "selection" ? "Downloaded selected FASTA." : "Downloaded cleaned FASTA.");
   });
+  function sequenceExportText(current) {
+    if (exportScope.value !== "selection") return current.fasta || "";
+    const active = getActiveEditorSelection();
+    if (!active?.selectedSequence) { setEditorStatus("Select bases before exporting the selection."); return null; }
+    return formatFastaRecord(`${active.recordTitle || "sequence"}_${active.start}-${active.end}`, active.selectedSequence, getLineWidth());
+  }
+  function updateExportScope() {
+    const count = prepared?.records?.length || 1;
+    exportScope.querySelector('[value="whole"]').textContent = count > 1 ? `All ${count} sequences` : "Whole sequence";
+    const active = getActiveEditorSelection();
+    exportScope.querySelector('[value="selection"]').textContent = active
+      ? `Selected bases ${active.start}-${active.end} (${active.length} bp)` : "Selected bases";
+    const disabled = exportScope.value === "selection" && !active?.selectedSequence;
+    copyButton.disabled = disabled;
+    downloadButton.disabled = disabled;
+  }
+  exportScope.addEventListener("change", updateExportScope);
 
     redrawViewer();
-    refreshCoordinateEditControls();
     updateHistoryButtons();
     const documentSession = createEditorSession({
-      host:shell, toolbar:exportActions, tool:'sequence-editor', source:previousState?.__documentSource ?? {input:initialText}, nativeHistory:true, initial:previousState?.__documentLoaded ? snapshotEditorState('Document') : undefined,
+      host:shell, toolbar:historyActions, downloadHost:documentExports, tool:'sequence-editor', source:previousState?.__documentSource ?? {input:initialText}, nativeHistory:true, initial:previousState?.__documentLoaded ? snapshotEditorState('Document') : undefined,
       read:() => snapshotEditorState('Document'), apply:snapshot => restoreEditorState(snapshot, 'Document restored.')
     });
     elements.markdownWorkspace._sms3VisualCleanup = () => {

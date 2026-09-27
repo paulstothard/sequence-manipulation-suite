@@ -27,6 +27,14 @@ import {
   updateViewerSearchControls
 } from "./dna-viewer-interactions.js";
 import { makeRestrictionCutDiagram } from "./restriction-cut-diagram-ui.js";
+import {
+  SEQUENCE_EXTRACTOR_WINDOW_SIZE,
+  bucketSequenceExtractorItems,
+  clampSequenceExtractorWindowStart,
+  makeSequenceExtractorRecordIndex,
+  sequenceExtractorVisibleWindow,
+  sequenceExtractorWindowForCoordinate
+} from "./sequence-extractor-windowing.js";
 
 function reverseComplement(sequence) {
   return Array.from(complementDnaRnaSequence(sequence, { preserveCase: false })).reverse().join("");
@@ -67,6 +75,29 @@ function makeButton(label, className, onClick) {
   button.textContent = label;
   button.addEventListener("click", onClick);
   return button;
+}
+
+function makeRenderAbortError() {
+  const error = new Error("Tool run was cancelled.");
+  error.name = "AbortError";
+  return error;
+}
+
+function waitForRenderFrame(signal) {
+  if (signal?.aborted) return Promise.reject(makeRenderAbortError());
+  return new Promise((resolve, reject) => {
+    let frame = 0;
+    const abort = () => {
+      if (frame) cancelAnimationFrame(frame);
+      signal?.removeEventListener("abort", abort);
+      reject(makeRenderAbortError());
+    };
+    signal?.addEventListener("abort", abort, { once: true });
+    frame = requestAnimationFrame(() => {
+      signal?.removeEventListener("abort", abort);
+      resolve();
+    });
+  });
 }
 
 function configureDisclosure(details, summary, label, collapsedSummary = "") {
@@ -1134,19 +1165,6 @@ function makeFragmentTreatmentDetails(product, options = {}) {
   return details;
 }
 
-function itemsInBlock(record, type, start, end) {
-  return (record.tracks ?? [])
-    .filter((track) => track.type === type)
-    .flatMap((track) => track.items ?? [])
-    .filter((item) => {
-      const position = type === "restriction-sites"
-        ? restrictionDisplayPosition(item, record.length)
-        : Number(item.start);
-      const itemEnd = type === "restriction-sites" ? position : Number(item.end ?? position);
-      return Number.isFinite(position) && position <= end && itemEnd >= start;
-    });
-}
-
 function translateCodon(codon, codonMap) {
   return codonMap.get(String(codon).replaceAll("U", "T")) || "X";
 }
@@ -1237,7 +1255,7 @@ function makeFragmentTranslationDetails(product, geneticCode) {
 
 const MAX_SELECTION_STACK_ITEMS = 10;
 
-export function renderSequenceExtractorWorkspace(container, extractor, options = {}) {
+export async function renderSequenceExtractorWorkspace(container, extractor, options = {}) {
   container.textContent = "";
   container.classList.add("sequence-extractor-output");
   const records = extractor?.records ?? [];
@@ -1264,6 +1282,8 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
   let showCuts = true;
   let translationMode = "cds";
   let renderedLineWidth = 0;
+  const recordIndexes = records.map((record) => makeSequenceExtractorRecordIndex(record));
+  const windowStarts = records.map(() => 1);
   let resizeFrame = 0;
   let selectionScrollFrame = 0;
   let pageScrollFrame = 0;
@@ -1413,8 +1433,18 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
   coordinateControl.append(coordinateLabel, coordinate);
   const jump = makeButton("Jump", "sequence-extractor-jump", () => {
     const value = Math.max(1, Math.min(records[recordIndex].length, Number(coordinate.value) || 1));
-    document.getElementById(`sequence-extractor-base-${recordIndex}-${value}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    showCoordinate(value);
   });
+  const windowNavigation = document.createElement("div");
+  windowNavigation.className = "sequence-extractor-window-navigation";
+  const previousWindow = makeButton("Previous", "sequence-extractor-window-previous", () => moveVisibleWindow(-1));
+  previousWindow.setAttribute("aria-label", "Previous sequence window");
+  const windowStatus = document.createElement("span");
+  windowStatus.className = "sequence-extractor-window-status";
+  windowStatus.setAttribute("aria-live", "polite");
+  const nextWindow = makeButton("Next", "sequence-extractor-window-next", () => moveVisibleWindow(1));
+  nextWindow.setAttribute("aria-label", "Next sequence window");
+  windowNavigation.append(previousWindow, windowStatus, nextWindow);
   const status = document.createElement("span");
   status.className = "sequence-extractor-toolbar-status";
   const documentBar = document.createElement("div");
@@ -1434,10 +1464,14 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
     featureTypeDetails.open = false;
     hideHoverCard();
     const record = activeRecord();
+    const currentWindow = visibleWindow();
     const panelLabel = records.length > 1 ? `Panel ${recordIndex + 1} of ${records.length} · ` : "";
+    const windowLabel = currentWindow.windowed
+      ? `Current window ${currentWindow.start.toLocaleString()}–${currentWindow.end.toLocaleString()} · `
+      : "";
     const translationLabel = translationSelect.selectedOptions[0]?.textContent || "Translations hidden";
     printRecordTitle.textContent = record.title;
-    printMetadata.textContent = `${panelLabel}${record.length.toLocaleString()} bp · ${selectionTopology} · ${translationLabel} · ${showFeatures ? "features shown" : "features hidden"} · ${showCuts ? "restriction sites shown" : "restriction sites hidden"}`;
+    printMetadata.textContent = `${panelLabel}${record.length.toLocaleString()} bp · ${windowLabel}${selectionTopology} · ${translationLabel} · ${showFeatures ? "features shown" : "features hidden"} · ${showCuts ? "restriction sites shown" : "restriction sites hidden"}`;
     container.classList.add("sequence-extractor-print-target");
     document.body.classList.add("sequence-extractor-printing");
 
@@ -1462,7 +1496,7 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
     window.print();
   };
   const printView = makeButton("Print / save PDF", "sequence-extractor-print-view", printSequenceView);
-  printView.title = "Print this complete color sequence view, or save it as a color PDF; choose grayscale in the system print dialog if needed";
+  printView.title = "Print the currently displayed color sequence document, or save it as a color PDF; choose grayscale in the system print dialog if needed";
   printActions.append(printView);
   documentBar.append(status, printActions);
   const allFeatureTracks = records.flatMap((record) => (record.tracks ?? []).filter((track) => track.type === "features"));
@@ -1490,6 +1524,7 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
     translationControl,
     coordinateControl,
     jump,
+    windowNavigation,
     featureSearch.element,
     translationNote,
     documentBar
@@ -1508,6 +1543,8 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
   hoverCard.hidden = true;
   shell.append(printHeader, main, inspector, hoverCard);
   container.append(shell);
+  await waitForRenderFrame(options.signal);
+  if (options.signal?.aborted) throw makeRenderAbortError();
 
   function targetSequenceRanges(target) {
     if (!target) return [];
@@ -1831,6 +1868,50 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
     return records[recordIndex];
   }
 
+  function activeRecordIndex() {
+    return recordIndexes[recordIndex];
+  }
+
+  function visibleWindow() {
+    return sequenceExtractorVisibleWindow(activeRecord().length, windowStarts[recordIndex], {
+      windowSize: SEQUENCE_EXTRACTOR_WINDOW_SIZE
+    });
+  }
+
+  function showCoordinate(position, { behavior = "smooth" } = {}) {
+    const coordinateValue = Math.max(1, Math.min(activeRecord().length, Number(position) || 1));
+    const currentWindow = visibleWindow();
+    const needsWindowChange = currentWindow.windowed && (
+      coordinateValue < currentWindow.start || coordinateValue > currentWindow.end
+    );
+    if (needsWindowChange) {
+      windowStarts[recordIndex] = sequenceExtractorWindowForCoordinate(
+        activeRecord().length,
+        coordinateValue,
+        SEQUENCE_EXTRACTOR_WINDOW_SIZE
+      ).start;
+      renderDocument({ resetDocumentScroll: true });
+    }
+    requestAnimationFrame(() => {
+      document.getElementById(`sequence-extractor-base-${recordIndex}-${coordinateValue}`)
+        ?.scrollIntoView({ behavior, block: "center" });
+    });
+  }
+
+  function moveVisibleWindow(direction) {
+    const currentWindow = visibleWindow();
+    if (!currentWindow.windowed) return;
+    const requestedStart = currentWindow.start + Math.sign(direction || 1) * SEQUENCE_EXTRACTOR_WINDOW_SIZE;
+    const nextStart = clampSequenceExtractorWindowStart(
+      activeRecord().length,
+      requestedStart,
+      SEQUENCE_EXTRACTOR_WINDOW_SIZE
+    );
+    if (nextStart === currentWindow.start) return;
+    windowStarts[recordIndex] = nextStart;
+    renderDocument({ resetDocumentScroll: true });
+  }
+
   function activeHiddenFeatureTypes() {
     return hiddenFeatureTypesByRecord[recordIndex] ?? new Set();
   }
@@ -1893,13 +1974,24 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
     if (featureSearchMatches.length === 0) return;
     featureSearchIndex = (index + featureSearchMatches.length) % featureSearchMatches.length;
     const target = makeSequenceExtractorFeatureTarget(featureSearchMatches[featureSearchIndex]);
-    const needsRender = !showFeatures;
+    const currentWindow = visibleWindow();
+    const needsWindowChange = currentWindow.windowed && (
+      Number(target.end) < currentWindow.start || Number(target.start) > currentWindow.end
+    );
+    const needsRender = !showFeatures || needsWindowChange;
+    if (needsWindowChange) {
+      windowStarts[recordIndex] = sequenceExtractorWindowForCoordinate(
+        activeRecord().length,
+        target.start,
+        SEQUENCE_EXTRACTOR_WINDOW_SIZE
+      ).start;
+    }
     showFeatures = true;
     featureCheckbox.checked = true;
     selected = target;
     endpoints = [];
     product = null;
-    if (needsRender) renderDocument();
+    if (needsRender) renderDocument({ resetDocumentScroll: needsWindowChange });
     else renderDocumentHighlights();
     renderInspector();
     updateViewerSearchControls(featureSearch, featureSearchMatches, featureSearchIndex);
@@ -2000,7 +2092,17 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
     endpoints = [];
     product = entry.product;
     shownSelectionId = entry.id;
-    renderDocument();
+    const targetWindow = sequenceExtractorWindowForCoordinate(
+      activeRecord().length,
+      entry.product.start,
+      SEQUENCE_EXTRACTOR_WINDOW_SIZE
+    );
+    const currentWindow = visibleWindow();
+    const needsWindowChange = currentWindow.windowed && (
+      entry.product.start < currentWindow.start || entry.product.start > currentWindow.end
+    );
+    if (needsWindowChange) windowStarts[recordIndex] = targetWindow.start;
+    renderDocument({ resetDocumentScroll: needsWindowChange });
     renderInspector();
     requestAnimationFrame(() => {
       document.getElementById(`sequence-extractor-base-${recordIndex}-${entry.product.start}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -2931,7 +3033,7 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
     });
   }
 
-  function makeAnnotationRow(items, blockStart, blockEnd, kind, record) {
+  function makeAnnotationRow(items, blockStart, blockEnd, kind, record, restrictionCounts = null) {
     if (!items.length) return null;
     const row = document.createElement("div");
     row.className = `sequence-extractor-annotation-row sequence-extractor-${kind}-row`;
@@ -2943,11 +3045,11 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
     const renderedItems = kind === "restriction"
       ? groupRestrictionSitesByCutPosition(items)
       : items;
-    const restrictionCounts = new Map();
-    if (kind === "restriction") {
+    const siteCounts = restrictionCounts ?? new Map();
+    if (kind === "restriction" && !restrictionCounts) {
       for (const site of (record?.tracks ?? []).filter((track) => track.type === "restriction-sites").flatMap((track) => track.items ?? [])) {
         const key = site.enzymeId || site.enzyme || site.label;
-        restrictionCounts.set(key, (restrictionCounts.get(key) ?? 0) + 1);
+        siteCounts.set(key, (siteCounts.get(key) ?? 0) + 1);
       }
     }
     const restrictionLaneEnds = [];
@@ -2963,7 +3065,7 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
         group.dataset.restrictionSiteCount = String(groupedSites.length);
         group.dataset.restrictionCutPosition = String(position);
         group.setAttribute("aria-label", combinedLabel);
-        const siteFrequencies = groupedSites.map((site) => restrictionCounts.get(site.enzymeId || site.enzyme || site.label) ?? 1);
+        const siteFrequencies = groupedSites.map((site) => siteCounts.get(site.enzymeId || site.enzyme || site.label) ?? 1);
         for (const [index, site] of groupedSites.entries()) {
           if (index > 0) {
             const separator = document.createElement("span");
@@ -3032,9 +3134,9 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
       .filter((item) => Number.isFinite(Number(item.start)) && Number.isFinite(Number(item.end)));
   }
 
-  function featureRowForBlock(record, blockStart, blockEnd) {
+  function featureRowForBlock(record, blockStart, blockEnd, blockItems = null) {
     if (!showFeatures) return null;
-    const entries = featureItems(record)
+    const entries = (blockItems ?? featureItems(record))
       .filter((item) => !activeHiddenFeatureTypes().has(featureItemType(item)))
       .map((item) => ({
         item,
@@ -3173,8 +3275,18 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
     label.title = `${frame} computed with NCBI genetic code ${selectedGeneticCode.id}. ${selectedGeneticCode.name}`;
     const cells = document.createElement("div");
     cells.className = "sequence-extractor-cells";
-    const sourceSequence = strand === "-" ? reverseComplement(record.sequence) : record.sequence;
-    for (let codonIndex = frameOffset; codonIndex + 2 < sourceSequence.length; codonIndex += 3) {
+    const minimumSourceIndex = strand === "+"
+      ? blockStart - 3
+      : record.length - blockEnd - 2;
+    const maximumSourceIndex = strand === "+"
+      ? blockEnd - 1
+      : record.length - blockStart;
+    const firstCodonIndex = frameOffset + Math.max(0, Math.ceil((minimumSourceIndex - frameOffset) / 3)) * 3;
+    for (
+      let codonIndex = firstCodonIndex;
+      codonIndex <= maximumSourceIndex && codonIndex + 2 < record.length;
+      codonIndex += 3
+    ) {
       const positions = strand === "+"
         ? [codonIndex + 1, codonIndex + 2, codonIndex + 3]
         : [record.length - codonIndex, record.length - codonIndex - 1, record.length - codonIndex - 2];
@@ -3182,7 +3294,9 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
       if (placements.length === 0) continue;
       const directStart = Math.min(...positions);
       const directEnd = Math.max(...positions);
-      const codon = sourceSequence.slice(codonIndex, codonIndex + 3);
+      const codon = strand === "+"
+        ? record.sequence.slice(codonIndex, codonIndex + 3)
+        : positions.map((position) => reverseComplement(record.sequence[position - 1] || "N")).join("");
       const aminoAcid = translateCodon(codon, codonMap);
       const target = makeTranslationTarget({
         positions,
@@ -3206,8 +3320,8 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
     return row;
   }
 
-  function makeCdsTranslationRows(record, blockStart, blockEnd) {
-    const cdsFeatures = featureItems(record).filter((item) =>
+  function makeCdsTranslationRows(record, blockStart, blockEnd, blockCdsFeatures = null) {
+    const cdsFeatures = (blockCdsFeatures ?? featureItems(record)).filter((item) =>
       String(item.type || item.featureType).toUpperCase() === "CDS" && String(item.translation || "").replace(/\s+/g, "")
     );
     return cdsFeatures
@@ -3322,7 +3436,7 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
     }
   }
 
-  function renderDocument() {
+  function renderDocument({ resetDocumentScroll = false } = {}) {
     const pageScroll = pendingRenderPageScroll ?? capturePageScrollState();
     pendingRenderPageScroll = null;
     const scrollAnchor = captureDocumentScrollAnchor();
@@ -3330,7 +3444,9 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
     documentView.textContent = "";
     baseElementsByPosition = new Map();
     const record = activeRecord();
-    const recordCdsFeatures = featureItems(record).filter((item) => String(item.type || item.featureType).toUpperCase() === "CDS");
+    const recordIndexData = activeRecordIndex();
+    const recordFeatures = recordIndexData.items("features");
+    const recordCdsFeatures = recordFeatures.filter((item) => String(item.type || item.featureType).toUpperCase() === "CDS");
     const translatedCdsCount = recordCdsFeatures.filter((item) => String(item.translation || "").replace(/\s+/g, "")).length;
     const computedFrames = sequenceExtractorComputedFramesForDisplay(translationMode);
     translationNote.className = `sequence-extractor-translation-note is-${translationMode}`;
@@ -3344,17 +3460,51 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
         : computedFrames.length === 1
           ? `Computed reading frame ${computedFrames[0].displayFrame} only · NCBI table ${selectedGeneticCode.id}: ${selectedGeneticCode.name}`
           : "Translations hidden";
-    status.textContent = `${records.length > 1 ? `panel ${recordIndex + 1}/${records.length} · ` : ""}${record.length.toLocaleString()} bp · ${selectionTopology} selections · arrows point 5′→3′ · click bases, amino acids, primers, or restriction sites`;
+    const visible = visibleWindow();
+    const windowDescription = visible.windowed
+      ? ` · showing ${visible.start.toLocaleString()}–${visible.end.toLocaleString()}`
+      : "";
+    status.textContent = `${records.length > 1 ? `panel ${recordIndex + 1}/${records.length} · ` : ""}${record.length.toLocaleString()} bp${windowDescription} · ${selectionTopology} selections · arrows point 5′→3′ · click bases, amino acids, primers, or restriction sites`;
+    windowNavigation.hidden = !visible.windowed;
+    windowStatus.textContent = visible.windowed
+      ? `${visible.start.toLocaleString()}–${visible.end.toLocaleString()} of ${record.length.toLocaleString()} bp`
+      : "";
+    previousWindow.disabled = !visible.windowed || visible.start <= 1;
+    nextWindow.disabled = !visible.windowed || visible.end >= record.length;
+    printView.textContent = visible.windowed ? "Print current window / save PDF" : "Print / save PDF";
     const preferredLineWidth = Number(extractor.lineWidth) || 60;
     const mainWidth = main.getBoundingClientRect().width || shell.getBoundingClientRect().width;
     const sequenceWidth = Math.max(160, mainWidth - 28 - 76);
     const responsiveLineWidth = Math.max(20, Math.floor(sequenceWidth / 8));
     const lineWidth = Math.min(preferredLineWidth, responsiveLineWidth);
     renderedLineWidth = lineWidth;
-    for (let offset = 0; offset < record.sequence.length; offset += lineWidth) {
-      const blockStart = offset + 1;
-      const blockEnd = Math.min(record.length, offset + lineWidth);
-      const chunk = record.sequence.slice(offset, blockEnd);
+    const visibleFeatures = recordIndexData.query("features", visible.start, visible.end);
+    const visibleRestrictionSites = showCuts
+      ? recordIndexData.query("restriction-sites", visible.start, visible.end)
+      : [];
+    const visiblePrimers = recordIndexData.query("pcr-primer-sites", visible.start, visible.end);
+    const featureBuckets = bucketSequenceExtractorItems(visibleFeatures, visible.start, visible.end, lineWidth);
+    const cdsBuckets = bucketSequenceExtractorItems(
+      visibleFeatures.filter((item) => String(item.type || item.featureType).toUpperCase() === "CDS"),
+      visible.start,
+      visible.end,
+      lineWidth
+    );
+    const restrictionBuckets = bucketSequenceExtractorItems(
+      visibleRestrictionSites,
+      visible.start,
+      visible.end,
+      lineWidth,
+      {
+        getStart: (item) => restrictionDisplayPosition(item, record.length),
+        getEnd: (item) => restrictionDisplayPosition(item, record.length)
+      }
+    );
+    const primerBuckets = bucketSequenceExtractorItems(visiblePrimers, visible.start, visible.end, lineWidth);
+    const fragment = document.createDocumentFragment();
+    for (let blockStart = visible.start; blockStart <= visible.end; blockStart += lineWidth) {
+      const blockEnd = Math.min(visible.end, blockStart + lineWidth - 1);
+      const chunk = record.sequence.slice(blockStart - 1, blockEnd);
       const block = document.createElement("section");
       block.className = "sequence-extractor-block";
       block.style.setProperty("--sequence-extractor-columns", String(lineWidth));
@@ -3362,10 +3512,17 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
       block.dataset.end = String(blockEnd);
 
       const restrictionRow = showCuts
-        ? makeAnnotationRow(itemsInBlock(record, "restriction-sites", blockStart, blockEnd), blockStart, blockEnd, "restriction", record)
+        ? makeAnnotationRow(
+            restrictionBuckets.get(blockStart) ?? [],
+            blockStart,
+            blockEnd,
+            "restriction",
+            record,
+            recordIndexData.restrictionCounts
+          )
         : null;
-      const primerRow = makeAnnotationRow(itemsInBlock(record, "pcr-primer-sites", blockStart, blockEnd), blockStart, blockEnd, "primer", record);
-      const featureRow = featureRowForBlock(record, blockStart, blockEnd);
+      const primerRow = makeAnnotationRow(primerBuckets.get(blockStart) ?? [], blockStart, blockEnd, "primer", record);
+      const featureRow = featureRowForBlock(record, blockStart, blockEnd, featureBuckets.get(blockStart) ?? []);
       if (featureRow) block.append(featureRow);
       if (primerRow) block.append(primerRow);
       if (restrictionRow) block.append(restrictionRow);
@@ -3374,7 +3531,7 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
           makeFrameTranslationRow(record, blockStart, blockEnd, frame.frameOffset, frame.strand)
         ));
       } else if (translationMode === "cds") {
-        const cdsRows = makeCdsTranslationRows(record, blockStart, blockEnd);
+        const cdsRows = makeCdsTranslationRows(record, blockStart, blockEnd, cdsBuckets.get(blockStart) ?? []);
         if (cdsRows.length > 0) block.append(...cdsRows);
       }
 
@@ -3441,34 +3598,45 @@ export function renderSequenceExtractorWorkspace(container, extractor, options =
       });
       complementRow.append(complementLabel, complementCells);
       block.append(complementRow);
-      documentView.append(block);
-      pruneCoordinateTickCollisions(rulerCells);
-      updateFeatureLabelPresentation(block);
+      fragment.append(block);
     }
-    const expectedRestrictionSites = (record.tracks ?? [])
-      .filter((track) => track.type === "restriction-sites")
-      .flatMap((track) => track.items ?? [])
-      .length;
+    documentView.append(fragment);
+    pruneAllCoordinateTickCollisions();
+    updateFeatureLabelPresentation();
+    const expectedRestrictionSites = recordIndexData.count("restriction-sites");
+    const expectedVisibleRestrictionSites = visibleRestrictionSites.length;
     const renderedRestrictionSites = showCuts
       ? Array.from(documentView.querySelectorAll("[data-restriction-site-count]"))
           .reduce((total, element) => total + Number(element.dataset.restrictionSiteCount || 0), 0)
       : 0;
-    const restrictionDisplayComplete = !showCuts || renderedRestrictionSites === expectedRestrictionSites;
+    const restrictionDisplayComplete = !showCuts || renderedRestrictionSites === expectedVisibleRestrictionSites;
     cutCoverage.hidden = !showCuts;
     cutCoverage.dataset.expectedSites = String(expectedRestrictionSites);
+    cutCoverage.dataset.expectedVisibleSites = String(expectedVisibleRestrictionSites);
     cutCoverage.dataset.renderedSites = String(renderedRestrictionSites);
     cutCoverage.classList.toggle("is-incomplete", !restrictionDisplayComplete);
-    cutCoverage.textContent = restrictionDisplayComplete
-      ? `${renderedRestrictionSites.toLocaleString()}/${expectedRestrictionSites.toLocaleString()} sites shown`
-      : `${renderedRestrictionSites.toLocaleString()}/${expectedRestrictionSites.toLocaleString()} sites shown — incomplete`;
+    cutCoverage.textContent = visible.windowed
+      ? restrictionDisplayComplete
+        ? `${renderedRestrictionSites.toLocaleString()} sites in window · ${expectedRestrictionSites.toLocaleString()} total`
+        : `${renderedRestrictionSites.toLocaleString()}/${expectedVisibleRestrictionSites.toLocaleString()} window sites shown — incomplete`
+      : restrictionDisplayComplete
+        ? `${renderedRestrictionSites.toLocaleString()}/${expectedRestrictionSites.toLocaleString()} sites shown`
+        : `${renderedRestrictionSites.toLocaleString()}/${expectedRestrictionSites.toLocaleString()} sites shown — incomplete`;
     cutCoverage.setAttribute(
       "aria-label",
       restrictionDisplayComplete
-        ? `All ${expectedRestrictionSites.toLocaleString()} detected restriction enzyme sites are shown`
-        : `Warning: only ${renderedRestrictionSites.toLocaleString()} of ${expectedRestrictionSites.toLocaleString()} detected restriction enzyme sites are shown`
+        ? visible.windowed
+          ? `All ${expectedVisibleRestrictionSites.toLocaleString()} detected restriction enzyme sites in the current window are shown; ${expectedRestrictionSites.toLocaleString()} sites are present in the complete record`
+          : `All ${expectedRestrictionSites.toLocaleString()} detected restriction enzyme sites are shown`
+        : `Warning: only ${renderedRestrictionSites.toLocaleString()} of ${expectedVisibleRestrictionSites.toLocaleString()} detected restriction enzyme sites in the current window are shown`
     );
     renderDocumentHighlights();
-    restoreDocumentScrollAnchor(scrollAnchor);
+    if (resetDocumentScroll) {
+      documentView.scrollTop = 0;
+      documentView.scrollLeft = 0;
+    } else {
+      restoreDocumentScrollAnchor(scrollAnchor);
+    }
     keepPageScrollStable(pageScroll);
   }
 

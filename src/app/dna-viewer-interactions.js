@@ -697,15 +697,37 @@ export function renderRangePanel(panel, range, actions = {}) {
   clear.addEventListener("click", () => actions.clearRange?.());
   heading.append(clear);
 
+  const anchorSummary = document.createElement("div");
+  anchorSummary.className = "dna-viewer-range-anchor-summary";
   const rows = document.createElement("dl");
   rows.className = "dna-viewer-selection-details dna-viewer-range-details";
   range.anchors.forEach((anchor, index) => {
     const term = document.createElement("dt");
     term.textContent = `Anchor ${index + 1}`;
     const description = document.createElement("dd");
-    description.textContent = `${Number(anchor.position).toLocaleString()}${anchor.label ? ` (${anchor.label})` : ""}`;
+    const anchorStart = positiveCoordinate(anchor.start) ?? positiveCoordinate(anchor.position);
+    const anchorEnd = positiveCoordinate(anchor.end) ?? anchorStart;
+    const coordinates = anchorStart !== null && anchorEnd !== null && anchorStart !== anchorEnd
+      ? `${Math.min(anchorStart, anchorEnd).toLocaleString()}-${Math.max(anchorStart, anchorEnd).toLocaleString()}`
+      : Number(anchorStart).toLocaleString();
+    description.textContent = `${coordinates}${anchor.label ? ` (${anchor.label})` : ""}`;
     rows.append(term, description);
   });
+  anchorSummary.append(rows);
+  if (range.ready && range.canSwap) {
+    const pathButton = document.createElement("button");
+    pathButton.type = "button";
+    pathButton.className = "dna-viewer-range-path-toggle";
+    pathButton.textContent = range.oppositePath ? "Direct path" : "Opposite path";
+    pathButton.title = range.oppositePath
+      ? "Use the direct interval between the two anchors"
+      : "Use the interval that runs through the sequence origin";
+    pathButton.addEventListener("click", () => actions.swapRange?.());
+    anchorSummary.append(pathButton);
+  }
+
+  const rangeRows = document.createElement("dl");
+  rangeRows.className = "dna-viewer-selection-details dna-viewer-range-details";
   if (range.ready) {
     for (const [label, value] of [
       ["Forward range", range.label],
@@ -716,7 +738,7 @@ export function renderRangePanel(panel, range, actions = {}) {
       term.textContent = label;
       const description = document.createElement("dd");
       description.textContent = value;
-      rows.append(term, description);
+      rangeRows.append(term, description);
     }
   }
 
@@ -754,10 +776,9 @@ export function renderRangePanel(panel, range, actions = {}) {
       buttons.append(translationControl);
     }
     addAction(buttons, "Zoom to range", () => actions.zoomToRange?.(), true);
-    if (range.canSwap) addAction(buttons, "Use opposite path", () => actions.swapRange?.(), true);
   }
 
-  panel.append(heading, rows, buttons);
+  panel.append(heading, anchorSummary, rangeRows, buttons);
 }
 
 export function renderSelectionPanel(panel, target, actions = {}) {
@@ -793,14 +814,6 @@ export function renderSelectionPanel(panel, target, actions = {}) {
 
   const buttons = document.createElement("div");
   buttons.className = "dna-viewer-selection-actions";
-  for (const choice of getRangeAnchorChoices(target)) {
-    addAction(
-      buttons,
-      choice.actionLabel,
-      () => actions.addRangeAnchor?.(target, choice.endpoint),
-      true
-    );
-  }
   addAction(buttons, "Copy coordinates", () => actions.copyText?.(formatCoordinates(target)), Boolean(target.position || target.start || target.end));
   addAction(buttons, "Copy sequence", () => actions.copySequence?.(target), Boolean(target.start || target.end || target.position));
   const translation = getSelectionTranslation(target);
@@ -863,6 +876,104 @@ export function makeRangeAnchor(target, endpoint = "start") {
 
 export function canUseAsRangeAnchor(target, endpoint = "start") {
   return Boolean(makeRangeAnchor(target, endpoint));
+}
+
+export function isAutomaticRangeAnchorTarget(target) {
+  return target?.kind === "base" || target?.kind === "codon" || target?.kind === "amino-acid";
+}
+
+export function makeAutomaticRangeAnchor(target) {
+  if (!isAutomaticRangeAnchorTarget(target)) return null;
+  const position = positiveCoordinate(target.position);
+  const rawStart = positiveCoordinate(target.start) ?? position;
+  const rawEnd = positiveCoordinate(target.end) ?? position ?? rawStart;
+  if (rawStart === null || rawEnd === null) return null;
+  const start = Math.min(rawStart, rawEnd);
+  const end = Math.max(rawStart, rawEnd);
+  const label = target.aminoAcid && target.codon
+    ? `${target.aminoAcid} (${target.codon})`
+    : target.base || target.aminoAcid || target.codon || target.label || target.type || target.kind;
+  return {
+    position: position ?? start,
+    start,
+    end,
+    label,
+    kind: target.kind,
+    strand: target.strand,
+    targetKey: target.key || makeTargetKey(target)
+  };
+}
+
+export function appendAutomaticRangeAnchor(anchors, target) {
+  const current = Array.isArray(anchors) ? anchors : [];
+  if (current.length >= 2) return current;
+  const anchor = makeAutomaticRangeAnchor(target);
+  return anchor ? [...current, anchor] : current;
+}
+
+export function rangeAnchorMatchesTarget(anchor, target) {
+  if (!anchor || !target) return false;
+  if (anchor.targetKey) return anchor.targetKey === (target.key || makeTargetKey(target));
+  if (anchor.kind && anchor.kind !== target.kind) return false;
+  if (anchor.strand && target.strand && anchor.strand !== target.strand) return false;
+  const anchorPosition = positiveCoordinate(anchor.position);
+  const targetPosition = positiveCoordinate(target.position);
+  if (anchorPosition !== null && targetPosition !== null) return anchorPosition === targetPosition;
+  const anchorStart = positiveCoordinate(anchor.start) ?? anchorPosition;
+  const anchorEnd = positiveCoordinate(anchor.end) ?? anchorPosition;
+  const targetStart = positiveCoordinate(target.start) ?? targetPosition;
+  const targetEnd = positiveCoordinate(target.end) ?? targetPosition;
+  return anchorStart !== null && anchorEnd !== null && targetStart !== null && targetEnd !== null &&
+    Math.min(anchorStart, anchorEnd) === Math.min(targetStart, targetEnd) &&
+    Math.max(anchorStart, anchorEnd) === Math.max(targetStart, targetEnd);
+}
+
+export function makeViewerRangeState(anchors, recordLength, options = {}) {
+  const safeLength = Math.max(1, Math.floor(Number(recordLength) || 1));
+  const normalizedAnchors = (Array.isArray(anchors) ? anchors : []).slice(-2);
+  if (normalizedAnchors.length < 2) {
+    return { anchors: normalizedAnchors, ready: false, oppositePath: false };
+  }
+  const bounds = normalizedAnchors.map((anchor) => {
+    const position = positiveCoordinate(anchor.position);
+    const rawStart = positiveCoordinate(anchor.start) ?? position;
+    const rawEnd = positiveCoordinate(anchor.end) ?? position ?? rawStart;
+    const start = Math.max(1, Math.min(safeLength, Math.min(rawStart, rawEnd)));
+    const end = Math.max(1, Math.min(safeLength, Math.max(rawStart, rawEnd)));
+    return { start, end };
+  });
+  const orderedBounds = [...bounds].sort((left, right) => left.start - right.start || left.end - right.end);
+  const lowerAnchor = orderedBounds[0];
+  const upperAnchor = orderedBounds.at(-1);
+  const directStart = Math.min(...bounds.map((bound) => bound.start));
+  const directEnd = Math.max(...bounds.map((bound) => bound.end));
+  const canSwap = upperAnchor.start > lowerAnchor.end;
+  const oppositePath = options.oppositePath === true && canSwap;
+  const start = oppositePath ? upperAnchor.start : directStart;
+  const end = oppositePath ? lowerAnchor.end : directEnd;
+  const length = oppositePath
+    ? safeLength - start + 1 + end
+    : end - start + 1;
+  return {
+    anchors: normalizedAnchors,
+    ready: true,
+    start,
+    end,
+    length,
+    wraps: oppositePath,
+    canSwap,
+    oppositePath,
+    label: oppositePath
+      ? `${start.toLocaleString()}-${safeLength.toLocaleString()}, 1-${end.toLocaleString()}`
+      : `${start.toLocaleString()}-${end.toLocaleString()}`
+  };
+}
+
+export function getViewerRangeSequence(sequence, range) {
+  const source = String(sequence ?? "");
+  if (!range?.ready) return "";
+  if (!range.wraps) return source.slice(range.start - 1, range.end);
+  return source.slice(range.start - 1) + source.slice(0, range.end);
 }
 
 export function formatCoordinates(target) {

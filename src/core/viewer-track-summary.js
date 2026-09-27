@@ -95,6 +95,54 @@ function compactBins(bins) {
   return bins.filter((bin) => bin.count > 0 || bin.bases > 0);
 }
 
+function summarizeBinStats(bins) {
+  const nonEmptyBins = compactBins(bins);
+  return {
+    nonEmptyBinCount: nonEmptyBins.length,
+    maxCount: nonEmptyBins.reduce((max, bin) => Math.max(max, bin.count), 0),
+    maxBases: nonEmptyBins.reduce((max, bin) => Math.max(max, bin.bases), 0),
+    bins: nonEmptyBins
+  };
+}
+
+function intervalIdentity(item) {
+  const parts = Array.isArray(item.parts) && item.parts.length > 0
+    ? item.parts.map((part) => `${Number(part.start)}-${Number(part.end)}`).join(",")
+    : `${Number(item.start)}-${Number(item.end)}`;
+  return `${String(item.strand || "")}:${parts}`;
+}
+
+function representativeIntervalItems(items) {
+  const nonGeneIntervals = new Set(items
+    .filter((item) => String(item.type || item.feature || "").toLowerCase() !== "gene")
+    .map(intervalIdentity));
+  return items.filter((item) =>
+    String(item.type || item.feature || "").toLowerCase() !== "gene" ||
+    !nonGeneIntervals.has(intervalIdentity(item))
+  );
+}
+
+function summarizeIntervalStrands(items, length, binCount) {
+  const representativeItems = representativeIntervalItems(items);
+  const strands = ["+", "-", ""]
+    .map((strand) => {
+      const strandItems = representativeItems.filter((item) =>
+        strand ? item.strand === strand : item.strand !== "+" && item.strand !== "-"
+      );
+      if (strandItems.length === 0) return null;
+      return {
+        strand,
+        itemCount: strandItems.length,
+        ...summarizeBinStats(summarizeIntervals(strandItems, length, binCount))
+      };
+    })
+    .filter(Boolean);
+  return {
+    representativeItemCount: representativeItems.length,
+    strands
+  };
+}
+
 export function makeViewerTrackSummary(track, recordLength, options = {}) {
   const length = normalizeLength(recordLength);
   const items = Array.isArray(track?.items) ? track.items : [];
@@ -104,17 +152,19 @@ export function makeViewerTrackSummary(track, recordLength, options = {}) {
   const bins = mode === "points"
     ? summarizePoints(items, length, binCount)
     : summarizeIntervals(items, length, binCount);
-  const nonEmptyBins = compactBins(bins);
+  const stats = summarizeBinStats(bins);
+  const strandSummary = mode === "intervals"
+    ? summarizeIntervalStrands(items, length, binCount)
+    : { representativeItemCount: itemCount, strands: [] };
   return {
     version: VIEWER_TRACK_SUMMARY_VERSION,
     mode,
     length,
     itemCount,
+    representativeItemCount: strandSummary.representativeItemCount,
     binCount,
     binSize: length > 0 ? length / binCount : 0,
-    nonEmptyBinCount: nonEmptyBins.length,
-    maxCount: nonEmptyBins.reduce((max, bin) => Math.max(max, bin.count), 0),
-    maxBases: nonEmptyBins.reduce((max, bin) => Math.max(max, bin.bases), 0),
-    bins: nonEmptyBins
+    ...stats,
+    strands: strandSummary.strands
   };
 }

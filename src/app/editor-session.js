@@ -45,6 +45,7 @@ function parseEditorDocument(text) {
       const trace = traces[index];
       if (!trace || typeof edit.bases !== "string" || edit.bases.length !== trace.baseCalls.length || /[^ACGTRYSWKMBDHVN]/i.test(edit.bases)) fail();
       if (!Number.isInteger(edit.clipStart) || !Number.isInteger(edit.clipEnd) || edit.clipStart < 1 || edit.clipEnd > trace.baseCalls.length || edit.clipStart > edit.clipEnd) fail();
+      if (edit.excludeClippedBases !== undefined && typeof edit.excludeClippedBases !== "boolean") fail();
     }
   }
   if (doc.tool === "workflow" && !Array.isArray(doc.state.workflow?.steps)) fail();
@@ -101,7 +102,7 @@ async function readEditorRecovery(tool) {
 }
 // One current recovery document per editor; shared history stays bounded in memory.
 // Call changed after asynchronous edits, and dispose before replacing the editor.
-function createEditorSession({ host, toolbar, tool, source, read, apply, initial, nativeHistory = false, download = true, saveInitial = true }) {
+function createEditorSession({ host, toolbar, downloadHost, tool, source, read, apply, initial, nativeHistory = false, download = true, saveInitial = true }) {
   const sourceDocument = copy(source);
   let current, past = [], future = [], restoring = false, disposed = false, dirty = false, timer, groupAt = 0;
   let pendingWrite = Promise.resolve();
@@ -145,7 +146,7 @@ function createEditorSession({ host, toolbar, tool, source, read, apply, initial
       summary.focus();
     }
   }, { signal: controller.signal });
-  if (download) button("Download document", () => {
+  const documentDownload = download ? button("Download document", () => {
     changed();
     try {
       const doc = getDocument();
@@ -154,7 +155,8 @@ function createEditorSession({ host, toolbar, tool, source, read, apply, initial
     } catch (error) {
       status.textContent = error.message;
     }
-  });
+  }) : null;
+  if (downloadHost && documentDownload) downloadHost.append(documentDownload);
   const status = window.document.createElement("span");
   status.className = "editor-session-status";
   status.setAttribute("role", "status");
@@ -352,6 +354,7 @@ function createEditorSession({ host, toolbar, tool, source, read, apply, initial
     disposed = true;
     if (helpPositionFrame) cancelAnimationFrame(helpPositionFrame);
     controller.abort();
+    documentDownload?.remove();
     ui.remove();
   } };
   host._sms3EditorSession = session;

@@ -1100,6 +1100,7 @@ export function makeMultipleAlignmentTreeReport(alignment) {
 
 export function makeMultipleAlignmentSvg(alignment, options = {}) {
   const isCodingDna = alignment.alphabet === "coding-dna";
+  const showConsensusLine = options.showConsensusLine !== false;
   return makeAlignmentSvg({
     title: isCodingDna ? "Colored multiple coding DNA alignment" : "Colored multiple sequence alignment",
     note: isCodingDna ? "Coordinates count bases and ignore gaps." : "Coordinates count bases or amino acids and ignore gaps.",
@@ -1109,6 +1110,7 @@ export function makeMultipleAlignmentSvg(alignment, options = {}) {
       start: 1
     })),
     consensus: alignment.consensus,
+    showConsensusLine,
     lineWidth: options.lineWidth,
     maxCells: options.maxCells,
     legend: isCodingDna
@@ -1116,7 +1118,9 @@ export function makeMultipleAlignmentSvg(alignment, options = {}) {
       : "Teal fully conserved; blue majority conserved; orange variable; gray gap column.",
     summary: isCodingDna
       ? "Protein-guided codon alignment; displayed sequence and coordinates are nucleotide-space."
-      : "Consensus: * fully conserved, : majority conserved, . variable.",
+      : showConsensusLine
+        ? "Consensus: * fully conserved, : majority conserved, . variable."
+        : "",
     ariaLabel: "Colored multiple sequence alignment"
   });
 }

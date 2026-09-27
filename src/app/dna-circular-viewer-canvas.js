@@ -4,10 +4,12 @@ import { DNA_VIEWER_SEARCH_RESULT_LIMIT } from "../core/viewer-limits.js";
 import { featureArrowHeadLength, featureArrowTerminalVisible } from "../core/directional-feature-geometry.js";
 import { createStackedIntervalLayout, isStackedIntervalTrack } from "../core/viewer-track-layout.js";
 import { downloadCanvasPng, downloadCanvasSvg, makeSafeFileStem } from "./canvas-export.js";
+import { calculateBaseSelectionMarker } from "./base-selection-marker.js";
 import { getFeatureLabelRenderPlan } from "./viewer-label-rules.js";
 import {
   addCircleHit,
   addPolarHit,
+  appendAutomaticRangeAnchor,
   createRangePanel,
   createSelectionPanel,
   createViewerInspectorWorkspace,
@@ -15,6 +17,7 @@ import {
   createViewerTrackControls,
   getViewerFeatureTypeStyle,
   getViewerHitTargets,
+  getViewerRangeSequence,
   getSelectionTranslation,
   getViewerTrackDisplayMode,
   getViewerTrackItems,
@@ -24,11 +27,13 @@ import {
   hitTestRegions,
   makeTooltipText,
   makeRangeAnchor,
+  makeViewerRangeState,
   makeViewerItemTargetDetails,
   makeTargetKey,
   makeViewerFeatureSuggestions,
   renderRangePanel,
   renderSelectionPanel,
+  rangeAnchorMatchesTarget,
   searchResultUsesFeatureGlyph,
   updateViewerSearchControls,
   viewerTargetsMatch
@@ -65,10 +70,10 @@ const ICONS = {
 const FEATURE_RING_GAP = 3;
 const FEATURE_RING_WIDTH = 10;
 const FEATURE_RING_MAX = 16;
+const FEATURE_RING_MIN_GAP_UNITS = 12;
 const RESTRICTION_SITE_RING_HALF_WIDTH = 5;
 const RESTRICTION_SITE_MARKER_ARC_PX = 8;
 const DENSITY_ITEM_THRESHOLD = 700;
-const DENSITY_PX_PER_UNIT_THRESHOLD = 0.03;
 const MIN_CIRCULAR_VIEW_SPAN = 6;
 const DEFAULT_CIRCULAR_VIEW_SPAN_LIMIT = 30;
 export const OUTER_RULER_LABEL_OFFSET = 24;
@@ -253,28 +258,13 @@ function copyViewerText(text) {
 }
 
 function getCircularRangeState(state, record) {
-  const anchors = state.rangeAnchors || [];
-  if (anchors.length < 2) return { anchors, ready: false };
-  const start = Math.max(1, Math.min(record.length, anchors[0].position));
-  const end = Math.max(1, Math.min(record.length, anchors[1].position));
-  const wraps = start > end;
-  const length = wraps ? record.length - start + 1 + end : end - start + 1;
-  return {
-    anchors,
-    ready: true,
-    start,
-    end,
-    length,
-    wraps,
-    canSwap: true,
-    label: wraps ? `${start.toLocaleString()}-${record.length.toLocaleString()}, 1-${end.toLocaleString()}` : `${start.toLocaleString()}-${end.toLocaleString()}`
-  };
+  return makeViewerRangeState(state.rangeAnchors, record.length, {
+    oppositePath: state.useOppositeRangePath
+  });
 }
 
 function getCircularRangeForwardDna(record, range) {
-  if (!range?.ready) return "";
-  if (!range.wraps) return record.sequence.slice(range.start - 1, range.end);
-  return record.sequence.slice(range.start - 1) + record.sequence.slice(0, range.end);
+  return getViewerRangeSequence(record.sequence, range);
 }
 
 function translateRange(sequence, frame, geneticCode) {
@@ -714,6 +704,10 @@ function viewerTargetMatches(state, target) {
   return viewerTargetsMatch(state.selectedTarget, target) || viewerTargetsMatch(state.inspectedTarget, target);
 }
 
+function viewerTargetIsRangeAnchor(state, target) {
+  return (state.rangeAnchors || []).some((anchor) => rangeAnchorMatchesTarget(anchor, target));
+}
+
 function isQuantitativeTrack(track) {
   return track?.type === "quantitative";
 }
@@ -722,18 +716,38 @@ export function sortCircularTrackLayoutsForDrawing(layouts = []) {
   return [...layouts].sort((left, right) => Number(right.quantitative) - Number(left.quantitative));
 }
 
-export function shouldUseCircularTrackSummary(track, state, pxPerBp) {
+export function shouldUseCircularTrackSummary(track, state, pxPerBp, visibleItemCount) {
   if (isQuantitativeTrack(track)) return false;
   if (hasHiddenViewerItemTypes(track, state)) return false;
   if (!track.summary?.bins?.length) return false;
   const mode = getViewerTrackDisplayMode(track, state);
   if (mode === "full" || mode === "squished") return false;
   const itemCount = track.summary?.itemCount ?? track.items?.length ?? 0;
-  return itemCount > DENSITY_ITEM_THRESHOLD || pxPerBp < DENSITY_PX_PER_UNIT_THRESHOLD;
+  const visibleCount = Number.isFinite(Number(visibleItemCount)) ? Number(visibleItemCount) : itemCount;
+  return visibleCount > DENSITY_ITEM_THRESHOLD;
 }
 
-function shouldUseTrackSummary(track, state, pxPerBp) {
-  return shouldUseCircularTrackSummary(track, state, pxPerBp);
+function visibleCircularTrackItemCount(track, state, record) {
+  const items = getViewerTrackItems(track, state);
+  if (track.type === "restriction-sites") {
+    return items.reduce((count, item) => {
+      const position = restrictionSiteCutPosition(item);
+      return position !== null && getVisiblePointCopies(position, state, record.length).length > 0
+        ? count + 1
+        : count;
+    }, 0);
+  }
+  return items.reduce((count, item) =>
+    getVisibleIntervalCopies(item, state, record.length).length > 0 ? count + 1 : count, 0);
+}
+
+function shouldUseTrackSummary(track, state, pxPerBp, record) {
+  return shouldUseCircularTrackSummary(
+    track,
+    state,
+    pxPerBp,
+    visibleCircularTrackItemCount(track, state, record)
+  );
 }
 
 function getVisibleSummaryBinCopies(bin, state, length) {
@@ -828,6 +842,29 @@ function drawAnnularArc(ctx, cx, cy, outerRadius, innerRadius, startAngle, endAn
   ctx.lineWidth = lineWidth;
   ctx.fill();
   ctx.stroke();
+}
+
+function fillAnnularArc(ctx, cx, cy, outerRadius, innerRadius, startAngle, endAngle, fill) {
+  if (Math.abs(endAngle - startAngle) < 0.0005) return;
+  if (
+    !Number.isFinite(outerRadius) ||
+    !Number.isFinite(innerRadius) ||
+    outerRadius <= 0 ||
+    innerRadius <= 0 ||
+    outerRadius <= innerRadius
+  ) {
+    return;
+  }
+  const outerStart = pointOnCircle(cx, cy, outerRadius, startAngle);
+  ctx.beginPath();
+  ctx.moveTo(outerStart.x, outerStart.y);
+  ctx.arc(cx, cy, outerRadius, startAngle, endAngle);
+  const innerEnd = pointOnCircle(cx, cy, innerRadius, endAngle);
+  ctx.lineTo(innerEnd.x, innerEnd.y);
+  ctx.arc(cx, cy, innerRadius, endAngle, startAngle, true);
+  ctx.closePath();
+  ctx.fillStyle = fill;
+  ctx.fill();
 }
 
 function drawDirectionalAnnularArc(ctx, cx, cy, outerRadius, innerRadius, startAngle, endAngle, fill, stroke, strand, headLength) {
@@ -939,11 +976,13 @@ function strokeAnnularArc(ctx, cx, cy, outerRadius, innerRadius, startAngle, end
 }
 
 function drawCircularSearchMarkers(ctx, cx, cy, innerRadius, outerRadius, state, record, arc, theme) {
-  const results = state.searchResults || [];
+  const results = state.selectedTarget?.coordinateSelection
+    ? [...(state.searchResults || []), state.selectedTarget]
+    : state.searchResults || [];
   if (results.length === 0) return;
   for (const result of results) {
     if (searchResultUsesFeatureGlyph(result)) continue;
-    const active = state.activeSearchTarget?.key === result.key;
+    const active = result.coordinateSelection || state.activeSearchTarget?.key === result.key;
     for (const interval of getVisibleIntervalCopies(result, state, record.length)) {
       const startAngle = absToAngle(interval.start, state, arc);
       const endAngle = absToAngle(interval.end, state, arc);
@@ -1417,7 +1456,7 @@ function drawTicks(ctx, cx, cy, radius, state, record, arc, pxPerBp, options = {
 function drawPointTrack(ctx, track, cx, cy, radius, state, record, arc, pxPerBp, options = {}) {
   const theme = options.theme || getViewerCanvasTheme(ctx.canvas);
   const color = getViewerTrackColor(theme, track);
-  if (shouldUseTrackSummary(track, state, pxPerBp)) {
+  if (shouldUseTrackSummary(track, state, pxPerBp, record)) {
     drawCircularSummaryTrack(ctx, track, cx, cy, radius + 10, radius - 10, state, record, arc, color, theme);
     return;
   }
@@ -1469,6 +1508,62 @@ function drawPointTrack(ctx, track, cx, cy, radius, state, record, arc, pxPerBp,
 function drawCircularSummaryTrack(ctx, track, cx, cy, outerRadius, innerRadius, state, record, arc, color, theme = getViewerCanvasTheme(ctx.canvas)) {
   const summary = track.summary;
   if (!summary?.bins?.length) return false;
+  const plusSummary = summary.strands?.find((entry) => entry.strand === "+");
+  const minusSummary = summary.strands?.find((entry) => entry.strand === "-");
+  if (plusSummary?.bins?.length && minusSummary?.bins?.length) {
+    const unstrandedSummary = summary.strands?.find((entry) => entry.strand === "");
+    const strandSummaries = [plusSummary, unstrandedSummary, minusSummary].filter((entry) => entry?.bins?.length);
+    const totalWidth = Math.max(4, outerRadius - innerRadius);
+    const laneGap = Math.min(3, totalWidth * 0.08);
+    const laneWidth = Math.max(1, (totalWidth - laneGap * (strandSummaries.length - 1)) / strandSummaries.length);
+    const lanes = strandSummaries.map((strandSummary, index) => {
+      const laneOuter = outerRadius - index * (laneWidth + laneGap);
+      return {
+        summary: strandSummary,
+        inner: laneOuter - laneWidth,
+        outer: laneOuter
+      };
+    });
+    const previousAlpha = ctx.globalAlpha;
+    ctx.globalAlpha = 0.1;
+    for (const lane of lanes) {
+      fillAnnularArc(ctx, cx, cy, lane.outer, lane.inner, arc.startAngle, arc.startAngle + arc.arcAngle, color);
+    }
+    for (const lane of lanes) {
+      for (const bin of lane.summary.bins) {
+        const binWidth = Math.max(1, Number(bin.end) - Number(bin.start));
+        const coverage = Math.max(0, Math.min(1, Number(bin.bases || 0) / binWidth));
+        if (coverage <= 0) continue;
+        for (const copy of getVisibleSummaryBinCopies(bin, state, record.length)) {
+          ctx.globalAlpha = 0.42 + 0.48 * Math.sqrt(coverage);
+          fillAnnularArc(
+            ctx,
+            cx,
+            cy,
+            lane.outer,
+            lane.inner,
+            absToAngle(copy.start, state, arc),
+            absToAngle(copy.end, state, arc),
+            color
+          );
+        }
+      }
+    }
+    ctx.globalAlpha = previousAlpha;
+    drawTangentialText(ctx, `${track.label || "Features"} +`, cx, cy, outerRadius + 11, arc.startAngle + arc.arcAngle * 0.08, {
+      font: "10px system-ui, sans-serif",
+      fill: theme.muted,
+      align: "center"
+    });
+    drawTangentialText(ctx, `${track.label || "Features"} −`, cx, cy, Math.max(12, innerRadius - 10), arc.startAngle + arc.arcAngle * 0.58, {
+      font: "10px system-ui, sans-serif",
+      fill: theme.muted,
+      align: "center"
+    });
+    state.renderDiagnostics.circularSummaryLanes += lanes.length;
+    state.renderDiagnostics.circularSummaryRepresentativeItems = summary.representativeItemCount ?? summary.itemCount ?? 0;
+    return true;
+  }
   const maxValue = Math.max(1, summary.mode === "intervals" ? summary.maxBases || summary.maxCount : summary.maxCount);
   let drew = false;
   for (const bin of summary.bins) {
@@ -1559,6 +1654,7 @@ function getCachedCircularSlotLayout(track, state, record) {
   const layout = createStackedIntervalLayout(trackItems, {
     length: record.length,
     maxSlots: FEATURE_RING_MAX,
+    minGapUnits: trackItems.length > DENSITY_ITEM_THRESHOLD ? FEATURE_RING_MIN_GAP_UNITS : 0,
     fixedSlotsByType: track.fixedSlotsByType || track.slotByType,
     allowFixedSlotOverlaps: track.allowFixedSlotOverlaps === true
   });
@@ -1625,14 +1721,18 @@ function computeRenderedCircularLayout(width, height, state, record) {
   const digestFragmentTracks = tracks.filter((track) => track.type === "digest-fragments");
   const restrictionTracks = tracks.filter((track) => track.type === "restriction-sites");
   const otherTracks = tracks.filter((track) => track.type !== "digest-fragments" && track.type !== "restriction-sites");
-  const otherTrackLayouts = otherTracks.map((track) => ({
-    track,
-    quantitative: isQuantitativeTrack(track),
-    summary: shouldUseTrackSummary(track, state, pxPerBp),
-    layout: !isQuantitativeTrack(track) && isStackedIntervalTrack(track) && !shouldUseTrackSummary(track, state, pxPerBp)
-      ? layoutCircularFeatureTrack(track, state, record, pxPerBp)
-      : null
-  }));
+  const otherTrackLayouts = otherTracks.map((track) => {
+    const quantitative = isQuantitativeTrack(track);
+    const summary = shouldUseTrackSummary(track, state, pxPerBp, record);
+    return {
+      track,
+      quantitative,
+      summary,
+      layout: !quantitative && isStackedIntervalTrack(track) && !summary
+        ? layoutCircularFeatureTrack(track, state, record, pxPerBp)
+        : null
+    };
+  });
   const orderedTrackLayouts = sortCircularTrackLayoutsForDrawing(otherTrackLayouts);
   const offsets = getCircularTrackOffsets(digestFragmentTracks, restrictionTracks, orderedTrackLayouts);
   if (getCenterWeight(state, record) <= 0.05) {
@@ -1741,7 +1841,7 @@ function drawIntervalTrack(ctx, track, cx, cy, outerRadius, innerRadius, state, 
   const fill = track.type === "digest-fragments" ? theme.digestFill : (theme.dark ? "#15375c" : "#dbeafe");
   const stroke = track.type === "digest-fragments" ? color : color;
   const labelStats = state.renderDiagnostics?.circularFeatureLabels;
-  if (!slotLayout && shouldUseTrackSummary(track, state, pxPerBp)) {
+  if (!slotLayout && shouldUseTrackSummary(track, state, pxPerBp, record)) {
     drawCircularSummaryTrack(ctx, track, cx, cy, outerRadius, innerRadius, state, record, arc, color, theme);
     return;
   }
@@ -1984,6 +2084,24 @@ function drawIntervalTrack(ctx, track, cx, cy, outerRadius, innerRadius, state, 
   }
 }
 
+function drawCircularBaseMarker(ctx, base, theme, fill) {
+  const { left, top, width, height, radius } = calculateBaseSelectionMarker(0, 0, ctx.measureText(base));
+  ctx.save();
+  ctx.fillStyle = theme.selectedFill;
+  ctx.strokeStyle = theme.selectedStroke;
+  ctx.lineWidth = fill ? 1 : 1.8;
+  if (typeof ctx.roundRect === "function") {
+    ctx.beginPath();
+    ctx.roundRect(left, top, width, height, radius);
+    if (fill) ctx.fill();
+    ctx.stroke();
+  } else {
+    if (fill) ctx.fillRect(left, top, width, height);
+    ctx.strokeRect(left, top, width, height);
+  }
+  ctx.restore();
+}
+
 function drawBases(ctx, cx, cy, radius, label, strand, state, record, arc, revealDetail, theme) {
   if (!revealDetail) {
     drawArc(ctx, cx, cy, radius, arc.startAngle, arc.startAngle + arc.arcAngle, theme.sequenceLine, 6);
@@ -2007,6 +2125,11 @@ function drawBases(ctx, cx, cy, radius, label, strand, state, record, arc, revea
     ctx.rotate(angle + Math.PI / 2);
     if (isUpsideDown(angle)) ctx.rotate(Math.PI);
     ctx.font = "13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+    const selected = viewerTargetMatches(state, target);
+    const anchored = viewerTargetIsRangeAnchor(state, target);
+    if (selected || anchored) {
+      drawCircularBaseMarker(ctx, glyph.base, theme, selected);
+    }
     ctx.fillStyle = getViewerBaseColor(theme, glyph.base);
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
@@ -2102,6 +2225,7 @@ function drawTranslationFrame(ctx, cx, cy, radius, label, frameOffset, strand, s
   const viewEnd = getViewEnd(state);
   const highlightedOutlines = [];
   const selectedOutlines = [];
+  const anchorOutlines = [];
   const allSegments = getVisibleTranslationCodonSegments(frameOffset, viewStart, viewEnd, record.length);
   for (const segment of allSegments) {
     const absBp = segment.codonStart;
@@ -2122,6 +2246,7 @@ function drawTranslationFrame(ctx, cx, cy, radius, label, frameOffset, strand, s
       aminoAcid: aa
     };
     const selected = viewerTargetMatches(state, target);
+    const anchored = viewerTargetIsRangeAnchor(state, target);
     addPolarHit(state, { cx, cy, innerRadius: radius - 11, outerRadius: radius + 11, startAngle, endAngle }, target);
     traceAnnularTranslationArrow(ctx, cx, cy, radius + 10, radius - 10, startAngle, endAngle, strand);
     ctx.fillStyle = aa === "*" ? theme.stopFill : isStart ? theme.startFill : theme.aminoAcidFill;
@@ -2138,6 +2263,9 @@ function drawTranslationFrame(ctx, cx, cy, radius, label, frameOffset, strand, s
     }
     if (selected) {
       selectedOutlines.push({ startAngle, endAngle, outerRadius: radius + 10, innerRadius: radius - 10 });
+    }
+    if (anchored && !selected) {
+      anchorOutlines.push({ startAngle, endAngle, outerRadius: radius + 10, innerRadius: radius - 10 });
     }
     if (!segment.labelVisible) continue;
     const midAngle = relToAngle(segment.codonMidpoint - viewStart, state, arc);
@@ -2172,6 +2300,13 @@ function drawTranslationFrame(ctx, cx, cy, radius, label, frameOffset, strand, s
       outline.startAngle, outline.endAngle, strand);
     ctx.strokeStyle = theme.selectedStroke;
     ctx.lineWidth = 2.6;
+    ctx.stroke();
+  }
+  for (const outline of anchorOutlines) {
+    traceAnnularTranslationArrow(ctx, cx, cy, outline.outerRadius + 0.5, outline.innerRadius - 0.5,
+      outline.startAngle, outline.endAngle, strand);
+    ctx.strokeStyle = theme.selectedStroke;
+    ctx.lineWidth = 2;
     ctx.stroke();
   }
 }
@@ -2311,6 +2446,8 @@ function drawCircularViewer(ctx, canvas, status, record, state) {
   const { cx, cy, baseRadius, pxPerBp, arc, offsets, digestFragmentTracks, restrictionTracks, otherTrackLayouts } = layout;
   state.hitRegions = [];
   state.renderDiagnostics = {
+    circularSummaryLanes: 0,
+    circularSummaryRepresentativeItems: 0,
     circularFeatureLabels: {
       insideCandidates: 0,
       fallbackCandidates: 0,
@@ -2415,6 +2552,8 @@ function drawCircularViewer(ctx, canvas, status, record, state) {
     canvas.dataset.circularFeatureLabelsFallbackCandidates = String(labels.fallbackCandidates);
     canvas.dataset.circularRulerLabelsCurved = String(rulerLabelStats.curved);
     canvas.dataset.circularRulerLabelsStraight = String(rulerLabelStats.straight);
+    canvas.dataset.circularSummaryLanes = String(state.renderDiagnostics.circularSummaryLanes);
+    canvas.dataset.circularSummaryRepresentativeItems = String(state.renderDiagnostics.circularSummaryRepresentativeItems);
     canvas.dataset.sms3InspectionReady = "true";
   }
   canvas.setAttribute("aria-busy", "false");
@@ -2437,6 +2576,7 @@ function makeCircularViewerSnapshot(record, state, searchControls) {
     showReverseTranslations: state.showReverseTranslations,
     composition: snapshotViewerCompositionState(state),
     rangeAnchors: Array.isArray(state.rangeAnchors) ? state.rangeAnchors.map((anchor) => ({ ...anchor })) : [],
+    useOppositeRangePath: state.useOppositeRangePath === true,
     searchScope: searchControls?.scope?.value || "",
     searchQuery: searchControls?.input?.value || ""
   };
@@ -2517,6 +2657,7 @@ function installCircularViewer(panel, record, options = {}) {
     reverseTranslationToggle.label.hidden = true;
     geneticCodeControl.control.hidden = true;
   }
+  if (options.showGeneticCodeControl === false) geneticCodeControl.control.hidden = true;
   toolbar.append(leftControls, toggles, menuControls);
 
   const canvas = document.createElement("canvas");
@@ -2554,6 +2695,7 @@ function installCircularViewer(panel, record, options = {}) {
     rangeAnchors: Array.isArray(preserved?.rangeAnchors)
       ? preserved.rangeAnchors.filter((anchor) => Number(anchor?.position) >= 1 && Number(anchor?.position) <= record.length).slice(-2)
       : [],
+    useOppositeRangePath: preserved?.useOppositeRangePath === true,
     searchResults: [],
     activeSearchIndex: -1,
     activeSearchTarget: null,
@@ -2853,7 +2995,8 @@ function installCircularViewer(panel, record, options = {}) {
         addRangeAnchor: (selected = target, endpoint = "start") => selectionActions().addRangeAnchor(selected, endpoint),
         clearRange: () => {
           state.rangeAnchors = [];
-          renderCurrentRange();
+          state.useOppositeRangePath = false;
+          renderCurrentRange({ redraw: true });
         },
         copyRangeCoordinates: () => currentRange?.ready && copyViewerText(currentRange.label),
         copyRangeSequence: () => currentRange?.ready && copyViewerText(getCircularRangeForwardDna(record, currentRange)),
@@ -2870,8 +3013,9 @@ function installCircularViewer(panel, record, options = {}) {
           drawCircularViewer(ctx, canvas, status, record, state);
         },
         swapRange: () => {
-          state.rangeAnchors = [...state.rangeAnchors].reverse();
-          renderCurrentRange();
+          if (!currentRange?.canSwap) return;
+          state.useOppositeRangePath = !state.useOppositeRangePath;
+          renderCurrentRange({ redraw: true });
         },
         zoomToTarget: (selected = target) => selected && zoomToTargetAnimated(selected)
       }
@@ -2929,7 +3073,8 @@ function installCircularViewer(panel, record, options = {}) {
         const anchor = makeRangeAnchor(selected, endpoint);
         if (!anchor) return;
         state.rangeAnchors = [...state.rangeAnchors, anchor].slice(-2);
-        renderCurrentRange();
+        state.useOppositeRangePath = false;
+        renderCurrentRange({ redraw: true });
       },
       copyText: copyViewerText,
       copySequence: (selected) => copyViewerText(getCircularSequence(record, selected)),
@@ -2963,19 +3108,29 @@ function installCircularViewer(panel, record, options = {}) {
   function selectTarget(target, selectOptions = {}) {
     const nextTarget = target ? { ...target, key: target.key || makeTargetKey(target) } : null;
     state.selectedTarget = nextTarget && (selectOptions.keepIfSame || state.selectedTarget?.key !== nextTarget.key) ? nextTarget : null;
+    const nextAnchors = selectOptions.autoRangeAnchor && nextTarget
+      ? appendAutomaticRangeAnchor(state.rangeAnchors, nextTarget)
+      : state.rangeAnchors;
+    const rangeChanged = nextAnchors !== state.rangeAnchors;
+    if (rangeChanged) {
+      state.rangeAnchors = nextAnchors;
+      state.useOppositeRangePath = false;
+    }
     renderSelectionPanel(selectionPanel, state.selectedTarget, selectionActions());
+    if (rangeChanged) renderCurrentRange({ notify: false });
     drawCircularViewer(ctx, canvas, status, record, state);
-    notifySelectionChange();
+    notifySelectionChange({ preferredSelection: getCircularRangeState(state, record).ready ? "range" : "target" });
   }
   function notifySelectionChange(payloadOptions = {}) {
     options.onSelectionChange?.(makeSelectionPayload(state.selectedTarget, payloadOptions));
   }
-  function renderCurrentRange() {
+  function renderCurrentRange(renderOptions = {}) {
     const range = getCircularRangeState(state, record);
     renderRangePanel(rangePanel, range, {
       clearRange: () => {
         state.rangeAnchors = [];
-        renderCurrentRange();
+        state.useOppositeRangePath = false;
+        renderCurrentRange({ redraw: true });
       },
       copyCoordinates: () => copyViewerText(range.label),
       copyForwardDna: () => copyViewerText(getCircularRangeForwardDna(record, range)),
@@ -2991,11 +3146,16 @@ function installCircularViewer(panel, record, options = {}) {
         drawCircularViewer(ctx, canvas, status, record, state);
       },
       swapRange: () => {
-        state.rangeAnchors = [...state.rangeAnchors].reverse();
-        renderCurrentRange();
-      }
+        if (!range.canSwap) return;
+        state.useOppositeRangePath = !state.useOppositeRangePath;
+        renderCurrentRange({ redraw: true });
+      },
+      emptyText: "Click two bases or amino acids to build a forward-DNA range."
     });
-    notifySelectionChange({ preferredSelection: range.ready ? "range" : "target" });
+    if (renderOptions.redraw) drawCircularViewer(ctx, canvas, status, record, state);
+    if (renderOptions.notify !== false) {
+      notifySelectionChange({ preferredSelection: range.ready ? "range" : "target" });
+    }
   }
   const searchControls = createViewerSearchControls({
     onSearch: (scope, query) => runSearch(searchControls, scope, query),
@@ -3082,7 +3242,7 @@ function installCircularViewer(panel, record, options = {}) {
     getText: makeTooltipText,
     getKey: (target) => target.key || makeTargetKey(target),
     getPosition: (target) => getViewerTargetClientPosition(state, target, canvas),
-    onActivate: (target) => selectTarget(target, { keepIfSame: true }),
+    onActivate: (target) => selectTarget(target, { keepIfSame: true, autoRangeAnchor: true }),
     onActiveChange: (target) => {
       state.inspectedTarget = target;
       drawCircularViewer(ctx, canvas, status, record, state);
@@ -3091,7 +3251,9 @@ function installCircularViewer(panel, record, options = {}) {
   });
   canvas.addEventListener("click", (event) => {
     if (state.dragging) return;
-    selectTarget(hitTestRegions(state, event.clientX, event.clientY, canvas));
+    selectTarget(hitTestRegions(state, event.clientX, event.clientY, canvas), {
+      autoRangeAnchor: true
+    });
   });
   canvas.addEventListener("contextmenu", (event) => {
     const target = hitTestRegions(state, event.clientX, event.clientY, canvas);
@@ -3216,6 +3378,16 @@ function installCircularViewer(panel, record, options = {}) {
   } else {
     panel.append(toolbar, searchControls.element, canvas);
   }
+  options.onCoordinateSelectionReady?.((start, end) => {
+    if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start || end > record.length) return false;
+    cancelInertia();
+    state.rangeAnchors = [];
+    state.useOppositeRangePath = false;
+    selectTarget(start === end
+      ? { kind: "base", type: "Base", position: start, start, end, base: record.sequence[start - 1], strand: "+", coordinateSelection: true }
+      : { kind: "search-result", type: "Selected bases", start, end, strand: "+", label: `Bases ${start}-${end}`, coordinateSelection: true }, { keepIfSame: true });
+    return true;
+  });
   scheduleResize();
   return {
     cleanup: () => {
