@@ -1174,11 +1174,25 @@ function refreshSplitTableInputPreviews(options = {}) {
   for (const preview of splitTableInputPreviews) preview.refresh(options);
 }
 
+function splitInputPanelLimit(splitInput) {
+  if (splitInput?.maxPanelsLimitId && !selectedToolLimitIsEnforced(splitInput.maxPanelsLimitId)) return Infinity;
+  const maxPanels = Number.parseInt(splitInput?.maxPanels, 10);
+  return Number.isFinite(maxPanels) && maxPanels > 0 ? maxPanels : Infinity;
+}
+
+function updateSplitInputAddButtonVisibility() {
+  const actions = elements.splitInputPanel.querySelector('.split-input-actions');
+  if (!actions) return;
+  const panelCount = elements.splitInputPanel.querySelectorAll('.split-input-textarea').length;
+  actions.hidden = panelCount >= splitInputPanelLimit(state.selectedTool?.metadata?.splitInput);
+}
+
 function renderSplitInputPanel(tool) {
   const splitInput = tool?.metadata?.splitInput;
   splitTableInputPreviews = [];
   elements.splitInputPanel.textContent = "";
   elements.splitInputPanel.classList.remove("sanger-trace-workspace");
+  elements.splitInputPanel.classList.toggle('weighted-sequence-input', Boolean(splitInput?.panels?.some(panel => panel.relativeAmount)));
   elements.splitInputPanel.hidden = !splitInput;
   if (!splitInput) {
     return;
@@ -1248,7 +1262,43 @@ function renderSplitInputPanel(tool) {
     const fileText = document.createElement("span");
     fileText.textContent = panel.multipleFiles ? "Choose files" : "Choose file";
     fileLabel.append(fileInput, fileText);
-    heading.append(title, fileLabel);
+    heading.append(title);
+    const headingActions = document.createElement("div");
+    headingActions.className = "split-input-heading-actions";
+    headingActions.append(fileLabel);
+    heading.append(headingActions);
+    let amountLabel;
+    if (panel.relativeAmount) {
+      amountLabel = document.createElement('label');
+      amountLabel.className = 'number-row split-input-amount';
+      amountLabel.append(toolOptionsUi.createOptionLabelContent({
+        label: 'Relative amount',
+        help: 'Equal amounts make an equal mixture. Applies to each FASTA record in this fragment.'
+      }));
+      const amount = document.createElement('input');
+      amount.type = 'number'; amount.min = '0.001'; amount.max = '1000'; amount.step = 'any'; amount.value = '1';
+      amount.dataset.relativeAmount = '';
+      amount.addEventListener('input', () => clearToolOutput());
+      amountLabel.append(amount);
+    }
+    if (splitInput.allowRemove) {
+      const remove = document.createElement('button');
+      remove.type = 'button'; remove.className = 'secondary-button'; remove.textContent = 'Remove';
+      remove.setAttribute('aria-label', 'Remove fragment');
+      remove.addEventListener('click', () => {
+        if (elements.splitInputPanel.querySelectorAll('.split-input-section').length === 1) {
+          section.querySelector('textarea').value = '';
+        } else section.remove();
+        elements.splitInputPanel.querySelectorAll('.split-input-section').forEach((item, newIndex) => {
+          item.querySelector('textarea').dataset.splitInputIndex = String(newIndex);
+          item.querySelector('textarea').setAttribute('aria-label', makePanel(newIndex).label);
+          item.querySelector('h4').textContent = makePanel(newIndex).label;
+        });
+        updateSplitInputAddButtonVisibility();
+        clearToolOutput(); updateInputActionButtons();
+      });
+      headingActions.append(remove);
+    }
     const description = document.createElement("p");
     description.className = "split-input-description";
     description.textContent = panel.description ?? "";
@@ -1259,13 +1309,16 @@ function renderSplitInputPanel(tool) {
     const textarea = document.createElement("textarea");
     textarea.className = "split-input-textarea";
     textarea.dataset.splitInputIndex = String(index);
+    textarea.setAttribute('aria-label', panel.label ?? `Input ${index + 1}`);
     textarea.spellcheck = false;
     textarea.wrap = "off";
     textarea.value = formatExampleInputForDisplay(exampleParts[index] ?? "");
     if (panel.placeholder) {
       textarea.placeholder = panel.placeholder;
     }
-    section.append(heading, description, dropZone, textarea);
+    section.append(heading);
+    if (amountLabel) section.append(amountLabel);
+    section.append(description, dropZone, textarea);
     const tableInputPreview = panel.inputTable
       ? createTableInputPreview({
           input: textarea,
@@ -1346,33 +1399,30 @@ function renderSplitInputPanel(tool) {
   loadGffGtfFeatureExtractorModeExampleIfSafe();
   loadSequenceExtractorModeExampleIfSafe();
   if (splitInput.allowAdd) {
-    const parsedMaxPanels = Number.parseInt(splitInput.maxPanels, 10);
-    const maxPanels = Number.isFinite(parsedMaxPanels) && parsedMaxPanels > 0 ? parsedMaxPanels : Infinity;
     const actions = document.createElement("div");
     actions.className = "split-input-actions";
     const addButton = document.createElement("button");
     addButton.type = "button";
     addButton.className = "secondary-button";
     addButton.textContent = splitInput.addLabel ?? "Add input";
-    const updateAddButtonVisibility = () => {
-      const panelCount = elements.splitInputPanel.querySelectorAll(".split-input-textarea").length;
-      actions.hidden = panelCount >= maxPanels;
-    };
     addButton.addEventListener("click", () => {
       const index = elements.splitInputPanel.querySelectorAll(".split-input-textarea").length;
-      if (index >= maxPanels) {
-        updateAddButtonVisibility();
+      if (index >= splitInputPanelLimit(splitInput)) {
+        updateSplitInputAddButtonVisibility();
         return;
       }
       appendSection(index, makePanel(index));
+      if (splitInput.allowRemove) {
+        elements.splitInputPanel.querySelector(`textarea[data-split-input-index="${index}"]`).value = '';
+      }
       elements.splitInputPanel.append(actions);
       clearToolOutput();
       updateInputActionButtons();
-      updateAddButtonVisibility();
+      updateSplitInputAddButtonVisibility();
     });
     actions.append(addButton);
     elements.splitInputPanel.append(actions);
-    updateAddButtonVisibility();
+    updateSplitInputAddButtonVisibility();
   }
 }
 
@@ -3974,7 +4024,12 @@ function getSelectedToolInputText() {
   const separator = splitInput.separator ?? "---";
   return [...elements.splitInputPanel.querySelectorAll(".split-input-textarea")]
     .sort((left, right) => Number(left.dataset.splitInputIndex) - Number(right.dataset.splitInputIndex))
-    .map((textarea) => textarea.value)
+    .map((textarea) => {
+      const amount = textarea.closest('.split-input-section')?.querySelector('[data-relative-amount]');
+      return amount && textarea.value.trim()
+        ? JSON.stringify({ format: 'sms3-weighted-sequence-v1', input: textarea.value, weight: amount.value })
+        : textarea.value;
+    })
     .join(`\n${separator}\n`);
 }
 
@@ -4019,7 +4074,9 @@ function getReadMappingCoverageReferenceInputText(referenceMode) {
 }
 
 function renderToolOptions(...args) {
-  return toolOptionsUi.renderToolOptions(...args);
+  const result = toolOptionsUi.renderToolOptions(...args);
+  updateSplitInputAddButtonVisibility();
+  return result;
 }
 
 function getSuggestionSourcesForOptions(...args) {
@@ -6054,6 +6111,7 @@ elements.toolOptions.addEventListener("input", (event) => {
   }
 });
 elements.toolOptions.addEventListener("change", (event) => {
+  updateSplitInputAddButtonVisibility();
   handleProteinStructureChainControlChange(event.target);
   refreshSplitTableInputPreviews();
   updateToolOptionSuggestions();

@@ -1,3 +1,5 @@
+import { sangerGenotypeColumns } from '../../core/sanger-genotype.js';
+import { sangerReferenceOptions, SANGER_REFERENCE_LIMIT } from '../../core/sanger-reference.js';
 import {
   SANGER_SESSION_SEPARATOR,
   sangerBaseCallColumns,
@@ -37,22 +39,30 @@ const PER_TRACE_SETTING_COUNT = 6;
 
 const commonWorkflowInputs = [{ id: "input", kind: "text", mediaType: "text/plain" }];
 
+const alleleOptions = {type:'group',label:'Allele analysis',collapsible:true,collapsed:true,options:[
+  {id:'ploidy',type:'select',label:'Ploidy',defaultValue:'2',choices:[1,2,3,4].map(value=>({value:String(value),label:String(value)})),help:'Applies to Genotype table and candidate outputs. Mixed dosage at ploidy 3 or 4 remains missing. Candidate reconstruction supports up to two distinct sequences.'},
+  {type:'note',text:'Allele outputs use measured channels, automatic signal-aware trimming, and reference-guided reconstruction. Explicit clip coordinates are preserved. Model score margins remain uncalibrated.'}
+]};
+const alleleOutputChoices = [{value:'genotypes-tsv',label:'Genotype table'},{value:'candidate-fasta',label:'Candidate FASTA'},{value:'candidate-alignment-svg',label:'Candidate alignment'}];
 const workflowOutputs = {
+  genotypes: {id:'genotypes',kind:'table',schema:'sanger-genotypes',columns:sangerGenotypeColumns,label:'Genotype table'},
+  candidateFasta: {id:'candidateFasta',kind:'text',mediaType:'text/x-fasta',alphabet:'dna-rna',label:'Candidate FASTA'},
+  candidateAlignmentSvg: {id:'candidateAlignmentSvg',kind:'text',mediaType:'image/svg+xml',label:'Candidate alignment'},
   primary: { id: "primary", kind: "text", mediaType: "text/plain" },
-  report: { id: "report", kind: "text", mediaType: "text/plain" },
-  table: { id: "table", kind: "table", schema: "sanger-base-calls", columns: sangerBaseCallColumns },
-  traceSvg: { id: "traceSvg", kind: "text", mediaType: "image/svg+xml" },
-  fasta: { id: "fasta", kind: "text", mediaType: "text/x-fasta", alphabet: "dna-rna" },
-  fastq: { id: "fastq", kind: "text", mediaType: "text/x-fastq", alphabet: "dna-rna" },
-  traceJson: { id: "traceJson", kind: "text", mediaType: "application/json" },
-  sessionReport: { id: "sessionReport", kind: "text", mediaType: "text/plain" },
-  consensusFasta: { id: "consensusFasta", kind: "text", mediaType: "text/x-fasta", alphabet: "dna-rna" },
-  assemblyTextMap: { id: "assemblyTextMap", kind: "text", mediaType: "text/plain" },
-  assemblyTraceMapSvg: { id: "assemblyTraceMapSvg", kind: "text", mediaType: "image/svg+xml" },
-  referenceTraceMapSvg: { id: "referenceTraceMapSvg", kind: "text", mediaType: "image/svg+xml" },
-  referenceDifferences: { id: "referenceDifferences", kind: "table", schema: "sanger-reference-differences", columns: sangerReferenceDifferenceColumns },
-  referenceAlignmentSvg: { id: "referenceAlignmentSvg", kind: "text", mediaType: "image/svg+xml" },
-  differenceReviewSvg: { id: "differenceReviewSvg", kind: "text", mediaType: "image/svg+xml" },
+  report: { id: "report", kind: "text", mediaType: "text/plain", label: "Summary report" },
+  table: { id: "table", kind: "table", schema: "sanger-base-calls", columns: sangerBaseCallColumns, label: "Base-call table" },
+  traceSvg: { id: "traceSvg", kind: "text", mediaType: "image/svg+xml", label: "Chromatogram plot" },
+  fasta: { id: "fasta", kind: "text", mediaType: "text/x-fasta", alphabet: "dna-rna", label: "Clipped FASTA" },
+  fastq: { id: "fastq", kind: "text", mediaType: "text/x-fastq", alphabet: "dna-rna", label: "Clipped FASTQ" },
+  traceJson: { id: "traceJson", kind: "text", mediaType: "application/json", label: "Trace JSON" },
+  sessionReport: { id: "sessionReport", kind: "text", mediaType: "text/plain", label: "Summary report" },
+  consensusFasta: { id: "consensusFasta", kind: "text", mediaType: "text/x-fasta", alphabet: "dna-rna", label: "Consensus FASTA" },
+  assemblyTextMap: { id: "assemblyTextMap", kind: "text", mediaType: "text/plain", label: "Assembly text map" },
+  assemblyTraceMapSvg: { id: "assemblyTraceMapSvg", kind: "text", mediaType: "image/svg+xml", label: "Assembly trace map" },
+  referenceTraceMapSvg: { id: "referenceTraceMapSvg", kind: "text", mediaType: "image/svg+xml", label: "Reference trace map" },
+  referenceDifferences: { id: "referenceDifferences", kind: "table", schema: "sanger-reference-differences", columns: sangerReferenceDifferenceColumns, label: "Reference differences table" },
+  referenceAlignmentSvg: { id: "referenceAlignmentSvg", kind: "text", mediaType: "image/svg+xml", label: "Trace/reference alignment map" },
+  differenceReviewSvg: { id: "differenceReviewSvg", kind: "text", mediaType: "image/svg+xml", label: "Difference review map" },
   warnings: { id: "warnings", kind: "warnings" }
 };
 
@@ -77,7 +87,7 @@ function commonToolFields({ id, name, summary, whenToUse, inputType, outputType,
     workerExport,
     workflow: {
       inputs: commonWorkflowInputs,
-      outputs: workflowOutputIds.map((outputId) => workflowOutputs[outputId])
+      outputs: [...workflowOutputIds, ...(['compare','assemble'].includes(task)?['genotypes','candidateFasta','candidateAlignmentSvg']:[])].map((outputId) => workflowOutputs[outputId])
     }
   };
 }
@@ -354,6 +364,7 @@ function limitsGroup() {
     collapsible: true,
     collapsed: true,
     options: [
+      { id:'maxReferenceBases', type:'limit-value', label:'Reference bases', value:SANGER_REFERENCE_LIMIT, help:'Fixed tested reference-search capacity. Reference placement uses bounded local alignment windows.' },
       {
         id: "maxSessionTraces",
         type: "number",
@@ -388,6 +399,7 @@ export const sangerTraceReviewEditorMetadata = {
     }
   ],
   options: [
+    sangerReferenceOptions,
     reviewSettingsGroup(false),
     trimmingGroup("manual"),
     translationGroup("the displayed trace orientation"),
@@ -411,7 +423,7 @@ export const sangerTraceAssemblyMetadata = {
     summary: "Assemble clipped Sanger trace reads into a small consensus and inspect read placement.",
     whenToUse: "Use this when forward, reverse, or tiled Sanger traces need to be combined into a small consensus sequence.",
     inputType: "Two or more Sanger chromatogram traces or base-call sequences",
-    outputType: "Assembly trace map, assembly text map, consensus FASTA, or assembly report",
+    outputType: "Assembly trace map, assembly text map, consensus FASTA, genotype table, candidate FASTA, candidate alignment, or summary report",
     task: "assemble",
     workerExport: "runSangerTraceAssembly",
     workflowOutputIds: ["primary", "report", "table", "sessionReport", "consensusFasta", "assemblyTextMap", "assemblyTraceMapSvg", "traceJson", "warnings"],
@@ -422,8 +434,10 @@ export const sangerTraceAssemblyMetadata = {
     trimmingGroup("mott", { includeReverseComplement: false }),
     translationGroup("each assembled consensus contig"),
     perTraceSettingsGroup(),
+    alleleOptions,
     assemblyGroup(),
     outputFormatGroup("assembly-trace-map-svg", [
+      ...alleleOutputChoices,
       { value: "assembly-trace-map-svg", label: "Assembly trace map" },
       { value: "assembly-text-map", label: "Assembly text map" },
       { value: "consensus-fasta", label: "Consensus FASTA" },
@@ -440,7 +454,7 @@ export const sangerTraceReferenceComparisonMetadata = {
     summary: "Align clipped Sanger traces to a fixed reference DNA sequence and review base differences in trace context.",
     whenToUse: "Use this when trace reads need to be placed on an expected reference and checked for mismatches, indels, strand, or mixed peak evidence.",
     inputType: "Sanger chromatogram trace set and reference DNA",
-    outputType: "Reference trace map, difference review map, trace/reference alignment map, reference-difference table, or summary report",
+    outputType: "Reference trace map, difference review map, trace/reference alignment map, reference differences table, genotype table, candidate FASTA, candidate alignment, or summary report",
     task: "compare",
     workerExport: "runSangerTraceReferenceComparison",
     workflowOutputIds: [
@@ -457,11 +471,14 @@ export const sangerTraceReferenceComparisonMetadata = {
     ]
   }),
   options: [
+    sangerReferenceOptions,
     reviewSettingsGroup(false),
     trimmingGroup("mott", { includeReverseComplement: false }),
     translationGroup("the fixed reference sequence"),
     perTraceSettingsGroup(),
+    alleleOptions,
     outputFormatGroup("reference-trace-map-svg", [
+      ...alleleOutputChoices,
       { value: "reference-trace-map-svg", label: "Reference trace map" },
       { value: "difference-review-svg", label: "Difference review map" },
       { value: "reference-alignment-svg", label: "Trace/reference alignment map" },

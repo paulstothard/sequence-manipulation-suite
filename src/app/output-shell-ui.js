@@ -449,7 +449,7 @@ function appendToolDescriptionActions(parent) {
 
 function getAdditionalDownloads(result) {
   return (Array.isArray(result?.downloads) ? result.downloads : [])
-    .filter((item) => item && typeof item.text === "string" && item.filename);
+    .filter((item) => item && (typeof item.text === "string" || Array.isArray(item.bytes)) && item.filename);
 }
 
 function appendAdditionalDownloadActions(parent, result) {
@@ -465,6 +465,10 @@ function appendAdditionalDownloadActions(parent, result) {
     button.type = "button";
     button.textContent = item.label || `Download ${item.filename}`;
     button.addEventListener("click", () => {
+      if (Array.isArray(item.bytes)) {
+        downloadBlob(new Blob([Uint8Array.from(item.bytes)], { type: item.mimeType || 'application/octet-stream' }), item.filename);
+        return;
+      }
       downloadText(
         item.text,
         item.filename,

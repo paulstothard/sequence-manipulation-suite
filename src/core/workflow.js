@@ -3,7 +3,7 @@ export function makeTextStream(text, mediaType = "text/plain", sequenceSearch = 
     kind: "text",
     mediaType,
     text: String(text ?? ""),
-    ...(sequenceSearch ? { sequenceSearch } : {})
+    ...(sequenceSearch != null ? { sequenceSearch } : {})
   };
 }
 

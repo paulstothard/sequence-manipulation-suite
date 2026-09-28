@@ -25,6 +25,7 @@ const SPECIAL_FILE_WORKSPACES = new Set([
   "sanger-trace-viewer",
   "sanger-trace-assembly",
   "sanger-trace-reference-comparison",
+  "sanger-genotyper",
   "sam-bam-summary-region-viewer",
   "vcf-genotype-table",
   "vcf-filter",
@@ -37,7 +38,7 @@ const EDITOR_DOCUMENT_TOOLS = new Set([
   "sanger-trace-viewer", "sanger-trace-assembly", "sanger-trace-reference-comparison"
 ]);
 const SANGER_WORKSPACE_TOOLS = new Set([
-  "sanger-trace-viewer", "sanger-trace-assembly", "sanger-trace-reference-comparison"
+  "sanger-trace-viewer", "sanger-trace-assembly", "sanger-trace-reference-comparison", "sanger-genotyper"
 ]);
 
 function hasStandardFileImport(metadata) {

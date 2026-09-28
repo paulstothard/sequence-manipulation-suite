@@ -272,6 +272,20 @@ const TOOL_LIMIT_POLICIES = Object.freeze({
   "read-simulator": Object.freeze({
     maxReads: Object.freeze({ unlocksOptionIds: Object.freeze(["readCount"]) }),
     maxReferenceLength: Object.freeze({})
+  }),
+  "resolve-mixed-sanger-trace": Object.freeze({
+    maxSignalSamples: Object.freeze({}),
+    maxInputCharacters: Object.freeze({})
+  }),
+  "sanger-genotyper": Object.freeze({
+    maxSignalSamples: Object.freeze({}),
+    maxInputCharacters: Object.freeze({})
+  }),
+  "simulate-sanger-trace": Object.freeze({
+    maxTemplates: Object.freeze({}),
+    maxTemplateBases: Object.freeze({}),
+    maxFlankBases: Object.freeze({ unlocksOptionIds: Object.freeze(["prefixBases", "suffixBases"]) }),
+    maxInputCharacters: Object.freeze({})
   })
 });
 

@@ -318,6 +318,7 @@ export function inferSequenceSearchDescriptor({
   alphabet = "",
   options = {}
 } = {}) {
+  if (descriptor === false) return null;
   if (descriptor?.format) return { ...descriptor, alphabet: normalizedAlphabet(descriptor.alphabet || alphabet) };
   const normalizedFormat = String(format ?? "").toLowerCase();
   const normalizedFilename = String(filename ?? "").toLowerCase();

@@ -1,5 +1,6 @@
 import { complementDnaRnaSequence } from "../core/sequence.js";
 import { formatFastaRecord, parseSequenceInput } from "../core/fasta.js";
+export { sangerWorkflowExamples } from "./workflow-sanger-examples.js";
 
 // Deliberately synthetic region: primers select positions 101–1100 (1,000 bp).
 // Two EcoRI sites, a phased loss of the first

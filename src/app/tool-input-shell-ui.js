@@ -735,9 +735,9 @@ export function createToolInputShellController({
       } else if (option.type === "checkbox") {
         values[option.id] = optionRoot.querySelector(`#${option.id}`)?.checked ?? option.defaultValue;
       } else if (option.type === "number") {
-        values[option.id] =
-          Number.parseInt(optionRoot.querySelector(`#${option.id}`)?.value, 10) ||
-          option.defaultValue;
+        const raw = optionRoot.querySelector(`#${option.id}`)?.value;
+        const numeric = raw === '' || raw === undefined ? NaN : Number(raw);
+        values[option.id] = Number.isFinite(numeric) ? numeric : option.defaultValue;
       } else if (option.type === "text" || option.type === "textarea") {
         values[option.id] = optionRoot.querySelector(`#${option.id}`)?.value ?? option.defaultValue ?? "";
       } else if (option.type === "file") {

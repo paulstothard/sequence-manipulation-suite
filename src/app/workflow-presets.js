@@ -1,6 +1,8 @@
 import { labWorkflowPresets } from "./workflow-lab-presets.js";
+import { sangerWorkflowPresets } from "./workflow-sanger-presets.js";
 
 const WORKFLOW_EXAMPLE_LOADERS = {
+  ...Object.fromEntries(sangerWorkflowPresets.map(({ id }) => [id, async () => (await import("../examples/workflow-lab-examples.js")).sangerWorkflowExamples[id]])),
   ...Object.fromEntries([
     ["haplotype-restriction-gel", "haplotypeRestrictionExample"],
     ["compare-protein-digests", "proteinDigestComparisonExample"],
@@ -794,5 +796,6 @@ ACGTRYSWKMBDHVN`,
       ]
     }
   },
-  ...labWorkflowPresets
+  ...labWorkflowPresets,
+  ...sangerWorkflowPresets
 ];

@@ -4080,6 +4080,13 @@ textarea {
   margin: 0;
 }
 
+.split-input-heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
 .split-input-source-body-only > .split-input-heading,
 .split-input-source-body-only > .split-input-description,
 .split-input-source-body-only > .split-drop-zone {
@@ -11248,7 +11255,7 @@ legend {
   color: var(--muted-text);
   font-size: 0.78rem;
   font-weight: 700;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .table-sort-button {
@@ -14941,3 +14948,12 @@ details[open] > .sequence-extractor-section-header .sequence-extractor-section-h
   .sequence-editor-viewer-display-controls :is(.dna-viewer-track-controls, .dna-viewer-composition-controls)[open] { width: 100%; }
   .sequence-editor-viewer-display-controls :is(.dna-viewer-track-list, .dna-viewer-composition-panel) { position: static; min-width: 0; max-width: 100%; width: 100%; }
 }
+
+/* Repeatable sequence inputs with template proportions. */
+.weighted-sequence-input { align-content: start; }
+.weighted-sequence-input .split-input-heading { flex-wrap: wrap; justify-content: flex-start; gap: .5rem; }
+.weighted-sequence-input .split-input-heading h4 { margin-right: auto; white-space: nowrap; }
+.weighted-sequence-input .split-input-textarea { min-height: 10rem; height: 10rem; flex: none; }
+.weighted-sequence-input .split-input-actions { align-items: flex-start; }
+.split-input-amount { grid-template-columns: max-content minmax(0, 5rem); align-items: center; gap: .5rem; }
+.split-input-amount input { background: var(--surface); }

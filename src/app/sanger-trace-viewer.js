@@ -258,7 +258,7 @@ function findTranslationHitBox(canvas, state, event) {
 function qualityText(call) {
   return call.quality === null || call.quality === undefined
     ? "Q n/a"
-    : `Q${call.quality} Phred quality`;
+    : `Q${call.quality} ${call.syntheticQuality ? "synthetic quality" : "Phred quality"}`;
 }
 
 export function describeSangerInspectionTarget(target, state = {}) {
@@ -816,8 +816,8 @@ function renderSingleSangerTraceViewer(container, data, documentActions) {
   viewInfo.className = "sanger-trace-view-info";
   viewInfo.dataset.sangerControl = "viewInfo";
 
-  const zoomOut = makeButton("-", "Zoom out");
-  const zoomIn = makeButton("+", "Zoom in");
+  const zoomOut = makeButton("-", "Zoom out from the center of the current view");
+  const zoomIn = makeButton("+", "Zoom in at the center of the current view");
   zoomOut.setAttribute("aria-label", "Zoom out");
   zoomIn.setAttribute("aria-label", "Zoom in");
   const reset = makeButton("Reset view", "Restore the default zoom and show the start of the retained read. Edits and clipping are preserved.");
@@ -1103,12 +1103,24 @@ function renderSingleSangerTraceViewer(container, data, documentActions) {
       resizeFrame = 0;
     }
   }, { once: true });
-  const zoomBy = (factor) => {
-    const selected = selectedCall(state);
-    const anchor = selected?.displayIndex ?? state.visibleStart + Math.floor(basesPerVisibleWidth(state) / 2);
+  const zoomFractionForPointer = (clientX) => {
+    const { rect, scaleX } = canvasCoordinates(canvas);
+    const x = (clientX - rect.left) * scaleX / (window.devicePixelRatio || 1);
+    const plot = state.hitBoxes[0]?.plot;
+    return plot ? clamp((x - plot.left) / Math.max(1, plot.width), 0, 1) : 0.5;
+  };
+  const zoomBy = (factor, anchorFraction = 0.5, currentFraction = anchorFraction) => {
+    stopActiveInertia();
+    inspection.hide();
+    // Selection is an editing target and may be far outside the panned view.
+    // Buttons/keys retain the view center; pointer gestures retain their anchor.
+    const oldWidth = Math.min(state.calls.length, basesPerVisibleWidth(state));
+    const anchor = state.visibleStart + (oldWidth - 1) * anchorFraction;
     state.zoom = clamp(state.zoom * factor, 1, 18);
-    const perWidth = basesPerVisibleWidth(state);
-    state.visibleStart = clamp(anchor - Math.floor(perWidth / 2), 1, Math.max(1, state.calls.length - perWidth + 1));
+    const newWidth = Math.min(state.calls.length, basesPerVisibleWidth(state));
+    if (newWidth !== oldWidth || currentFraction !== anchorFraction) {
+      state.visibleStart = clamp(anchor - (newWidth - 1) * currentFraction, 1, Math.max(1, state.calls.length - newWidth + 1));
+    }
     render();
   };
   const goToSearchMatch = (direction) => {
@@ -1238,8 +1250,7 @@ function renderSingleSangerTraceViewer(container, data, documentActions) {
   };
   canvas.addEventListener("wheel", (event) => {
     event.preventDefault();
-    stopActiveInertia();
-    zoomBy(event.deltaY < 0 ? 1.25 : 1 / 1.25);
+    if (event.deltaY) zoomBy(event.deltaY < 0 ? 1.25 : 1 / 1.25, zoomFractionForPointer(event.clientX));
   }, passiveWheelOptions);
   const cleanupPinch = installCanvasPinchZoom(canvas, {
     onStart: () => {
@@ -1250,17 +1261,7 @@ function renderSingleSangerTraceViewer(container, data, documentActions) {
       canvas.classList.remove("dragging", "clipping");
     },
     onChange: ({ previous, current, factor }) => {
-      const rect = canvas.getBoundingClientRect();
-      const oldWidth = basesPerVisibleWidth(state);
-      const anchor = state.visibleStart + (previous.x - rect.left) / Math.max(1, rect.width) * oldWidth;
-      state.zoom = clamp(state.zoom * factor, 1, 18);
-      const newWidth = basesPerVisibleWidth(state);
-      state.visibleStart = clamp(
-        anchor - (current.x - rect.left) / Math.max(1, rect.width) * newWidth,
-        1,
-        Math.max(1, state.calls.length - newWidth + 1)
-      );
-      render();
+      zoomBy(factor, zoomFractionForPointer(previous.x), zoomFractionForPointer(current.x));
     }
   });
   canvas.addEventListener("mousemove", (event) => {

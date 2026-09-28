@@ -150,13 +150,21 @@ function makeLicenseAttributionRows() {
 
 function formatToolSummaryContract(contracts, fallback) {
   const visibleContracts = (contracts ?? []).filter((contract) =>
-    contract.catalogVisible !== false && (contract.id !== "primary" || (contracts ?? []).length === 1)
+    contract.catalogVisible !== false && contract.kind !== "warnings" && (contract.id !== "primary" || (contracts ?? []).length === 1)
   );
   const labels = visibleContracts
     .map((contract) => describeWorkflowStreamChoice(contract))
     .filter(Boolean);
   const uniqueLabels = [...new Set(labels)];
   return uniqueLabels.length > 0 ? uniqueLabels.join("; ") : fallback;
+}
+
+function toolSummaryOutputLabels(metadata) {
+  const outputFormat = flattenOptions(metadata.options ?? []).find((option) => option.id === "outputFormat");
+  const choices = (outputFormat?.choices ?? []).filter((choice) => choice.catalogVisible !== false);
+  if (choices.length) return [...new Set(choices.map((choice) => choice.label))];
+  // Editors without an output menu describe their workspace in workflow metadata.
+  return formatToolSummaryContract(metadata.workflow?.outputs, metadata.outputType).split(/\s*;\s*/).filter(Boolean);
 }
 
 function formatToolSummaryTableOutputs(outputs) {
@@ -215,6 +223,7 @@ function formatToolSummaryMetadataChecks(metadata) {
 function makeToolSummaryRecords(sortedTools) {
   return sortedTools.map((tool) => {
     const { metadata } = tool;
+    const outputLabels = toolSummaryOutputLabels(metadata);
     return {
       name: metadata.name,
       summary: metadata.summary,
@@ -222,7 +231,9 @@ function makeToolSummaryRecords(sortedTools) {
       inputLabel: metadata.inputType,
       acceptedInputs: formatToolSummaryContract(metadata.workflow?.inputs, metadata.inputType),
       outputLabel: metadata.outputType,
-      producedOutputs: formatToolSummaryContract(metadata.workflow?.outputs, metadata.outputType),
+      outputLabels,
+      producedOutputs: outputLabels.join("; "),
+      workflowOutputs: formatToolSummaryContract(metadata.workflow?.outputs, metadata.outputType),
       tableOutputs: formatToolSummaryTableOutputs(metadata.workflow?.outputs),
       limits: formatToolLimitDisclosure(metadata),
       optionNotes: formatToolSummaryOptionNotes(metadata),

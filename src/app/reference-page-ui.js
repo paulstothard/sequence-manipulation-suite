@@ -206,10 +206,12 @@ export function createReferencePageController({
     if (!text || text === "None" || text === "Not specified") {
       return [];
     }
-    const values = text
+    // Metadata output labels are already complete phrases; never split "or" or
+    // commas within a named output. Free-text input descriptions use the fallback.
+    const values = Array.isArray(value) ? value : text
       .split(/\s*;\s*/)
       .flatMap((part) => part.split(/\s*,\s*(?:or\s+)?(?=(?:optional|local|indexed|summary|table|viewer|report|warnings|alignment|coverage|region|sequence|[A-Z0-9/.-]+)(?:\s|$))/i))
-      .flatMap((part) => part.split(/\s+\bor\b\s+(?=(?:optional|local|indexed|[A-Z0-9/.-]+)(?:\s|$))/i))
+      .flatMap((part) => part.split(/\s+\bor\b\s+(?!more\b)(?=(?:optional|local|indexed|[A-Z0-9/.-]+)(?:\s|$))/i))
       .flatMap((part) => part.split(/\s+\bplus\b\s+(?=(?:optional|local|indexed|[A-Z0-9/.-]+)(?:\s|$))/i))
       .flatMap((part) => part.split(/\s+\band\b\s+(?=(?:optional|reference|local|indexed|[A-Z0-9/.-]+)(?:\s|$))/i))
       .map((part) => part.replace(/^or\s+/i, "").replace(/,$/, "").trim())
@@ -320,7 +322,7 @@ export function createReferencePageController({
     const compact = document.createElement("div");
     compact.className = "tool-summary-compact";
     appendToolSummaryChips(compact, "Inputs", splitToolSummaryValues(record.inputLabel || record.acceptedInputs));
-    appendToolSummaryChips(compact, "Outputs", splitToolSummaryValues(record.producedOutputs || record.outputLabel));
+    appendToolSummaryChips(compact, "Outputs", splitToolSummaryValues(record.outputLabels ?? record.producedOutputs ?? record.outputLabel));
     appendToolSummaryTags(compact, record.tags ?? []);
     card.append(compact);
 
@@ -362,7 +364,7 @@ export function createReferencePageController({
 
     appendToolSummaryDetailsText(detailBody, "When to use", record.whenToUse);
     appendToolSummaryDetailsList(detailBody, "Inputs", splitToolSummaryValues(record.inputLabel || record.acceptedInputs, { maxItems: Infinity }));
-    appendToolSummaryDetailsList(detailBody, "Outputs", splitToolSummaryValues(record.producedOutputs || record.outputLabel, { maxItems: Infinity }));
+    appendToolSummaryDetailsList(detailBody, "Outputs", splitToolSummaryValues(record.outputLabels ?? record.producedOutputs ?? record.outputLabel, { maxItems: Infinity }));
     appendToolSummaryDetailsList(detailBody, "Table outputs", splitToolSummaryValues(record.tableOutputs, { maxItems: Infinity }));
     appendToolSummaryDetailsText(detailBody, "Limits", record.limits);
     appendToolSummaryDetailsText(detailBody, "Notes", record.optionNotes);
@@ -378,6 +380,7 @@ export function createReferencePageController({
     appendToolSummaryField(discoveryGrid, "Category", record.category);
     appendToolSummaryField(discoveryGrid, "Tool ID", record.toolId, { monospace: true });
     appendToolSummaryField(discoveryGrid, "Direct link", record.directLink, { monospace: true });
+    appendToolSummaryField(discoveryGrid, "Workflow outputs", record.workflowOutputs, { wide: true });
     appendToolSummaryField(discoveryGrid, "Metadata check", record.metadataCheck, { wide: true });
     discovery.append(discoveryGrid);
 

@@ -1,3 +1,12 @@
+import { sangerGenotyperMetadata } from "./sanger-genotyper/metadata.js";
+import { runSangerGenotyper } from "./sanger-genotyper/run.js";
+import { getSangerGenotyperExample } from '../examples/sanger-genotyper-example.js';
+import { simulateSangerTraceMetadata } from "./simulate-sanger-trace/metadata.js";
+import { resolveMixedSangerTraceMetadata } from "./resolve-mixed-sanger-trace/metadata.js";
+import { runResolveMixedSangerTrace } from "./resolve-mixed-sanger-trace/run.js";
+import { getResolveMixedSangerTraceExample } from "../examples/resolve-mixed-sanger-trace-example.js";
+import { runSimulateSangerTrace } from "./simulate-sanger-trace/run.js";
+import { simulateSangerTraceExample } from '../examples/simulate-sanger-trace-example.js';
 import { variantConsensusMetadata } from "./variant-consensus-builder/metadata.js";
 import { runVariantConsensus } from "./variant-consensus-builder/run.js";
 import { variantConsensusExample } from "../examples/variant-consensus-example.js";
@@ -625,6 +634,9 @@ ${defaultSequenceExtractorExample.fasta}
 ##SEQUENCE_EXTRACTOR_PART##
 ${defaultSequenceExtractorExample.primers}`
   },
+  lazyExampleTool({ metadata:sangerGenotyperMetadata, run:runSangerGenotyper, getExample:getSangerGenotyperExample }),
+  { metadata: simulateSangerTraceMetadata, run: runSimulateSangerTrace, example: simulateSangerTraceExample },
+  lazyExampleTool({ metadata:resolveMixedSangerTraceMetadata, run:runResolveMixedSangerTrace, getExample:getResolveMixedSangerTraceExample }),
   lazyExampleTool({
     metadata: sangerTraceViewerMetadata,
     run: runSangerTraceReviewEditor,

@@ -170,7 +170,18 @@ export function createSangerTraceWorkspaceController({
       fileInput.click();
     });
 
-    card.append(header, dropZone, textarea);
+    card.append(header);
+    if (getSelectedTool()?.metadata?.sangerSampleInputs) {
+      const label = document.createElement('label');
+      label.className = 'text-row';
+      const caption = document.createElement('span'); caption.textContent = 'Sample';
+      const sample = document.createElement('input'); sample.type = 'text'; sample.dataset.sangerSample = '';
+      sample.value = `Sample ${panel.querySelectorAll('[data-sanger-trace-card]').length + 1}`;
+      try { const parsed = JSON.parse(value); sample.value = parsed.sample ?? parsed.name ?? sample.value; if (parsed.trace) textarea.value = typeof parsed.trace === 'string' ? parsed.trace : JSON.stringify(parsed.trace); } catch {}
+      sample.title = 'Use the same sample name to group replicate or forward/reverse traces.';
+      sample.addEventListener('input', onChange); label.append(caption, sample); card.append(label);
+    }
+    card.append(dropZone, textarea);
     return card;
   }
 
@@ -294,7 +305,7 @@ export function createSangerTraceWorkspaceController({
     referenceHeader.className = "sanger-trace-input-heading";
     const referenceTitle = document.createElement("div");
     const referenceHeading = document.createElement("h4");
-    referenceHeading.textContent = "Reference DNA";
+    referenceHeading.textContent = getSelectedTool()?.metadata?.splitInput?.panels?.find(item => item.id === "reference")?.label ?? "Reference DNA";
     referenceTitle.append(referenceHeading);
     const referenceFileLabel = document.createElement("label");
     referenceFileLabel.className = "file-button";
@@ -408,6 +419,12 @@ export function createSangerTraceWorkspaceController({
       ? panel.querySelector("[data-sanger-reference-text]")?.value ?? ""
       : "";
     const task = getTaskValue();
+    if (getSelectedTool()?.metadata?.sangerSampleInputs) {
+      return getIncludedTraceCards().filter(card => card.querySelector('.sanger-raw-textarea')?.value.trim()).map(card => JSON.stringify({
+        sample:card.querySelector('[data-sanger-sample]')?.value,
+        trace:card.querySelector('.sanger-raw-textarea')?.value
+      })).concat(reference).join(`\n${separator}\n`);
+    }
     return serializeSangerTraceWorkspaceInput({ traceTexts, reference, task, separator });
   }
 

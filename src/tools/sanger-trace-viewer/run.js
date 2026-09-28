@@ -1,3 +1,4 @@
+import { SANGER_ALLELE_OUTPUTS, runSangerAlleleOutput } from '../sanger-genotyper/integrate.js';
 import {
   makeSangerAssemblyTextMap,
   makeSangerCollectionBaseCallRows,
@@ -45,6 +46,7 @@ function normalizeOutputFormat(value) {
 }
 
 export async function runSangerTraceViewer(input, options = {}, context = {}) {
+  if (SANGER_ALLELE_OUTPUTS.includes(options.outputFormat)) return runSangerAlleleOutput(input, options, context);
   const outputFormat = normalizeOutputFormat(options.outputFormat);
   context.reportProgress?.({ phase: "parsing-trace", progress: 0.08 });
   context.throwIfCancelled?.();

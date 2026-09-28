@@ -4,7 +4,7 @@ import {
   makeAssemblyFasta,
   makeAssemblyTextMap
 } from "./lightweight-sequence-assembly.js";
-import { alignPairwiseAffine } from "./pairwise-alignment.js";
+import { parseSangerReference, placeSangerRead, sangerReferenceBase } from "./sanger-reference.js";
 import { cleanDnaRnaSequence, complementDnaRnaSequence } from "./sequence.js";
 import { getGeneticCode } from "./genetic-code.js";
 import { makeSixFrameTranslations } from "./translation.js";
@@ -12,6 +12,11 @@ import { sangerTranslationArrowSvgPath } from "./sanger-translation-arrow-geomet
 
 export const SANGER_TRACE_CHANNELS = ["A", "C", "G", "T"];
 export const SANGER_SESSION_SEPARATOR = "---SMS3-SANGER-SESSION-PART---";
+
+function traceChannelLabel(mode) {
+  return mode === 'simulated-channels' ? 'simulated A/C/G/T channels (synthetic quality)'
+    : mode === 'measured-channels' ? 'measured A/C/G/T channels' : 'generated base-call preview';
+}
 
 export const sangerBaseCallColumns = [
   { id: "record", label: "Record", type: "string" },
@@ -240,7 +245,8 @@ function normalizeBaseCalls(raw, warnings) {
     if (normalizedBase === "N" && String(call?.base ?? call).trim().toUpperCase().charAt(0) !== "N") {
       invalidBases += 1;
     }
-    const requestedPosition = Number.parseInt(call?.position ?? call?.tracePosition ?? call?.basePosition, 10);
+    // Binary chromatogram peak indexes are zero-based; the viewer uses one-based samples.
+    const requestedPosition = Number.parseInt(call?.position ?? call?.tracePosition ?? call?.basePosition, 10) + (['scf', 'ab1'].includes(raw.format) ? 1 : 0);
     const generatedPosition = (index + 1) * 12;
     const position = Number.isFinite(requestedPosition)
       ? Math.max(1, requestedPosition)
@@ -260,6 +266,7 @@ function normalizeBaseCalls(raw, warnings) {
       originalTracePosition: Number.isFinite(requestedPosition) ? requestedPosition : monotonicPosition,
       tracePosition: monotonicPosition,
       quality,
+      ...(raw.traceMode === 'simulated-channels' ? { syntheticQuality: true } : {}),
       edited: false
     });
   }
@@ -695,10 +702,12 @@ export function parseScfTrace(input, filename = "SCF trace") {
   }
 
   validateMeasuredPositions(basePositions, samples, "SCF");
+  const simulated = commentsSize > 0 && readAscii(bytes, commentsOffset, commentsSize).includes('SMS3_SIMULATED=1');
   return {
     format: "scf",
+    ...(simulated ? { traceMode: 'simulated-channels' } : {}),
     name: String(filename || "SCF trace").replace(/\.scf$/i, ""),
-    source: `SCF version ${versionText}; ${samples.toLocaleString()} samples; ${bases.toLocaleString()} base calls`,
+    source: `SCF version ${versionText}; ${samples.toLocaleString()} samples; ${bases.toLocaleString()} base calls${simulated ? '; SMS3 simulation; synthetic signal and confidence scores' : ''}`,
     bases: baseCalls.join(""),
     basePositions,
     qualities,
@@ -769,11 +778,14 @@ export function parseAbifTrace(input, filename = "AB1 trace") {
     throw new Error("ABIF base calls, positions and quality arrays have inconsistent lengths.");
   }
   validateMeasuredPositions(positions, maxTraceLength, "ABIF");
+  const commentsEntry = getEntry(entries, "CMNT", [1]);
+  const simulated = commentsEntry && String(readAbifEntryValue(commentsEntry, bytes, view)).includes('SMS3_SIMULATED=1');
 
   return {
     format: "ab1",
+    ...(simulated ? { traceMode: 'simulated-channels' } : {}),
     name: String(filename || "AB1 trace").replace(/\.(ab1|abi|abif)$/i, ""),
-    source: `ABIF version ${version}; ${directoryCount} directory entries`,
+    source: `ABIF version ${version}; ${directoryCount} directory entries${simulated ? '; SMS3 simulation; synthetic signal and confidence scores' : ''}`,
     bases: baseString,
     basePositions: positions,
     qualities,
@@ -801,7 +813,7 @@ export function parseSangerTraceInput(input) {
       name: normalizeTraceName(raw),
       sourceFormat: raw.format,
       sourceNote: String(raw.source ?? ""),
-      traceMode: traceData.synthetic ? "base-call-preview" : "measured-channels",
+      traceMode: traceData.synthetic ? "base-call-preview" : raw.traceMode === 'simulated-channels' ? 'simulated-channels' : "measured-channels",
       baseCalls,
       traces: traceData.traces,
       sampleCount: Math.max(traceData.sampleCount, ...baseCalls.map((call) => call.originalTracePosition)),
@@ -838,7 +850,7 @@ export function parseSangerTraceInput(input) {
     name: normalizeTraceName(raw),
     sourceFormat: String(raw.format ?? "sms3-sanger-trace-v1"),
     sourceNote: String(raw.source ?? ""),
-    traceMode: traceData.synthetic ? "base-call-preview" : "measured-channels",
+    traceMode: traceData.synthetic ? "base-call-preview" : raw.traceMode === 'simulated-channels' ? 'simulated-channels' : "measured-channels",
     baseCalls,
     traces: traceData.traces,
     sampleCount,
@@ -1074,29 +1086,8 @@ export function prepareSangerTrace(input, options = {}) {
   };
 }
 
-function parseReferenceInput(input, warnings) {
-  const text = String(input ?? "").trim();
-  if (!text) {
-    return null;
-  }
-  const records = parseSequenceInput(text, "sanger_reference");
-  const record = records[0];
-  if (!record) {
-    warnings.push("Reference input was provided but no DNA/RNA sequence could be read.");
-    return null;
-  }
-  const cleaned = cleanDnaRnaSequence(record.sequence, { preserveCase: false, keepGaps: false });
-  if (!cleaned.sequence) {
-    warnings.push(`${record.title || "Reference"}: no DNA/RNA sequence characters were found.`);
-    return null;
-  }
-  if (cleaned.removedCount > 0) {
-    warnings.push(`${record.title || "Reference"}: removed ${cleaned.removedCount} non-DNA/RNA character(s) from the reference.`);
-  }
-  return {
-    title: record.title || "Reference",
-    sequence: cleaned.sequence.replaceAll("U", "T")
-  };
+function parseReferenceInput(input, warnings, options = {}) {
+  return String(input ?? '').trim() ? parseSangerReference(input, options) : null;
 }
 
 function parseBooleanSetting(value) {
@@ -1189,7 +1180,7 @@ export function prepareSangerTraceCollection(input, options = {}) {
     return result;
   });
 
-  const reference = session ? parseReferenceInput(session.reference, warnings) : null;
+  const reference = session ? parseReferenceInput(session.reference, warnings, options) : null;
   return {
     isSession: Boolean(session),
     traces,
@@ -1261,12 +1252,10 @@ async function compareQueryToReference(query, reference, options, context) {
     gapOpen: Number.parseFloat(options.referenceGapOpen ?? 10) || 10,
     gapExtend: Number.parseFloat(options.referenceGapExtend ?? 1) || 1
   };
-  const direct = await alignPairwiseAffine(reference.sequence, query.sequence, alignmentOptions, context);
-  const reverseSequence = reverseComplementSequence(query.sequence);
-  const reverse = await alignPairwiseAffine(reference.sequence, reverseSequence, alignmentOptions, context);
-  const useReverse = reverse.score > direct.score;
-  const alignment = useReverse ? reverse : direct;
-  const orientation = useReverse ? "reverse-complement" : "forward";
+  const placement = await placeSangerRead(reference, query.sequence, alignmentOptions, context);
+  if (placement.status !== 'placed') return { warning:`${query.name}: ${placement.reason}`, placementStatus:placement.status };
+  const { alignment, orientation } = placement;
+  const useReverse = orientation === 'reverse-complement';
   const qualities = useReverse ? query.qualities.slice().reverse() : query.qualities;
   return {
     summary: {
@@ -1362,6 +1351,7 @@ export async function prepareSangerTraceSession(input, options = {}, context = {
       });
       context.throwIfCancelled?.();
       const comparison = await compareQueryToReference(query, collection.reference, options, context);
+      if (comparison.warning) { warnings.push(comparison.warning); continue; }
       comparisonSummaries.push(comparison.summary);
       referenceAlignments.push(comparison.alignment);
       referenceDifferences.push(...comparison.differences);
@@ -1441,7 +1431,7 @@ export function makeSangerTraceReport(result) {
     `Trimming: ${trimSummary}`,
     `Displayed orientation: ${view.orientation}`,
     `Displayed sequence length: ${sequence.length}`,
-    `Trace channels: ${trace.traceMode === "measured-channels" ? "measured A/C/G/T channels" : "generated base-call preview"}`,
+    `Trace channels: ${traceChannelLabel(trace.traceMode)}`,
     `Low-quality calls below Q${result.options.lowQualityThreshold}: ${result.lowQualityCount}`,
     `Edited displayed calls: ${result.editedCount}`,
     `Quality range: ${minQuality === null ? "n/a" : `${minQuality}-${maxQuality}`}`,
@@ -1470,7 +1460,7 @@ function summarizeSangerTraceResult(result) {
     inputBaseCalls: result.trace.baseCalls.length,
     displayedBaseCalls: result.view.baseCalls.length,
     orientation: result.view.orientation,
-    traceMode: result.trace.traceMode === "measured-channels" ? "measured A/C/G/T channels" : "generated base-call preview",
+    traceMode: traceChannelLabel(result.trace.traceMode),
     lowQualityCount: result.lowQualityCount,
     editedCount: result.editedCount,
     qualityRange: minQuality === null ? "n/a" : `${minQuality}-${maxQuality}`,
@@ -1982,7 +1972,7 @@ function traceCallEvidenceText(traceResult, read, call) {
   if (!traceResult || !call) return "trace evidence unavailable";
   const quality = call.quality === null || call.quality === undefined
     ? "quality unavailable"
-    : `Q${call.quality} Phred quality`;
+    : `Q${call.quality} ${call.syntheticQuality ? "synthetic quality" : "Phred quality"}`;
   const originalTracePosition = call.originalTracePosition === null || call.originalTracePosition === undefined
     ? ""
     : `; original trace position ${call.originalTracePosition}`;
@@ -2173,7 +2163,7 @@ function queryPositionCallForReferenceTrace(traceResult, orientation, queryPosit
 
 function referenceReadInspectionText({ traceResult, placement, reference, item }) {
   const call = queryPositionCallForReferenceTrace(traceResult, placement.orientation, item.queryPosition);
-  const referenceBase = reference.sequence?.[item.referencePosition - 1] ?? "N";
+  const referenceBase = sangerReferenceBase(reference, item.referencePosition) ?? "N";
   const orientation = placement.orientation === "reverse-complement" ? "reverse complement" : "forward";
   const relation = referenceBase === item.base ? "match" : "difference";
   const sourceCall = call?.base && call.base !== item.base ? `; source call ${call.base}` : "";
@@ -2414,8 +2404,16 @@ export function makeSangerReferenceTraceMapSvg(session, options = {}) {
   const sequenceLeft = left + labelWidth;
   const chunks = [];
   if (reference?.sequence) {
-    for (let start = 1; start <= reference.sequence.length; start += basesPerRow) {
-      const end = Math.min(reference.sequence.length, start + basesPerRow - 1);
+    const first = reference.firstBase ?? 1;
+    const last = first + reference.sequence.length - 1;
+    const starts = new Set();
+    for (const placement of placements) {
+      const from = Math.max(first, placement.start - basesPerRow);
+      const through = Math.min(last, placement.end + basesPerRow);
+      for (let start = first + Math.floor((from - first) / basesPerRow) * basesPerRow; start <= through; start += basesPerRow) starts.add(start);
+    }
+    for (const start of [...starts].sort((a,b) => a-b)) {
+      const end = Math.min(last, start + basesPerRow - 1);
       const visiblePlacements = placements
         .map((placement) => ({ placement, segment: referencePlacementSegment(placement, start, end) }))
         .filter((item) => item.segment);
@@ -2442,19 +2440,20 @@ export function makeSangerReferenceTraceMapSvg(session, options = {}) {
   }
 
   let y = 86;
-  for (const chunk of chunks) {
+  for (const [chunkIndex, chunk] of chunks.entries()) {
+    if (chunkIndex && chunks[chunkIndex - 1].end + 1 < chunk.start) parts.push(`<text x="${sequenceLeft}" y="${y - 12}" font-size="11" fill="#64748b">… uncovered reference interval …</text>`);
     parts.push(`<text x="${left}" y="${y}" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#172026">${escapeXml(reference.title)} (${reference.sequence.length} bp)</text>`);
     parts.push(`<text x="${left}" y="${y + 16}" font-family="system-ui, sans-serif" font-size="11" fill="#64748b">bases ${chunk.start}-${chunk.end}</text>`);
     y += 24;
     const referenceColumnTop = y + 1;
     parts.push(`<text x="${left}" y="${y + 15}" font-family="system-ui, sans-serif" font-size="11" fill="#64748b">reference</text>`);
     for (let position = chunk.start; position <= chunk.end; position += 1) {
-      const base = reference.sequence[position - 1] ?? "N";
+      const base = sangerReferenceBase(reference, position) ?? "N";
       const x = sequenceLeft + (position - chunk.start) * cellWidth;
       parts.push(`<text x="${(x + cellWidth / 2).toFixed(1)}" y="${y + 16}" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" font-weight="700" fill="${CHANNEL_COLORS[base] ?? "#475569"}">${escapeXml(base)}</text>`);
     }
     for (let position = chunk.start; position <= chunk.end; position += 1) {
-      const base = reference.sequence[position - 1] ?? "N";
+      const base = sangerReferenceBase(reference, position) ?? "N";
       const x = sequenceLeft + (position - chunk.start) * cellWidth;
       parts.push(`<rect class="sanger-reference-base-inspection-target" data-sanger-inspection-target="" data-sms3-inspection-highlight="fill" data-sanger-reference-position="${position}" x="${x.toFixed(2)}" y="${(y + 1).toFixed(2)}" width="${cellWidth.toFixed(2)}" height="22" fill="transparent"><title>${escapeXml(`Reference ${reference.title} position ${position}: ${base}`)}</title></rect>`);
       parts.push(sangerInspectionShadeSvg(x, referenceColumnTop, cellWidth, 22));
@@ -2464,9 +2463,9 @@ export function makeSangerReferenceTraceMapSvg(session, options = {}) {
       parts.push(`<g class="sanger-reference-translation-tracks" data-translation-source="reference">${makeSangerTranslationTracksSvg({
         frames: translationFrames,
         sequenceLength: reference.sequence.length,
-        visibleStart: chunk.start,
-        visibleEnd: chunk.end,
-        xForIndex: (position) => sequenceLeft + (position - chunk.start + 0.5) * cellWidth,
+        visibleStart: chunk.start - (reference.firstBase ?? 1) + 1,
+        visibleEnd: chunk.end - (reference.firstBase ?? 1) + 1,
+        xForIndex: (position) => sequenceLeft + (position + (reference.firstBase ?? 1) - 1 - chunk.start + 0.5) * cellWidth,
         left: sequenceLeft,
         right: sequenceLeft + (chunk.end - chunk.start + 1) * cellWidth,
         top: y
@@ -2850,7 +2849,7 @@ function qualityAxisMax(baseCalls, threshold) {
 function sangerCallInspectionText(call) {
   const quality = call.quality === null || call.quality === undefined
     ? "quality unavailable"
-    : `Q${call.quality} Phred quality`;
+    : `Q${call.quality} ${call.syntheticQuality ? "synthetic quality" : "Phred quality"}`;
   const originalBase = call.originalBase && call.originalBase !== call.base
     ? `; original base ${call.originalBase}`
     : "";
@@ -2936,7 +2935,7 @@ function makeWrappedSangerTraceSvg(result, options = {}) {
     let rowMax = 1;
     for (const channel of SANGER_TRACE_CHANNELS) {
       rowTraces[channel] = (view.traces[channel] ?? []).slice(startSample - 1, endSample);
-      rowMax = Math.max(rowMax, ...rowTraces[channel]);
+      for (const value of rowTraces[channel]) rowMax = Math.max(rowMax, value);
     }
     const channelPaths = SANGER_TRACE_CHANNELS.map((channel) => {
       const path = makePath(rowTraces[channel], rowMax, plot);
@@ -3011,7 +3010,7 @@ ${inspectionTargets}
 ${SANGER_SVG_TEXT_STYLE}
 <rect width="${width}" height="${height}" fill="#ffffff"/>
 <text x="${margin.left}" y="28" font-size="18" font-weight="700" fill="#0f172a">${escapeXml(view.record)}</text>
-<text x="${margin.left}" y="48" font-size="12" fill="#475569">Bases ${view.clipStart}-${view.clipEnd}; ${view.orientation}; ${view.traceMode === "measured-channels" ? "measured trace channels" : "base-call preview trace"}; wrapped ${basesPerRow} bases per row</text>
+<text x="${margin.left}" y="48" font-size="12" fill="#475569">Bases ${view.clipStart}-${view.clipEnd}; ${view.orientation}; ${traceChannelLabel(view.traceMode)}; wrapped ${basesPerRow} bases per row</text>
 ${rows.join("\n")}
 </svg>`;
 }
@@ -3032,10 +3031,10 @@ export function makeSangerTraceSvg(result, options = {}) {
     width: width - margin.left - margin.right,
     height: height - margin.top - margin.bottom
   };
-  const maxIntensity = Math.max(
-    1,
-    ...SANGER_TRACE_CHANNELS.flatMap((channel) => view.traces[channel] ?? [])
-  );
+  let maxIntensity = 1;
+  for (const channel of SANGER_TRACE_CHANNELS) {
+    for (const value of view.traces[channel] ?? []) maxIntensity = Math.max(maxIntensity, value);
+  }
   const sampleDenominator = Math.max(1, view.sampleCount - 1);
   const xForPosition = (position) => plot.left + ((position - 1) / sampleDenominator) * plot.width;
   const xForIndex = (displayIndex) => {
@@ -3047,6 +3046,10 @@ export function makeSangerTraceSvg(result, options = {}) {
   const qualityMax = qualityAxisMax(view.baseCalls, result.options.lowQualityThreshold);
   const qualityScale = qualityHeight / qualityMax;
   const lowThresholdY = qualityTop + qualityHeight - result.options.lowQualityThreshold * qualityScale;
+
+  const highlightedCall = view.baseCalls.find(call => call.originalIndex === options.highlightBase);
+  const markerX = highlightedCall ? xForPosition(highlightedCall.tracePosition) : null;
+  const siteMarker = markerX === null ? "" : `<g class="sanger-site-marker" pointer-events="none"><title>Selected site: original base ${highlightedCall.originalIndex}</title><rect x="${markerX - 7}" y="59" width="14" height="21" rx="2" fill="#dbeafe"/><line x1="${markerX}" x2="${markerX}" y1="${plot.top}" y2="${plot.top + plot.height}" stroke="#2563eb" stroke-width="1" stroke-dasharray="3 3" opacity="0.6"/></g>`;
 
   const channelPaths = SANGER_TRACE_CHANNELS.map((channel) => {
     const path = makePath(view.traces[channel] ?? [], maxIntensity, plot);
@@ -3103,9 +3106,10 @@ export function makeSangerTraceSvg(result, options = {}) {
 ${SANGER_SVG_TEXT_STYLE}
 <rect width="${width}" height="${height}" fill="#ffffff"/>
 <text x="${plot.left}" y="28" font-size="18" font-weight="700" fill="#0f172a">${escapeXml(view.record)}</text>
-<text x="${plot.left}" y="48" font-size="12" fill="#475569">Bases ${view.clipStart}-${view.clipEnd}; ${view.orientation}; ${view.traceMode === "measured-channels" ? "measured trace channels" : "base-call preview trace"}</text>
+<text x="${plot.left}" y="48" font-size="12" fill="#475569">Bases ${view.clipStart}-${view.clipEnd}; ${view.orientation}; ${traceChannelLabel(view.traceMode)}</text>
 <rect x="${plot.left}" y="${plot.top}" width="${plot.width}" height="${plot.height}" fill="#f8fafc" stroke="#cbd5e1"/>
 <line x1="${plot.left}" x2="${plot.left + plot.width}" y1="${plot.top + plot.height}" y2="${plot.top + plot.height}" stroke="#64748b" stroke-width="1"/>
+${siteMarker}
 ${baseTicks}
 ${channelPaths}
 ${baseLabels}
@@ -3157,6 +3161,9 @@ ${childBlocks.map((block) => block.markup).join("\n")}
 export function makeSangerTraceJson(result) {
   return JSON.stringify({
     format: "sms3-sanger-trace-view-v1",
+    traceMode: result.view.traceMode,
+    name: result.view.record,
+    source: result.view.sourceNote,
     record: result.view.record,
     orientation: result.view.orientation,
     clipStart: result.view.clipStart,
