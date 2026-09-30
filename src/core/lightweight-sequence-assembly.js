@@ -357,7 +357,11 @@ export function assembleLightweightSequences(input, options = {}, context = {}) 
       for (let index = 0; index < reads.length; index += 1) {
         checkCancelled(context, index);
         const read = reads[index];
+        // Optional domain-specific compatibility (e.g. alternative Sanger
+        // candidates sharing one observation). Ordinary assembly is unchanged.
+        if (context.canCombineReads?.(contig.reads, read) === false) continue;
         const candidate = findBestReadPlacement(contig, read, normalized, context);
+        if (candidate && context.canPlaceRead?.(contig, candidate) === false) continue;
         if (
           candidate && isBetterPlacement(candidate, best, contig.sequence.length)
         ) {

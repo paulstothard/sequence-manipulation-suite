@@ -1,3 +1,4 @@
+import {updateResultOptionChoices} from "./result-option-choices.js";
 import { renderVariantConsensusInput } from './variant-consensus-input-ui.js';
 import { EDITOR_TOOLS, parseEditorDocument, readEditorDocumentFile, readEditorRecovery, createEditorSession } from './editor-session.js';
 import { tools } from "../tools/registry.js";
@@ -290,6 +291,7 @@ const elements = {
   workflowOutputActions: document.querySelector("#workflowOutputActions"),
   workflowTableOutput: document.querySelector("#workflowTableOutput"),
   workflowVisualOutput: document.querySelector("#workflowVisualOutput"),
+  workflowTextRegions: document.querySelector("#workflowTextRegions"),
   workflowDownloadOutput: document.querySelector("#workflowDownloadOutput"),
   workflowCopyOutput: document.querySelector("#workflowCopyOutput"),
   toolCategory: document.querySelector("#toolCategory"),
@@ -338,6 +340,7 @@ const elements = {
   toolOutputActions: document.querySelector("#toolOutputActions"),
   messages: document.querySelector("#messages"),
   visualOutput: document.querySelector("#visualOutput"),
+  toolTextRegions: document.querySelector("#toolTextRegions"),
   toolOutput: document.querySelector("#toolOutput"),
   toolOutputEmpty: document.querySelector("#toolOutputEmpty"),
   toolTableOutput: document.querySelector("#toolTableOutput")
@@ -5306,6 +5309,10 @@ function getWorkflowStepRunStatus(step, index, total) {
 }
 
 function describeWorkerProgress(tool, message = {}) {
+  if (["hashing-files", "reading-archive"].includes(message.phase)) {
+    const action = message.phase === "hashing-files" ? "Hashing" : "Reading archive";
+    return `${action}: ${Number(message.bytesRead ?? 0).toLocaleString()} source bytes read${message.totalBytes ? ` of ${Number(message.totalBytes).toLocaleString()}` : ""}...`;
+  }
   if (message.phase === "parsing-input") {
     return `Parsing input for ${tool.metadata.name}...`;
   }
@@ -5530,7 +5537,7 @@ function renderWorkflowStepInspector(result, workflowDefinition = getActiveWorkf
     stepOutput.textContent = `Produced: ${summarizeWorkflowStepValue(stepResult.value)}`;
     item.append(stepLabel, stepOutput);
 
-    const formatted = formatWorkflowValue(stepResult.value);
+    const formatted = formatWorkflowValue(stepResult.value, stepResult.result);
     const stepRawOutput = formatted.rawText || formatted.text || "";
     if (stepRawOutput) {
       const actions = document.createElement("div");
@@ -5665,7 +5672,7 @@ async function runSelectedWorkflow() {
       }
     });
     if (!isCurrent()) return;
-    const formatted = formatWorkflowValue(result.value);
+    const formatted = formatWorkflowValue(result.value, result.steps.at(-1)?.result);
     const inputStep = workflow.steps.find((step) => step.type === "input");
     const workflowSource = inputStep?.workspaceSource;
     const outputStep = workflow.steps.at(-1);
@@ -5699,7 +5706,7 @@ async function runSelectedWorkflow() {
       stepCount: result.steps.length
     };
     renderWorkflowView();
-    const hasWorkflowVisual = Boolean(formatted.svg || formatted.viewer || formatted.figure || formatted.proteinFigure || formatted.sequenceLogo || formatted.sequenceExtractor || formatted.treeViewer || formatted.plateLayout);
+    const hasWorkflowVisual = Boolean(formatted.filePreview || formatted.svg || formatted.viewer || formatted.figure || formatted.proteinFigure || formatted.sequenceLogo || formatted.sequenceExtractor || formatted.treeViewer || formatted.plateLayout);
     elements.workflowOutput.value = formatted.text;
     elements.workflowOutput.dataset.rawOutput = formatted.rawText;
     elements.workflowOutput.dataset.filename = formatted.filename ?? "sms3-workflow-output.txt";
@@ -5710,6 +5717,7 @@ async function runSelectedWorkflow() {
     setOutputFormatLabel("workflow", formatted.outputLabel);
     renderWorkflowTableOutput(formatted.tableStream, Boolean(formatted.tableStream));
     await Promise.resolve(renderVisualOutput("workflow", formatted.svg, {
+      filePreview: formatted.filePreview,
       viewer: formatted.viewer,
       figure: formatted.figure,
       proteinFigure: formatted.proteinFigure,
@@ -5724,7 +5732,7 @@ async function runSelectedWorkflow() {
     elements.workflowOutput.hidden = Boolean(formatted.tableStream || hasWorkflowVisual);
     setOutputSearchRowVisible("workflow", Boolean(formatted.tableStream || (!hasWorkflowVisual && formatted.text)));
     updateOutputActions("workflow", {
-      hidden: Boolean(formatted.tableStream || formatted.plateLayout || formatted.proteinFigure || formatted.sequenceLogo),
+      hidden: Boolean(formatted.filePreview || formatted.tableStream || formatted.plateLayout || formatted.proteinFigure || formatted.sequenceLogo),
       mimeType: formatted.mimeType,
       label: formatted.outputLabel
     });
@@ -5784,6 +5792,7 @@ async function displayToolResult(result, inputText, options, isCurrent = () => t
   await renderGeneratedToolOutputChoice(result, { signal });
   if (!isCurrent()) return;
   if (signal?.aborted) throw makeRunAbortError();
+  updateResultOptionChoices(elements.toolOptions, state.selectedTool.metadata, result.streams);
   renderMessages(result);
 }
 

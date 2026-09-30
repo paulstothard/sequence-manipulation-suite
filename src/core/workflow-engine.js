@@ -80,7 +80,9 @@ function inferOutputFormatForStream(tool, streamName = "primary") {
   const outputFormat = flattenOptions(tool?.metadata.options ?? []).find((option) => option.id === "outputFormat");
   const choices = new Set((outputFormat?.choices ?? []).map((choice) => choice.value));
   const declaredFormat = getToolOutputContract(tool, streamName)?.outputFormat;
-  if (declaredFormat && choices.has(declaredFormat)) return declaredFormat;
+  // A typed workflow output can use a compatibility format that is deliberately
+  // absent from the tool's ordinary presentation choices.
+  if (declaredFormat) return declaredFormat;
   const candidates = {
     report: ["report"],
     table: ["table", "tsv", "csv"],

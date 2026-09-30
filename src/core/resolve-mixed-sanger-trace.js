@@ -163,6 +163,15 @@ export async function resolveMixedSangerTrace(input, options = {}, context = {})
   if (located.status !== 'placed') { result.warnings.push(located.reason); result.diagnostics.placementStatus = located.status; return result; }
   const placement = located.alignment;
   const reversed = located.orientation === 'reverse-complement';
+  // Retain the observed peak-code placement even when reconstruction is
+  // withheld. Genotyper's alignment review reuses this completed analysis.
+  result.evidenceAlignment = {
+    reference_aligned: placement.alignmentA, query_aligned: placement.alignmentB,
+    start_reference: placement.startA + referenceRecord.firstBase - 1,
+    end_reference: placement.endA + referenceRecord.firstBase - 1,
+    start_query: placement.startB, end_query: placement.endB,
+    identity_percent: placement.identityPercent, orientation: located.orientation,
+  };
   const windowStart = Math.max(0, placement.startA - 129);
   const windowEnd = Math.min(reference.length, placement.endA + 128);
   const alignCandidate = async sequence => {

@@ -1,5 +1,161 @@
 export const softwareLicenseAttributions = [
   {
+    "category": "Runtime library",
+    "name": "@borewit/text-codec",
+    "version": "0.2.2",
+    "license": "MIT",
+    "sourceUrl": "https://www.npmjs.com/package/@borewit/text-codec",
+    "bundledPath": "src/vendor/file-tools/; src/vendor/file-tools/licenses/borewit-text-codec.txt",
+    "notes": "Supports binary-format recognition in File And Archive Preview.",
+    "packageNames": [
+      "@borewit/text-codec"
+    ]
+  },
+  {
+    "category": "Runtime library",
+    "name": "@tokenizer/inflate",
+    "version": "0.4.1",
+    "license": "MIT",
+    "sourceUrl": "https://www.npmjs.com/package/@tokenizer/inflate",
+    "bundledPath": "src/vendor/file-tools/; src/vendor/file-tools/licenses/tokenizer-inflate.txt",
+    "notes": "Supports binary-format recognition in File And Archive Preview.",
+    "packageNames": [
+      "@tokenizer/inflate"
+    ]
+  },
+  {
+    "category": "Runtime library",
+    "name": "@zip.js/zip.js",
+    "version": "2.18.2",
+    "license": "BSD-3-Clause",
+    "sourceUrl": "https://www.npmjs.com/package/@zip.js/zip.js",
+    "bundledPath": "src/vendor/file-tools/; src/vendor/file-tools/licenses/zip.js-zip.js.txt",
+    "notes": "Lists ZIP archives and reads selected entries.",
+    "packageNames": [
+      "@zip.js/zip.js"
+    ]
+  },
+  {
+    "category": "Runtime library",
+    "name": "debug",
+    "version": "4.4.3",
+    "license": "MIT",
+    "sourceUrl": "https://www.npmjs.com/package/debug",
+    "bundledPath": "src/vendor/file-tools/; src/vendor/file-tools/licenses/debug.txt",
+    "notes": "Supports binary-format recognition in File And Archive Preview.",
+    "packageNames": [
+      "debug"
+    ]
+  },
+  {
+    "category": "Runtime library",
+    "name": "fflate",
+    "version": "0.8.3",
+    "license": "MIT",
+    "sourceUrl": "https://www.npmjs.com/package/fflate",
+    "bundledPath": "src/vendor/file-tools/; src/vendor/file-tools/licenses/fflate.txt",
+    "notes": "Reads gzip streams, including concatenated members.",
+    "packageNames": [
+      "fflate"
+    ]
+  },
+  {
+    "category": "Runtime library",
+    "name": "file-type",
+    "version": "22.1.1",
+    "license": "MIT",
+    "sourceUrl": "https://www.npmjs.com/package/file-type",
+    "bundledPath": "src/vendor/file-tools/; src/vendor/file-tools/licenses/file-type.txt",
+    "notes": "Identifies likely binary file formats from bounded byte samples.",
+    "packageNames": [
+      "file-type"
+    ]
+  },
+  {
+    "category": "Runtime library",
+    "name": "hash-wasm",
+    "version": "4.12.0",
+    "license": "MIT",
+    "sourceUrl": "https://www.npmjs.com/package/hash-wasm",
+    "bundledPath": "src/vendor/file-tools/; src/vendor/file-tools/licenses/hash-wasm.txt",
+    "notes": "Computes incremental file checksums and FASTA sequence fingerprints.",
+    "packageNames": [
+      "hash-wasm"
+    ]
+  },
+  {
+    "category": "Runtime library",
+    "name": "ieee754",
+    "version": "1.2.1",
+    "license": "BSD-3-Clause",
+    "sourceUrl": "https://www.npmjs.com/package/ieee754",
+    "bundledPath": "src/vendor/file-tools/; src/vendor/file-tools/licenses/ieee754.txt",
+    "notes": "Supports binary-format recognition in File And Archive Preview.",
+    "packageNames": [
+      "ieee754"
+    ]
+  },
+  {
+    "category": "Runtime library",
+    "name": "modern-tar",
+    "version": "0.8.5",
+    "license": "MIT",
+    "sourceUrl": "https://www.npmjs.com/package/modern-tar",
+    "bundledPath": "src/vendor/file-tools/; src/vendor/file-tools/licenses/modern-tar.txt",
+    "notes": "Parses TAR archive entries incrementally.",
+    "packageNames": [
+      "modern-tar"
+    ]
+  },
+  {
+    "category": "Runtime library",
+    "name": "ms",
+    "version": "2.1.3",
+    "license": "MIT",
+    "sourceUrl": "https://www.npmjs.com/package/ms",
+    "bundledPath": "src/vendor/file-tools/; src/vendor/file-tools/licenses/ms.txt",
+    "notes": "Supports binary-format recognition in File And Archive Preview.",
+    "packageNames": [
+      "ms"
+    ]
+  },
+  {
+    "category": "Runtime library",
+    "name": "strtok3",
+    "version": "10.3.5",
+    "license": "MIT",
+    "sourceUrl": "https://www.npmjs.com/package/strtok3",
+    "bundledPath": "src/vendor/file-tools/; src/vendor/file-tools/licenses/strtok3.txt",
+    "notes": "Supports binary-format recognition in File And Archive Preview.",
+    "packageNames": [
+      "strtok3"
+    ]
+  },
+  {
+    "category": "Runtime library",
+    "name": "token-types",
+    "version": "6.1.2",
+    "license": "MIT",
+    "sourceUrl": "https://www.npmjs.com/package/token-types",
+    "bundledPath": "src/vendor/file-tools/; src/vendor/file-tools/licenses/token-types.txt",
+    "notes": "Supports binary-format recognition in File And Archive Preview.",
+    "packageNames": [
+      "token-types"
+    ]
+  },
+  {
+    "category": "Runtime library",
+    "name": "uint8array-extras",
+    "version": "1.6.0",
+    "license": "MIT",
+    "sourceUrl": "https://www.npmjs.com/package/uint8array-extras",
+    "bundledPath": "src/vendor/file-tools/; src/vendor/file-tools/licenses/uint8array-extras.txt",
+    "notes": "Supports binary-format recognition in File And Archive Preview.",
+    "packageNames": [
+      "uint8array-extras"
+    ]
+  },
+  {
     category: "Runtime library",
     name: "saxes",
     version: "6.0.0",

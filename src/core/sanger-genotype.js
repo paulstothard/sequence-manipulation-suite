@@ -13,6 +13,7 @@ import {
   resolveMixedSangerTrace,
 } from "./resolve-mixed-sanger-trace.js";
 import { effectiveToolLimit, isToolLimitDisabled } from "./tool-limit-policy.js";
+import { normalizeSangerTrimOptions } from './sanger-trimming.js';
 import { sangerCandidateSiteDetails } from "./sanger-genotype-candidates.js";
 
 export const SANGER_GENOTYPE_LIMITS = {
@@ -294,6 +295,7 @@ async function analyzeTrace(entry, index, reference, options, context) {
       entry = parsed;
   }
   const structured = entry && typeof entry === "object" && "trace" in entry;
+  options = normalizeSangerTrimOptions(options);
   const input = structured ? entry.trace : entry;
   const decoded =
     typeof input === "string" && /^[\s]*[\[{]/.test(input)
@@ -350,10 +352,10 @@ async function analyzeTrace(entry, index, reference, options, context) {
   const adjusted = evidence.map((item, i) => ({
     quality: item.usable ? Math.max(20, record.baseCalls[i].quality ?? 20) : 0,
   }));
-  const automatic = calculateMottTrimRange(adjusted, {
+  const automatic = (options.autoTrim ?? true) ? calculateMottTrimRange(adjusted, {
     errorLimit: 0.05,
     minimumBases: 40,
-  });
+  }) : null;
   const manualStart = Number(
       (structured ? entry.clipStart : undefined) ?? options.clipStart ?? 0,
     ),
@@ -369,7 +371,7 @@ async function analyzeTrace(entry, index, reference, options, context) {
     manualEnd > record.baseCalls.length
   )
     throw new Error(
-      "Clip coordinates must be within the trace; use 0 for automatic.",
+      "Trim coordinates must be within the trace. Leave the last base blank to keep through the end of the read.",
     );
   const start =
       manualStart || ((options.autoTrim ?? true) ? automatic.start : 1),

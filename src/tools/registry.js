@@ -1,3 +1,9 @@
+import { sangerChromatogramPlotMetadata } from "./sanger-chromatogram-plot/metadata.js";
+import { runSangerChromatogramPlot } from "./sanger-chromatogram-plot/run.js";
+import {fileArchivePreviewMetadata, fileArchivePreviewExample} from "./file-archive-preview/metadata.js";
+import {runFileArchivePreview} from "./file-archive-preview/run.js";
+import { fileChecksumMetadata, fileChecksumExample } from "./file-checksum/metadata.js";
+import { runFileChecksum } from "./file-checksum/run.js";
 import { sangerGenotyperMetadata } from "./sanger-genotyper/metadata.js";
 import { runSangerGenotyper } from "./sanger-genotyper/run.js";
 import { getSangerGenotyperExample } from '../examples/sanger-genotyper-example.js';
@@ -75,12 +81,10 @@ import { sequenceExtractorMetadata } from "./sequence-extractor/metadata.js";
 import { runSequenceExtractor } from "./sequence-extractor/run.js";
 import {
   sangerTraceAssemblyMetadata,
-  sangerTraceReferenceComparisonMetadata,
   sangerTraceViewerMetadata
 } from "./sanger-trace-viewer/metadata.js";
 import {
   runSangerTraceAssembly,
-  runSangerTraceReferenceComparison,
   runSangerTraceReviewEditor
 } from "./sanger-trace-viewer/run.js";
 import { proteinStructureViewerMetadata } from "./protein-structure-viewer/metadata.js";
@@ -384,8 +388,7 @@ import { crambinPdbExample } from "../examples/protein-structure-examples.js";
 import { proteinConservationStructureExample } from "../examples/protein-conservation-structure-examples.js";
 import {
   getSangerTraceAssemblyExample,
-  getSangerTraceExample,
-  getSangerTraceReferenceComparisonExample
+  getSangerTraceExample
 } from "../examples/sanger-trace-example.js";
 
 const samBamSummaryRegionViewerExample = alignmentViewerExample.split(/\n##VCF\n/u)[0];
@@ -475,6 +478,8 @@ function makeFastqQcExample() {
 }
 
 export const tools = [
+  { metadata: fileArchivePreviewMetadata, run: runFileArchivePreview, example: fileArchivePreviewExample },
+  { metadata: fileChecksumMetadata, run: runFileChecksum, example: fileChecksumExample },
   { metadata: plateLayoutMetadata, run: runPlateLayout, example: plateLayoutExample },
   { metadata: variantConsensusMetadata, run: runVariantConsensus, example: variantConsensusExample },
   { metadata: qpcrAnalysisMetadata, run: runQpcrAnalysis, example: qpcrExample },
@@ -634,6 +639,7 @@ ${defaultSequenceExtractorExample.fasta}
 ##SEQUENCE_EXTRACTOR_PART##
 ${defaultSequenceExtractorExample.primers}`
   },
+  lazyExampleTool({ metadata: sangerChromatogramPlotMetadata, run: runSangerChromatogramPlot, getExample: getSangerTraceExample }),
   lazyExampleTool({ metadata:sangerGenotyperMetadata, run:runSangerGenotyper, getExample:getSangerGenotyperExample }),
   { metadata: simulateSangerTraceMetadata, run: runSimulateSangerTrace, example: simulateSangerTraceExample },
   lazyExampleTool({ metadata:resolveMixedSangerTraceMetadata, run:runResolveMixedSangerTrace, getExample:getResolveMixedSangerTraceExample }),
@@ -646,11 +652,6 @@ ${defaultSequenceExtractorExample.primers}`
     metadata: sangerTraceAssemblyMetadata,
     run: runSangerTraceAssembly,
     getExample: getSangerTraceAssemblyExample
-  }),
-  lazyExampleTool({
-    metadata: sangerTraceReferenceComparisonMetadata,
-    run: runSangerTraceReferenceComparison,
-    getExample: getSangerTraceReferenceComparisonExample
   }),
   {
     metadata: proteinStructureViewerMetadata,

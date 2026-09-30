@@ -170,7 +170,10 @@ export function publicationPlotCss(style, options = {}) {
   const selector = (value) => scope ? `${scope} ${value}` : value;
   const titleWeight = Number.isFinite(Number(options.titleWeight)) ? Number(options.titleWeight) : 600;
   return [
-    `${selector("text")}{font-family:${style.fontFamily};font-weight:400;fill:${SMS3_PLOT_THEME.text};stroke:none;stroke-width:0;text-shadow:none;paint-order:normal}`,
+    `${selector("text")}{font-family:${style.fontFamily};fill:${SMS3_PLOT_THEME.text};stroke:none;stroke-width:0;text-shadow:none;paint-order:normal}`,
+    // Preserve explicit SVG weights when figures share a document (e.g. Showcase).
+    // :where keeps the default less specific than semantic classes such as .title.
+    `${selector("text:where(:not([font-weight]))")}{font-weight:400}`,
     `${selector(".title")}{font-size:${style.titleFontSize}px;font-weight:${titleWeight}}`,
     `${selector(".subtitle")},${selector(".note")}{font-size:${style.smallFontSize}px;fill:${SMS3_PLOT_THEME.textMuted}}`,
     `${selector(".axis")},${selector(".axis-rule")},${selector(".axis-tick")}{stroke:${SMS3_PLOT_THEME.axis};stroke-width:${style.axisStrokeWidth}}`,

@@ -1,4 +1,4 @@
-import { SANGER_SIMULATION_SEPARATOR, SANGER_SIMULATION_LIMITS, simulatedSangerColumns } from '../../core/simulate-sanger-trace.js';
+import { SANGER_SIMULATION_SEPARATOR, SANGER_SIMULATION_LIMITS } from '../../core/simulate-sanger-trace.js';
 
 const fragmentPanel = {
   label: 'Fragment', idPrefix: 'fragment',
@@ -13,7 +13,7 @@ export const simulateSangerTraceMetadata = {
   summary: 'Simulate one chromatogram from one or more DNA templates, including mixed SNP and indel signals.',
   whenToUse: 'Generate reproducible Sanger traces to examine signals from individual DNA templates or mixtures.',
   inputType: 'DNA sequences or FASTA records',
-  outputType: 'Trace editor, chromatogram plot, trace JSON, AB1, SCF, base-call table, FASTA/FASTQ, or summary report',
+  outputType: 'Trace editor, trace JSON, AB1, SCF, or summary report',
   splitInput: {
     separator: SANGER_SIMULATION_SEPARATOR, allowAdd: true, allowRemove: true,
     addLabel: 'Add fragment', maxPanels: SANGER_SIMULATION_LIMITS.templates, maxPanelsLimitId: 'maxTemplates', repeatFromIndex: 0,
@@ -28,13 +28,8 @@ export const simulateSangerTraceMetadata = {
     inputs: [{ id: 'input', kind: 'text', mediaType: 'text/plain' }, { id: 'sequenceRecords', kind: 'sequence-records', alphabet: 'dna-rna' }],
     outputs: [
       { id: 'primary', kind: 'text', mediaType: 'text/plain' },
-      { id: 'report', kind: 'text', mediaType: 'text/plain', label: 'Summary report' },
-      { id: 'traceJson', kind: 'text', mediaType: 'application/json', label: 'Trace JSON' },
-      { id: 'traceSvg', kind: 'text', mediaType: 'image/svg+xml', label: 'Chromatogram plot' },
-      { id: 'table', kind: 'table', schema: 'simulated-sanger-base-calls', columns: simulatedSangerColumns, label: 'Base-call table' },
-      { id: 'fasta', kind: 'text', mediaType: 'text/x-fasta', alphabet: 'dna-rna', label: 'Base-call FASTA' },
-      { id: 'fastq', kind: 'text', mediaType: 'text/x-fastq', alphabet: 'dna-rna', label: 'Base-call FASTQ' },
-      { id: 'templates', kind: 'sequence-records', alphabet: 'dna-rna', label: 'Template sequences' },
+      { id: 'report', kind: 'text', mediaType: 'text/plain', outputFormat: 'report', label: 'Summary report' },
+      { id: 'traceJson', kind: 'text', mediaType: 'application/json', outputFormat: 'trace-json', label: 'Trace JSON' },
       { id: 'warnings', kind: 'warnings' }
     ]
   },
@@ -61,14 +56,9 @@ export const simulateSangerTraceMetadata = {
     { type: 'group', label: 'Output format', options: [
       { id: 'outputFormat', type: 'select', label: 'Output format', defaultValue: 'interactive-trace', choices: [
         { value: 'interactive-trace', label: 'Trace editor' },
-        { value: 'svg-trace', label: 'Chromatogram plot' },
         { value: 'trace-json', label: 'Trace JSON' },
         { value: 'ab1', label: 'AB1' },
         { value: 'scf', label: 'SCF' },
-        { value: 'tsv', label: 'Base-call table' },
-        { value: 'fasta', label: 'Base-call FASTA' },
-        { value: 'fastq', label: 'Base-call FASTQ' },
-        { value: 'template-fasta', label: 'Template FASTA' },
         { value: 'report', label: 'Summary report' }
       ] }
     ] },
@@ -76,7 +66,7 @@ export const simulateSangerTraceMetadata = {
       { id: 'maxTemplates', type: 'limit-value', label: 'Templates', value: SANGER_SIMULATION_LIMITS.templates, help: 'Rejects additional FASTA records across all fragments. Disabling also permits more fragment input panels.' },
       { id: 'maxTemplateBases', type: 'limit-value', label: 'Bases per template', value: SANGER_SIMULATION_LIMITS.templateBases, help: 'Rejects longer templates without truncation. Separate figure and AB1 limits still apply.' },
       { id: 'maxFlankBases', type: 'limit-value', label: 'Bases per flank', value: SANGER_SIMULATION_LIMITS.flankBases, help: 'Maximum for each added flank. Disabling permits larger values in Bases before the read and Bases after the read.' },
-      { id: 'maxVisualReadPositions', type: 'limit-value', label: 'Trace editor and plot read positions', value: SANGER_SIMULATION_LIMITS.visualReadPositions, help: 'Fixed display limit, including flanks. Longer reads require SCF, Trace JSON, or sequence output.' },
+      { id: 'maxVisualReadPositions', type: 'limit-value', label: 'Trace editor read positions', value: SANGER_SIMULATION_LIMITS.visualReadPositions, help: 'Fixed display limit, including flanks. Longer reads require SCF or Trace JSON.' },
       { id: 'maxAb1ReadPositions', type: 'limit-value', label: 'AB1 read positions', value: SANGER_SIMULATION_LIMITS.ab1ReadPositions, help: 'Fixed limit for the AB1 peak-position encoding, including flanks. Longer AB1 reads are rejected; use SCF or Trace JSON.' },
       { id: 'maxInputCharacters', type: 'limit-value', label: 'Input characters', value: SANGER_SIMULATION_LIMITS.inputCharacters, help: 'Rejects larger combined input before parsing.' }
     ] },

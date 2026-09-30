@@ -1,15 +1,10 @@
+import { prepareSangerAlleleCollection } from "../../core/sanger-allele-preparation.js";
 import {
   genotypeSangerTraces,
   sangerGenotypeColumns,
-  assessSangerGenotypeSignal,
 } from "../../core/sanger-genotype.js";
 import { sangerCandidateOutput } from "../../core/sanger-genotype-output.js";
 import {
-  prepareSangerTraceSession,
-  prepareSangerTraceCollection,
-  prepareSangerTrace,
-  parseSangerTraceInput,
-  calculateMottTrimRange,
   makeSangerTraceJson,
 } from "../../core/sanger-trace.js";
 import {
@@ -24,6 +19,10 @@ export const SANGER_ALLELE_OUTPUTS = [
   "candidate-alignment-svg",
 ];
 export async function runSangerAlleleOutput(input, options = {}, context = {}) {
+  if (options.task === 'assemble') {
+    const { runResolvedSangerSession } = await import('../sanger-trace-viewer/resolved-run.js');
+    return runResolvedSangerSession(input, options, context);
+  }
   const settings = {
     ...options,
     siteMode: "variants",
@@ -35,91 +34,20 @@ export async function runSangerAlleleOutput(input, options = {}, context = {}) {
     preparationWarnings = [];
   if (typeof input === "string") {
     // Apply the established per-read clips, edits and orientation before analysis.
-    const collection = prepareSangerTraceCollection(input, {
-      ...options,
-      trimMethod: "manual",
-    });
+    const collection = prepareSangerAlleleCollection(input, options);
     preparationWarnings = collection.warnings;
-    const traces = collection.traces.map((prepared) => {
-      let trace = JSON.parse(makeSangerTraceJson(prepared));
-      if (settings.autoTrim) {
-        const record = parseSangerTraceInput(JSON.stringify(trace));
-        const evidence = assessSangerGenotypeSignal(record);
-        const trim = calculateMottTrimRange(
-          evidence.map((item, i) => ({
-            quality: item.usable
-              ? Math.max(20, record.baseCalls[i].quality ?? 20)
-              : 0,
-          })),
-          { errorLimit: 0.05, minimumBases: 40 },
-        );
-        const start = prepared.options.clipStart > 1 ? 1 : trim.start;
-        const end =
-          prepared.options.clipEnd > 0 ? record.baseCalls.length : trim.end;
-        trace = JSON.parse(
-          makeSangerTraceJson(
-            prepareSangerTrace(JSON.stringify(trace), {
-              clipStart: start,
-              clipEnd: end,
-            }),
-          ),
-        );
-      }
-      return trace;
-    });
+    const traces = collection.traces.map(prepared => JSON.parse(makeSangerTraceJson(prepared)));
     input = {
       format: "sms3-sanger-trace-session-v1",
       traces,
       reference: collection.reference,
     };
+    settings.trimMode = 'none';
     settings.autoTrim = false;
     settings.clipStart = 0;
     settings.clipEnd = 0;
   }
-  if (options.task === "assemble") {
-    // Assembly defines contig references. Alternatives from the same trace share
-    // evidence and retain the source trace identity in genotype/candidate outputs.
-    const session = await prepareSangerTraceSession(
-      JSON.stringify(input),
-      {
-        ...options,
-        trimMethod: "manual",
-        clipStart: 1,
-        clipEnd: 0,
-        traceSettings: "",
-        reverseComplement: false,
-        outputFormat: "consensus-fasta",
-      },
-      context,
-    );
-    for (const contig of session.assembly.contigs) {
-      const traces = session.collection.traces.filter((trace) =>
-        contig.reads.some((read) => read.title === trace.view.record),
-      );
-      if (contig.sequence.length < 40 || !traces.length) continue;
-      results.push(
-        await genotypeSangerTraces(
-          {
-            reference: `>${contig.title}\n${contig.sequence}`,
-            traces: traces.map((trace) => ({
-              sample: trace.view.record,
-              trace: JSON.parse(makeSangerTraceJson(trace)),
-            })),
-          },
-          {
-            ...settings,
-            referenceStart: 1,
-            autoTrim: false,
-            clipStart: 0,
-            clipEnd: 0,
-          },
-          context,
-        ),
-      );
-    }
-  } else {
-    results = [await genotypeSangerTraces(input, settings, context)];
-  }
+  results = [await genotypeSangerTraces(input, settings, context)];
   const warnings = [
       ...preparationWarnings,
       ...results.flatMap((result) => result.warnings),

@@ -154,22 +154,7 @@ export function sangerGenotypeReviewSvg(result) {
   return `<svg class="sanger-svg" xmlns="http://www.w3.org/2000/svg" width="980" height="${y}" viewBox="0 0 980 ${y}" role="img" aria-label="Sanger variant review"><rect width="980" height="${y}" fill="white"/><g font-family="${PUBLICATION_PLOT_FONT_FAMILY}" fill="${SMS3_PLOT_THEME.text}"><text x="28" y="30" font-size="20" font-weight="600">Sanger variant review</text><text x="28" y="52" font-size="12">${xml(result.reference.title)}; reference positions above, original trace orientation and base calls below</text>${panels.join("")}</g></svg>`;
 }
 
-export function sangerGenotypeCoverageSvg(result) {
-  const width = 980,
-    height = 110 + result.reads.length * 42,
-    first = result.reference.firstBase,
-    last = result.reference.lastBase;
-  const x = (position) =>
-    220 + ((position - first) / Math.max(1, last - first)) * 720;
-  const rows = result.reads.map((read, index) => {
-    const y = 70 + index * 42,
-      positions = [...read.positions.keys()],
-      start = positions.length ? Math.min(...positions) : null,
-      end = positions.length ? Math.max(...positions) : null;
-    return `<text x="24" y="${y + 14}" font-size="12">${xml(read.sample.slice(0, 25))}</text>${start === null ? `<text x="220" y="${y + 14}" font-size="12">${xml(read.reason)}</text>` : `<rect data-sanger-inspection-target="" x="${x(start)}" y="${y}" width="${Math.max(2, x(end) - x(start))}" height="22" fill="${SMS3_PLOT_THEME.categorical[0]}"><title>${xml(read.sample)}; ${xml(read.name)}; reference ${start}–${end}; original bases ${read.trim.start}–${read.trim.end}; ${read.orientation}</title></rect>`}`;
-  });
-  return `<svg class="sanger-svg" xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Sanger coverage"><rect width="100%" height="100%" fill="white"/><g font-family="${PUBLICATION_PLOT_FONT_FAMILY}" fill="${SMS3_PLOT_THEME.text}"><text x="24" y="28" font-size="20">Sanger reference coverage</text><text x="220" y="54" font-size="12">${first}</text><text x="940" y="54" text-anchor="end" font-size="12">${last}</text><line x1="220" y1="59" x2="940" y2="59" stroke="${SMS3_PLOT_THEME.axis}"/>${rows.join("")}</g></svg>`;
-}
+export { sangerGenotypeCoverageSvg } from "./sanger-genotype-coverage.js";
 
 export async function sangerCandidateOutput(results, format, { haplotypeLabels = false, context = {} } = {}) {
   const records = [],

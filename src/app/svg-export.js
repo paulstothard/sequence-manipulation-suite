@@ -53,6 +53,13 @@ export function serializeSvgElement(svgElement) {
   return new XMLSerializer().serializeToString(clone);
 }
 
+// Keep large vector figures exportable within practical browser canvas bounds.
+// SVG downloads retain their full vector dimensions.
+export function getSvgPngExportSize(width, height, requestedScale = getPngExportScale()) {
+  const scale = Math.min(requestedScale, 16384 / Math.max(width, height), Math.sqrt(32000000 / (width * height)));
+  return {scale, width: Math.max(1, Math.floor(width * scale)), height: Math.max(1, Math.floor(height * scale))};
+}
+
 export async function downloadSvgAsPng(svg, filename = "sms3-plot.png") {
   const svgBlob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
   const url = URL.createObjectURL(svgBlob);
@@ -69,10 +76,11 @@ export async function downloadSvgAsPng(svg, filename = "sms3-plot.png") {
     const viewBox = documentSvg.getAttribute("viewBox")?.split(/\s+/).map(Number) ?? [];
     const width = Math.max(1, Math.round(viewBox[2] || image.naturalWidth || 920));
     const height = Math.max(1, Math.round(viewBox[3] || image.naturalHeight || 420));
-    const exportScale = getPngExportScale();
+    const size = getSvgPngExportSize(width, height);
+    const exportScale = size.scale;
     const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.round(width * exportScale));
-    canvas.height = Math.max(1, Math.round(height * exportScale));
+    canvas.width = size.width;
+    canvas.height = size.height;
     const context = canvas.getContext("2d");
     context.setTransform(exportScale, 0, 0, exportScale, 0, 0);
     context.fillStyle = "#ffffff";

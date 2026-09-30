@@ -11,6 +11,7 @@ import {
   sangerCandidateOutput,
 } from "../../core/sanger-genotype-output.js";
 import { sangerHaplotypeColumns, sangerGenotypeCandidateView, SANGER_CANDIDATE_ALIGNMENT_CELL_LIMIT } from "../../core/sanger-genotype-candidates.js";
+import { sangerGenotypeAlignmentSvg } from '../../core/sanger-genotype-alignment.js';
 import {
   makeToolResult,
   makeTableStream,
@@ -27,6 +28,7 @@ export async function runSangerGenotyper(input, options = {}, context = {}) {
       "report",
       "review-svg",
       "coverage-svg",
+      "reference-alignment-svg",
       "candidate-fasta",
       "candidate-alignment-svg",
     ].includes(format)
@@ -64,6 +66,14 @@ export async function runSangerGenotyper(input, options = {}, context = {}) {
       rows,
       "sanger-genotypes",
     );
+  } else if (format === 'reference-alignment-svg') {
+    const alignment = sangerGenotypeAlignmentSvg(result);
+    output = alignment.svg;
+    result.warnings.push(...alignment.warnings);
+    filename = 'sanger-trace-reference-alignment.svg';
+    mimeType = 'image/svg+xml';
+    visual = { svg: output };
+    streams.referenceAlignmentSvg = makeTextStream(output, mimeType);
   } else if (format === "candidate-fasta" || format === "candidate-alignment-svg") {
     const candidates = sangerGenotypeCandidateView(result);
     const available = candidates.reads.filter(read => read.resolution);

@@ -122,7 +122,7 @@ export function serializeSangerTraceWorkspaceInput({
 export function makeSangerTraceSettingsText(traceRows = [], existingText = "") {
   const rows = [];
   let includedIndex = 0;
-  for (const row of traceRows) {
+  for (const [sourceIndex, row] of traceRows.entries()) {
     const include = row?.included !== false;
     const orientation = row?.orientation ?? "auto";
     const text = String(row?.text ?? "").trim();
@@ -130,15 +130,25 @@ export function makeSangerTraceSettingsText(traceRows = [], existingText = "") {
       continue;
     }
     includedIndex += 1;
-    const clipStart = String(row?.clipStart ?? "").trim();
-    const clipEnd = String(row?.clipEnd ?? "").trim();
+    let clipStart = String(row?.clipStart ?? "").trim();
+    let clipEnd = String(row?.clipEnd ?? "").trim();
+    if (row.manualTrim) {
+      if ([clipStart, clipEnd].some(value => value && (!Number.isSafeInteger(Number(value)) || Number(value) < 1))) {
+        throw new Error(`Trace ${sourceIndex + 1}: manual trimming coordinates must be positive whole numbers.`);
+      }
+      if (clipStart && clipEnd && Number(clipStart) > Number(clipEnd)) {
+        throw new Error(`Trace ${sourceIndex + 1}: the first base to keep must be at or before the last base.`);
+      }
+      clipStart = String(Number(clipStart || 1));
+      clipEnd = String(Number(clipEnd || 0));
+    }
     const reverseComplement = orientation === "reverse-complement" ? "true" : orientation === "forward" ? "false" : "";
     if (clipStart || clipEnd || reverseComplement) {
-      rows.push([includedIndex, clipStart, clipEnd, reverseComplement].join("\t"));
+      rows.push([includedIndex, clipStart, clipEnd, reverseComplement, row.manualTrim ? 'manual' : ''].join("\t"));
     }
   }
   const generated = rows.length > 0
-    ? ["trace\tclip_start\tclip_end\treverse_complement", ...rows].join("\n")
+    ? ["trace\tclip_start\tclip_end\treverse_complement\ttrim_method", ...rows].join("\n")
     : "";
   return [generated, String(existingText ?? "").trim()].filter(Boolean).join("\n");
 }

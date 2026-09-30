@@ -631,8 +631,9 @@ button:hover {
 .search-input,
 .select-row select,
 textarea,
+.output-text,
 .number-row input,
-.text-row input {
+.text-row input:not([type="file"]) {
   width: 100%;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -1159,6 +1160,11 @@ textarea {
   padding: 0.8rem;
   resize: vertical;
   overflow-x: auto;
+}
+
+textarea,
+.output-text,
+.output-highlight-preview {
   font-family:
     "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
   line-height: 1.45;
@@ -4204,7 +4210,11 @@ textarea {
 
 .sanger-trace-drop-zone,
 .sanger-reference-drop-zone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   min-height: 3.25rem;
+  padding: 0.5rem 0.75rem;
   cursor: pointer;
 }
 
@@ -11004,10 +11014,10 @@ legend {
   font-size: 0.9rem;
 }
 
-#toolOutput,
-#workflowOutput {
+.output-text {
   display: block;
   margin-top: 0;
+  padding: 0.8rem;
   min-height: 16rem;
   overflow: auto;
   resize: vertical;
@@ -11025,21 +11035,20 @@ legend {
   box-sizing: border-box;
   background: var(--bg);
   color: var(--text);
-  font-family:
-    "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-  line-height: 1.45;
   overflow: auto;
   white-space: pre;
   word-break: normal;
 }
 
-.output-highlight-preview mark {
+.output-highlight-preview mark,
+.output-text mark {
   border-radius: 3px;
   background: #ffe08a;
   color: #172026;
 }
 
-.output-highlight-preview mark.current-output-match {
+.output-highlight-preview mark.current-output-match,
+.output-text mark.current-output-match {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
@@ -14957,3 +14966,44 @@ details[open] > .sequence-extractor-section-header .sequence-extractor-section-h
 .weighted-sequence-input .split-input-actions { align-items: flex-start; }
 .split-input-amount { grid-template-columns: max-content minmax(0, 5rem); align-items: center; gap: .5rem; }
 .split-input-amount input { background: var(--surface); }
+
+/* Display-only Sanger controls travel with the generated plot. */
+.sanger-plot-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem 1.25rem;
+  padding: 0.8rem 1rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-strong);
+  color: var(--text);
+  font-size: 0.85rem;
+}
+.sanger-plot-controls label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+}
+.sanger-plot-controls select, .sanger-plot-controls input[type="number"] {
+  font: inherit; color: var(--text); background: var(--bg);
+  border: 1px solid var(--border); border-radius: 6px; padding: 0.35rem 0.5rem;
+}
+.sanger-plot-controls select { width: auto; max-width: min(18rem, 100%); }
+.sanger-plot-controls input[type="number"] { width: 5rem; }
+.sanger-plot-controls input[type="checkbox"] { margin: 0; }
+
+.file-preview { min-width: 0; }
+.file-preview-name { overflow-wrap: anywhere; color: var(--muted); }
+.file-preview-section { min-width: 0; margin-block: 1rem; }
+.file-preview-section:last-child { margin-bottom: 0; }
+.output-region-heading { margin: 0; }
+.file-preview-scope, .file-preview-notice { color: var(--muted); margin-block: 0.5rem; }
+.file-preview-separation { border-block: 1px dashed var(--border); padding: 0.8rem 0; color: var(--muted); }
+.file-preview-lines { max-height: 28rem; }
+.file-preview-line { display: flex; min-height: 1lh; width: max-content; min-width: 100%; tab-size: 8; }
+.file-preview-line-number { flex: 0 0 4ch; padding-right: 0.6rem; text-align: right; color: var(--muted); user-select: none; border-right: 1px solid var(--border); }
+.file-preview-line-text { padding-inline: 0.75rem; }
+.file-preview-line-note { color: var(--muted); padding-inline: 0.75rem; font-style: italic; }
+.file-preview-empty { padding-inline: 0.75rem; color: var(--muted); }

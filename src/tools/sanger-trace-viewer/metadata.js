@@ -1,11 +1,11 @@
-import { sangerGenotypeColumns } from '../../core/sanger-genotype.js';
+import { sangerTrimmingGroup } from '../sanger-trimming-options.js';
+import { sangerResolvedDifferenceColumns } from '../../core/sanger-resolved-session.js';
 import { sangerReferenceOptions, SANGER_REFERENCE_LIMIT } from '../../core/sanger-reference.js';
 import {
   SANGER_SESSION_SEPARATOR,
   sangerBaseCallColumns,
   sangerReferenceDifferenceColumns
 } from "../../core/sanger-trace.js";
-import { geneticCodes } from "../../core/genetic-code.js";
 
 const SANGER_TRACE_CATEGORY = "Sanger Traces";
 
@@ -35,36 +35,43 @@ function makeSangerSplitInput({ includeReference = true } = {}) {
 
 const commonSplitInput = makeSangerSplitInput();
 const assemblySplitInput = makeSangerSplitInput({ includeReference: false });
-const PER_TRACE_SETTING_COUNT = 6;
 
 const commonWorkflowInputs = [{ id: "input", kind: "text", mediaType: "text/plain" }];
 
-const alleleOptions = {type:'group',label:'Allele analysis',collapsible:true,collapsed:true,options:[
-  {id:'ploidy',type:'select',label:'Ploidy',defaultValue:'2',choices:[1,2,3,4].map(value=>({value:String(value),label:String(value)})),help:'Applies to Genotype table and candidate outputs. Mixed dosage at ploidy 3 or 4 remains missing. Candidate reconstruction supports up to two distinct sequences.'},
-  {type:'note',text:'Allele outputs use measured channels, automatic signal-aware trimming, and reference-guided reconstruction. Explicit clip coordinates are preserved. Model score margins remain uncalibrated.'}
+const alleleOptions = {type:'group', id:'resolver', label:'Resolver', options:[
+  {id:'resolveSequences',type:'checkbox',label:'Use resolved sequences',defaultValue:false,
+    help:'Reconstruct candidate haplotypes from each trace before reference comparison. Requires reference DNA and A/C/G/T signal channels.'},
+  {id:'ploidy',visibleWhen:{option:'resolveSequences',value:true},type:'select',label:'Ploidy',defaultValue:'2',choices:[1,2,3,4].map(value=>({value:String(value),label:String(value)})),
+    help:'Supplied template-copy count. Mixed traces support two distinct candidates at ploidy 2. Clean traces yield one distinguishable sequence at any ploidy; mixed traces at ploidy 3 or 4 remain unresolved.'},
+  {id:'secondaryPeakPercent',visibleWhen:{option:'resolveSequences',value:true},type:'number',label:'Secondary peak threshold (%)',defaultValue:20,min:5,max:45,step:1,
+    help:'Minimum secondary signal relative to the strongest peak. Lower values include weaker alleles and more background signal.'},
+  {id:'unresolvedTraceAction',visibleWhen:{option:'resolveSequences',value:true},type:'select',label:'Unresolved traces',defaultValue:'exclude',choices:[{value:'exclude',label:'Exclude and report'},{value:'error',label:'Stop the run'}],
+    help:'Applies when Use resolved sequences is enabled. Excluded traces remain in the source evidence and sequence summary, with a reason.'},
 ]};
-const alleleOutputChoices = [{value:'genotypes-tsv',label:'Genotype table'},{value:'candidate-fasta',label:'Candidate FASTA'},{value:'candidate-alignment-svg',label:'Candidate alignment'}];
+const resolverNote = {type:'note',visibleWhen:{option:'resolveSequences',value:true},text:'Resolving uses the reference to reconstruct up to two related sequences per trace. Candidate numbers apply within each trace; uncertain phase is retained as IUPAC bases. Source chromatograms remain available alongside candidate maps. Automatic trimming preserves usable mixed peaks.'};
 const workflowOutputs = {
-  genotypes: {id:'genotypes',kind:'table',schema:'sanger-genotypes',columns:sangerGenotypeColumns,label:'Genotype table'},
-  candidateFasta: {id:'candidateFasta',kind:'text',mediaType:'text/x-fasta',alphabet:'dna-rna',label:'Candidate FASTA'},
-  candidateAlignmentSvg: {id:'candidateAlignmentSvg',kind:'text',mediaType:'image/svg+xml',label:'Candidate alignment'},
+  analysisJson: {id:'analysisJson',kind:'text',mediaType:'application/json',label:'Analysis JSON'},
   primary: { id: "primary", kind: "text", mediaType: "text/plain" },
   report: { id: "report", kind: "text", mediaType: "text/plain", label: "Summary report" },
-  table: { id: "table", kind: "table", schema: "sanger-base-calls", columns: sangerBaseCallColumns, label: "Base-call table" },
+  table: { id: "table", kind: "table", schema: "sanger-base-calls", columns: sangerBaseCallColumns, optionalColumns: [{id:'source_trace',label:'Source trace',type:'string'}], label: "Base-call table" },
   traceSvg: { id: "traceSvg", kind: "text", mediaType: "image/svg+xml", label: "Chromatogram plot" },
   fasta: { id: "fasta", kind: "text", mediaType: "text/x-fasta", alphabet: "dna-rna", label: "Clipped FASTA" },
   fastq: { id: "fastq", kind: "text", mediaType: "text/x-fastq", alphabet: "dna-rna", label: "Clipped FASTQ" },
-  traceJson: { id: "traceJson", kind: "text", mediaType: "application/json", label: "Trace JSON" },
   sessionReport: { id: "sessionReport", kind: "text", mediaType: "text/plain", label: "Summary report" },
   consensusFasta: { id: "consensusFasta", kind: "text", mediaType: "text/x-fasta", alphabet: "dna-rna", label: "Consensus FASTA" },
   assemblyTextMap: { id: "assemblyTextMap", kind: "text", mediaType: "text/plain", label: "Assembly text map" },
   assemblyTraceMapSvg: { id: "assemblyTraceMapSvg", kind: "text", mediaType: "image/svg+xml", label: "Assembly trace map" },
   referenceTraceMapSvg: { id: "referenceTraceMapSvg", kind: "text", mediaType: "image/svg+xml", label: "Reference trace map" },
-  referenceDifferences: { id: "referenceDifferences", kind: "table", schema: "sanger-reference-differences", columns: sangerReferenceDifferenceColumns, label: "Reference differences table" },
+  referenceDifferences: { id: "referenceDifferences", kind: "table", schema: "sanger-reference-differences", columns: sangerReferenceDifferenceColumns, optionalColumns: sangerResolvedDifferenceColumns, label: "Reference differences table" },
   referenceAlignmentSvg: { id: "referenceAlignmentSvg", kind: "text", mediaType: "image/svg+xml", label: "Trace/reference alignment map" },
   differenceReviewSvg: { id: "differenceReviewSvg", kind: "text", mediaType: "image/svg+xml", label: "Difference review map" },
   warnings: { id: "warnings", kind: "warnings" }
 };
+
+const workflowFormats = {report:'report',fasta:'fasta',fastq:'fastq',analysisJson:'analysis-json',table:'tsv',sessionReport:'session-report',
+  consensusFasta:'consensus-fasta',assemblyTextMap:'assembly-text-map',assemblyTraceMapSvg:'assembly-trace-map-svg',
+  referenceTraceMapSvg:'reference-trace-map-svg',referenceDifferences:'reference-differences-tsv',referenceAlignmentSvg:'reference-alignment-svg',differenceReviewSvg:'difference-review-svg'};
+for (const [id,outputFormat] of Object.entries(workflowFormats)) workflowOutputs[id].outputFormat=outputFormat;
 
 function commonToolFields({ id, name, summary, whenToUse, inputType, outputType, task, workerExport, workflowOutputIds, splitInput = commonSplitInput }) {
   return {
@@ -87,185 +94,8 @@ function commonToolFields({ id, name, summary, whenToUse, inputType, outputType,
     workerExport,
     workflow: {
       inputs: commonWorkflowInputs,
-      outputs: [...workflowOutputIds, ...(['compare','assemble'].includes(task)?['genotypes','candidateFasta','candidateAlignmentSvg']:[])].map((outputId) => workflowOutputs[outputId])
+      outputs: workflowOutputIds.map(outputId => workflowOutputs[outputId])
     }
-  };
-}
-
-function reviewSettingsGroup(includeAssemblyOrientation = false) {
-  return {
-    type: "group",
-    id: "reviewSettings",
-    label: "Trace settings",
-    options: [
-      {
-        id: "lowQualityThreshold",
-        type: "number",
-        label: "Low-quality highlight cutoff",
-        defaultValue: 20,
-        min: 0,
-        max: 93,
-        step: 1,
-        help: "Base calls below this Phred value are counted and highlighted; automatic end trimming is controlled in the Trimming section."
-      },
-      ...(includeAssemblyOrientation
-        ? [{
-            id: "assemblyTryReverseComplement",
-            type: "checkbox",
-            label: "Test reverse-complement orientation",
-            defaultValue: true,
-            help: "Allows forward/reverse Sanger reads to assemble without manually reverse-complementing one trace first."
-          }]
-        : [])
-    ]
-  };
-}
-
-function trimmingGroup(defaultTrimMethod = "manual", { includeReverseComplement = true } = {}) {
-  return {
-    type: "group",
-    id: "trimming",
-    label: "Trimming",
-    collapsible: true,
-    collapsed: true,
-    options: [
-      {
-        id: "trimMethod",
-        type: "select",
-        label: "Quality trim method",
-        defaultValue: defaultTrimMethod,
-        choices: [
-          { value: "manual", label: "Manual clip range" },
-          { value: "mott", label: "Modified Mott quality trim" }
-        ],
-        help: "Modified Mott finds the highest-scoring contiguous Phred-quality region and clips low-quality bases from both ends. Manual clip coordinates below override automatic trimming."
-      },
-      {
-        id: "mottErrorLimit",
-        type: "number",
-        label: "Mott error limit",
-        defaultValue: 0.05,
-        min: 0.000001,
-        max: 0.5,
-        step: 0.001,
-        help: "Error-probability limit used by modified Mott trimming; 0.05 is the Biopython-style default and roughly corresponds to Q13 as the positive/negative scoring boundary."
-      },
-      {
-        id: "clipStart",
-        type: "number",
-        label: "First base to keep",
-        defaultValue: 1,
-        min: 1,
-        step: 1,
-        help: "1-based base-call coordinate. The trace viewer also provides visual trim handles."
-      },
-      {
-        id: "clipEnd",
-        type: "number",
-        label: "Last base to keep",
-        defaultValue: 0,
-        min: 0,
-        step: 1,
-        help: "Use 0 to keep through the final base call. The trace viewer also provides visual trim handles."
-      }
-    ].concat(includeReverseComplement
-      ? [{
-          id: "reverseComplement",
-          type: "checkbox",
-          label: "Show and export reverse complement",
-          defaultValue: false,
-          help: "The clipped region is reverse complemented after clipping. Original base-call coordinates remain in the table."
-        }]
-      : [])
-  };
-}
-
-function perTraceSettingsGroup() {
-  const options = [{
-    id: "perTraceSettingsNote",
-    type: "note",
-    text: "Use these only when one trace needs its own inclusion, orientation, or clip-range override. Leave clip coordinates at 0 to use the shared trimming settings."
-  }];
-  for (let traceIndex = 1; traceIndex <= PER_TRACE_SETTING_COUNT; traceIndex += 1) {
-    options.push(
-      {
-        id: `trace${traceIndex}Included`,
-        type: "checkbox",
-        label: `Use trace ${traceIndex}`,
-        defaultValue: true
-      },
-      {
-        id: `trace${traceIndex}Orientation`,
-        type: "select",
-        label: `Trace ${traceIndex} orientation`,
-        defaultValue: "auto",
-        choices: [
-          { value: "auto", label: "Auto" },
-          { value: "forward", label: "Forward" },
-          { value: "reverse-complement", label: "Reverse complement" }
-        ]
-      },
-      {
-        id: `trace${traceIndex}ClipStart`,
-        type: "number",
-        label: `Trace ${traceIndex} first base`,
-        defaultValue: 0,
-        min: 0,
-        step: 1,
-        help: "Optional 1-based first base to keep for this trace. Use 0 for automatic/global trimming."
-      },
-      {
-        id: `trace${traceIndex}ClipEnd`,
-        type: "number",
-        label: `Trace ${traceIndex} last base`,
-        defaultValue: 0,
-        min: 0,
-        step: 1,
-        help: "Optional 1-based last base to keep for this trace. Use 0 for automatic/global trimming."
-      }
-    );
-  }
-  return {
-    type: "group",
-    id: "perTraceSettings",
-    label: "Per-trace settings",
-    collapsible: true,
-    collapsed: true,
-    options
-  };
-}
-
-function translationGroup(sourceDescription) {
-  return {
-    type: "group",
-    id: "translation",
-    label: "Translation",
-    collapsible: true,
-    collapsed: true,
-    options: [
-      {
-        id: "showForwardTranslations",
-        type: "checkbox",
-        label: "Show forward translations",
-        defaultValue: false,
-        help: `Shows reading frames +1, +2, and +3 computed from ${sourceDescription}.`
-      },
-      {
-        id: "showReverseTranslations",
-        type: "checkbox",
-        label: "Show reverse translations",
-        defaultValue: false,
-        help: `Shows reverse-complement reading frames -1, -2, and -3 in direct coordinates for ${sourceDescription}.`
-      },
-      {
-        id: "geneticCode",
-        type: "select",
-        label: "Genetic code",
-        defaultValue: "1",
-        choices: geneticCodes.map((code) => ({ value: code.id, label: `${code.id}. ${code.name}` })),
-        help: "Selects the NCBI genetic code used for displayed translation tracks. Ambiguous codons are shown as X."
-      }
-    ]
   };
 }
 
@@ -292,49 +122,14 @@ function assemblyGroup() {
         min: 0,
         max: 40,
         step: 1,
-        help: "Maximum mismatch percentage allowed in read overlaps for the small-fragment consensus."
+        help: "Maximum mismatch percentage allowed in read overlaps."
       },
       {
         id: "assemblyUseAmbiguousIupacConsensus",
         type: "checkbox",
         label: "Use ambiguous IUPAC consensus bases",
         defaultValue: false,
-        help: "When placed reads support more than one A/C/G/T base at a consensus position, write the matching IUPAC ambiguity code into consensus FASTA, text maps, and assembly trace maps."
-      }
-    ]
-  };
-}
-
-function numericEditGroup() {
-  return {
-    type: "group",
-    id: "numericEdit",
-    label: "Advanced numeric edit",
-    collapsible: true,
-    collapsed: true,
-    options: [
-      {
-        id: "editPosition",
-        type: "number",
-        label: "Jump/edit base number",
-        defaultValue: 0,
-        min: 0,
-        step: 1,
-        help: "Optional 1-based input base-call coordinate for numeric editing. Normal editing should happen in the trace viewer."
-      },
-      {
-        id: "editBase",
-        type: "select",
-        label: "Replacement base",
-        defaultValue: "",
-        choices: [
-          { value: "", label: "No numeric edit" },
-          { value: "A", label: "A" },
-          { value: "C", label: "C" },
-          { value: "G", label: "G" },
-          { value: "T", label: "T" },
-          { value: "N", label: "N" }
-        ]
+        help: "Checked: combine A/C/G/T bases supported by placed reads into IUPAC codes, such as R for A/G. Unchecked: conflicting bases in joined overlaps become N; reads contained within a contig leave its existing consensus unchanged. Applies to consensus sequences and maps."
       }
     ]
   };
@@ -356,7 +151,7 @@ function outputFormatGroup(defaultValue, choices) {
   };
 }
 
-function limitsGroup() {
+function limitsGroup(resolver = false, assembly = false) {
   return {
     type: "group",
     id: "limits",
@@ -364,16 +159,23 @@ function limitsGroup() {
     collapsible: true,
     collapsed: true,
     options: [
-      { id:'maxReferenceBases', type:'limit-value', label:'Reference bases', value:SANGER_REFERENCE_LIMIT, help:'Fixed tested reference-search capacity. Reference placement uses bounded local alignment windows.' },
+      ...(resolver ? [
+        {id:'maxResolvingTraces',type:'limit-value',label:'Traces with resolving',value:20,help:'Fixed reconstruction scope. Larger input is rejected.'},
+        {id:'maxReadPositions',type:'limit-value',label:'Retained base calls for resolving',value:'40–1,200 per trace',help:'Traces outside this reconstruction scope are reported as unresolved.'},
+        {id:'maxSignalSamples',type:'limit-value',label:'Signal measurements per channel',value:200000,help:'For resolving: intensity measurements along each A/C/G/T curve. Larger channels are rejected while enforced.'},
+        {id:'maxInputCharacters',type:'limit-value',label:'Input characters for resolving',value:33554432,help:'Larger resolving input is rejected while enforced.'},
+        {id:'maxCandidateAlignmentCells',type:'limit-value',label:'Resolved figure alignment cells',value:20000,help:'Fixed density limit across candidate panels. Use tables or Analysis JSON for larger results.'}
+      ] : []),
+      ...(assembly ? [{id:'maxAssemblyReads',type:'limit-value',label:'Reads in an assembly',value:20,help:'Fixed assembly capacity.'}] : [{ id:'maxReferenceBases', type:'limit-value', label:'Reference bases', value:SANGER_REFERENCE_LIMIT, help:'Fixed tested reference-search capacity. Reference placement uses bounded local alignment windows.' }]),
       {
         id: "maxSessionTraces",
         type: "number",
         label: "Maximum traces to process",
         defaultValue: 20,
         min: 1,
-        max: 100,
+        max: assembly ? 20 : 100,
         step: 1,
-        help: "Caps larger trace-session inputs before assembly and reference comparison."
+        help: "Maximum number of input traces to process."
       }
     ]
   };
@@ -386,10 +188,11 @@ export const sangerTraceReviewEditorMetadata = {
     summary: "Review AB1/ABIF, SCF, or base-call sequence traces, edit base calls, trim reads, and export cleaned trace-derived sequences.",
     whenToUse: "Use this when you need to inspect chromatogram peaks, adjust base calls or trim ranges, and export a reviewed Sanger read.",
     inputType: "Sanger chromatogram trace or base-call sequence",
-    outputType: "Trace editor, chromatogram plot, base-call table, clipped FASTA/FASTQ, or summary report",
+    outputType: "Trace editor, base-call table, or clipped FASTA/FASTQ",
     task: "edit",
     workerExport: "runSangerTraceReviewEditor",
-    workflowOutputIds: ["primary", "report", "table", "traceSvg", "fasta", "fastq", "traceJson", "warnings"]
+    splitInput: assemblySplitInput,
+    workflowOutputIds: ["primary", "report", "table", "fasta", "fastq", "warnings"]
   }),
   showcaseOutputs: [
     {
@@ -399,20 +202,14 @@ export const sangerTraceReviewEditorMetadata = {
     }
   ],
   options: [
-    sangerReferenceOptions,
-    reviewSettingsGroup(false),
-    trimmingGroup("manual"),
-    translationGroup("the displayed trace orientation"),
-    numericEditGroup(),
+    sangerTrimmingGroup({ defaultMode: 'none', includeReverseComplement: true }),
     outputFormatGroup("interactive-trace", [
       { value: "interactive-trace", label: "Trace editor" },
-      { value: "svg-trace", label: "Chromatogram plot" },
       { value: "tsv", label: "Base-call table" },
       { value: "fasta", label: "Clipped FASTA" },
       { value: "fastq", label: "Clipped FASTQ" },
-      { value: "report", label: "Summary report" }
     ]),
-    limitsGroup()
+    { ...limitsGroup(), options: limitsGroup().options.filter(option => option.id === "maxSessionTraces") }
   ]
 };
 
@@ -420,30 +217,26 @@ export const sangerTraceAssemblyMetadata = {
   ...commonToolFields({
     id: "sanger-trace-assembly",
     name: "Sanger Trace Assembly",
-    summary: "Assemble clipped Sanger trace reads into a small consensus and inspect read placement.",
+    summary: "Assemble trimmed Sanger reads into consensus sequences with automatic read orientation.",
     whenToUse: "Use this when forward, reverse, or tiled Sanger traces need to be combined into a small consensus sequence.",
-    inputType: "Two or more Sanger chromatogram traces or base-call sequences",
-    outputType: "Assembly trace map, assembly text map, consensus FASTA, genotype table, candidate FASTA, candidate alignment, or summary report",
+    inputType: "Sanger chromatogram traces or base-call sequences",
+    outputType: "Assembly trace map, assembly text map, consensus FASTA, analysis JSON, or summary report",
     task: "assemble",
     workerExport: "runSangerTraceAssembly",
-    workflowOutputIds: ["primary", "report", "table", "sessionReport", "consensusFasta", "assemblyTextMap", "assemblyTraceMapSvg", "traceJson", "warnings"],
+    workflowOutputIds: ["primary", "sessionReport", "consensusFasta", "assemblyTextMap", "assemblyTraceMapSvg", "analysisJson", "warnings"],
     splitInput: assemblySplitInput
   }),
   options: [
-    reviewSettingsGroup(true),
-    trimmingGroup("mott", { includeReverseComplement: false }),
-    translationGroup("each assembled consensus contig"),
-    perTraceSettingsGroup(),
-    alleleOptions,
+    sangerTrimmingGroup(),
     assemblyGroup(),
     outputFormatGroup("assembly-trace-map-svg", [
-      ...alleleOutputChoices,
       { value: "assembly-trace-map-svg", label: "Assembly trace map" },
       { value: "assembly-text-map", label: "Assembly text map" },
       { value: "consensus-fasta", label: "Consensus FASTA" },
-      { value: "session-report", label: "Summary report" }
+      { value: "session-report", label: "Summary report" },
+      { value: "analysis-json", label: "Analysis JSON" }
     ]),
-    limitsGroup()
+    limitsGroup(false, true)
   ]
 };
 
@@ -451,41 +244,37 @@ export const sangerTraceReferenceComparisonMetadata = {
   ...commonToolFields({
     id: "sanger-trace-reference-comparison",
     name: "Sanger Trace Reference Comparison",
-    summary: "Align clipped Sanger traces to a fixed reference DNA sequence and review base differences in trace context.",
+    summary: "Align Sanger traces or resolved candidate haplotypes to reference DNA and review differences with trace evidence.",
     whenToUse: "Use this when trace reads need to be placed on an expected reference and checked for mismatches, indels, strand, or mixed peak evidence.",
     inputType: "Sanger chromatogram trace set and reference DNA",
-    outputType: "Reference trace map, difference review map, trace/reference alignment map, reference differences table, genotype table, candidate FASTA, candidate alignment, or summary report",
+    outputType: "Reference trace map, difference review map, trace/reference alignment map, reference differences table, analysis JSON, or summary report",
     task: "compare",
     workerExport: "runSangerTraceReferenceComparison",
     workflowOutputIds: [
       "primary",
-      "report",
-      "table",
       "sessionReport",
       "referenceTraceMapSvg",
       "referenceDifferences",
       "referenceAlignmentSvg",
       "differenceReviewSvg",
-      "traceJson",
+      "analysisJson",
       "warnings"
     ]
   }),
   options: [
     sangerReferenceOptions,
-    reviewSettingsGroup(false),
-    trimmingGroup("mott", { includeReverseComplement: false }),
-    translationGroup("the fixed reference sequence"),
-    perTraceSettingsGroup(),
+    sangerTrimmingGroup({ signalAware: true }),
     alleleOptions,
     outputFormatGroup("reference-trace-map-svg", [
-      ...alleleOutputChoices,
       { value: "reference-trace-map-svg", label: "Reference trace map" },
       { value: "difference-review-svg", label: "Difference review map" },
       { value: "reference-alignment-svg", label: "Trace/reference alignment map" },
       { value: "reference-differences-tsv", label: "Reference differences table" },
-      { value: "session-report", label: "Summary report" }
+      { value: "session-report", label: "Summary report" },
+      { value: "analysis-json", label: "Analysis JSON" }
     ]),
-    limitsGroup()
+    limitsGroup(true),
+    resolverNote
   ]
 };
 

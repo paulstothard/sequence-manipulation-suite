@@ -1,3 +1,4 @@
+import { renderSangerPlotControls } from './sanger-plot-ui.js';
 import { renderPlateSvg } from "../core/plate-layout-svg.js";
 import { renderObservablePlotPreview } from "./plot-preview-ui.js";
 import { renderProteinSequenceFigure } from "./protein-sequence-figure-ui.js";
@@ -61,11 +62,6 @@ const SHOWCASE_TOOL_OPTION_OVERRIDES = new Map([
     geneticCode: "1"
   }],
   ["sanger-trace-assembly", {
-    showForwardTranslations: true,
-    showReverseTranslations: true,
-    geneticCode: "1"
-  }],
-  ["sanger-trace-reference-comparison", {
     showForwardTranslations: true,
     showReverseTranslations: true,
     geneticCode: "1"
@@ -600,6 +596,8 @@ async function renderShowcaseCard(card, item, token, context) {
       preview.append(plotPreview);
       preview.querySelectorAll("svg").forEach(normalizeShowcaseSvg);
       sharedInspection = true;
+    } else if (result.visual?.sangerPlot) {
+      renderSangerPlotControls(preview, result.visual.sangerPlot, svg);
     } else if (svg) {
       preview.insertAdjacentHTML("beforeend", svg);
       preview.querySelectorAll("svg").forEach(normalizeShowcaseSvg);

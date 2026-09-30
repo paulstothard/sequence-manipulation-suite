@@ -15,6 +15,8 @@ import {
 } from "./workflow-stream-labels.js";
 import { tableStreamToTsv } from "./table-output-format.js";
 import { validateWorkflowDefinition } from "../core/workflow-engine.js";
+import { getAvailableToolWorkflowOutputs } from "../core/tool-option-choices.js";
+import { exportDelimitedTable } from "../core/table.js";
 
 function sequenceRecordsToFasta(stream) {
   return (stream.records ?? [])
@@ -49,8 +51,8 @@ export function isAdvancedWorkflowOutput(stream, outputs = []) {
   return stream.id === "primary" && outputs.some((output) => output.id !== "primary" && output.kind !== "warnings");
 }
 
-export function getUserSelectableWorkflowOutputs(tool) {
-  const outputs = tool?.metadata?.workflow?.outputs ?? [];
+export function getUserSelectableWorkflowOutputs(tool, optionValues = {}) {
+  const outputs = getAvailableToolWorkflowOutputs(tool?.metadata, optionValues);
   const visible = outputs.filter((stream) => !isAdvancedWorkflowOutput(stream, outputs));
   return visible.length > 0 ? visible : outputs.filter((stream) => stream.kind !== "warnings");
 }
@@ -61,6 +63,9 @@ export function getWorkflowOutputPriority(stream) {
     proteinRecords: 2,
     sequenceRecords: 3,
     table: 4,
+    preview: 4,
+    beginning: 4,
+    end: 5,
     translations: 4,
     matchedRegions: 5,
     fasta: 6,
@@ -79,9 +84,23 @@ export function getWorkflowOutputPriority(stream) {
   return priorityById[stream?.id] ?? 15;
 }
 
-export function getRecommendedWorkflowOutputId(tool) {
-  const outputs = getUserSelectableWorkflowOutputs(tool);
+export function getRecommendedWorkflowOutputId(tool, optionValues = {}) {
+  const outputs = getUserSelectableWorkflowOutputs(tool, optionValues);
   return [...outputs].sort((left, right) => getWorkflowOutputPriority(left) - getWorkflowOutputPriority(right))[0]?.id ?? "primary";
+}
+
+function normalizeWorkflowOutputSelection(tool, step) {
+  const options = (tool?.metadata.options ?? []).flatMap(function flatten(option) {
+    return option.type === "group" ? (option.options ?? []).flatMap(flatten) : [option];
+  });
+  const outputFormat = options.find((option) => option.id === "outputFormat");
+  if (!outputFormat || !step.selectStream || step.selectStream === "primary") return;
+  const outputs = getAvailableToolWorkflowOutputs(tool.metadata, step.options);
+  if (outputFormat.dependsOn && !outputs.some((output) => output.id === step.selectStream)) {
+    step.selectStream = getRecommendedWorkflowOutputId(tool, step.options);
+  }
+  const format = outputs.find((output) => output.id === step.selectStream)?.outputFormat;
+  if (format) step.options = { ...step.options, outputFormat: format };
 }
 
 export function createWorkflowBuilderController({
@@ -110,7 +129,7 @@ export function createWorkflowBuilderController({
     updateInputActionButtons
   } = callbacks;
 
-  function formatWorkflowValue(value) {
+  function formatWorkflowValue(value, toolResult = null) {
     if (!value) {
       return { text: "", rawText: "", summary: "No output", isTsv: false };
     }
@@ -144,6 +163,15 @@ export function createWorkflowBuilderController({
     }
 
     if (value.kind === "text") {
+      if (value.filePreview) return { text: value.text, rawText: value.text, summary: `Workflow output: ${value.filePreview.status}`, outputLabel: "Source excerpt", isTsv: false, sequenceSearch: false, filePreview: value.filePreview, filename: value.filePreview.sections[0].filename, mimeType: "text/plain;charset=utf-8" };
+      // Automatic previews retain a stable text contract for subsequent steps.
+      // Reuse their matching typed table for display without reparsing the data.
+      if (value.mediaType?.split(";")[0] === "text/tab-separated-values") {
+        const table = Object.values(toolResult?.streams ?? {}).find(stream =>
+          stream?.kind === "table" && exportDelimitedTable(stream.columns, stream.rows) === value.text
+        );
+        if (table) return { ...formatWorkflowValue(table), rawText: value.text, mimeType: value.mediaType };
+      }
       if (value.mediaType?.includes("json")) {
         let candidate;
         try { candidate = JSON.parse(value.text); } catch { /* Ordinary JSON text keeps its existing display. */ }
@@ -592,7 +620,7 @@ export function createWorkflowBuilderController({
 
       if (step.type === "tool") {
         lastTool = getToolById(step.toolId);
-        lastOutput = lastTool?.metadata.workflow?.outputs?.find((output) => output.id === (step.selectStream ?? "primary"));
+        lastOutput = getAvailableToolWorkflowOutputs(lastTool?.metadata, step.options).find((output) => output.id === (step.selectStream ?? "primary"));
         continue;
       }
 
@@ -670,7 +698,7 @@ export function createWorkflowBuilderController({
         lastTool = undefined;
       } else if (step.type === "tool") {
         lastTool = getToolById(step.toolId);
-        lastOutput = lastTool?.metadata.workflow?.outputs?.find((output) => output.id === (step.selectStream ?? "primary"));
+        lastOutput = getAvailableToolWorkflowOutputs(lastTool?.metadata, step.options).find((output) => output.id === (step.selectStream ?? "primary"));
       } else if (step.type === "select-stream") {
         const output = lastTool?.metadata.workflow?.outputs?.find((item) => item.id === step.stream);
         if (output) {
@@ -840,7 +868,7 @@ export function createWorkflowBuilderController({
         stepTools.delete(step.id);
       } else if (step.type === "tool") {
         const tool = getToolById(step.toolId);
-        output = tool?.metadata.workflow?.outputs?.find((item) => item.id === (step.selectStream ?? "primary"));
+        output = getAvailableToolWorkflowOutputs(tool?.metadata, step.options).find((item) => item.id === (step.selectStream ?? "primary"));
         lastTool = tool;
         stepOutputs.set(step.id, output);
         stepTools.set(step.id, tool);
@@ -1222,7 +1250,7 @@ export function createWorkflowBuilderController({
     const previousSteps = (workflow.steps ?? []).slice(0, insertionIndex);
     const lastToolStep = [...previousSteps].reverse().find((step) => step.type === "tool" || step.type === "map");
     const tool = getToolById(lastToolStep?.toolId);
-    const outputs = getUserSelectableWorkflowOutputs(tool);
+    const outputs = getUserSelectableWorkflowOutputs(tool, lastToolStep?.options);
     return outputs.length > 0 ? outputs : [{ id: "primary", kind: "text", mediaType: "text/plain" }];
   }
 
@@ -1448,7 +1476,7 @@ export function createWorkflowBuilderController({
     const beforeSteps = selectedIndex >= 0 ? steps.slice(0, selectedIndex) : steps;
     const lastToolStep = [...beforeSteps].reverse().find((step) => step.type === "tool" || step.type === "map");
     const tool = getToolById(lastToolStep?.toolId);
-    const outputs = getUserSelectableWorkflowOutputs(tool);
+    const outputs = getUserSelectableWorkflowOutputs(tool, lastToolStep?.options);
     return outputs.length > 0 ? outputs : [{ id: "primary", kind: "text", mediaType: "text/plain" }];
   }
 
@@ -1458,6 +1486,10 @@ export function createWorkflowBuilderController({
 
   function shouldShowWorkflowOption(workflow, step, option) {
     const selectedStream = step.selectStream ?? "primary";
+    if (option.workflowHidden) return false;
+    // These tools receive the workflow's typed input; local file pickers are
+    // part of the single-tool input shell, not saved workflow options.
+    if (option.id === getToolById(step.toolId)?.metadata.inputSource?.option) return false;
 
     if (!displayFormatWorkflowOptionIds.has(option.id)) {
       return true;
@@ -1481,6 +1513,7 @@ export function createWorkflowBuilderController({
     }
 
     mutator(step, workflow);
+    if (step.type === "tool" || step.type === "map") normalizeWorkflowOutputSelection(getToolById(step.toolId), step);
     setWorkflowDefinition(workflow);
     clearWorkflowOutput();
     renderWorkflowView();
@@ -1778,6 +1811,7 @@ export function createWorkflowBuilderController({
       ...makeDefaultOptions(tool),
       ...(step.options ?? {})
     }));
+    normalizeWorkflowOutputSelection(tool, step);
     editableOptions = editableOptions.filter((option) => {
       if (!option.visibleWhen) {
         return true;
@@ -1793,12 +1827,13 @@ export function createWorkflowBuilderController({
     }
 
     if (step.type === "map" || step.type === "tool") {
-      const outputs = getUserSelectableWorkflowOutputs(tool);
+      const availableOutputs = getAvailableToolWorkflowOutputs(tool?.metadata, step.options);
+      const outputs = getUserSelectableWorkflowOutputs(tool, step.options);
       const selectedStream = outputs.some((stream) => stream.id === (step.selectStream ?? "primary"))
         ? (step.selectStream ?? "primary")
-        : (tool?.metadata.workflow?.outputs ?? []).some((stream) => stream.id === (step.selectStream ?? "primary"))
+        : availableOutputs.some((stream) => stream.id === (step.selectStream ?? "primary"))
           ? (step.selectStream ?? "primary")
-          : getRecommendedWorkflowOutputId(tool);
+          : getRecommendedWorkflowOutputId(tool, step.options);
       const label = document.createElement("label");
       label.className = "select-row";
       label.textContent = step.type === "map" ? "Keep from each record" : "Result to pass on";
@@ -1807,7 +1842,7 @@ export function createWorkflowBuilderController({
       const selectOutputs = outputs.some((stream) => stream.id === selectedStream)
         ? outputs
         : [
-            ...((tool?.metadata.workflow?.outputs ?? []).filter((stream) => stream.id === selectedStream)),
+            ...availableOutputs.filter((stream) => stream.id === selectedStream),
             ...outputs
           ];
       for (const stream of selectOutputs) {
@@ -1877,6 +1912,7 @@ export function createWorkflowBuilderController({
         label.append(createOptionLabelContent(option));
         const input = document.createElement("input");
         input.type = "number";
+        if (option.placeholder) input.placeholder = option.placeholder;
         input.name = option.id;
         input.min = option.min;
         input.max = option.max;

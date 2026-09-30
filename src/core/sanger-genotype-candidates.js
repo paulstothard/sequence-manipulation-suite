@@ -2,8 +2,9 @@
 // between replicate traces or across separately reconstructed shifted regions.
 export const SANGER_CANDIDATE_ALIGNMENT_CELL_LIMIT = 20000;
 export const sangerCandidateColumnsOption = {
-  id: "includeCandidateHaplotypes", type: "checkbox", label: "Include candidate haplotype columns", defaultValue: false,
-  help: "Adds each candidate haplotype's allele, its source trace and phase status to genotype tables. Candidate numbering applies within one trace. IUPAC codes retain unphased bases. Multiple supporting traces are listed separately in Candidate FASTA and Candidate alignment. A clean trace has one distinguishable sequence.",
+  id: "includeCandidateHaplotypes", type: "checkbox", label: "Include candidate haplotype details", defaultValue: false,
+  visibleWhen: { option: "outputFormat", value: ["tsv", "json"] },
+  help: "Includes each candidate haplotype's allele, source trace and phase at reported sites. Candidate numbering is local to each trace; IUPAC codes preserve unphased bases.",
 };
 export const sangerHaplotypeColumns = [
   ["candidateTrace", "Candidate trace"],

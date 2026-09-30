@@ -1,6 +1,7 @@
 import { readToolInputFileText } from "./input-file-readers.js";
 import { STANDARD_BROWSER_FILE_BYTES } from "../core/tool-limit-options.js";
 import { prepareToolOptionsForDisplay } from "./tool-option-layout.js";
+import { getToolOptionChoices } from "../core/tool-option-choices.js";
 
 export function createToolOptionsController({
   elements,
@@ -524,7 +525,9 @@ export function createToolOptionsController({
         input.name = option.id;
         input.value = choice.value;
         input.checked = choice.value === optionValue;
-        label.append(input, ` ${choice.label}`);
+        const text = document.createElement("span");
+        text.textContent = ` ${choice.label}`;
+        label.append(input, text);
         fieldset.append(label);
       }
 
@@ -556,6 +559,7 @@ export function createToolOptionsController({
       const input = document.createElement("input");
       input.id = option.id;
       input.type = "number";
+      if (option.placeholder) input.placeholder = option.placeholder;
       input.min = option.min;
       input.max = option.max;
       if (option.step !== undefined) {
@@ -1007,6 +1011,7 @@ export function createToolOptionsController({
       if (!root) {
         continue;
       }
+      if (!root.querySelector(`#${option.id}, [name="${option.id}"]`)) continue;
       const value = getOptionControlValue(root, option, undefined);
       if (value !== undefined) {
         return value;
@@ -1024,21 +1029,23 @@ export function createToolOptionsController({
   }
 
   function getFilteredChoices(option, optionValues) {
-    const choices = option.choices ?? [];
-    if (!option.dependsOn) {
-      return choices;
+    return getToolOptionChoices(option, optionValues);
+  }
+
+  function populateDependentRadios(fieldset, option, optionValues) {
+    const choices = getFilteredChoices(option, optionValues);
+    const preferredValue = fieldset.querySelector("input:checked")?.value;
+    const selectedValue = choices.some((choice) => choice.value === preferredValue) ? preferredValue
+      : choices.find((choice) => choice.value === option.defaultValue)?.value ?? choices[0]?.value;
+    for (const input of fieldset.querySelectorAll('input[type="radio"]')) {
+      const choice = choices.find((item) => item.value === input.value);
+      const label = input.closest("label");
+      label.hidden = !choice;
+      input.disabled = !choice;
+      input.checked = input.value === selectedValue;
+      if (choice) label.querySelector("span").textContent = ` ${choice.label}`;
     }
-    const parentValue = optionValues[option.dependsOn];
-    if (!parentValue || parentValue === "all") {
-      return choices;
-    }
-    return choices.filter((choice) =>
-      choice.always ||
-      (choice.value === option.defaultValue && !choice.dependsOnValue) ||
-      (Array.isArray(choice.dependsOnValue)
-        ? choice.dependsOnValue.includes(parentValue)
-        : choice.dependsOnValue === parentValue)
-    );
+    return selectedValue;
   }
 
   function populateDependentSelect(select, option, optionValues, preferredValue) {
@@ -1087,6 +1094,8 @@ export function createToolOptionsController({
           .map((root) => root?.querySelector(`select[name="${option.id}"]`))
           .find(Boolean);
         if (!select) {
+          const fieldset = roots.map((root) => root?.querySelector(`fieldset[data-option-id="${option.id}"]`)).find(Boolean);
+          if (fieldset) optionValues[option.id] = populateDependentRadios(fieldset, option, optionValues);
           continue;
         }
         populateDependentSelect(select, option, optionValues, select.value);

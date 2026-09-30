@@ -277,6 +277,8 @@ const TOOL_LIMIT_POLICIES = Object.freeze({
     maxSignalSamples: Object.freeze({}),
     maxInputCharacters: Object.freeze({})
   }),
+  "sanger-trace-assembly": Object.freeze({maxSignalSamples: Object.freeze({}), maxInputCharacters: Object.freeze({})}),
+  "sanger-trace-reference-comparison": Object.freeze({maxSignalSamples: Object.freeze({}), maxInputCharacters: Object.freeze({})}),
   "sanger-genotyper": Object.freeze({
     maxSignalSamples: Object.freeze({}),
     maxInputCharacters: Object.freeze({})

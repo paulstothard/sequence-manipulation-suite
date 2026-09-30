@@ -1,3 +1,6 @@
+import { renderFilePreview } from './file-preview-ui.js';
+import { updateOutputSearchControls } from './output-search-ui.js';
+import { renderSangerPlotControls } from './sanger-plot-ui.js';
 import { renderTreeViewer } from "./tree-viewer-ui.js";
 import { copyTextWithFeedback } from "./copy-feedback.js";
 import { renderPlateLayout } from "./plate-layout-ui.js";
@@ -118,6 +121,7 @@ function renderMessages(result) {
     }
     summary.textContent = `${pluralize(trees.length, "tree")} · ${pluralize(tips, "tip")} · ${pluralize(nodes, "node")}`;
   }
+  if (result.visual?.previewStatus) summary.textContent = result.visual.previewStatus;
   elements.messages.append(summary);
 
   appendOutputDetails(elements.messages, getToolOutputDetails(result));
@@ -720,14 +724,7 @@ function renderOutputSearch(scope) {
 
   search.matches = findOutputMatches(parts.textarea.value, query, search.sequenceDocument, parts.mode?.value ?? "smart");
   search.currentIndex = search.matches.length > 0 ? 0 : -1;
-  parts.count.textContent = getOutputSearchCountText({
-    query,
-    matchCount: search.matches.length,
-    currentIndex: search.currentIndex
-  });
-  parts.count.title = search.matches[search.currentIndex]?.trackLabel ?? "";
-  parts.previous.disabled = search.matches.length < 2;
-  parts.next.disabled = search.matches.length < 2;
+  updateOutputSearchControls(parts, search.matches, search.currentIndex);
   renderOutputHighlight(scope);
   selectOutputMatch(scope);
 }
@@ -752,12 +749,7 @@ function moveOutputSearch(scope, direction) {
   const scrollY = window.scrollY;
   search.currentIndex = getNextSearchIndex(search.currentIndex, search.matches.length, direction);
   const parts = getOutputSearchParts(scope);
-  parts.count.textContent = getOutputSearchCountText({
-    query: parts.input.value,
-    matchCount: search.matches.length,
-    currentIndex: search.currentIndex
-  });
-  parts.count.title = search.matches[search.currentIndex]?.trackLabel ?? "";
+  updateOutputSearchControls(parts, search.matches, search.currentIndex);
   if (isTableViewActive(scope)) {
     selectTableOutputMatch(scope);
     window.scrollTo(scrollX, scrollY);
@@ -792,6 +784,7 @@ function keepOutputSearchButtonFromScrollingPage(button) {
 }
 
 function resetToolOutputViewer(message = "Run this tool to generate the selected output.") {
+  clearTextRegions("tool");
   elements.toolOutput.value = "";
   elements.toolOutput.dataset.rawOutput = "";
   elements.toolOutput.dataset.tableTsv = "";
@@ -1374,13 +1367,7 @@ function renderTableOutputSearch(scope) {
   if (summary && query) {
     summary.textContent += `; ${pluralize(matches.length, "matching cell")}`;
   }
-  parts.count.textContent = getOutputSearchCountText({
-    query,
-    matchCount: matches.length,
-    currentIndex: search.currentIndex
-  });
-  parts.previous.disabled = matches.length < 2;
-  parts.next.disabled = matches.length < 2;
+  updateOutputSearchControls(parts, matches, search.currentIndex);
   selectTableOutputMatch(scope);
 }
 
@@ -1674,7 +1661,17 @@ function attachVisualInspection(visualOutput, options) {
   };
 }
 
+function clearTextRegions(scope) {
+  const output = scope === "workflow" ? elements.workflowTextRegions : elements.toolTextRegions;
+  output._sms3TextCleanup?.();
+  output._sms3TextCleanup = null;
+  output.replaceChildren();
+  output.hidden = true;
+  return output;
+}
+
 function renderVisualOutput(scope, svg, options = {}) {
+  const textRegions = clearTextRegions(scope);
   const visualOutput = getVisualOutputElement(scope);
   if (typeof visualOutput._sms3VisualCleanup === "function") {
     try {
@@ -1684,7 +1681,14 @@ function renderVisualOutput(scope, svg, options = {}) {
     }
   }
   visualOutput._sms3PortableViewerSnapshot = null;
-  if (!svg && !options.viewer && !options.figure && !options.proteinFigure && !options.sequenceLogo && !options.proteinStructure && !options.notebook && !options.sangerTrace && !options.sequenceEditor && !options.sequenceExtractor && !options.treeViewer && !options.plateLayout) {
+  if (options.filePreview) {
+    visualOutput.hidden = true;
+    visualOutput.replaceChildren();
+    textRegions.hidden = false;
+    textRegions._sms3TextCleanup = renderFilePreview(textRegions, options.filePreview);
+    return "";
+  }
+  if (!svg && !options.filePreview && !options.viewer && !options.figure && !options.proteinFigure && !options.sequenceLogo && !options.proteinStructure && !options.notebook && !options.sangerTrace && !options.sequenceEditor && !options.sequenceExtractor && !options.treeViewer && !options.plateLayout) {
     visualOutput.hidden = true;
     visualOutput.textContent = "";
     return;
@@ -1727,6 +1731,16 @@ function renderVisualOutput(scope, svg, options = {}) {
   if (options.notebook) {
     renderMarkdownNotebook(visualOutput, options.notebook);
     return "";
+  }
+  if (options.sangerPlot) {
+    renderSangerPlotControls(visualOutput, options.sangerPlot, svg, updated => {
+      const output = scope === "tool" ? elements.toolOutput : elements.workflowOutput;
+      output.dataset.rawOutput = updated;
+      output.dataset.pngOutput = updated;
+      output.value = updated;
+      options.onSvgChange?.(updated);
+    });
+    return svg;
   }
   if (options.sangerTrace) {
     renderSangerTraceViewer(visualOutput, options.sangerTrace, options.editorDocument);
@@ -1817,7 +1831,7 @@ function renderVisualOutput(scope, svg, options = {}) {
 }
 
 async function applyToolOutputChoice(choice, options = {}) {
-  const hasVisualOutput = Boolean(choice.svg || choice.viewer || choice.figure || choice.proteinFigure || choice.sequenceLogo || choice.proteinStructure || choice.notebook || choice.sangerTrace || choice.sequenceEditor || choice.sequenceExtractor || choice.treeViewer || choice.plateLayout);
+  const hasVisualOutput = Boolean(choice.filePreview || choice.svg || choice.viewer || choice.figure || choice.proteinFigure || choice.sequenceLogo || choice.proteinStructure || choice.notebook || choice.sangerTrace || choice.sequenceEditor || choice.sequenceExtractor || choice.treeViewer || choice.plateLayout);
   const hasPrimaryOutput = Boolean(choice.text || choice.tableStream || hasVisualOutput);
   elements.toolOutput.dataset.rawOutput = choice.text;
   elements.toolOutput.value = choice.tableStream
@@ -1834,6 +1848,7 @@ async function applyToolOutputChoice(choice, options = {}) {
     filename: choice.download.filename,
     plotSpec: choice.plotSpec,
     renderer: choice.renderer,
+    filePreview: choice.filePreview,
     viewer: choice.viewer,
     figure: choice.figure,
     proteinFigure: choice.proteinFigure,
@@ -1841,6 +1856,8 @@ async function applyToolOutputChoice(choice, options = {}) {
     proteinStructure: choice.proteinStructure,
     notebook: choice.notebook,
     sangerTrace: choice.sangerTrace,
+    sangerPlot: choice.sangerPlot,
+    onSvgChange: choice.onSvgChange,
     sequenceEditor: choice.sequenceEditor,
     sequenceExtractor: choice.sequenceExtractor,
     treeViewer: choice.treeViewer,
@@ -1866,7 +1883,7 @@ async function applyToolOutputChoice(choice, options = {}) {
   elements.toolOutput.hidden = Boolean(choice.tableStream || hasVisualOutput || !choice.text);
   setOutputSearchRowVisible("tool", Boolean(choice.tableStream || (!hasVisualOutput && choice.text)));
   updateOutputActions("tool", {
-    hidden: Boolean(choice.tableStream || choice.viewer || choice.figure || choice.proteinFigure || choice.sequenceLogo || choice.proteinStructure || choice.notebook || choice.sangerTrace || choice.sequenceEditor || choice.sequenceExtractor || choice.treeViewer || choice.plateLayout || (!choice.text && !choice.svg)),
+    hidden: Boolean(choice.filePreview || choice.tableStream || choice.viewer || choice.figure || choice.proteinFigure || choice.sequenceLogo || choice.proteinStructure || choice.notebook || choice.sangerTrace || choice.sequenceEditor || choice.sequenceExtractor || choice.treeViewer || choice.plateLayout || (!choice.text && !choice.svg)),
     mimeType: choice.download.mimeType,
     label: choice.label
   });
@@ -1952,6 +1969,15 @@ async function renderGeneratedToolOutputChoice(result, options = {}) {
     proteinStructure,
     notebook,
     sangerTrace,
+    sangerPlot: result.visual?.sangerPlot,
+    filePreview: result.visual?.filePreview,
+    onSvgChange: updated => {
+      const previous = result.output;
+      result.output = updated;
+      result.visual.svg = updated;
+      for (const stream of Object.values(result.streams ?? {})) if (stream.text === previous) stream.text = updated;
+      choice.text = updated; choice.svg = updated;
+    },
     sequenceEditor,
     sequenceExtractor,
     treeViewer: result.visual?.treeViewer ?? null,

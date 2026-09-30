@@ -49,6 +49,7 @@ function hasStandardFileImport(metadata) {
   const hasDirectLoadedFasta = !metadata?.splitInput &&
     hasDirectFileOption(metadata?.options);
   return metadata?.inputRequired !== false &&
+    !metadata?.inputSource &&
     !metadata?.fileInput?.directFileOption &&
     !hasDirectLoadedFasta &&
     !SPECIAL_FILE_WORKSPACES.has(metadata?.id);

@@ -1,5 +1,4 @@
 import {
-  makeSangerTraceSettingsText,
   sangerTaskSummaries,
   serializeSangerTraceWorkspaceInput
 } from "./sanger-trace-workspace-model.js";
@@ -13,7 +12,6 @@ const SANGER_TRACE_TASKS = [
 ];
 
 const MAX_SANGER_TRACE_FILE_BYTES = STANDARD_BROWSER_FILE_BYTES;
-const MAX_VISIBLE_TRACE_SETTING_CONTROLS = 6;
 
 function noop() {}
 
@@ -75,20 +73,6 @@ export function createSangerTraceWorkspaceController({
         textarea.dataset.splitInputIndex = String(index);
       }
     });
-    updateTraceSettingOptionVisibility();
-  }
-
-  function updateTraceSettingOptionVisibility() {
-    const traceCount = panel.querySelectorAll("[data-sanger-trace-card]").length;
-    for (let traceIndex = 1; traceIndex <= MAX_VISIBLE_TRACE_SETTING_CONTROLS; traceIndex += 1) {
-      const hidden = traceIndex > traceCount;
-      for (const field of ["Included", "Orientation", "ClipStart", "ClipEnd"]) {
-        const root = toolOptions.querySelector(`[data-option-id="trace${traceIndex}${field}"]`);
-        if (root) {
-          root.hidden = hidden;
-        }
-      }
-    }
   }
 
   function makeTraceCard({ value = "" } = {}) {
@@ -382,36 +366,14 @@ export function createSangerTraceWorkspaceController({
     update();
   }
 
-  function getIncludedTraceCards() {
+  function getPopulatedTraceCards() {
     return [...panel.querySelectorAll("[data-sanger-trace-card]")]
-      .filter((card, index) => getTraceIncluded(index + 1))
       .filter((card) => card.querySelector(".sanger-raw-textarea")?.value.trim());
-  }
-
-  function getTraceOptionControl(traceIndex, field) {
-    return toolOptions.querySelector(`#trace${traceIndex}${field}`);
-  }
-
-  function getTraceIncluded(traceIndex) {
-    return getTraceOptionControl(traceIndex, "Included")?.checked !== false;
-  }
-
-  function getTraceOptionValue(traceIndex, field, fallback = "") {
-    const control = getTraceOptionControl(traceIndex, field);
-    if (!control) {
-      return fallback;
-    }
-    return control.type === "checkbox" ? control.checked : control.value;
-  }
-
-  function normalizeTraceClipValue(value) {
-    const text = String(value ?? "").trim();
-    return text === "0" ? "" : text;
   }
 
   function getInputText() {
     const separator = getSelectedTool()?.metadata?.splitInput?.separator ?? "---";
-    const traceTexts = getIncludedTraceCards()
+    const traceTexts = getPopulatedTraceCards()
       .map((card) => card.querySelector(".sanger-raw-textarea")?.value ?? "")
       .filter((text) => text.trim());
     const hasReferencePanel = (getSelectedTool()?.metadata?.splitInput?.panels ?? []).some((item) => item.id === "reference");
@@ -420,26 +382,12 @@ export function createSangerTraceWorkspaceController({
       : "";
     const task = getTaskValue();
     if (getSelectedTool()?.metadata?.sangerSampleInputs) {
-      return getIncludedTraceCards().filter(card => card.querySelector('.sanger-raw-textarea')?.value.trim()).map(card => JSON.stringify({
+      return getPopulatedTraceCards().filter(card => card.querySelector('.sanger-raw-textarea')?.value.trim()).map(card => JSON.stringify({
         sample:card.querySelector('[data-sanger-sample]')?.value,
         trace:card.querySelector('.sanger-raw-textarea')?.value
       })).concat(reference).join(`\n${separator}\n`);
     }
     return serializeSangerTraceWorkspaceInput({ traceTexts, reference, task, separator });
-  }
-
-  function getSettings(existingText = "") {
-    if (!["assemble", "compare"].includes(getTaskValue())) {
-      return String(existingText ?? "");
-    }
-    const traceRows = [...panel.querySelectorAll("[data-sanger-trace-card]")].map((card, index) => ({
-      included: getTraceIncluded(index + 1),
-      orientation: getTraceOptionValue(index + 1, "Orientation", "auto"),
-      clipStart: normalizeTraceClipValue(getTraceOptionValue(index + 1, "ClipStart", "")),
-      clipEnd: normalizeTraceClipValue(getTraceOptionValue(index + 1, "ClipEnd", "")),
-      text: card.querySelector(".sanger-raw-textarea")?.value ?? ""
-    }));
-    return makeSangerTraceSettingsText(traceRows, existingText);
   }
 
   function clearInputs() {
@@ -473,16 +421,14 @@ export function createSangerTraceWorkspaceController({
     const referenceCard = panel.querySelector("[data-sanger-reference-card]");
     if (referenceCard) {
       const hasReference = Boolean(referenceCard.querySelector("[data-sanger-reference-text]")?.value.trim());
-      referenceCard.hidden = task !== "compare" && !hasReference;
+      referenceCard.hidden = task !== "compare" && !hasReference && !toolOptions.querySelector('input[name="resolveSequences"]')?.checked;
     }
-    updateTraceSettingOptionVisibility();
   }
 
   return {
     render,
     update,
     getInputText,
-    getSettings,
     clearInputs
   };
 }

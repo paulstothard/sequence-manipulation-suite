@@ -104,19 +104,20 @@ function makeSangerTraceAssemblyExample() {
   const assemblyForwardRead = makeSyntheticTrace({
     name: "synthetic_pcr_forward_read",
     source: "Simulated trace from a 125 bp amplicon; overlaps the middle and reverse reads.",
-    bases: syntheticAmplicon.slice(0, 76),
-    mixedPeaks: {
-      64: { secondary: { T: 0.54 } }
-    }
+    bases: syntheticAmplicon.slice(0, 110)
   });
 
+  const middleBases = syntheticAmplicon.slice(44, 110);
+  const alternateBase = middleBases[19] === "A" ? "G" : "A";
+  const alternate = replaceBaseAtOneBased(middleBases, 20, alternateBase);
+  const ambiguity = { AC: "M", AG: "R", AT: "W", CG: "S", CT: "Y", GT: "K" }[[middleBases[19], alternateBase].sort().join("")];
   const assemblyMiddleRead = makeSyntheticTrace({
     name: "synthetic_pcr_middle_read",
-    source: "Simulated trace from the same amplicon; includes a visible C/T mixed peak in the overlap.",
-    bases: syntheticAmplicon.slice(44, 110),
-    mixedPeaks: {
-      20: { secondary: { T: 0.58 } }
-    }
+    source: "Simulated overlapping read with one mixed SNP, retained as an IUPAC base call.",
+    bases: replaceBaseAtOneBased(middleBases, 20, ambiguity),
+    channelFractions: [...middleBases].map((base, i) => Object.fromEntries(syntheticChannels.map(channel =>
+      [channel, (channel === base ? 0.55 : 0) + (channel === alternate[i] ? 0.45 : 0)]))),
+    qualityOverrides: { 20: 18 }
   });
 
   const assemblyReverseRead = makeSyntheticTrace({
@@ -157,13 +158,13 @@ function makeSangerTraceReferenceComparisonExample() {
 
   const comparisonForwardRead = makeSyntheticTrace({
     name: "amplicon_forward_dirty_ends",
-    source: "Synthetic forward trace with low-quality terminal bases, one mismatch, and one inserted base relative to the reference.",
+    source: "Synthetic single-template forward trace with low-quality terminal bases, one mismatch, and one inserted base relative to the reference.",
     bases: comparisonForwardBases,
-    mixedPeaks: {
-      [comparisonForwardSnpBase]: { secondary: { C: 0.38 } },
-      [comparisonForwardInsertedBase]: { secondary: { G: 0.26, T: 0.18 } }
-    },
-    qualityOverrides: lowQualityEnds(comparisonForwardBases.length, comparisonForwardPrefix.length, comparisonForwardSuffix.length)
+    qualityOverrides: {
+      ...lowQualityEnds(comparisonForwardBases.length, comparisonForwardPrefix.length, comparisonForwardSuffix.length),
+      [comparisonForwardSnpBase]: 24,
+      [comparisonForwardInsertedBase]: 24
+    }
   });
 
   const comparisonReversePrefix = "TNNGA";
@@ -185,12 +186,12 @@ function makeSangerTraceReferenceComparisonExample() {
 
   const comparisonReverseRead = makeSyntheticTrace({
     name: "amplicon_reverse_dirty_ends",
-    source: "Synthetic opposite-strand trace with low-quality terminal bases, one mismatch, and one deleted base relative to the reference.",
+    source: "Synthetic single-template opposite-strand trace with low-quality terminal bases, one mismatch, and one deleted base relative to the reference.",
     bases: comparisonReverseBases,
-    mixedPeaks: {
-      [comparisonReverseSnpBase]: { secondary: { G: 0.35 } }
-    },
-    qualityOverrides: lowQualityEnds(comparisonReverseBases.length, comparisonReversePrefix.length, comparisonReverseSuffix.length)
+    qualityOverrides: {
+      ...lowQualityEnds(comparisonReverseBases.length, comparisonReversePrefix.length, comparisonReverseSuffix.length),
+      [comparisonReverseSnpBase]: 24
+    }
   });
 
   const comparisonReference = `>synthetic_amplicon_reference\n${syntheticAmplicon}`;
@@ -208,15 +209,15 @@ function makeSangerTraceReviewExample() {
   }).join("").slice(0, 800);
 
   // Apply edits in reference coordinates, then mix by sequencing cycle. The
-  // deletion advances the second template by three bases; the later insertion
-  // reduces that offset to one, leaving a second distinct mixed region.
+  // deletion advances the second template by three bases; a nearby three-base
+  // insertion restores register at base 151, keeping the mixed region compact.
   let secondTemplate = reviewTraceSequence;
   for (const position of [65, 280, 620]) {
     secondTemplate = replaceBaseAtOneBased(secondTemplate, position,
       secondTemplate[position - 1] === "A" ? "G" : "A");
   }
-  secondTemplate = secondTemplate.slice(0, 120) + secondTemplate.slice(123, 400) +
-    "TG" + secondTemplate.slice(400);
+  secondTemplate = secondTemplate.slice(0, 120) + secondTemplate.slice(123, 150) +
+    "TGC" + secondTemplate.slice(150);
   const ambiguityCodes = { AC: "M", AG: "R", AT: "W", CG: "S", CT: "Y", GT: "K" };
   const channelFractions = [];
   const mixedQualities = {};
@@ -253,7 +254,7 @@ function makeSangerTraceReviewExample() {
 
   const reviewTraceRead = makeSyntheticTrace({
     name: "synthetic_800bp_sanger_read",
-    source: "Simulated 800-base read from a 55:45 template mixture. The second template has SNPs at reference bases 65, 280 and 620, deletion 121–123, and a TG insertion after reference base 400. Noisy early peaks and a low-signal tail support clipping practice.",
+    source: "Simulated 800-base read from a 55:45 template mixture. The second template has SNPs at reference bases 65, 280 and 620, deletion 121–123, and a TGC insertion after reference base 150. The templates return to register at base 151. Noisy early peaks and a low-signal tail support clipping practice.",
     bases: calls,
     channelFractions,
     qualityOverrides: {

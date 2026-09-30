@@ -1,4 +1,6 @@
+import { makeSangerPlotModel, renderSangerPlot } from '../../core/sanger-plot.js';
 import { SANGER_ALLELE_OUTPUTS, runSangerAlleleOutput } from '../sanger-genotyper/integrate.js';
+import { runResolvedSangerSession } from './resolved-run.js';
 import {
   makeSangerAssemblyTextMap,
   makeSangerCollectionBaseCallRows,
@@ -6,14 +8,11 @@ import {
   makeSangerCollectionFasta,
   makeSangerCollectionFastq,
   makeSangerConsensusFasta,
-  makeSangerCollectionTraceSvg,
-  makeSangerAssemblyTraceMapSvg,
   makeSangerTraceCollectionReport,
   makeSangerTraceCollectionViewData,
   makeSangerDifferenceReviewSvg,
   makeSangerReferenceAlignmentSvg,
   makeSangerReferenceDifferenceTsv,
-  makeSangerReferenceTraceMapSvg,
   makeSangerTraceJson,
   makeSangerTraceSessionReport,
   prepareSangerTraceCollection,
@@ -31,6 +30,7 @@ const OUTPUT_FORMATS = new Set([
   "fastq",
   "trace-json",
   "report",
+  "analysis-json",
   "session-report",
   "consensus-fasta",
   "assembly-text-map",
@@ -46,8 +46,11 @@ function normalizeOutputFormat(value) {
 }
 
 export async function runSangerTraceViewer(input, options = {}, context = {}) {
+  if ((options.resolveSequences === true || ['resolution-tsv', 'assembly-input-fasta'].includes(options.outputFormat) ||
+    (options.task === 'assemble' && SANGER_ALLELE_OUTPUTS.includes(options.outputFormat))) && ['assemble', 'compare'].includes(options.task))
+    return runResolvedSangerSession(input, options, context);
   if (SANGER_ALLELE_OUTPUTS.includes(options.outputFormat)) return runSangerAlleleOutput(input, options, context);
-  const outputFormat = normalizeOutputFormat(options.outputFormat);
+  const outputFormat = normalizeOutputFormat(options.outputFormat ?? (options.task === "assemble" ? "assembly-trace-map-svg" : options.task === "compare" ? "reference-trace-map-svg" : "interactive-trace"));
   context.reportProgress?.({ phase: "parsing-trace", progress: 0.08 });
   context.throwIfCancelled?.();
   await context.yieldIfNeeded?.();
@@ -61,14 +64,17 @@ export async function runSangerTraceViewer(input, options = {}, context = {}) {
   context.throwIfCancelled?.();
   await context.yieldIfNeeded?.();
 
-  const needsSession = ["session-report", "consensus-fasta", "assembly-text-map", "assembly-trace-map-svg", "reference-trace-map-svg", "reference-differences-tsv", "reference-alignment-svg", "difference-review-svg"].includes(outputFormat) ||
+  const needsSession = ["analysis-json", "session-report", "consensus-fasta", "assembly-text-map", "assembly-trace-map-svg", "reference-trace-map-svg", "reference-differences-tsv", "reference-alignment-svg", "difference-review-svg"].includes(outputFormat) ||
     (collection.traces.length > 1 && outputFormat === "report");
   const session = needsSession ? await prepareSangerTraceSession(input, options, context) : null;
-  const report = session && (outputFormat === "report" || outputFormat === "session-report")
+  const report = !["interactive-trace", "report", "session-report"].includes(outputFormat) ? "" : session && (outputFormat === "report" || outputFormat === "session-report")
     ? makeSangerTraceSessionReport(session)
     : makeSangerTraceCollectionReport(collection);
-  const rows = makeSangerCollectionBaseCallRows(collection);
-  const svg = outputFormat === "svg-trace" ? makeSangerCollectionTraceSvg(collection) : "";
+  const rows = outputFormat === "tsv" ? makeSangerCollectionBaseCallRows(collection) : [];
+  const sangerPlot = ["svg-trace", "assembly-trace-map-svg", "reference-trace-map-svg"].includes(outputFormat)
+    ? makeSangerPlotModel(outputFormat === "svg-trace" ? "trace" : outputFormat === "assembly-trace-map-svg" ? "assembly" : "reference", session ?? {collection}, result.options) : null;
+  const plotSvg = sangerPlot ? renderSangerPlot(sangerPlot) : "";
+  const svg = outputFormat === "svg-trace" ? plotSvg : "";
   const sangerTrace = outputFormat === "interactive-trace" ? makeSangerTraceCollectionViewData(collection) : null;
   const fasta = outputFormat === "fasta" ? makeSangerCollectionFasta(collection, result.options.lineWidth) : "";
   const fastq = outputFormat === "fastq" ? makeSangerCollectionFastq(collection) : "";
@@ -83,8 +89,8 @@ export async function runSangerTraceViewer(input, options = {}, context = {}) {
   const tsv = outputFormat === "tsv" ? makeSangerCollectionBaseCallTsv(collection) : "";
   const consensusFasta = outputFormat === "consensus-fasta" && session ? makeSangerConsensusFasta(session, result.options.lineWidth) : "";
   const assemblyTextMap = outputFormat === "assembly-text-map" && session ? makeSangerAssemblyTextMap(session, result.options.lineWidth) : "";
-  const assemblyTraceMapSvg = outputFormat === "assembly-trace-map-svg" && session ? makeSangerAssemblyTraceMapSvg(session, result.options) : "";
-  const referenceTraceMapSvg = outputFormat === "reference-trace-map-svg" && session ? makeSangerReferenceTraceMapSvg(session, result.options) : "";
+  const assemblyTraceMapSvg = outputFormat === "assembly-trace-map-svg" && session ? plotSvg : "";
+  const referenceTraceMapSvg = outputFormat === "reference-trace-map-svg" && session ? plotSvg : "";
   const referenceDifferencesTsv = outputFormat === "reference-differences-tsv" && session ? makeSangerReferenceDifferenceTsv(session) : "";
   const referenceAlignmentSvg = outputFormat === "reference-alignment-svg" && session ? makeSangerReferenceAlignmentSvg(session, { lineWidth: result.options.lineWidth }) : "";
   const differenceReviewSvg = outputFormat === "difference-review-svg" && session ? makeSangerDifferenceReviewSvg(session) : "";
@@ -113,7 +119,7 @@ export async function runSangerTraceViewer(input, options = {}, context = {}) {
       filename: "sanger-trace.svg",
       mimeType: "image/svg+xml;charset=utf-8"
     };
-    visual = { svg };
+    visual = { svg, sangerPlot };
   } else if (outputFormat === "tsv") {
     output = tsv;
     download = {
@@ -138,6 +144,13 @@ export async function runSangerTraceViewer(input, options = {}, context = {}) {
       filename: "sanger-trace-view.json",
       mimeType: "application/json;charset=utf-8"
     };
+  } else if (outputFormat === "analysis-json") {
+    output = JSON.stringify({format:"sms3-sanger-session-analysis-v1", task:options.task, resolveSequences:false,
+      reference:session.reference, sourceTraces:collection.traces.map((r,i)=>({sourceTrace:`Trace ${i+1}`,sourceName:r.view.record,
+        clipStart:r.view.clipStart,clipEnd:r.view.clipEnd,orientation:r.view.orientation,sequence:r.sequence})),
+      assembly:session.assembly,referenceAlignments:session.referenceAlignments,referenceDifferences:session.referenceDifferences,
+      warnings:session.warnings});
+    download = {filename:"sanger-analysis.json",mimeType:"application/json"};
   } else if (outputFormat === "session-report") {
     output = report;
     download = {
@@ -162,14 +175,14 @@ export async function runSangerTraceViewer(input, options = {}, context = {}) {
       filename: "sanger-trace-assembly-map.svg",
       mimeType: "image/svg+xml;charset=utf-8"
     };
-    visual = { svg: assemblyTraceMapSvg };
+    visual = { svg: assemblyTraceMapSvg, sangerPlot };
   } else if (outputFormat === "reference-trace-map-svg") {
     output = referenceTraceMapSvg;
     download = {
       filename: "sanger-reference-trace-map.svg",
       mimeType: "image/svg+xml;charset=utf-8"
     };
-    visual = { svg: referenceTraceMapSvg };
+    visual = { svg: referenceTraceMapSvg, sangerPlot };
   } else if (outputFormat === "reference-differences-tsv") {
     output = referenceDifferencesTsv;
     download = {
@@ -192,10 +205,10 @@ export async function runSangerTraceViewer(input, options = {}, context = {}) {
     visual = { svg: differenceReviewSvg };
   }
 
-  const streams = {
-    report: makeTextStream(report),
-    table: makeTableStream(sangerBaseCallColumns, rows, "sanger-base-calls")
-  };
+  const streams = {};
+  if (["interactive-trace", "report"].includes(outputFormat)) streams.report = makeTextStream(report);
+  if (outputFormat === "tsv") streams.table = makeTableStream(sangerBaseCallColumns, rows, "sanger-base-calls");
+  if (outputFormat === "analysis-json") streams.analysisJson = makeTextStream(output, "application/json");
   if (svg) {
     streams.traceSvg = makeTextStream(svg, "image/svg+xml");
   }
@@ -264,8 +277,13 @@ export function runSangerTraceReviewEditor(input, options = {}, context = {}) {
   return runSangerTraceViewer(input, { ...options, task: "edit" }, context);
 }
 
-export function runSangerTraceAssembly(input, options = {}, context = {}) {
-  return runSangerTraceViewer(input, { ...options, task: "assemble" }, context);
+export async function runSangerTraceAssembly(input, options = {}, context = {}) {
+  if (['resolution-tsv', 'assembly-input-fasta', ...SANGER_ALLELE_OUTPUTS].includes(options.outputFormat)) {
+    throw new Error('Use Sanger Genotyper or Resolve Mixed Sanger Trace for haplotype outputs.');
+  }
+  const result = await runSangerTraceViewer(input, { ...options, resolveSequences: false, task: "assemble" }, context);
+  if (options.resolveSequences) result.warnings.push('Assembly now uses trimmed trace base calls. Use Sanger Genotyper or Resolve Mixed Sanger Trace for haplotype reconstruction.');
+  return result;
 }
 
 export function runSangerTraceReferenceComparison(input, options = {}, context = {}) {

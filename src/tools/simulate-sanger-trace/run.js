@@ -1,7 +1,8 @@
+import { makeSangerPlotModel, renderSangerPlot } from '../../core/sanger-plot.js';
 import { prepareSangerSimulation, simulateSangerTrace, encodeSimulatedScf, simulatedSangerColumns } from '../../core/simulate-sanger-trace.js';
 import { resolveRandom } from '../../core/random-sequence.js';
 import { encodeSimulatedAb1 } from '../../core/sanger-abif-export.js';
-import { prepareSangerTrace, makeSangerTraceSvg, makeSangerTraceViewData } from '../../core/sanger-trace.js';
+import { prepareSangerTrace, makeSangerTraceViewData } from '../../core/sanger-trace.js';
 import { formatFastaRecord } from '../../core/fasta.js';
 import { makeToolResult, makeTextStream, makeTableStream } from '../../core/workflow.js';
 
@@ -45,9 +46,10 @@ export async function runSimulateSangerTrace(input, options = {}, context = {}) 
       visual = { sangerTrace: makeSangerTraceViewData(prepared) };
       streams.report = makeTextStream(report);
     } else {
-      output = makeSangerTraceSvg(prepared);
+      const sangerPlot = makeSangerPlotModel("trace", {collection:{traces:[prepared]}}, prepared.options);
+      output = renderSangerPlot(sangerPlot);
       filename = 'simulated-sanger.svg'; mimeType = 'image/svg+xml';
-      visual = { svg: output }; streams.traceSvg = makeTextStream(output, mimeType);
+      visual = { svg: output, sangerPlot }; streams.traceSvg = makeTextStream(output, mimeType);
     }
   } else if (format === 'trace-json') {
     output = JSON.stringify(trace, null, 2); filename = 'simulated-sanger.json'; mimeType = 'application/json';

@@ -1,7 +1,7 @@
 import { formatFastaRecord } from "./fasta.js";
 import { complementDnaRnaSequence } from "./sequence.js";
 import { BoundedTextBuilder, StreamingFastaFormatter } from "./bounded-text-builder.js";
-import { IncrementalSha256 } from "./incremental-sha256.js";
+import { createIncrementalSha256 } from "./incremental-sha256.js";
 
 export const FASTA_SUMMARIZER_LIMITS = Object.freeze({
   maxMaterializedOutputCharacters: 25 * 1024 * 1024,
@@ -23,12 +23,14 @@ function reverseComplement(sequence) {
   return complementDnaRnaSequence(sequence, { preserveCase: false }).split("").reverse().join("");
 }
 
-function reverseComplementDigest(sequence, chunkSize = 64 * 1024) {
-  const hasher = new IncrementalSha256();
+async function reverseComplementDigest(sequence, hasher, context, chunkSize = 64 * 1024) {
+  hasher.init();
   for (let end = sequence.length; end > 0; end -= chunkSize) {
     const start = Math.max(0, end - chunkSize);
     const reversed = sequence.slice(start, end).split("").reverse().join("");
     hasher.update(complementDnaRnaSequence(reversed, { preserveCase: false }));
+    await context.yieldIfNeeded?.();
+    context.throwIfCancelled?.();
   }
   return hasher.digestHex();
 }
@@ -249,6 +251,7 @@ export async function summarizeFastaSource(source, options = {}, context = {}) {
   let basesProcessed = 0;
   let formattedRecords = 0;
 
+  const sequenceHasher = await createIncrementalSha256();
   for await (const event of source.events()) {
     context.throwIfCancelled?.();
     if (event.type === "record-start") {
@@ -258,7 +261,7 @@ export async function summarizeFastaSource(source, options = {}, context = {}) {
         title: event.title,
         hadHeader: event.hadHeader,
         issues: [...event.issues],
-        sequenceHasher: new IncrementalSha256(),
+        sequenceHasher: sequenceHasher.init(),
         sequenceParts: checkReverseComplement ? [] : null,
         length: 0,
         sequenceLines: 0
@@ -318,7 +321,7 @@ export async function summarizeFastaSource(source, options = {}, context = {}) {
     for (const record of records) {
       const sequence = String(record.sequence ?? "");
       if (!sequence) continue;
-      const reverseDigest = reverseComplementDigest(sequence);
+      const reverseDigest = await reverseComplementDigest(sequence, sequenceHasher, context);
       if (reverseDigest === record.sequenceDigest) continue;
       const matches = sequenceGroups.get(reverseDigest) ?? [];
       if (matches.length > 0) {

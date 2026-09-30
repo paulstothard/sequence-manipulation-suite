@@ -1,0 +1,92 @@
+{
+  "bundles": {
+    "hash": {
+      "bytes": 49438,
+      "sha256": "69c98e667a9540c9316ef6cf69c5ad174452b5e196546c7d4ee2557f358c9a22"
+    },
+    "archive": {
+      "bytes": 242409,
+      "sha256": "311ec3f7910c59e333879243d696fc88458914e5115b5abb6547a20a16217bab"
+    }
+  },
+  "packages": [
+    {
+      "name": "@borewit/text-codec",
+      "version": "0.2.2",
+      "license": "MIT",
+      "licensePath": "licenses/borewit-text-codec.txt"
+    },
+    {
+      "name": "@tokenizer/inflate",
+      "version": "0.4.1",
+      "license": "MIT",
+      "licensePath": "licenses/tokenizer-inflate.txt"
+    },
+    {
+      "name": "@zip.js/zip.js",
+      "version": "2.18.2",
+      "license": "BSD-3-Clause",
+      "licensePath": "licenses/zip.js-zip.js.txt"
+    },
+    {
+      "name": "debug",
+      "version": "4.4.3",
+      "license": "MIT",
+      "licensePath": "licenses/debug.txt"
+    },
+    {
+      "name": "fflate",
+      "version": "0.8.3",
+      "license": "MIT",
+      "licensePath": "licenses/fflate.txt"
+    },
+    {
+      "name": "file-type",
+      "version": "22.1.1",
+      "license": "MIT",
+      "licensePath": "licenses/file-type.txt"
+    },
+    {
+      "name": "hash-wasm",
+      "version": "4.12.0",
+      "license": "MIT",
+      "licensePath": "licenses/hash-wasm.txt"
+    },
+    {
+      "name": "ieee754",
+      "version": "1.2.1",
+      "license": "BSD-3-Clause",
+      "licensePath": "licenses/ieee754.txt"
+    },
+    {
+      "name": "modern-tar",
+      "version": "0.8.5",
+      "license": "MIT",
+      "licensePath": "licenses/modern-tar.txt"
+    },
+    {
+      "name": "ms",
+      "version": "2.1.3",
+      "license": "MIT",
+      "licensePath": "licenses/ms.txt"
+    },
+    {
+      "name": "strtok3",
+      "version": "10.3.5",
+      "license": "MIT",
+      "licensePath": "licenses/strtok3.txt"
+    },
+    {
+      "name": "token-types",
+      "version": "6.1.2",
+      "license": "MIT",
+      "licensePath": "licenses/token-types.txt"
+    },
+    {
+      "name": "uint8array-extras",
+      "version": "1.6.0",
+      "license": "MIT",
+      "licensePath": "licenses/uint8array-extras.txt"
+    }
+  ]
+}

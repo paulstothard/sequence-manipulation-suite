@@ -3,7 +3,7 @@ import { createEditorPanelTabs } from './editor-panel-tabs.js';
 import { installControlHelp } from './control-help.js';
 import { calculateBaseSelectionMarker as calculateSangerSelectedBaseMarker } from './base-selection-marker.js';
 import { addTimestampToFilename, downloadCanvasPng, downloadCanvasSvg, makeSafeFileStem } from "./canvas-export.js";
-import { geneticCodes } from "../core/genetic-code.js";
+import { complementDnaRnaSequence } from "../core/sequence.js";
 import { makeSixFrameTranslations } from "../core/translation.js";
 import { traceTranslationArrow } from "../core/translation-arrow-geometry.js";
 import {
@@ -179,6 +179,12 @@ function retainedCalls(state) {
   return state.calls.filter((call) => call.displayIndex >= state.clipStart && call.displayIndex <= state.clipEnd);
 }
 
+function originalDisplayBase(call) {
+  return call.orientation === "reverse-complement"
+    ? complementDnaRnaSequence(call.originalBase, { preserveCase: false })
+    : call.originalBase;
+}
+
 function exportCalls(state) {
   return state.excludeClippedBases ? retainedCalls(state) : state.calls;
 }
@@ -263,7 +269,7 @@ function qualityText(call) {
 
 export function describeSangerInspectionTarget(target, state = {}) {
   if (target?.kind === "clip-handle") {
-    return `Drag the ${target.type === "clip-start" ? "5'" : "3'"} clip handle to change the ${target.type === "clip-start" ? "first" : "last"} unclipped base. Clipped bases are shaded, not deleted. Changes apply immediately; Undo restores the previous range.`;
+    return `Drag the ${target.type === "clip-start" ? "5'" : "3'"} clip handle to change the ${target.type === "clip-start" ? "first" : "last"} unclipped base. Shaded ends remain available for review. FASTA/FASTQ exports use the retained range by default. Undo restores the previous range.`;
   }
   if (target?.kind === "translation") {
     return `${target.frameLabel}: ${target.aminoAcid}; codon ${target.codon}; displayed bases ${target.directStart}-${target.directEnd}; genetic code ${state.geneticCode || "1"}.`;
@@ -427,6 +433,8 @@ function syncControls(panel, state) {
   if (geneticCode && geneticCode.value !== state.geneticCode) {
     geneticCode.value = state.geneticCode;
   }
+  const qualityCutoff = panel.querySelector("[data-sanger-control='lowQualityThreshold']");
+  if (qualityCutoff) qualityCutoff.value = state.lowQualityThreshold;
   syncSearchControls(panel, state);
   updateDetails(panel, state);
 }
@@ -715,12 +723,12 @@ function drawTrace(canvas, state) {
   context.fillStyle = theme.muted;
   context.fillText("signal", 10, plot.top + 4);
 
-  const qualityMax = qualityAxisMax(calls, state.data.lowQualityThreshold);
+  const qualityMax = qualityAxisMax(calls, state.lowQualityThreshold);
   const qualityLayout = calculateSangerTraceQualityLayout({
     plotTop: plot.top,
     plotHeight: plot.height,
     qualityMax,
-    lowQualityThreshold: state.data.lowQualityThreshold
+    lowQualityThreshold: state.lowQualityThreshold
   });
   context.fillStyle = theme.surfaceSoft;
   context.strokeStyle = theme.border;
@@ -733,7 +741,7 @@ function drawTrace(canvas, state) {
     const isClipped = call.displayIndex < state.clipStart || call.displayIndex > state.clipEnd;
     context.fillStyle = isClipped
       ? theme.clipped
-      : quality < state.data.lowQualityThreshold
+      : quality < state.lowQualityThreshold
         ? theme.lowQuality
         : theme.qualityBar;
     context.fillRect(x - 2, qualityLayout.qualityTop + qualityLayout.qualityHeight - barHeight, 4, barHeight);
@@ -754,7 +762,7 @@ function drawTrace(canvas, state) {
   context.textAlign = "right";
   context.fillText(`Q${qualityMax}`, plot.left - 6, qualityLayout.maxLabelY);
   context.fillStyle = theme.lowQuality;
-  context.fillText(`Q${state.data.lowQualityThreshold}`, plot.left - 6, qualityLayout.thresholdLabelY);
+  context.fillText(`Q${state.lowQualityThreshold}`, plot.left - 6, qualityLayout.thresholdLabelY);
   context.fillStyle = theme.muted;
   context.fillText("Q0", plot.left - 6, qualityLayout.zeroLabelY);
   context.textAlign = "left";
@@ -827,29 +835,6 @@ function renderSingleSangerTraceViewer(container, data, documentActions) {
   nextBase.setAttribute("aria-label", "Next base");
   const jumpStart = makeButton("Go to 5′ end", "Show and select the first base of the full read.");
   const jumpEnd = makeButton("Go to 3′ end", "Show and select the last base of the full read.");
-  const forwardTranslations = makeButton("+ translations", "Show or hide forward translation frames +1, +2, and +3");
-  forwardTranslations.dataset.sangerControl = "forwardTranslations";
-  const reverseTranslations = makeButton("− translations", "Show or hide reverse-complement translation frames -1, -2, and -3");
-  reverseTranslations.dataset.sangerControl = "reverseTranslations";
-  for (const button of [forwardTranslations, reverseTranslations]) {
-    button.setAttribute("aria-label", button.textContent);
-    const check = document.createElement("span");
-    check.className = "sanger-trace-toggle-check";
-    check.setAttribute("aria-hidden", "true");
-    check.textContent = "✓";
-    button.prepend(check);
-  }
-  const geneticCode = document.createElement("select");
-  geneticCode.className = "sanger-trace-genetic-code";
-  geneticCode.dataset.sangerControl = "geneticCode";
-  geneticCode.setAttribute("aria-label", "Trace translation genetic code");
-  geneticCode.dataset.controlHelp = "Genetic code for the trace translation tracks.";
-  for (const code of geneticCodes) {
-    const option = document.createElement("option");
-    option.value = code.id;
-    option.textContent = `${code.id}. ${code.name}`;
-    geneticCode.append(option);
-  }
   const navGroup = document.createElement("div");
   navGroup.className = "sanger-trace-toolbar-buttons";
   navGroup.append(
@@ -876,13 +861,13 @@ function renderSingleSangerTraceViewer(container, data, documentActions) {
   clipStart.type = "number";
   clipStart.min = "1";
   clipStart.max = String(data.baseCalls.length);
-  clipStart.dataset.controlHelp = "First unclipped base, numbered from 1 and included in the range. Earlier bases are shaded, not deleted. Valid changes apply as you type.";
+  clipStart.dataset.controlHelp = "First retained base on the displayed strand, numbered from 1 and included in the range. Earlier bases remain shaded and can be restored by moving this boundary. Valid changes apply as you type.";
   clipStart.dataset.sangerControl = "clipStart";
   const clipEnd = document.createElement("input");
   clipEnd.type = "number";
   clipEnd.min = "1";
   clipEnd.max = String(data.baseCalls.length);
-  clipEnd.dataset.controlHelp = "Last unclipped base, included in the range. Later bases are shaded, not deleted. Valid changes apply as you type.";
+  clipEnd.dataset.controlHelp = "Last retained base on the displayed strand, included in the range. Later bases remain shaded and can be restored by moving this boundary. Valid changes apply as you type.";
   clipEnd.dataset.sangerControl = "clipEnd";
   clipStart.required = true;
   clipEnd.required = true;
@@ -972,7 +957,7 @@ function renderSingleSangerTraceViewer(container, data, documentActions) {
   clippingSummary.dataset.sangerControl = "clippingSummary";
   const clippingHint = document.createElement("p");
   clippingHint.className = "sanger-trace-clipping-hint";
-  clippingHint.textContent = "Drag the bars or type coordinates. Bases outside this range are shaded, not deleted.";
+  clippingHint.textContent = "Drag the bars or type coordinates. Shaded ends stay available for review. FASTA/FASTQ exports use the retained range by default.";
   const coordinateFields = document.createElement("div");
   coordinateFields.className = "sanger-trace-clip-fields";
   addField(coordinateFields, "5′ clip", clipStart, "sanger-trace-clip-start-label");
@@ -987,13 +972,12 @@ function renderSingleSangerTraceViewer(container, data, documentActions) {
   searchGroup.className = "sanger-trace-search";
   addField(searchGroup, "Find sequence", searchInput);
   searchGroup.append(previousMatch, nextMatch, clearSearch, searchInfo);
-  const translations = addGroup(displayPanel, "Translation tracks");
-  translations.classList.add("sanger-trace-translations");
-  const translationToggles = document.createElement("div");
-  translationToggles.className = "sanger-trace-translation-toggles";
-  translationToggles.append(forwardTranslations, reverseTranslations);
-  translations.append(translationToggles);
-  addField(translations, "Genetic code", geneticCode);
+  const qualityGroup = addGroup(displayPanel, "Quality highlighting");
+  const qualityCutoff = document.createElement("input");
+  qualityCutoff.type = "number"; qualityCutoff.min = "0"; qualityCutoff.max = "93"; qualityCutoff.step = "1";
+  qualityCutoff.dataset.sangerControl = "lowQualityThreshold";
+  qualityCutoff.dataset.controlHelp = "Highlights quality bars below this score. Clipping controls the retained sequence.";
+  addField(qualityGroup, "Low-quality highlight cutoff", qualityCutoff);
   const addExportRow = (titleText) => {
     const row = addGroup(exportPanel, titleText);
     const description = document.createElement("div");
@@ -1064,6 +1048,7 @@ function renderSingleSangerTraceViewer(container, data, documentActions) {
     showForwardTranslations: data.showForwardTranslations === true,
     showReverseTranslations: data.showReverseTranslations === true,
     geneticCode: String(data.geneticCode || "1"),
+    lowQualityThreshold: Number(data.lowQualityThreshold ?? 20),
     searchQuery: "",
     searchMatches: [],
     searchMatchIndex: -1
@@ -1165,17 +1150,11 @@ function renderSingleSangerTraceViewer(container, data, documentActions) {
     if (state.selectedIndex > end) state.visibleStart = Math.max(1, state.selectedIndex - basesPerVisibleWidth(state) + 1);
     render();
   }, listenerOptions);
-  forwardTranslations.addEventListener("click", () => {
-    state.showForwardTranslations = !state.showForwardTranslations;
-    render(`${state.showForwardTranslations ? "Showing" : "Hiding"} forward translation frames.`);
-  }, listenerOptions);
-  reverseTranslations.addEventListener("click", () => {
-    state.showReverseTranslations = !state.showReverseTranslations;
-    render(`${state.showReverseTranslations ? "Showing" : "Hiding"} reverse translation frames.`);
-  }, listenerOptions);
-  geneticCode.addEventListener("change", () => {
-    state.geneticCode = geneticCode.value;
-    render(`Translation tracks use NCBI genetic code ${state.geneticCode}.`);
+  qualityCutoff.addEventListener("change", () => {
+    if (qualityCutoff.checkValidity() && qualityCutoff.value !== "") {
+      state.lowQualityThreshold = Number(qualityCutoff.value);
+      render(`Highlighting quality scores below Q${state.lowQualityThreshold}.`);
+    }
   }, listenerOptions);
   previousMatch.addEventListener("click", () => goToSearchMatch(-1), listenerOptions);
   nextMatch.addEventListener("click", () => goToSearchMatch(1), listenerOptions);
@@ -1403,7 +1382,7 @@ function renderSingleSangerTraceViewer(container, data, documentActions) {
       return;
     }
     call.base = editBase.value;
-    call.edited = call.base !== call.originalBase;
+    call.edited = call.base !== originalDisplayBase(call);
     render(`Changed base ${call.displayIndex} to ${call.base}.`);
   }, listenerOptions);
 
@@ -1452,13 +1431,14 @@ function renderSingleSangerTraceViewer(container, data, documentActions) {
     cleanupController.abort();
   };
   container._sms3TraceState = {
-    read:() => ({bases:state.calls.map(c=>c.base).join(''),clipStart:state.clipStart,clipEnd:state.clipEnd,excludeClippedBases:state.excludeClippedBases,geneticCode:state.geneticCode,showForwardTranslations:state.showForwardTranslations,showReverseTranslations:state.showReverseTranslations}),
+    read:() => ({bases:state.calls.map(c=>c.base).join(''),clipStart:state.clipStart,clipEnd:state.clipEnd,excludeClippedBases:state.excludeClippedBases,lowQualityThreshold:state.lowQualityThreshold,geneticCode:state.geneticCode,showForwardTranslations:state.showForwardTranslations,showReverseTranslations:state.showReverseTranslations}),
     apply:snapshot => {
       if (typeof snapshot.bases !== 'string' || snapshot.bases.length !== state.calls.length || /[^ACGTRYSWKMBDHVN]/i.test(snapshot.bases)) throw new Error('Invalid edited trace calls.');
       if (!Number.isInteger(snapshot.clipStart) || !Number.isInteger(snapshot.clipEnd) || snapshot.clipStart < 1 || snapshot.clipEnd > state.calls.length || snapshot.clipStart > snapshot.clipEnd) throw new Error('Invalid trace clipping coordinates.');
-      state.calls.forEach((call,i) => {call.base=snapshot.bases[i];call.edited=call.base!==call.originalBase;});
+      state.calls.forEach((call,i) => {call.base=snapshot.bases[i];call.edited=call.base!==originalDisplayBase(call);});
       state.clipStart=snapshot.clipStart;state.clipEnd=snapshot.clipEnd;state.selectedIndex=state.clipStart;state.visibleStart=state.clipStart;
       state.excludeClippedBases=snapshot.excludeClippedBases!==false;
+      state.lowQualityThreshold = Math.max(0, Math.min(93, Number(snapshot.lowQualityThreshold ?? data.lowQualityThreshold ?? 20) || 0));
       state.geneticCode=String(snapshot.geneticCode||data.geneticCode||'1');state.showForwardTranslations=snapshot.showForwardTranslations===true;state.showReverseTranslations=snapshot.showReverseTranslations===true;
       render('Trace edits restored.');
     }

@@ -1,3 +1,4 @@
+import { sangerTrimmingGroup } from '../sanger-trimming-options.js';
 import { SANGER_SESSION_SEPARATOR } from "../../core/sanger-trace.js";
 import {
   sangerReferenceOptions,
@@ -7,19 +8,19 @@ import {
   sangerGenotypeColumns,
   SANGER_GENOTYPE_LIMITS,
 } from "../../core/sanger-genotype.js";
-import { sangerHaplotypeColumns, sangerCandidateColumnsOption, SANGER_CANDIDATE_ALIGNMENT_CELL_LIMIT } from "../../core/sanger-genotype-candidates.js";
+import { sangerHaplotypeColumns, sangerCandidateColumnsOption } from "../../core/sanger-genotype-candidates.js";
 export const sangerGenotyperMetadata = {
   id: "sanger-genotyper",
   name: "Sanger Genotyper",
   category: "Sanger Traces",
-  tags: ["DNA", "RNA", "VCF", "coordinates", "map"],
+  tags: ["DNA", "RNA", "VCF", "alignment", "coordinates", "map"],
   summary:
-    "Call SNP and indel genotypes across Sanger samples and reconstruct candidate haplotypes.",
+    "Call SNP and indel genotypes across Sanger samples and review trace alignments and candidate haplotypes.",
   whenToUse:
-    "Compare samples at discovered or specified sites, group replicate traces, and inspect candidate haplotypes with unresolved phase retained.",
+    "Compare samples at discovered or specified sites, group replicate traces, and inspect trace and candidate haplotype alignments against a reference.",
   inputType: "Sanger chromatogram traces and reference DNA/RNA",
   outputType:
-    "Genotype table, variant table, candidate FASTA, candidate alignment, variant review plot, coverage plot, VCF, analysis JSON, or summary report",
+    "Genotype table, trace/reference alignment map, variant review plot, coverage plot, VCF, analysis JSON, or summary report",
   sangerTraceTask: "compare",
   sangerSampleInputs: true,
   splitInput: {
@@ -56,12 +57,8 @@ export const sangerGenotyperMetadata = {
         outputFormat: "tsv", label: "Genotype table",
       },
       {
-        id: "variants",
-        kind: "table",
-        schema: "sanger-genotypes",
-        columns: sangerGenotypeColumns,
-        optionalColumns: sangerHaplotypeColumns,
-        outputFormat: "variants-tsv", label: "Variant table",
+        id: 'referenceAlignmentSvg', kind: 'text', mediaType: 'image/svg+xml',
+        outputFormat: 'reference-alignment-svg', label: 'Trace/reference alignment map',
       },
       {
         id: "reviewSvg",
@@ -69,8 +66,6 @@ export const sangerGenotyperMetadata = {
         mediaType: "image/svg+xml",
         outputFormat: "review-svg", label: "Variant review plot",
       },
-      { id: "candidateFasta", kind: "text", mediaType: "text/x-fasta", alphabet: "dna-rna", outputFormat: "candidate-fasta", label: "Candidate FASTA" },
-      { id: "candidateAlignmentSvg", kind: "text", mediaType: "image/svg+xml", outputFormat: "candidate-alignment-svg", label: "Candidate alignment" },
       {
         id: "coverageSvg",
         kind: "text",
@@ -142,39 +137,7 @@ export const sangerGenotyperMetadata = {
         },
       ],
     },
-    {
-      type: "group",
-      label: "Trimming",
-      collapsible: true,
-      collapsed: true,
-      options: [
-        {
-          id: "autoTrim",
-          type: "checkbox",
-          label: "Trim ends automatically",
-          defaultValue: true,
-          help: "Uses modified Mott trimming with signal checks that retain supported mixed peaks. Low-signal sites inside the retained region remain missing.",
-        },
-        {
-          id: "clipStart",
-          type: "number",
-          label: "First base to keep",
-          defaultValue: 0,
-          min: 0,
-          step: 1,
-          help: "Optional original base-call coordinate, applied to each trace. Use 0 for automatic.",
-        },
-        {
-          id: "clipEnd",
-          type: "number",
-          label: "Last base to keep",
-          defaultValue: 0,
-          min: 0,
-          step: 1,
-          help: "Optional original base-call coordinate, applied to each trace. Use 0 for automatic.",
-        },
-      ],
-    },
+    sangerTrimmingGroup({ includeMottSettings: false, signalAware: true }),
     {
       type: "group",
       label: "Output format",
@@ -186,16 +149,13 @@ export const sangerGenotyperMetadata = {
           defaultValue: "tsv",
           choices: [
             { value: "tsv", label: "Genotype table" },
-            { value: "variants-tsv", label: "Variant table" },
-            { value: "candidate-fasta", label: "Candidate FASTA" },
-            { value: "candidate-alignment-svg", label: "Candidate alignment" },
+            { value: 'reference-alignment-svg', label: 'Trace/reference alignment map' },
             { value: "review-svg", label: "Variant review plot" },
             { value: "coverage-svg", label: "Coverage plot" },
             { value: "vcf", label: "VCF" },
             { value: "json", label: "Analysis JSON" },
             { value: "report", label: "Summary report" },
           ],
-          help: "Candidate FASTA and Candidate alignment show the reconstructed span of each trace, including sites outside the selected genotype positions. Candidate numbers are local to each trace; phase between separate shifted regions remains uncertain.",
         },
       ],
     },
@@ -248,11 +208,8 @@ export const sangerGenotyperMetadata = {
           value: 20000,
         },
         {
-          id: "maxCandidateAlignmentCells",
-          type: "limit-value",
-          label: "Candidate alignment cells",
-          value: SANGER_CANDIDATE_ALIGNMENT_CELL_LIMIT,
-          help: "Fixed figure-density limit across all candidate panels. Larger alignments are rejected; use fewer trace inputs or Candidate FASTA.",
+          id: 'maxCandidateAlignmentCells', type: 'limit-value', label: 'Trace/reference alignment cells', value: 20000,
+          help: 'Fixed figure-density limit. Use fewer traces for this view; Analysis JSON retains the full results.',
         },
         {
           type: "limit-value",
@@ -273,7 +230,7 @@ export const sangerGenotyperMetadata = {
     {
       id: "methodNote",
       type: "note",
-      text: "Calls SNP and indel genotypes and attempts to reconstruct up to two distinct haplotypes per trace. Indel shifts are resolved before SNPs are assigned to reference positions. Uncertain calls remain missing; IUPAC codes retain unphased candidate bases. Phase between separate shifted regions remains uncertain. Model score error rates still need validation. Simulated traces contain generated quality values.",
+      text: "Calls SNP and indel genotypes and attempts to reconstruct up to two distinct haplotypes per trace. Indel shifts are resolved before SNPs are assigned to reference positions. Alignments retain reference and original-read coordinates. Uncertain calls remain missing; IUPAC codes retain unphased candidate bases. Phase between separate shifted regions remains uncertain. Model score error rates still need validation. Simulated traces contain generated quality values.",
     },
     {
       id: "references",

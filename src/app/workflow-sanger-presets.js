@@ -10,7 +10,7 @@ const comparison = (id, name, summary) => ({
     { id: 'reference', type: 'text-section', label: 'Read reference sequence', input: { from: 'input' }, separator: '##SMS3_REFERENCE##', section: 1 },
     { id: 'trace', type: 'tool', toolId: 'simulate-sanger-trace', input: { from: 'templates' }, selectStream: 'traceJson', options: { ...simulation } },
     { id: 'comparison-input', type: 'text-bundle', label: 'Combine trace and reference', input: { from: 'trace' }, other: { from: 'reference' }, separator: SANGER_SESSION_SEPARATOR },
-    { id: 'compare', type: 'tool', toolId: 'sanger-trace-reference-comparison', selectStream: 'referenceTraceMapSvg', options: { trimMethod: 'manual', outputFormat: 'reference-trace-map-svg' } }
+    { id: 'compare', type: 'tool', toolId: 'sanger-genotyper', selectStream: 'referenceAlignmentSvg', options: { trimMode: 'none', outputFormat: 'reference-alignment-svg' } }
   ] }
 });
 
@@ -24,11 +24,11 @@ export const sangerWorkflowPresets = [
       { id: 'fragments', type: 'sanger-read-templates' },
       { id: 'traces', type: 'map', toolId: 'simulate-sanger-trace', selectStream: 'traceJson', options: { ...simulation } },
       { id: 'session', type: 'sanger-trace-bundle' },
-      { id: 'assemble', type: 'tool', toolId: 'sanger-trace-assembly', selectStream: 'assemblyTraceMapSvg', options: { trimMethod: 'manual', assemblyMinOverlap: 100, assemblyMaxMismatchPercent: 5, outputFormat: 'assembly-trace-map-svg' } }
+      { id: 'assemble', type: 'tool', toolId: 'sanger-trace-assembly', selectStream: 'assemblyTraceMapSvg', options: { trimMode: 'none', assemblyMinOverlap: 100, assemblyMaxMismatchPercent: 5, outputFormat: 'assembly-trace-map-svg' } }
     ] }
   },
   comparison('compare-simulated-sanger-trace', 'Compare a simulated Sanger trace with a reference',
-    'Simulate a chromatogram and align it to a reference while retaining its peaks. Supply template FASTA, a standalone ##SMS3_REFERENCE## line, then one reference FASTA record. The example has a SNP and a three-base deletion. The final reference trace map shows their alignment context; change the last step’s Output format for a differences table or alignment map.'),
+    'Simulate a chromatogram, call variants, and review its reference alignment. Supply template FASTA, a standalone ##SMS3_REFERENCE## line, then one reference FASTA record. The example has a SNP and a three-base deletion. The final alignment shows reference and original-read coordinates; choose Genotype table in the last step to inspect calls.'),
   comparison('mixed-sanger-indel-trace', 'Inspect a mixed Sanger indel trace',
-    'Pool two template sequences into one simulated chromatogram and compare it with a reference. Supply template FASTA records, a standalone ##SMS3_REFERENCE## line, then one reference FASTA record. The example mixes equal amounts of alleles differing by a SNP and a three-base deletion. Manual trimming retains the low-confidence mixed region. Compatible IUPAC calls can yield an empty differences table: inspect the peaks. This workflow does not resolve haplotypes.')
+    'Pool two template sequences into one simulated chromatogram and compare it with a reference. Supply template FASTA records, a standalone ##SMS3_REFERENCE## line, then one reference FASTA record. The example mixes equal amounts of alleles differing by a SNP and a three-base deletion. Genotyper reconstructs candidate haplotypes and places SNPs across the indel shift. The alignment retains original read coordinates; choose Genotype table in the last step to inspect calls.')
 ];

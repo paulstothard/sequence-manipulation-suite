@@ -1,3 +1,4 @@
+import { normalizeSangerTrimOptions } from './sanger-trimming.js';
 import { formatFastaRecord, parseSequenceInput } from "./fasta.js";
 import {
   assembleLightweightSequences,
@@ -328,7 +329,10 @@ function makeSyntheticTraceArrays(baseCalls) {
     const mainAmplitude = 380 + quality * 11;
     const secondaryAmplitude = Math.max(30, mainAmplitude * 0.08);
     const sigma = quality >= 30 ? 2.3 : 3.6;
-    for (let index = 0; index < sampleCount; index += 1) {
+    // Beyond 39 standard deviations Math.exp underflows to zero. Skipping
+    // those samples preserves the signal while avoiding a quadratic preview.
+    const radius = Math.ceil(39 * sigma);
+    for (let index = Math.max(0, call.originalTracePosition - radius - 1); index < Math.min(sampleCount, call.originalTracePosition + radius); index += 1) {
       const x = index + 1;
       const distance = x - call.originalTracePosition;
       const peak = Math.exp(-(distance * distance) / (2 * sigma * sigma));
@@ -385,7 +389,7 @@ function parseJsonSession(input) {
   };
 }
 
-function splitSangerSessionInput(input) {
+export function splitSangerSessionInput(input) {
   const text = String(input ?? "");
   let parsedSession = null;
   try {
@@ -801,13 +805,23 @@ export function parseAbifTrace(input, filename = "AB1 trace") {
   };
 }
 
-export function parseSangerTraceInput(input) {
+function validateTraceAllocation(raw, baseCalls, limits) {
+  if (baseCalls.length > (limits.maxTraceBaseCalls ?? Infinity))
+    throw new Error(`Trace exceeds ${limits.maxTraceBaseCalls.toLocaleString("en-US")} base calls.`);
+  const maximum = limits.maxTraceSamples ?? Infinity;
+  if (baseCalls.some(call => call.originalTracePosition + 20 > maximum) ||
+      SANGER_TRACE_CHANNELS.some(channel => (raw.traces?.[channel]?.length ?? 0) > maximum))
+    throw new Error(`Trace exceeds ${maximum.toLocaleString("en-US")} signal measurements per channel.`);
+}
+
+export function parseSangerTraceInput(input, limits = {}) {
   const bytes = toUint8Array(input);
   if (bytes) {
     const magic = readAscii(bytes, 0, 4);
     const raw = magic === ".scf" ? parseScfTrace(bytes) : parseAbifTrace(bytes);
     const warnings = [];
     const baseCalls = normalizeBaseCalls(raw, warnings);
+    validateTraceAllocation(raw, baseCalls, limits);
     const traceData = normalizeTraceArrays(raw, baseCalls, warnings);
     return {
       name: normalizeTraceName(raw),
@@ -840,6 +854,7 @@ export function parseSangerTraceInput(input) {
   if (baseCalls.length === 0) {
     throw new Error("The Sanger trace input did not contain base calls.");
   }
+  validateTraceAllocation(raw, baseCalls, limits);
   const traceData = normalizeTraceArrays(raw, baseCalls, warnings);
   const sampleCount = Math.max(
     traceData.sampleCount,
@@ -859,6 +874,7 @@ export function parseSangerTraceInput(input) {
 }
 
 function normalizeOptions(options = {}, baseCallCount = 0) {
+  options = normalizeSangerTrimOptions(options);
   const editBase = normalizeBase(options.editBase);
   return {
     clipStart: clampInteger(options.clipStart, 1, 1, Math.max(1, baseCallCount)),
@@ -1062,7 +1078,7 @@ function makeTraceView(trace, baseCalls, options, warnings) {
 }
 
 export function prepareSangerTrace(input, options = {}) {
-  const trace = parseSangerTraceInput(input);
+  const trace = parseSangerTraceInput(input, options);
   const warnings = [...trace.warnings];
   const normalized = normalizeOptions(options, trace.baseCalls.length);
   const editedBaseCalls = applyBaseEdit(trace, normalized, warnings);
@@ -1134,6 +1150,7 @@ function parseTraceSettingsTsv(text, warnings) {
     const editPosition = Number.parseInt(record.edit_position || "", 10);
     const editBase = normalizeBase(record.edit_base || "");
     const reverseComplement = parseBooleanSetting(record.reverse_complement || record.orientation || "");
+    if (record.trim_method === 'manual') { next.trimMethod = 'manual'; next.trimMode = 'manual'; }
     if (Number.isInteger(clipStart) && clipStart > 0) next.clipStart = clipStart;
     if (Number.isInteger(clipEnd) && clipEnd >= 0) next.clipEnd = clipEnd;
     if (Number.isInteger(editPosition) && editPosition > 0) next.editPosition = editPosition;
@@ -1163,6 +1180,7 @@ export function prepareSangerTraceCollection(input, options = {}) {
   if (traceInputs.length === 0) {
     throw new Error("No Sanger trace input was provided.");
   }
+  if (options.resolveSequences && traceInputs.length > 20) throw new Error("Resolving supports at most 20 input traces.");
   if (session && traceInputs.length > maxSessionTraces) {
     warnings.push(`Sanger session contained ${traceInputs.length.toLocaleString()} trace input(s); only the first ${maxSessionTraces.toLocaleString()} were processed.`);
     traceInputs = traceInputs.slice(0, maxSessionTraces);
@@ -1174,13 +1192,15 @@ export function prepareSangerTraceCollection(input, options = {}) {
 
   const traces = traceInputs.map((traceInput, index) => {
     const result = prepareSangerTrace(traceInput, mergeTraceOptions(options, index + 1, traceSettings));
+    result.manualTrimRange = traceSettings.get(index + 1)?.trimMethod === 'manual';
     for (const warning of result.warnings) {
       warnings.push(`${result.view.record || `Trace ${index + 1}`}: ${warning}`);
     }
     return result;
   });
 
-  const reference = session ? parseReferenceInput(session.reference, warnings, options) : null;
+  if (options.task === 'assemble' && session?.reference) warnings.push('Assembly builds from the input traces. The reference in this saved input was ignored.');
+  const reference = session && options.task !== 'assemble' ? parseReferenceInput(session.reference, warnings, options) : null;
   return {
     isSession: Boolean(session),
     traces,
@@ -1309,8 +1329,8 @@ function makeEmptySangerAssembly(options) {
   };
 }
 
-export async function prepareSangerTraceSession(input, options = {}, context = {}) {
-  const collection = prepareSangerTraceCollection(input, options);
+export async function prepareSangerTraceSession(input, options = {}, context = {}, preparedCollection = null) {
+  const collection = preparedCollection ?? prepareSangerTraceCollection(input, options);
   const warnings = [...collection.warnings];
   const lineWidth = clampInteger(options.lineWidth, 60, 10, 200);
   const minOverlap = clampInteger(options.assemblyMinOverlap, 20, 6, 10000);
@@ -1421,7 +1441,8 @@ export function makeSangerTraceReport(result) {
     : null;
   const trimSummary = result.automaticTrim
     ? `modified Mott quality trim; kept bases ${result.automaticTrim.start}-${result.automaticTrim.end}`
-    : "manual clip range";
+    : view.clipStart === 1 && view.clipEnd === trace.baseCalls.length
+      ? "none; kept all bases" : "specified base range";
 
   const lines = [
     `${view.record} Sanger trace review`,
@@ -1544,7 +1565,7 @@ export function makeSangerReferenceAlignmentSvg(session, options = {}) {
   const chunkGap = 28;
   const alignmentGap = 18;
   const labelWidth = 160;
-  const coordinateWidth = 34;
+  const coordinateWidth = Math.max(34, String(Math.max(...alignments.map(a => Number(a.end_reference) || 0), 0)).length * 7 + 8);
   const left = 24;
   const sequenceLeft = left + labelWidth + coordinateWidth + 12;
   const usableChars = Math.max(24, Math.min(requestedLineWidth, Math.floor((width - sequenceLeft - coordinateWidth - 44) / cell)));
@@ -1555,13 +1576,13 @@ export function makeSangerReferenceAlignmentSvg(session, options = {}) {
     for (let offset = 0; offset < alignment.reference_aligned.length; offset += usableChars) {
       chunks.push({ offset, end: Math.min(alignment.reference_aligned.length, offset + usableChars) });
     }
-    const height = 28 + chunks.length * (rowHeight * 3 + chunkGap) - chunkGap + alignmentGap;
+    const height = 18 + (session.resolution ? 18 : 0) + chunks.length * (rowHeight * 3 + chunkGap) + alignmentGap;
     alignmentBlocks.push({ alignment, chunks, height });
     bodyHeight += height;
   }
   const height = alignments.length === 0
     ? 190
-    : 92 + bodyHeight + 42;
+    : 82 + bodyHeight + 24;
   const parts = [
     `<svg class="sanger-svg" xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Sanger reference alignment">`,
     SANGER_SVG_TEXT_STYLE,
@@ -1576,12 +1597,12 @@ export function makeSangerReferenceAlignmentSvg(session, options = {}) {
     ".sanger-align-footer{font:11px system-ui,sans-serif;fill:#64748b}",
     "</style>",
     `<rect width="${width}" height="${height}" fill="#ffffff"/>`,
-    `<text class="sanger-align-title" x="${left}" y="28">Sanger reference alignment</text>`,
-    `<text class="sanger-align-subtitle" x="${left}" y="50">Reference: ${escapeXml(session.reference?.title ?? "none supplied")}</text>`
+    `<text class="sanger-align-title" x="${left}" y="28">${escapeXml(session.alignmentTitle ?? 'Sanger reference alignment')}</text>`,
+    `<text class="sanger-align-subtitle" x="${left}" y="50"><title>${escapeXml(session.reference?.title ?? '')}</title>Reference: ${escapeXml(compactMiddle(session.reference?.title ?? "none supplied", 110))}</text>`
   ];
   if (alignments.length === 0) {
     parts.push(`<rect x="${left}" y="74" width="${width - left * 2}" height="70" rx="6" fill="#f8fafc" stroke="#d8e1ea"/>`);
-    parts.push(`<text class="sanger-align-subtitle" x="${left + 16}" y="116">No reference sequence was supplied, so no alignment view was generated.</text>`);
+    parts.push(`<text class="sanger-align-subtitle" x="${left + 16}" y="116">${session.reference ? 'No usable trace/reference alignments. See the trace warnings for details.' : 'No reference sequence was supplied, so no alignment view was generated.'}</text>`);
     parts.push("</svg>");
     return parts.join("");
   }
@@ -1591,8 +1612,12 @@ export function makeSangerReferenceAlignmentSvg(session, options = {}) {
     const { alignment, chunks } = block;
     let referencePosition = Number(alignment.start_reference) || 1;
     let queryPosition = Number(alignment.start_query) || 1;
-    parts.push(`<text class="sanger-align-section" x="${left}" y="${y}">${escapeXml(alignment.query_type)} ${escapeXml(alignment.query_name)} (${escapeXml(alignment.orientation)}, ${formatIdentityPercent(alignment.identity_percent)}% identity)</text>`);
+    parts.push(`<text class="sanger-align-section" x="${left}" y="${y}">${escapeXml(session.resolution ? "" : alignment.query_type)} ${escapeXml(alignment.query_name)} (${escapeXml(alignment.orientation)}, ${formatIdentityPercent(alignment.identity_percent)}% identity)</text>`);
     y += 18;
+    if (session.resolution) {
+      parts.push(`<text class="sanger-align-label" x="${left}" y="${y}"><title>${escapeXml(alignment.source_name)}</title>Source: ${escapeXml(compactMiddle(alignment.source_name, 90))}; original orientation: ${escapeXml(alignment.source_orientation)}</text>`);
+      y += 18;
+    }
     for (const chunk of chunks) {
       const { offset, end } = chunk;
       const referenceChunk = alignment.reference_aligned.slice(offset, end);
@@ -1602,8 +1627,9 @@ export function makeSangerReferenceAlignmentSvg(session, options = {}) {
       const queryCount = queryChunk.replace(/-/g, "").length;
       const referenceStart = referenceCount > 0 ? referencePosition : "";
       const referenceEnd = referenceCount > 0 ? referencePosition + referenceCount - 1 : "";
-      const queryStart = queryCount > 0 ? queryPosition : "";
-      const queryEnd = queryCount > 0 ? queryPosition + queryCount - 1 : "";
+      const queryCoordinateFor = position => alignment.query_source_positions?.[position - 1]?.readPosition ?? position;
+      const queryStart = queryCount > 0 ? queryCoordinateFor(queryPosition) : "";
+      const queryEnd = queryCount > 0 ? queryCoordinateFor(queryPosition + queryCount - 1) : "";
       const rowTop = y;
       const referenceY = rowTop + 9;
       const markerY = rowTop + rowHeight + 9;
@@ -1627,8 +1653,9 @@ export function makeSangerReferenceAlignmentSvg(session, options = {}) {
         const stroke = relation === "gap" ? "#fecaca" : relation === "mismatch" ? "#fde68a" : "#e2e8f0";
         const marker = relation === "match" ? "|" : relation === "gap" ? " " : "*";
         const referenceCoordinate = referenceBase === "-" ? "gap" : referenceCellPosition;
-        const queryCoordinate = queryBase === "-" ? "gap" : queryCellPosition;
-        const inspectionText = `${alignment.query_name}; alignment column ${offset + index + 1}; reference ${referenceBase} at ${referenceCoordinate}; query ${queryBase} at ${queryCoordinate}; ${relation}; ${alignment.orientation}`;
+        const queryCoordinate = queryBase === "-" ? "gap" : queryCoordinateFor(queryCellPosition);
+        const signalPosition = queryBase === '-' ? null : alignment.query_source_positions?.[queryCellPosition - 1]?.signalPosition;
+        const inspectionText = `${alignment.query_name}${alignment.source_name ? `; source ${alignment.source_name}; ${alignment.phase}` : ""}; alignment column ${offset + index + 1}; reference ${referenceBase} at ${referenceCoordinate}; ${alignment.query_source_positions ? 'original read' : 'query'} ${queryBase} at ${queryCoordinate}${signalPosition ? `; signal position ${signalPosition}` : ''}; ${relation}; ${alignment.orientation}`;
         parts.push(`<rect class="sanger-align-inspection-target" data-sanger-inspection-target="" data-sms3-inspection-highlight="fill" x="${x}" y="${rowTop}" width="${cell - 1}" height="${rowHeight * 3 - 1}" fill="${fill}" stroke="${stroke}" stroke-width="0.5"><title>${escapeXml(inspectionText)}</title></rect>`);
         parts.push(sangerInspectionShadeSvg(x, rowTop, cell - 1, rowHeight * 3 - 1));
         parts.push(`<text class="sanger-align-cell" pointer-events="none" x="${x + cell / 2}" y="${referenceY}">${escapeXml(referenceBase)}</text>`);
@@ -1641,9 +1668,11 @@ export function makeSangerReferenceAlignmentSvg(session, options = {}) {
     }
     y += alignmentGap;
   }
-  const footer = session.task === "compare"
+  const footer = session.alignmentFooter ?? (session.resolution
+    ? "Reference-guided candidate haplotypes; yellow marks differences, red marks gaps. IUPAC bases retain uncertain phase."
+    : session.task === "compare"
     ? "Yellow columns mark base differences; red columns mark gaps. Each trace is locally aligned in both orientations and the best-scoring strand is shown."
-    : "Yellow columns mark base differences; red columns mark gaps. Component traces and consensus contigs are aligned independently to the reference.";
+    : "Yellow columns mark base differences; red columns mark gaps. Component traces and consensus contigs are aligned independently to the reference.");
   parts.push(`<text class="sanger-align-footer" x="${left}" y="${height - 20}">${escapeXml(footer)}</text>`);
   parts.push("</svg>");
   return parts.join("");
@@ -1658,7 +1687,7 @@ function findReferenceAlignmentForDifference(session, row) {
 }
 
 function findTraceResultForDifference(session, row) {
-  if (row.query_type !== "trace" || !row.query_name) {
+  if (!["trace", "candidate haplotype"].includes(row.query_type) || !row.query_name) {
     return null;
   }
   return (session.collection?.traces ?? []).find((traceResult) =>
@@ -1742,7 +1771,7 @@ function traceEvidenceForDifference(traceResult, row, alignment) {
       markerBase: call.base,
       markerFill: CHANNEL_COLORS[call.base] ?? "#7c3aed",
       markerKind: "base",
-      label: row.orientation === "reverse-complement" && alignedBase && alignedBase !== call.base
+      label: traceResult.candidate ? `${traceResult.candidate.sourceTrace}; original base ${call.originalIndex}; observed ${call.base}; candidate ${alignedBase}` : row.orientation === "reverse-complement" && alignedBase && alignedBase !== call.base
         ? `Trace base ${call.originalIndex}; raw ${call.base}, aligned ${alignedBase}; display base ${call.displayIndex}; Q ${positionQualityLabel(call.quality)}`
         : `Trace base ${call.originalIndex}; display base ${call.displayIndex}; Q ${positionQualityLabel(call.quality)}`
     };
@@ -1764,8 +1793,8 @@ function traceEvidenceForDifference(traceResult, row, alignment) {
     ? (ordered[0].tracePosition + ordered[ordered.length - 1].tracePosition) / 2
     : ordered[0].tracePosition;
   const flankLabel = ordered.length > 1
-    ? `flanking trace bases ${ordered[0].displayIndex} and ${ordered[ordered.length - 1].displayIndex}`
-    : `nearest trace base ${ordered[0].displayIndex}`;
+    ? `flanking trace bases ${traceResult.candidate ? ordered[0].originalIndex : ordered[0].displayIndex} and ${traceResult.candidate ? ordered[ordered.length - 1].originalIndex : ordered[ordered.length - 1].displayIndex}`
+    : `nearest trace base ${traceResult.candidate ? ordered[0].originalIndex : ordered[0].displayIndex}`;
   return {
     calls: ordered,
     markerTracePosition,
@@ -1881,12 +1910,12 @@ export function makeSangerDifferenceReviewSvg(session, options = {}) {
     const contextLength = context ? Math.max(context.reference.length, context.query.length) : 0;
     const contextRight = contextX + contextLength * charWidth;
     const evidenceX = Math.min(width - 360, Math.max(left + 420, contextRight + 40));
-    const differenceInspection = `${row.query_name}; ${row.relation}; reference ${row.reference_base} at ${row.reference_position || "gap"}; query ${row.query_base} at ${row.query_position || "gap"}; alignment column ${row.alignment_column}; ${row.orientation}`;
+    const differenceInspection = `${row.query_name}${row.source_name ? `; source ${row.source_name}; ${row.phase}` : ""}; ${row.relation}; reference ${row.reference_base} at ${row.reference_position || "gap"}; query ${row.query_base} at ${row.query_position || "gap"}; alignment column ${row.alignment_column}; ${row.orientation}`;
     parts.push(`<g class="sanger-difference-card" data-index="${index + 1}"><title>${escapeXml(differenceInspection)}</title>`);
     parts.push(`<rect x="${left}" y="${y}" width="${cardWidth}" height="${cardHeight - 14}" rx="7" fill="#ffffff" stroke="#d8e1ea"/>`);
     parts.push(`<rect x="${left}" y="${y}" width="5" height="${cardHeight - 14}" rx="2.5" fill="${relationStroke}"/>`);
-    parts.push(`<text x="${left + 16}" y="${y + 22}" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#172026">${escapeXml(row.query_type)} ${escapeXml(row.query_name)}</text>`);
-    parts.push(`<text x="${left + 16}" y="${y + 42}" font-family="system-ui, sans-serif" font-size="11" fill="#475569">${escapeXml(row.orientation)}; reference ${escapeXml(row.reference_position || "gap")} ${escapeXml(row.reference_base)} vs query ${escapeXml(row.query_position || "gap")} ${escapeXml(row.query_base)}; ${escapeXml(row.relation)}; Q ${positionQualityLabel(row.quality)}</text>`);
+    parts.push(`<text x="${left + 16}" y="${y + 22}" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#172026">${escapeXml(session.resolution ? row.query_name : `${row.query_type} ${row.query_name}`)}</text>`);
+    parts.push(`<text x="${left + 16}" y="${y + 42}" font-family="system-ui, sans-serif" font-size="11" fill="#475569">${escapeXml(row.orientation)}; reference ${escapeXml(row.reference_position || "gap")} ${escapeXml(row.reference_base)} vs query ${escapeXml(row.query_position || "gap")} ${escapeXml(row.query_base)}; ${escapeXml(row.relation)}${session.resolution ? "" : `; Q ${positionQualityLabel(row.quality)}`}</text>`);
     if (context) {
       parts.push(makeHighlightedContextLine(context.reference, context.markerIndex, {
         x: contextX,
@@ -1969,7 +1998,13 @@ function assemblyConsensusInspectionText(contig, position) {
 }
 
 function traceCallEvidenceText(traceResult, read, call) {
-  if (!traceResult || !call) return "trace evidence unavailable";
+  if (!traceResult) return "trace evidence unavailable";
+  if (traceResult.candidate) {
+    const c = traceResult.candidate;
+    if (!call) return `${c.id}; source ${c.sourceTrace} (${c.sourceName}); inferred gap; ${c.phase}`;
+    return `${c.id}; source ${c.sourceTrace} (${c.sourceName}); original base ${call.originalIndex}; original signal position ${call.originalTracePosition}; source orientation ${c.orientation}; ${c.phase}`;
+  }
+  if (!call) return "trace evidence unavailable";
   const quality = call.quality === null || call.quality === undefined
     ? "quality unavailable"
     : `Q${call.quality} ${call.syntheticQuality ? "synthetic quality" : "Phred quality"}`;
@@ -2063,7 +2098,7 @@ function makeAssemblyTracePath(values, geometry) {
 }
 
 function makeAssemblyMiniTraceRowSvg({ traceResult, read, segment, chunk, sequenceLeft, cellWidth, rowTop, rowHeight }) {
-  if (!traceResult) {
+  if (!traceResult || traceResult.candidate) {
     return "";
   }
   const calls = [];
@@ -2165,9 +2200,9 @@ function referenceReadInspectionText({ traceResult, placement, reference, item }
   const call = queryPositionCallForReferenceTrace(traceResult, placement.orientation, item.queryPosition);
   const referenceBase = sangerReferenceBase(reference, item.referencePosition) ?? "N";
   const orientation = placement.orientation === "reverse-complement" ? "reverse complement" : "forward";
-  const relation = referenceBase === item.base ? "match" : "difference";
+  const relation = item.base === "-" ? "candidate deletion" : referenceBase === item.base ? "match" : "difference";
   const sourceCall = call?.base && call.base !== item.base ? `; source call ${call.base}` : "";
-  return `${placement.title}; reference ${reference.title} position ${item.referencePosition}: ${referenceBase}; query position ${item.queryPosition}; called base ${item.base}${sourceCall}; ${relation}; ${orientation}; ${traceCallEvidenceText(traceResult, placement, call)}`;
+  return `${placement.title}; reference ${reference.title} position ${item.referencePosition}: ${referenceBase}; query position ${item.queryPosition ?? "gap"}; called base ${item.base}${sourceCall}; ${relation}; ${orientation}; ${traceCallEvidenceText(traceResult, placement, call)}`;
 }
 
 function makeReferenceReadInspectionTargetsSvg({ traceResult, placement, reference, segment, chunk, sequenceLeft, cellWidth, columnTop, rowTop, rowHeight }) {
@@ -2195,7 +2230,7 @@ function makeReferenceTracePlacement(session, alignment) {
     const queryBase = alignment.query_aligned[index];
     const currentReference = referenceBase === "-" ? null : referencePosition;
     const currentQuery = queryBase === "-" ? null : queryPosition;
-    if (referenceBase !== "-" && queryBase !== "-") {
+    if (referenceBase !== "-" && (queryBase !== "-" || traceResult.candidate)) {
       mapped.push({
         alignmentColumn: index + 1,
         referencePosition: currentReference,
@@ -2277,6 +2312,7 @@ function splitReferenceMappedRuns(mapped) {
 }
 
 function makeReferenceMiniTraceRunSvg({ traceResult, placement, run, chunk, sequenceLeft, cellWidth, rowTop, rowHeight }) {
+  if (traceResult.candidate) return '';
   const calls = run
     .map((item) => ({
       ...item,
@@ -2389,7 +2425,7 @@ export function makeSangerReferenceTraceMapSvg(session, options = {}) {
   const translationFrames = selectedSangerTranslationFrames(reference?.sequence ?? "", options);
   const translationHeight = translationFrames.length * SANGER_TRANSLATION_ROW_HEIGHT;
   const placements = (session.referenceAlignments ?? [])
-    .filter((alignment) => alignment.query_type === "trace")
+    .filter((alignment) => ["trace", "candidate haplotype"].includes(alignment.query_type))
     .map((alignment) => makeReferenceTracePlacement(session, alignment))
     .filter(Boolean);
   const width = Math.max(980, Number.parseInt(options.width, 10) || 1240);
@@ -2398,7 +2434,7 @@ export function makeSangerReferenceTraceMapSvg(session, options = {}) {
   const labelWidth = 236;
   const cellWidth = Math.max(12, Math.min(18, (width - left * 2 - labelWidth) / basesPerRow));
   const referenceRowHeight = 32;
-  const readRowHeight = 58;
+  const readRowHeight = session.resolution ? 40 : 58;
   const readRowGap = 8;
   const chunkGap = 28;
   const sequenceLeft = left + labelWidth;
@@ -2430,7 +2466,7 @@ export function makeSangerReferenceTraceMapSvg(session, options = {}) {
     SANGER_SVG_TEXT_STYLE,
     `<rect width="${width}" height="${height}" fill="#ffffff"/>`,
     `<text x="${left}" y="30" font-family="system-ui, sans-serif" font-size="17" font-weight="700" fill="#172026">Sanger reference trace map</text>`,
-    `<text x="${left}" y="52" font-family="system-ui, sans-serif" font-size="12" fill="#475569">Reference context with condensed chromatogram peaks from each best-strand trace alignment.</text>`
+    `<text x="${left}" y="52" font-family="system-ui, sans-serif" font-size="12" fill="#475569">${session.resolution ? 'Reference-guided candidate haplotypes; source trace identifiers and original coordinates are available on inspection.' : 'Reference context with condensed chromatogram peaks from each best-strand trace alignment.'}</text>`
   ];
   if (chunks.length === 0) {
     parts.push(`<rect x="${left}" y="76" width="${width - left * 2}" height="72" rx="6" fill="#f8fafc" stroke="#d8e1ea"/>`);
@@ -2475,7 +2511,7 @@ export function makeSangerReferenceTraceMapSvg(session, options = {}) {
 
     for (const [placementIndex, { placement, segment }] of chunk.visiblePlacements.entries()) {
       const rowTop = y;
-      const clippedLabel = compactMiddle(placement.title, 30);
+      const clippedLabel = placement.traceResult.candidate?.id ?? compactMiddle(placement.title, 30);
       parts.push(`<g class="sanger-reference-read-row" data-sanger-read="${escapeXml(placement.title)}" data-orientation="${escapeXml(placement.orientation)}"><title>${escapeXml(`${placement.title} (${placement.orientation}; ${formatIdentityPercent(placement.identityPercent)}% identity)`)}</title>`);
       parts.push(makeAssemblyReadOrientationMarker(placement, left, rowTop + 14));
       parts.push(`<text x="${left + 20}" y="${rowTop + 18}" font-family="system-ui, sans-serif" font-size="11" fill="#334155">${escapeXml(clippedLabel)}</text>`);
@@ -2517,7 +2553,7 @@ export function makeSangerReferenceTraceMapSvg(session, options = {}) {
     }
     y += chunkGap;
   }
-  parts.push(`<text x="${left}" y="${height - 20}" font-family="system-ui, sans-serif" font-size="11" fill="#64748b">Miniature peaks show A, C, G, and T signal in reference orientation; trace insertions are marked as +base between reference columns.</text>`);
+  parts.push(`<text x="${left}" y="${height - 20}" font-family="system-ui, sans-serif" font-size="11" fill="#64748b">${session.resolution ? 'Candidate insertions appear as +base; gaps belong to the inferred alignment. Original chromatograms retain their mixed signals.' : 'Miniature peaks show A, C, G, and T signal in reference orientation; trace insertions are marked as +base between reference columns.'}</text>`);
   parts.push("</svg>");
   return parts.join("");
 }
@@ -2529,7 +2565,7 @@ export function makeSangerAssemblyTraceMapSvg(session, options = {}) {
   const labelWidth = 236;
   const cellWidth = Math.max(12, Math.min(18, (width - left * 2 - labelWidth) / basesPerRow));
   const consensusRowHeight = 32;
-  const readRowHeight = 58;
+  const readRowHeight = session.resolution ? 42 : 58;
   const peakHeight = 30;
   const chunkGap = 28;
   const contigGap = 30;
@@ -2555,31 +2591,41 @@ export function makeSangerAssemblyTraceMapSvg(session, options = {}) {
   const bodyHeight = chunks.reduce((sum, chunk) =>
     sum + 30 + consensusRowHeight + translationHeight + chunk.visibleReads.length * readRowHeight + chunkGap,
   0);
-  const height = chunks.length === 0 ? 210 : 86 + bodyHeight + contigGap + 24;
+  const sources = session.resolution ? session.sourceCollection.traces : [];
+  const firstChunkY = session.resolution ? 112 + sources.length * 18 : 86;
+  const height = chunks.length === 0 ? Math.max(210, firstChunkY + 80) : firstChunkY + bodyHeight + Math.max(1, session.assembly.contigs.length - 1) * contigGap + 24;
   const sequenceLeft = left + labelWidth;
   const parts = [
     `<svg class="sanger-svg" xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Sanger assembly trace map" data-bases-per-row="${basesPerRow}" data-base-step="${cellWidth.toFixed(2)}" data-peak-height="${peakHeight}" data-peak-style="condensed-trace" data-translation-frames="${translationFrameCount}" data-genetic-code="${escapeXml(options.geneticCode ?? 1)}">`,
     SANGER_SVG_TEXT_STYLE,
     `<rect width="${width}" height="${height}" fill="#ffffff"/>`,
     `<text x="${left}" y="30" font-family="system-ui, sans-serif" font-size="17" font-weight="700" fill="#172026">Sanger assembly trace map</text>`,
-    `<text x="${left}" y="52" font-family="system-ui, sans-serif" font-size="12" fill="#475569">Consensus context with condensed per-read chromatogram peaks at each placed sequence span.</text>`
+    `<text x="${left}" y="52" font-family="system-ui, sans-serif" font-size="12" fill="#475569">${session.resolution ? 'Contigs group overlapping compatible sequences. Base numbers restart in each contig; arrows show sequence direction.' : 'Consensus context with condensed per-read chromatogram peaks at each placed sequence span.'}</text>`
   ];
 
+  if (session.resolution) {
+    parts.push(`<text x="${left}" y="72" font-size="12" fill="#475569">Alternative haplotypes from one trace stay in separate contigs; shared reads are placed once.</text>`);
+    sources.forEach((source, i) => {
+      const label = `Trace ${i + 1}: ${source.view.record}`;
+      parts.push(`<text class="sanger-source-key" x="${left}" y="${94 + i * 18}" font-size="11" fill="#334155"><title>${escapeXml(label)}</title>${escapeXml(compactMiddle(label, 120))}</text>`);
+    });
+  }
+
   if (chunks.length === 0) {
-    parts.push(`<rect x="${left}" y="76" width="${width - left * 2}" height="72" rx="6" fill="#f8fafc" stroke="#d8e1ea"/>`);
-    parts.push(`<text x="${left + 16}" y="119" font-family="system-ui, sans-serif" font-size="13" fill="#475569">No assembled contigs were available for this trace set.</text>`);
+    parts.push(`<rect x="${left}" y="${firstChunkY - 10}" width="${width - left * 2}" height="72" rx="6" fill="#f8fafc" stroke="#d8e1ea"/>`);
+    parts.push(`<text x="${left + 16}" y="${firstChunkY + 33}" font-family="system-ui, sans-serif" font-size="13" fill="#475569">No assembled contigs were available for this trace set.</text>`);
     parts.push("</svg>");
     return parts.join("");
   }
 
-  let y = 86;
+  let y = firstChunkY;
   let previousContigId = "";
   for (const chunk of chunks) {
     if (previousContigId && previousContigId !== chunk.contig.id) {
       y += contigGap;
     }
     previousContigId = chunk.contig.id;
-    parts.push(`<text x="${left}" y="${y}" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#172026">${escapeXml(chunk.contig.title)} (${chunk.contig.sequence.length} bp; ${chunk.contig.reads.length} read${chunk.contig.reads.length === 1 ? "" : "s"})</text>`);
+    parts.push(`<text x="${left}" y="${y}" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#172026">${escapeXml(chunk.contig.title)} (${chunk.contig.sequence.length} bp; ${chunk.contig.reads.length} ${session.resolution ? `sequence${chunk.contig.reads.length === 1 ? "" : "s"}` : `read${chunk.contig.reads.length === 1 ? "" : "s"}`})</text>`);
     parts.push(`<text x="${left}" y="${y + 16}" font-family="system-ui, sans-serif" font-size="11" fill="#64748b">bases ${chunk.start}-${chunk.end}</text>`);
     y += 24;
     const consensusColumnTop = y + 1;
@@ -2614,14 +2660,20 @@ export function makeSangerAssemblyTraceMapSvg(session, options = {}) {
     for (const { read, segment } of chunk.visibleReads) {
       const traceResult = traceResults.get(read.title);
       const rowTitle = `${read.title} (${read.orientation === "reverse-complement" ? "reverse complement" : "forward"})`;
-      const clippedLabel = compactMiddle(read.title, 30);
+      const candidate = traceResult?.candidate;
+      const clippedLabel = candidate?.label ?? compactMiddle(read.title, 30);
       const rowTop = y;
       parts.push(`<g class="sanger-assembly-read-row" data-sanger-read="${escapeXml(read.title)}" data-orientation="${escapeXml(read.orientation)}"><title>${escapeXml(rowTitle)}</title>`);
       parts.push(makeAssemblyReadOrientationMarker(read, left, rowTop + 14));
       parts.push(`<text x="${left + 20}" y="${rowTop + 18}" font-family="system-ui, sans-serif" font-size="11" fill="#334155">${escapeXml(clippedLabel)}</text>`);
+      if (candidate) {
+        const firstCall = callForAssemblyReadPosition(traceResult, read, segment.segmentStart - read.start + 1);
+        const lastCall = callForAssemblyReadPosition(traceResult, read, segment.segmentEnd - read.start + 1);
+        parts.push(`<text class="sanger-source-range" x="${left + 20}" y="${rowTop + 33}" font-size="10" fill="#64748b">Original bases ${firstCall.originalIndex}–${lastCall.originalIndex}</text>`);
+      }
       const spanX = sequenceLeft + (segment.segmentStart - chunk.start) * cellWidth;
       const spanWidth = (segment.segmentEnd - segment.segmentStart + 1) * cellWidth;
-      parts.push(`<rect x="${spanX.toFixed(1)}" y="${rowTop + 2}" width="${spanWidth.toFixed(1)}" height="${readRowHeight - 8}" fill="#f8fafc" stroke="#d8e1ea"/>`);
+      parts.push(`<rect x="${spanX.toFixed(1)}" y="${rowTop + 2}" width="${spanWidth.toFixed(1)}" height="${candidate ? 24 : readRowHeight - 8}" fill="#f8fafc" stroke="#d8e1ea"/>`);
       for (let position = segment.segmentStart; position <= segment.segmentEnd; position += 1) {
         const readPosition = position - read.start + 1;
         const base = read.sequence?.[readPosition - 1] ?? "N";
@@ -2655,7 +2707,7 @@ export function makeSangerAssemblyTraceMapSvg(session, options = {}) {
     }
     y += chunkGap;
   }
-  parts.push(`<text x="${left}" y="${height - 20}" font-family="system-ui, sans-serif" font-size="11" fill="#64748b">Miniature peaks show A, C, G, and T signal in assembly orientation; base letters remain centered on their called peak positions.</text>`);
+  parts.push(`<text x="${left}" y="${height - 20}" font-family="system-ui, sans-serif" font-size="11" fill="#64748b">${session.resolution ? 'Fragments retain readable bases. Candidate haplotypes retain IUPAC uncertainty; phase between separate regions and traces remains unconfirmed.' : 'Miniature peaks show A, C, G, and T signal in assembly orientation; base letters remain centered on their called peak positions.'}</text>`);
   parts.push("</svg>");
   return parts.join("");
 }
@@ -2701,13 +2753,14 @@ export function makeSangerTraceSessionReport(session) {
     const meanQuality = qualities.length
       ? qualities.reduce((sum, quality) => sum + quality, 0) / qualities.length
       : null;
-    lines.push(`- ${result.view.record}: ${result.sequence.length} bases; orientation ${result.view.orientation}; mean quality ${meanQuality === null ? "n/a" : meanQuality.toFixed(1)}; low-quality calls ${result.lowQualityCount}`);
+    lines.push(`- ${result.view.record}: ${result.sequence.length} bases; retained original bases ${result.view.clipStart}–${result.view.clipEnd}; source orientation ${result.view.orientation}; mean quality ${meanQuality === null ? "n/a" : meanQuality.toFixed(1)}; low-quality calls ${result.lowQualityCount}`);
   }
 
   if (!isReferenceComparison) {
     lines.push("", "Consensus contigs");
     for (const contig of session.assembly.contigs) {
       lines.push(`- ${contig.title}: ${contig.sequence.length} bp from ${contig.reads.length} read(s)`);
+      for (const read of contig.reads) lines.push(`  ${read.title}: ${read.orientation}; contig bases ${read.start}–${read.end}`);
     }
   }
 
@@ -2898,7 +2951,7 @@ function makeWrappedSangerTraceSvg(result, options = {}) {
   const translationHeight = translationFrames.length * SANGER_TRANSLATION_ROW_HEIGHT;
   const rowHeight = 238 + translationHeight;
   const rowCount = Math.ceil(view.baseCalls.length / basesPerRow);
-  const height = Math.max(440, 74 + rowCount * rowHeight + 20);
+  const height = Math.max(340, 74 + rowCount * rowHeight + 20);
   const margin = { left: 70, right: 34 };
   const plotWidth = width - margin.left - margin.right;
   const plotHeight = 142;
@@ -2922,7 +2975,8 @@ function makeWrappedSangerTraceSvg(result, options = {}) {
     const plot = {
       left: margin.left,
       top: rowTop + plotTopWithinRow,
-      width: plotWidth,
+      // Keep a short final row at the same approximate density as full rows.
+      width: plotWidth * rowCalls.length / basesPerRow,
       height: plotHeight
     };
     const xForPosition = (position) =>
@@ -2988,7 +3042,7 @@ function makeWrappedSangerTraceSvg(result, options = {}) {
       clipEnd: view.clipEnd
     });
     rows.push(`<g class="sanger-trace-row" data-row="${rowIndex + 1}">
-<text x="${plot.left}" y="${rowTop + rowLabelYWithinRow}" font-size="9" font-weight="700" fill="#334155">Bases ${rowCalls[0].displayIndex}-${rowCalls[rowCalls.length - 1].displayIndex}</text>
+<text x="${plot.left}" y="${rowTop + rowLabelYWithinRow}" font-size="9" font-weight="700" fill="#334155">${options.originalCoordinates ? `Original bases ${rowCalls[0].originalIndex}-${rowCalls.at(-1).originalIndex}` : `Bases ${rowCalls[0].displayIndex}-${rowCalls.at(-1).displayIndex}`}</text>
 ${baseLabels}
 ${translationTracks}
 <rect x="${plot.left}" y="${plot.top}" width="${plot.width}" height="${plot.height}" fill="#f8fafc" stroke="#cbd5e1"/>
@@ -3011,13 +3065,16 @@ ${SANGER_SVG_TEXT_STYLE}
 <rect width="${width}" height="${height}" fill="#ffffff"/>
 <text x="${margin.left}" y="28" font-size="18" font-weight="700" fill="#0f172a">${escapeXml(view.record)}</text>
 <text x="${margin.left}" y="48" font-size="12" fill="#475569">Bases ${view.clipStart}-${view.clipEnd}; ${view.orientation}; ${traceChannelLabel(view.traceMode)}; wrapped ${basesPerRow} bases per row</text>
+${translationFrames.length ? `<text x="${margin.left}" y="66" font-size="11" fill="#475569">Translations: NCBI genetic code ${escapeXml(result.options.geneticCode)}</text>` : ""}
 ${rows.join("\n")}
 </svg>`;
 }
 
 export function makeSangerTraceSvg(result, options = {}) {
   const view = result.view;
-  if (view.baseCalls.length > 110) {
+  // An explicit row density also wraps short reads, so source evidence panels
+  // use the same scale instead of squeezing an entire read into one line.
+  if (Number(options.basesPerRow) > 0 || view.baseCalls.length > 110) {
     return makeWrappedSangerTraceSvg(result, options);
   }
   const width = Math.max(760, Number.parseInt(options.width, 10) || 980);
@@ -3152,8 +3209,8 @@ export function makeSangerCollectionTraceSvg(collection, options = {}) {
   return `<svg class="sanger-svg" xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Sanger trace set chromatogram plots">
 ${SANGER_SVG_TEXT_STYLE}
 <rect width="${width}" height="${height}" fill="#ffffff"/>
-<text x="62" y="30" font-size="20" font-weight="700" fill="#0f172a">Sanger trace set chromatogram plots</text>
-<text x="62" y="52" font-size="12" fill="#475569">${collection.traces.length} trace reads shown; each panel keeps its own clipping and orientation.</text>
+<text x="62" y="30" font-size="20" font-weight="700" fill="#0f172a">${escapeXml(options.title ?? 'Sanger trace set chromatogram plots')}</text>
+<text x="62" y="52" font-size="12" fill="#475569">${escapeXml(options.summary ?? `${collection.traces.length} trace reads shown; each panel keeps its own clipping and orientation.`)}</text>
 ${childBlocks.map((block) => block.markup).join("\n")}
 </svg>`;
 }
@@ -3175,6 +3232,19 @@ export function makeSangerTraceJson(result) {
 }
 
 export function makeSangerTraceViewData(result) {
+  // The editor needs the full signal and calls so clipping remains reversible.
+  // Static exports and analysis continue to use the cropped result.view.
+  const trace = result.trace;
+  let editorView = {
+    sampleCount: trace.sampleCount,
+    baseCalls: applyBaseEdit(trace, result.options, []).map((call, index) => ({
+      ...call, displayIndex: index + 1, orientation: "forward"
+    })),
+    traces: Object.fromEntries(SANGER_TRACE_CHANNELS.map(channel => [channel, [...trace.traces[channel]]]))
+  };
+  const reversed = result.view.orientation === "reverse-complement";
+  if (reversed) editorView = reverseComplementView(editorView);
+  const count = editorView.baseCalls.length;
   return {
     viewerType: "sanger-trace-viewer",
     record: result.view.record,
@@ -3182,16 +3252,14 @@ export function makeSangerTraceViewData(result) {
     sourceNote: result.view.sourceNote,
     traceMode: result.view.traceMode,
     orientation: result.view.orientation,
-    clipStart: result.view.clipStart,
-    clipEnd: result.view.clipEnd,
+    clipStart: reversed ? count - result.view.clipEnd + 1 : result.view.clipStart,
+    clipEnd: reversed ? count - result.view.clipStart + 1 : result.view.clipEnd,
     lowQualityThreshold: result.options.lowQualityThreshold,
     showForwardTranslations: result.options.showForwardTranslations,
     showReverseTranslations: result.options.showReverseTranslations,
     geneticCode: result.options.geneticCode,
-    sequence: result.sequence,
-    sampleCount: result.view.sampleCount,
-    baseCalls: result.view.baseCalls.map((call) => ({ ...call })),
-    traces: Object.fromEntries(SANGER_TRACE_CHANNELS.map((channel) => [channel, [...(result.view.traces[channel] ?? [])]]))
+    sequence: editorView.baseCalls.map(call => call.base).join(""),
+    ...editorView
   };
 }
 

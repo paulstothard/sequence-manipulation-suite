@@ -1,8 +1,10 @@
+import {updateResultOptionChoices} from "./result-option-choices.js";
 import { wrapFastaText } from "../core/fasta.js";
 import { applyFixedToolLimits } from "../core/tool-limit-options.js";
 import { DISABLED_TOOL_LIMIT_IDS_OPTION } from "../core/tool-limit-policy.js";
 import { EDITOR_TOOLS } from "./editor-session.js";
 import { createTableInputPreview } from "./table-input-preview-ui.js";
+import { createFilePreviewOptionsController } from "./file-preview-options-ui.js";
 
 export function getToolInputFileUiForMetadata(tool) {
   const metadata = tool?.metadata ?? {};
@@ -273,6 +275,7 @@ export function createToolInputShellController({
   helpers,
   callbacks
 }) {
+  const filePreviewOptions = createFilePreviewOptionsController({ elements, state });
   const inputPreview = createTableInputPreview({
     input: elements.sequenceInput,
     panel: elements.inputPanel,
@@ -560,6 +563,20 @@ export function createToolInputShellController({
       : inputUi.accept);
     updateDirectInputFileStatus(tool);
     updateReadLayoutMainInputVisibility(tool);
+    updateMetadataInputSource(tool);
+  }
+
+  // Generic paste/file source tabs. Preserve original File bytes in file mode.
+  function updateMetadataInputSource(tool = state.selectedTool) {
+    const source = tool?.metadata?.inputSource;
+    if (!source) return;
+    const option = flattenOptions(tool.metadata.options).find((item) => item.id === source.option);
+    const value = elements.inputPanel.querySelector(`input[name="${source.option}"]:checked`)?.value ?? option?.defaultValue;
+    elements.dropZone.hidden = true;
+    elements.fileInput.closest(".file-button").hidden = true;
+    elements.inputFileStatus.hidden = true;
+    elements.sequenceInput.hidden = value !== source.textValue;
+    filePreviewOptions.update();
   }
 
   function collectInputPlacementOptions(options = []) {
@@ -612,6 +629,11 @@ export function createToolInputShellController({
     groupRelatedInputFileOptions(container);
     elements.dropZone.before(container);
     container.addEventListener("change", (event) => {
+      updateMetadataInputSource(tool);
+      if (tool.metadata.inputSource) {
+        clearToolOutput();
+        updateResultOptionChoices(elements.toolOptions, tool.metadata, null, {reset: true});
+      }
       const modeOption = getInputModeExampleOption(tool);
       if (modeOption && (event.target?.name === modeOption.id || event.target?.id === modeOption.id)) {
         maybeLoadInputModeExampleIfSafe(tool);
@@ -629,6 +651,7 @@ export function createToolInputShellController({
       }));
     updateReadLayoutMainInputVisibility(tool);
     setTimeout(() => updateReadLayoutMainInputVisibility(tool), 0);
+    updateMetadataInputSource(tool);
   }
 
   function updateReadLayoutMainInputVisibility(tool = state.selectedTool) {
@@ -778,7 +801,8 @@ export function createToolInputShellController({
     if (isSangerTraceViewerTool()) {
       return applyFixedToolLimits(state.selectedTool.metadata, {
         ...values,
-        traceSettings: sangerTraceWorkspace.getSettings(values.traceSettings)
+        // Browser runs use the shared Trimming section for every trace.
+        traceSettings: ""
       });
     }
 
@@ -865,6 +889,13 @@ export function createToolInputShellController({
   }
 
   function loadSelectedToolExample() {
+    const source = state.selectedTool?.metadata?.inputSource;
+    if (source) {
+      const tab = elements.inputPanel.querySelector(`input[name="${source.option}"][value="${source.textValue}"]`);
+      if (tab) {
+        tab.parentElement.querySelector(`[role="tab"][data-value="${source.textValue}"]`)?.click();
+      }
+    }
     if (!hasLoadableExampleForActiveInputMode(state.selectedTool)) {
       updateInputActionButtons();
       return;
@@ -942,6 +973,7 @@ export function createToolInputShellController({
   }
 
   function updateInputActionButtons({ previewTable = false } = {}) {
+    updateMetadataInputSource();
     inputPreview.refresh({ preferPreview: previewTable });
     refreshSplitTableInputPreviews?.({ preferPreview: previewTable });
     elements.clearInput.hidden = false;
