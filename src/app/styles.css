@@ -836,7 +836,8 @@ textarea,
 }
 
 .home-start a,
-.home-citation a {
+.home-citation a,
+.home-note a {
   color: var(--accent);
   text-decoration: underline;
   text-underline-offset: 0.15em;
@@ -15007,3 +15008,36 @@ details[open] > .sequence-extractor-section-header .sequence-extractor-section-h
 .file-preview-line-text { padding-inline: 0.75rem; }
 .file-preview-line-note { color: var(--muted); padding-inline: 0.75rem; font-style: italic; }
 .file-preview-empty { padding-inline: 0.75rem; color: var(--muted); }
+
+/* The external gateways share shell controls but own explicit network actions. */
+.external-resources { padding: 1.1rem; margin-bottom: 1rem; }
+.external-fields { padding: 0; margin: 0; border: 0; min-width: 0; }
+.external-selectors, .external-inputs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.external-field { display: flex; flex-direction: column; gap: .4rem; min-width: 0; margin-bottom: .85rem; font-weight: 600; }
+.external-field input:not([type="file"]), .external-field select, .external-field textarea { width: 100%; min-width: 0; box-sizing: border-box; font-weight: 400; }
+.external-field:has(textarea) { grid-column: 1 / -1; }
+.external-field textarea { min-height: 10rem; resize: vertical; font-family: var(--font-mono, monospace); }
+.external-help, .external-privacy, .external-limits { font-size: .88rem; line-height: 1.5; font-weight: 400; }
+.external-input-actions { margin-bottom: 1rem; }
+.external-input-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .65rem; }
+.external-input-heading .external-input-actions { margin: 0; }
+.external-file-drop { margin-top: 0; padding: .8rem; font-weight: 400; }
+.external-resources > .button-row { margin: .6rem 0; }
+.external-limits { margin: .4rem 0 1rem; }
+.external-status { min-height: 1.5em; margin-bottom: 0; overflow-wrap: anywhere; }
+.external-error { color: var(--warning-color, #ac4528); }
+.external-match { display: flex; align-items: baseline; gap: .8rem; padding: .65rem 0; border-bottom: 1px solid var(--border-color, #aab2bd); }
+.external-match span { overflow-wrap: anywhere; }
+.external-match button { flex-shrink: 0; }
+@media (max-width: 700px) {
+  .external-selectors, .external-inputs { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .external-match { flex-direction: column; gap: .35rem; }
+}
+.external-field input:not([type="file"]), .external-field select, .external-field textarea {
+  border: 1px solid var(--border); border-radius: 6px; padding: .55rem .65rem;
+  background: var(--surface); color: var(--text); font: inherit; font-weight: 400;
+}
+.external-field textarea { font-family: monospace; }
+.external-help, .external-privacy { color: var(--muted-text); }
+.external-error { color: var(--warning-text); }
+.external-match { border-color: var(--border); }

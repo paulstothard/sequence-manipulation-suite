@@ -707,15 +707,18 @@ export function makeReferenceTopics(sortedTools) {
     id: "privacy-offline",
     label: "Privacy and local processing",
     title: "Privacy And Local Processing",
-    summary: "SMS3 runs normal tool analysis in this browser; sequence data is not submitted to an SMS3 server.",
+    summary: "Analysis tools process data in your browser. The Get Data and Send Data tools connect to external services when you retrieve records, run a workflow with Get Data, or choose Open or Send.",
     notes: [
-      "Sequence text is processed by the app's loaded JavaScript in your browser, and downloads are generated in the browser.",
+      "Sequence analysis, file processing, and plotting run in your browser. Their inputs are not uploaded to an SMS3 server, and downloads are generated in the browser.",
+      "The Get Data tool sends the accession, search terms, or region you enter to the selected public database when you click Retrieve or run a workflow containing a Get Data step. In workflows, the preceding output supplies the accession or region.",
+      "The Send Data tool shares the displayed data or identifiers with the selected service when you click Open or Send. For services that require manual submission, you paste or upload the data on their website. External services apply their own privacy policies.",
+      "Opening either tool, loading an example, or editing its inputs does not contact external services.",
       "SMS3 does not use cookies.",
       "The public site uses self-hosted Plausible Analytics to count aggregate page visits, tool-page visits, successful tool runs, and basic device and approximate-location statistics.",
       "Plausible does not use persistent identifiers or track visitors across websites. It does not store raw IP addresses or full user-agent strings.",
       "SMS3 analytics never includes sequences, uploaded files or filenames, input or result content, searches, option values, Workspace or workflow content, or error messages.",
       "The app uses browser storage for UI preferences and for Workspace records, saved workflows, and Markdown Notebook content that you choose to save.",
-      "Ordinary tool input, workflow input, and output text are not saved to browser storage unless you explicitly save them through Workspace, Workflows, or Markdown Notebook features."
+      "Editors and Workflows also save recovery copies automatically in this browser, including their input and document content. Other tool inputs and results are not saved automatically; you can choose to save supported data through Workspace."
     ],
     citations: [
       {

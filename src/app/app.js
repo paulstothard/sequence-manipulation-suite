@@ -1,3 +1,5 @@
+import { appendHandoffActions } from './external-handoff-ui.js';
+import { createExternalResourcesController } from './external-resources-ui.js';
 import {updateResultOptionChoices} from "./result-option-choices.js";
 import { renderVariantConsensusInput } from './variant-consensus-input-ui.js';
 import { EDITOR_TOOLS, parseEditorDocument, readEditorDocumentFile, readEditorRecovery, createEditorSession } from './editor-session.js';
@@ -769,7 +771,7 @@ function renderHomeView() {
   elements.homeBody.textContent = "";
   const summary = document.createElement("p");
   summary.className = "summary home-summary";
-  summary.textContent = `SMS3 provides ${visibleSortedTools.length.toLocaleString()} tools for DNA/RNA and protein sequence analysis, tables, plots, and scientific figures.`;
+  summary.textContent = `SMS3 provides ${visibleSortedTools.length.toLocaleString()} tools for DNA/RNA and protein sequence analysis, tables, plots, scientific figures, and access to external biological resources.`;
 
   const start = document.createElement("p");
   start.className = "home-start";
@@ -784,8 +786,24 @@ function renderHomeView() {
 
   const note = document.createElement("p");
   note.className = "home-note";
-  note.textContent =
-    "Sequences, files, inputs, and results stay in this browser. The public site uses self-hosted, cookieless Plausible Analytics for aggregate usage statistics without persistent identifiers or cross-site tracking.";
+  const getData = document.createElement("a");
+  getData.href = "#tool=get-data";
+  getData.textContent = "Get Data";
+  const sendData = document.createElement("a");
+  sendData.href = "#tool=send-data";
+  sendData.textContent = "Send Data";
+  note.append(
+    "Analysis tools process your data in this browser. The ",
+    getData,
+    " tool retrieves public records from external databases when you choose Retrieve or run a workflow containing it; the ",
+    sendData,
+    " tool shares selected data with external services when you choose Open or Send."
+  );
+
+  const analyticsNote = document.createElement("p");
+  analyticsNote.className = "home-note";
+  analyticsNote.textContent =
+    "The public site uses self-hosted, cookieless Plausible Analytics for aggregate usage statistics without persistent identifiers or cross-site tracking.";
 
   const citationNote = document.createElement("p");
   citationNote.className = "home-citation";
@@ -794,10 +812,12 @@ function renderHomeView() {
   citation.textContent = "citation page";
   citationNote.append("For information on citing SMS3, see the ", citation, ".");
 
-  elements.homeBody.append(summary, start, note, citationNote);
+  elements.homeBody.append(summary, start, note, analyticsNote, citationNote);
 }
 
 function renderActiveView() {
+  externalResourcesController?.cancel();
+  clearWorkflowHandoffs();
   elements.homeView.hidden = state.activeView !== "home";
   elements.toolView.hidden = state.activeView !== "tool";
   elements.referenceView.hidden = state.activeView !== "reference";
@@ -1068,9 +1088,22 @@ function renderWorkspaceView() {
   workspaceView.render();
 }
 
+let externalResourcesController;
+let workflowHandoffController;
+function renderExternalResources(toolId) {
+  if (!externalResourcesController) externalResourcesController = createExternalResourcesController({
+    host: document.getElementById('externalResources'),
+    displayResult: displayToolResult,
+    resetOutput: () => resetToolOutputViewer('No output yet.'),
+    isActive: id => state.activeView === 'tool' && state.selectedTool.metadata.id === id
+  });
+  externalResourcesController.render(toolId);
+}
+
 function renderSelectedTool() {
   const { metadata } = state.selectedTool;
   const isMarkdownNotebook = metadata.id === "markdown-notebook";
+  const isExternal = metadata.externalResource === true;
   const isStandaloneWorkspace = isMarkdownNotebook;
   const markdownWorkspaceState = isMarkdownNotebook ? readMarkdownWorkspaceState() : null;
   elements.toolCategory.textContent = metadata.category;
@@ -1080,8 +1113,10 @@ function renderSelectedTool() {
   elements.runTool.textContent = getRunButtonLabel(state.selectedTool);
   elements.toolTags.textContent = "";
   const inputRequired = toolRequiresInput(state.selectedTool);
-  elements.editorGrid.hidden = isStandaloneWorkspace;
-  elements.resultPanel.hidden = isStandaloneWorkspace;
+  elements.editorGrid.hidden = isStandaloneWorkspace || isExternal;
+  document.getElementById('externalResources').hidden = !isExternal;
+  if (isExternal) renderExternalResources(metadata.id);
+  elements.resultPanel.hidden = isStandaloneWorkspace || metadata.id === 'send-data';
   elements.markdownWorkspace.hidden = !isStandaloneWorkspace;
   if (!isStandaloneWorkspace) {
     elements.markdownWorkspace.textContent = "";
@@ -1095,9 +1130,9 @@ function renderSelectedTool() {
   elements.optionsPanel.classList.toggle("pcr-primer-design-options", metadata.id === PCR_PRIMER_DESIGN_TOOL_ID);
   renderSplitInputPanel(state.selectedTool);
   updateInputFileUi(state.selectedTool);
-  renderToolOptions(metadata.options ?? []);
+  renderToolOptions(isExternal ? [] : metadata.options ?? []);
   renderInputPlacementOptions(state.selectedTool);
-  wireDependentToolOptions(metadata.options ?? []);
+  wireDependentToolOptions(isExternal ? [] : metadata.options ?? []);
   updateSamBamInputModeUi();
   updateVcfInputModeUi();
   updateAlignmentViewerInputUi();
@@ -5165,7 +5200,14 @@ async function deleteSavedWorkflowFromLibrary(...args) {
   return workflowBuilder.deleteSavedWorkflowFromLibrary(...args);
 }
 
+function clearWorkflowHandoffs() {
+  workflowHandoffController?.abort();
+  workflowHandoffController = null;
+  elements.workflowMessages.querySelectorAll('.workflow-handoff').forEach(panel => panel.remove());
+}
+
 function clearWorkflowOutput() {
+  clearWorkflowHandoffs();
   state.workflowRunSummary = null;
   elements.workflowOutput.value = "";
   elements.workflowOutput.dataset.rawOutput = "";
@@ -5272,6 +5314,7 @@ function cancelSelectedWorkflowRun() {
 }
 
 function retireWorkflowRun() {
+  clearWorkflowHandoffs();
   const run = state.workflowRun;
   if (!run) {
     return;
@@ -5601,6 +5644,8 @@ async function runAppTool(tool, input, options = {}, context = {}) {
   if (signal?.aborted) {
     throw makeRunAbortError();
   }
+  // Retrieval is bounded asynchronous I/O; keep its shared browser rate limiter and AbortSignal.
+  if (tool.metadata.id === "get-data") return tool.run(input, options, context);
   const run = toolWorkerClient.runTool({
     toolId: tool.metadata.id,
     input,
@@ -5706,7 +5751,7 @@ async function runSelectedWorkflow() {
       stepCount: result.steps.length
     };
     renderWorkflowView();
-    const hasWorkflowVisual = Boolean(formatted.filePreview || formatted.svg || formatted.viewer || formatted.figure || formatted.proteinFigure || formatted.sequenceLogo || formatted.sequenceExtractor || formatted.treeViewer || formatted.plateLayout);
+    const hasWorkflowVisual = Boolean(formatted.handoff || formatted.filePreview || formatted.svg || formatted.viewer || formatted.figure || formatted.proteinFigure || formatted.sequenceLogo || formatted.sequenceExtractor || formatted.treeViewer || formatted.plateLayout);
     elements.workflowOutput.value = formatted.text;
     elements.workflowOutput.dataset.rawOutput = formatted.rawText;
     elements.workflowOutput.dataset.filename = formatted.filename ?? "sms3-workflow-output.txt";
@@ -5732,12 +5777,18 @@ async function runSelectedWorkflow() {
     elements.workflowOutput.hidden = Boolean(formatted.tableStream || hasWorkflowVisual);
     setOutputSearchRowVisible("workflow", Boolean(formatted.tableStream || (!hasWorkflowVisual && formatted.text)));
     updateOutputActions("workflow", {
-      hidden: Boolean(formatted.filePreview || formatted.tableStream || formatted.plateLayout || formatted.proteinFigure || formatted.sequenceLogo),
+      hidden: Boolean(formatted.handoff || formatted.filePreview || formatted.tableStream || formatted.plateLayout || formatted.proteinFigure || formatted.sequenceLogo),
       mimeType: formatted.mimeType,
       label: formatted.outputLabel
     });
     elements.workflowMessages.textContent = "";
     renderWorkflowStepInspector(result, workflow);
+    workflowHandoffController = new AbortController();
+    const handoffs = result.steps.flatMap((step, index) => {
+      const plans = step.result?.handoff ? [step.result.handoff] : (step.result?.mappedResults ?? []).flatMap(item => item.handoff ? [item.handoff] : []);
+      return plans.map((plan, itemIndex) => ({ plan, title: `Step ${index + 1}: Send Data${plans.length > 1 ? ` · Record ${itemIndex + 1}` : ''}` }));
+    });
+    for (const { plan, title } of handoffs) appendHandoffActions(elements.workflowMessages, plan, workflowHandoffController.signal, handoffs.length > 1 ? title : '');
     addWorkflowMessage(`Ran ${pluralize(result.steps.length, "step")}.`);
     appendOutputDetails(elements.workflowMessages, getWorkflowOutputDetails(result, formatted));
     appendWorkflowWorkspacePromotionActions(elements.workflowMessages, result, workflow);

@@ -638,6 +638,17 @@ export function createWorkspaceViewController({
     copyButton.textContent = "Copy sequence";
     copyButton.addEventListener("click", () => copyText(sequence.sequence || "", `Copied "${sequence.name}" sequence.`));
     managementButtons.append(duplicateButton, exportButton, copyButton);
+    if (sequence.sourceRecord?.text) {
+      const originalButton = document.createElement('button');
+      originalButton.type = 'button';
+      originalButton.textContent = 'Download original record';
+      originalButton.addEventListener('click', () => downloadText(
+        sequence.sourceRecord.filename || 'original-record.txt',
+        sequence.sourceRecord.text,
+        sequence.sourceRecord.mimeType || 'text/plain;charset=utf-8'
+      ));
+      managementButtons.append(originalButton);
+    }
     const managementNote = document.createElement("p");
     managementNote.className = "workspace-muted-note";
     managementNote.textContent = featureLayers.length > 0

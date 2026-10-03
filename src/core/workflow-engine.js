@@ -1013,6 +1013,11 @@ export function validateWorkflowDefinition(workflow, options = {}) {
         return;
       }
 
+      if (tool.metadata.workflow?.enabled === false) {
+        errors.push(`${tool.metadata.name} requires an explicit action in its tool page and cannot run in a workflow.`);
+        return;
+      }
+
       const inputOutput = getBoundInput({ ...step, id: stepId });
       if (inputOutput && step.type === "tool") {
         const compatible = (tool.metadata.workflow?.inputs ?? []).some((input) =>
@@ -1152,7 +1157,7 @@ export async function runWorkflow(workflow, options = {}) {
   const steps = workflow?.steps ?? [];
   const context = {
     toolMap: makeToolMap(options.tools ?? []),
-    runTool: options.runTool ?? ((tool, input, toolOptions) => tool.run(input, toolOptions)),
+    runTool: options.runTool ?? ((tool, input, toolOptions, context) => tool.run(input, toolOptions, context)),
     signal: options.signal,
     onStepStart: options.onStepStart ?? (() => {}),
     totalSteps: steps.length,

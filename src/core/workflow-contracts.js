@@ -72,7 +72,7 @@ export function isWorkflowStreamCompatible(output, input) {
 }
 
 export function getCompatibleWorkflowInputs(output, tools = []) {
-  return tools.flatMap((tool) =>
+  return tools.filter(tool => tool.metadata.workflow?.enabled !== false).flatMap((tool) =>
     (tool.metadata.workflow?.inputs ?? [])
       .filter((input) => isWorkflowStreamCompatible(output, input))
       .map((input) => ({

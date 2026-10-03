@@ -21,7 +21,10 @@ function flattenOptions(options = []) {
 
 // Explicit output-format contracts share the tool's dependent choice rules.
 export function getAvailableToolWorkflowOutputs(metadata, optionValues = {}) {
-  const outputs = metadata?.workflow?.outputs ?? [];
+  const outputs = (metadata?.workflow?.outputs ?? []).map(output =>
+    output.kind === 'viewer' && output.viewerType === 'dna-sequence-viewer' && optionValues.outputFormat === 'interactive-circular-viewer'
+      ? { ...output, layout: 'circular' } : output
+  );
   const options = flattenOptions(metadata?.options);
   const outputFormat = options.find((option) => option.id === "outputFormat");
   if (!outputFormat?.dependsOn) return outputs;

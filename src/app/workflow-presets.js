@@ -1,7 +1,9 @@
+import { externalWorkflowPresets } from './workflow-external-presets.js';
 import { labWorkflowPresets } from "./workflow-lab-presets.js";
 import { sangerWorkflowPresets } from "./workflow-sanger-presets.js";
 
 const WORKFLOW_EXAMPLE_LOADERS = {
+  'human-hbb-cds': async () => (await import('../examples/workflow-phylogeny-examples.js')).workflowDnaFamilyExample.split(/\n(?=>)/)[0],
   ...Object.fromEntries(sangerWorkflowPresets.map(({ id }) => [id, async () => (await import("../examples/workflow-lab-examples.js")).sangerWorkflowExamples[id]])),
   ...Object.fromEntries([
     ["haplotype-restriction-gel", "haplotypeRestrictionExample"],
@@ -381,7 +383,7 @@ export const workflowPresets = [
   {
     id: "annotated-record-restriction-viewer",
     name: "Annotated record to restriction viewer",
-    summary: "Extract the nucleotide sequence from a flatfile record, add common restriction-site tracks, and open a linear DNA sequence viewer.",
+    summary: "Extract the nucleotide sequence from a flatfile record, add common restriction-site tracks, and open a circular DNA sequence viewer.",
     example: `LOCUS       VIEWDEMO                 180 bp    DNA     circular SYN 01-JAN-2026
 DEFINITION  Synthetic viewer workflow demo record.
 ACCESSION   VIEWDEMO
@@ -796,6 +798,7 @@ ACGTRYSWKMBDHVN`,
       ]
     }
   },
+  ...externalWorkflowPresets,
   ...labWorkflowPresets,
   ...sangerWorkflowPresets
 ];

@@ -1071,7 +1071,7 @@ export function createToolOptionsController({
       }
       const choices = getFilteredChoices(option, normalized);
       if (!choices.some((choice) => choice.value === normalized[option.id])) {
-        normalized[option.id] = option.defaultValue;
+        normalized[option.id] = choices.find(choice => choice.value === option.defaultValue)?.value ?? choices[0]?.value ?? "";
       }
     }
     return normalized;

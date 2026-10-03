@@ -20,7 +20,7 @@ function normalizeFeatureItem(item = {}) {
     length: Number.isFinite(Number(item.length)) ? Number(item.length) : Math.abs(end - start) + 1,
     location: item.location ?? "",
     source: item.source ?? "",
-    ...Object.fromEntries(["editStatus", "status", "editEffect"]
+    ...Object.fromEntries(["editStatus", "status", "editEffect", "qualifiers", "annotation"]
       .filter((key) => Object.hasOwn(item, key)).map((key) => [key, item[key]]))
   };
 }

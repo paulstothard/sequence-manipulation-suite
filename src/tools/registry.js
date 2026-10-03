@@ -1,3 +1,7 @@
+import { getDataMetadata } from "./get-data/metadata.js";
+import { runGetData } from "./get-data/run.js";
+import { sendDataMetadata } from "./send-data/metadata.js";
+import { runSendData } from "./send-data/run.js";
 import { sangerChromatogramPlotMetadata } from "./sanger-chromatogram-plot/metadata.js";
 import { runSangerChromatogramPlot } from "./sanger-chromatogram-plot/run.js";
 import {fileArchivePreviewMetadata, fileArchivePreviewExample} from "./file-archive-preview/metadata.js";
@@ -2274,5 +2278,7 @@ augcaunn`
     metadata: orfFinderMetadata,
     run: runOrfFinder,
     example: orfFinderExample
-  }
+  },
+  { metadata: getDataMetadata, run: runGetData, example: 'NC_001422.1' },
+  { metadata: sendDataMetadata, run: runSendData, example: '>TP53_fragment\nMEEPQSDPSVEPPLSQETFSDLWKLLPENNVLSPLPSQAMDDLMLSPDDIEQWFTEDPGP' }
 ];

@@ -12,7 +12,8 @@ export const toolCategoryOrder = [
   "Statistics",
   "Plots",
   "Text & Notes",
-  "Random & Mutagenesis"
+  "Random & Mutagenesis",
+  "External Resources"
 ];
 
 export const toolCategorySet = new Set(toolCategoryOrder);

@@ -2,7 +2,8 @@ export const outputDescriptionConfig = {
   checksumMaxInputCharacters: 5_000_000,
   sms3Citation:
     "Stothard, P. (2000) The Sequence Manipulation Suite: JavaScript Programs for Analyzing and Formatting Protein and DNA Sequences. BioTechniques, 28(6), 1102-1104. https://doi.org/10.2144/00286ir01",
-  localProcessingNote: "SMS3 runs locally in the browser."
+  localProcessingNote: "This tool processes data locally in your browser.",
+  externalProcessingNote: "This tool connects to an external service when you choose Retrieve, Open, or Send. The service applies its own privacy policy."
 };
 
 function isFileLike(value) {
@@ -176,7 +177,7 @@ export function buildOutputDescriptionText({
   ]);
 
   appendSection(lines, "Environment", [
-    config.localProcessingNote
+    tool?.externalResource ? config.externalProcessingNote : config.localProcessingNote
   ]);
 
   return lines.join("\n");

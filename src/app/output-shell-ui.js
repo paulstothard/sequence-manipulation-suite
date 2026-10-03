@@ -1,4 +1,6 @@
 import { renderFilePreview } from './file-preview-ui.js';
+import { ToolWorkerClient } from './worker-client.js';
+import { getRetrievedWorkspaceValues } from '../core/retrieved-workspace-records.js';
 import { updateOutputSearchControls } from './output-search-ui.js';
 import { renderSangerPlotControls } from './sanger-plot-ui.js';
 import { renderTreeViewer } from "./tree-viewer-ui.js";
@@ -127,9 +129,72 @@ function renderMessages(result) {
   appendOutputDetails(elements.messages, getToolOutputDetails(result));
   appendToolDescriptionActions(elements.messages);
   appendAdditionalDownloadActions(elements.messages, result);
+  appendRetrievedWorkspacePromotionActions(elements.messages, result.streams?.primary);
   appendWorkspacePromotionActions(elements.messages, result);
   appendWorkspaceFeatureLayerPromotionActions(elements.messages, result);
   appendWarningSummary(elements.messages, result.warnings);
+}
+
+function appendRetrievedWorkspacePromotionActions(parent, value) {
+  const values = getRetrievedWorkspaceValues(value);
+  if (!values.length) return false;
+  const wrapper = document.createElement('div');
+  wrapper.className = 'message workspace-promotion';
+  const text = document.createElement('span');
+  text.textContent = values.every(item => item.workspaceImport.format === 'fasta')
+    ? 'Save retrieved sequences to use in other tools.'
+    : 'Save retrieved records and their features to use in other tools.';
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.textContent = 'Save to workspace';
+  const status = document.createElement('span');
+  status.className = 'workspace-promotion-status';
+  status.setAttribute('role', 'status');
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.textContent = 'Cancel';
+  cancel.hidden = true;
+  const workspaceLink = document.createElement('a');
+  workspaceLink.href = '#workspace=sequences';
+  workspaceLink.textContent = 'Open Workspace';
+  workspaceLink.hidden = true;
+  button.addEventListener('click', async () => {
+    button.disabled = true;
+    status.textContent = 'Preparing records…';
+    cancel.hidden = false;
+    const worker = new ToolWorkerClient();
+    let cancelled = false;
+    const stop = () => { cancelled = true; worker.terminate(); };
+    cancel.addEventListener('click', stop);
+    const observer = new MutationObserver(() => { if (!wrapper.isConnected) stop(); });
+    observer.observe(parent, { childList: true });
+    try {
+      const groups = [], warnings = [];
+      for (const item of values) {
+        const prepared = await worker.runTool({ toolId: 'workspace-import-retrieval', input: item.text, options: item.workspaceImport }).promise;
+        groups.push(...prepared.groups);
+        warnings.push(...prepared.warnings);
+      }
+      if (cancelled || !wrapper.isConnected) return;
+      cancel.hidden = true;
+      const saved = await saveWorkspaceSequenceLayerGroups(groups);
+      status.textContent = `Saved ${pluralize(saved.sequences.length, 'record')}${saved.featureLayers.length ? ` and ${pluralize(saved.featureLayers.length, 'feature layer')}` : ''} to the workspace.`;
+      workspaceLink.hidden = false;
+      appendWarningSummary(wrapper, [...new Set(warnings)]);
+      await refreshWorkspaceSequences();
+    } catch (error) {
+      status.textContent = cancelled ? 'Save cancelled.' : error?.message || 'Could not save retrieved records.';
+      button.disabled = false;
+    } finally {
+      cancel.hidden = true;
+      cancel.removeEventListener('click', stop);
+      observer.disconnect();
+      worker.terminate();
+    }
+  });
+  wrapper.append(text, button, cancel, status, workspaceLink);
+  parent.append(wrapper);
+  return true;
 }
 
 function getWorkspaceSequenceDraftsFromResult(result) {
@@ -249,6 +314,7 @@ function appendWorkspaceFeatureLayerPromotionActions(parent, result) {
 }
 
 function appendWorkflowWorkspacePromotionActions(parent, result, workflowDefinition = getActiveWorkflowDefinition()) {
+  if (appendRetrievedWorkspacePromotionActions(parent, result?.value)) return;
   const drafts = getWorkflowWorkspaceSequenceDrafts(result?.value, {
     sourceToolId: "workflow-builder",
     sourceToolName: workflowDefinition?.name ?? getSelectedWorkflowPreset().name ?? "Workflow",
