@@ -62,6 +62,7 @@ import {
 import { installCanvasVisualInspection } from "./visual-inspection.js";
 import { installCanvasPinchZoom } from "./viewer-pinch-zoom.js";
 import { calculateBaseSelectionMarker } from "./base-selection-marker.js";
+import { createFeatureZoomController, featureFocus } from "./viewer-feature-focus.js";
 
 const PLOT_LEFT = 118;
 const PLOT_RIGHT_GUTTER = 34;
@@ -199,26 +200,32 @@ function limitZoomPanFraction(pointerFraction) {
   return Math.sign(offset) * Math.min(ZOOM_LIMIT_WHEEL_PAN_MAX_FRACTION, strength * ZOOM_LIMIT_WHEEL_PAN_MAX_FRACTION);
 }
 
-export function computeLinearZoomState(state, length, pointerFraction, factor) {
+export function computeLinearZoomState(state, length, pointerFraction, factor, focus = null) {
   const current = clampLinearViewRange(state?.viewStart, state?.viewEnd, length);
   const safeLength = Math.max(1, Number(length) || 1);
   const minSpan = Math.min(safeLength, MIN_LINEAR_VIEW_SPAN);
   const oldSpan = current.viewEnd - current.viewStart;
   const zoomFactor = Number(factor);
-  const fraction = Math.max(0, Math.min(1, Number(pointerFraction)));
-  if (!Number.isFinite(zoomFactor) || zoomFactor <= 0 || !Number.isFinite(fraction)) {
+  const fraction = Math.max(0, Math.min(1, Number(focus?.fraction ?? pointerFraction)));
+  if (!Number.isFinite(zoomFactor) || zoomFactor <= 0 || !Number.isFinite(fraction) || (focus && !Number.isFinite(focus.center))) {
     return current;
   }
 
   const newSpan = Math.max(minSpan, Math.min(safeLength, oldSpan / zoomFactor));
   let nextStart;
-  if (zoomFactor > 1 && oldSpan <= minSpan + 1e-9 && Math.abs(newSpan - oldSpan) < 1e-9) {
+  if (!focus && zoomFactor > 1 && oldSpan <= minSpan + 1e-9 && Math.abs(newSpan - oldSpan) < 1e-9) {
     nextStart = current.viewStart + oldSpan * limitZoomPanFraction(fraction);
   } else {
-    const anchorBp = current.viewStart + fraction * oldSpan;
+    const anchorBp = focus?.center ?? current.viewStart + fraction * oldSpan;
     nextStart = anchorBp - fraction * newSpan;
   }
   return clampLinearViewRange(nextStart, nextStart + newSpan, safeLength);
+}
+
+export function computeFeatureFocusView(state, length, focus) {
+  const current = clampLinearViewRange(state.viewStart, state.viewEnd, length);
+  const span = Math.max(Math.min(length, MIN_LINEAR_VIEW_SPAN), Math.min(current.viewEnd - current.viewStart, focus.span + 2 * focus.flank));
+  return clampLinearViewRange(focus.center - span / 2, focus.center + span / 2, length);
 }
 
 export function shouldDrawLinearSequenceLetter(x, plotLeft, plotRight) {
@@ -948,6 +955,7 @@ function drawLinearRuler(ctx, state, layout, options = {}) {
   ctx.strokeStyle = theme?.tick || "#94a3b8";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
+  let lastLabelRight = -Infinity;
   for (const tick of getLinearRulerTicks(state)) {
     const x = bpToX(tick.centerBp, plotLeft, plotRight, state.viewStart, state.viewEnd);
     addLinearCoordinateHit(state, x, y, tick.label);
@@ -955,7 +963,12 @@ function drawLinearRuler(ctx, state, layout, options = {}) {
     ctx.moveTo(x, y - 7);
     ctx.lineTo(x, y + 7);
     ctx.stroke();
-    ctx.fillText(tick.label.toLocaleString(), x, y + (labelsAbove ? -22 : 22));
+    const label = tick.label.toLocaleString();
+    const halfWidth = ctx.measureText(label).width / 2;
+    if (x - halfWidth >= lastLabelRight + 8) {
+      ctx.fillText(label, x, y + (labelsAbove ? -22 : 22));
+      lastLabelRight = x + halfWidth;
+    }
   }
 }
 
@@ -1175,8 +1188,13 @@ function drawViewer(ctx, canvas, status, record, state) {
         const showsReadBases = !compactTrack && Array.isArray(item.alignedReadBases) && item.alignedReadBases.length > 0 &&
           pxPerBp >= ALIGNED_READ_BASE_PX_PER_BP;
         const rectHeight = showsReadBases ? 14 : defaultRectHeight;
-        const x1 = Math.max(plotLeft, bpToX(placement.start, plotLeft, plotRight, state.viewStart, state.viewEnd));
-        const x2 = Math.min(plotRight, bpToX(placement.end, plotLeft, plotRight, state.viewStart, state.viewEnd));
+        let x1 = Math.max(plotLeft, bpToX(placement.start, plotLeft, plotRight, state.viewStart, state.viewEnd));
+        let x2 = Math.min(plotRight, bpToX(placement.end, plotLeft, plotRight, state.viewStart, state.viewEnd));
+        // Keep subpixel variants visible and clickable without changing their coordinates.
+        if (track.focusOnSelect === true && x2 - x1 < 3) {
+          x1 = Math.max(plotLeft, Math.min((x1 + x2) / 2 - 1.5, plotRight - 3));
+          x2 = x1 + 3;
+        }
         const widthPx = Math.max(1, x2 - x1);
         const laneY = slotBaseY + placement.slot * rowSlotHeight;
         const itemStyle = getViewerFeatureTypeStyle(item, color);
@@ -1198,7 +1216,8 @@ function drawViewer(ctx, canvas, status, record, state) {
           parts: item.parts,
           alphabet: proteinViewer ? "protein" : "dna-rna"
         };
-        addRectHit(state, { x1, y1: laneY - hitHalfHeight, x2, y2: laneY + hitHalfHeight }, target);
+        const hitPadding = track.focusOnSelect === true ? 3 : 0;
+        addRectHit(state, { x1: Math.max(plotLeft, x1 - hitPadding), y1: laneY - hitHalfHeight, x2: Math.min(plotRight, x2 + hitPadding), y2: laneY + hitHalfHeight }, target);
         const highlighted = viewerTargetMatches(state, target);
         ctx.fillStyle = itemStyle.fill;
         ctx.strokeStyle = itemStyle.stroke;
@@ -1870,6 +1889,7 @@ function installViewer(panel, record, options = {}) {
     hiddenTrackItemTypes: new Map(),
     trackDisplayModes: new Map(Array.isArray(preserved?.trackDisplayModes) ? preserved.trackDisplayModes : [])
   };
+  const featureZoom = createFeatureZoomController(record);
   clampView(state, record.length);
   initializeViewerCompositionTracks(record, state, preserved?.composition);
   const compositionControls = createViewerCompositionControls(record, state, () => {
@@ -1877,6 +1897,7 @@ function installViewer(panel, record, options = {}) {
     scheduleResize();
   });
   const trackControls = createViewerTrackControls(record, state, () => {
+    featureZoom.release();
     state.trackLayoutCache = new WeakMap();
     scheduleResize();
   }, {
@@ -1913,11 +1934,15 @@ function installViewer(panel, record, options = {}) {
     drawViewer(ctx, canvas, status, record, state);
   }
   let resizeFrame = 0;
+  let navigationFrame = 0;
+  let suppressClick = false;
   let stopInertia = () => {};
   const inertiaTracker = createInertiaVelocityTracker();
   function cancelInertia() {
     stopInertia();
     stopInertia = () => {};
+    if (navigationFrame) cancelAnimationFrame(navigationFrame);
+    navigationFrame = 0;
   }
   function scheduleResize() {
     if (resizeFrame) return;
@@ -1926,19 +1951,23 @@ function installViewer(panel, record, options = {}) {
       resize();
     });
   }
-  function zoomAt(clientX, factor) {
+  function zoomAtFraction(pointerFraction, factor, focus = featureZoom.anchor()) {
     cancelInertia();
+    const next = computeLinearZoomState(state, record.length, pointerFraction, factor, focus);
+    state.viewStart = next.viewStart;
+    state.viewEnd = next.viewEnd;
+    resize();
+  }
+  function zoomAt(clientX, clientY, factor) {
     const rect = canvas.getBoundingClientRect();
     const { plotLeft, plotRight } = getLinearPlotBounds(rect.width);
     const x = Math.max(plotLeft, Math.min(plotRight, clientX - rect.left));
-    const pointerFraction = (x - plotLeft) / Math.max(1, plotRight - plotLeft);
-    const next = computeLinearZoomState(state, record.length, pointerFraction, factor);
-    state.viewStart = next.viewStart;
-    state.viewEnd = next.viewEnd;
-    drawViewer(ctx, canvas, status, record, state);
+    const focus = featureZoom.wheel({ x, y: clientY - rect.top, now: performance.now(), regions: state.hitRegions, viewStart: state.viewStart, viewEnd: state.viewEnd, plotLeft, plotRight });
+    zoomAtFraction((x - plotLeft) / Math.max(1, plotRight - plotLeft), factor, focus);
   }
   function panByFraction(fraction) {
     cancelInertia();
+    featureZoom.release();
     const span = state.viewEnd - state.viewStart;
     state.viewStart += span * fraction;
     state.viewEnd += span * fraction;
@@ -1984,6 +2013,12 @@ function installViewer(panel, record, options = {}) {
   }
   function zoomToTargetAnimated(target, options = {}) {
     cancelInertia();
+    const focus = featureZoom.select(target);
+    if (focus) {
+      Object.assign(state, computeFeatureFocusView(state, record.length, focus));
+      resize();
+      return;
+    }
     const range = getLinearSelectionRange(target, record);
     if (!range) return;
     const nextSpan = options.preserveZoom ? state.viewEnd - state.viewStart : targetSpan(target);
@@ -2010,9 +2045,9 @@ function installViewer(panel, record, options = {}) {
       state.viewEnd = fromEnd + (nextEnd - fromEnd) * eased;
       clampView(state, record.length);
       drawViewer(ctx, canvas, status, record, state);
-      if (t < 1) requestAnimationFrame(step);
+      navigationFrame = t < 1 ? requestAnimationFrame(step) : 0;
     }
-    requestAnimationFrame(step);
+    navigationFrame = requestAnimationFrame(step);
   }
   function makeSelectionPayload(target = state.selectedTarget, payloadOptions = {}) {
     const currentRange = getRangeState(state, record);
@@ -2040,6 +2075,7 @@ function installViewer(panel, record, options = {}) {
         copyRangeTranslation: (frame) => currentRange?.ready && !proteinViewer && copyViewerText(translateRange(getRangeForwardDna(record, currentRange), frame, getViewerGeneticCode(record, state))),
         zoomToRange: () => {
           cancelInertia();
+          featureZoom.release();
           if (!currentRange?.ready) return;
           if (currentRange.wraps) {
             state.viewStart = 0;
@@ -2150,8 +2186,15 @@ function installViewer(panel, record, options = {}) {
     };
   }
   function selectTarget(target, selectOptions = {}) {
+    cancelInertia();
     const nextTarget = target ? { ...target, key: target.key || makeTargetKey(target) } : null;
-    state.selectedTarget = nextTarget && (selectOptions.keepIfSame || state.selectedTarget?.key !== nextTarget.key) ? nextTarget : null;
+    const focus = featureFocus(record, nextTarget);
+    state.selectedTarget = nextTarget && (focus || selectOptions.keepIfSame || state.selectedTarget?.key !== nextTarget.key) ? nextTarget : null;
+    featureZoom.select(state.selectedTarget, selectOptions.pointer);
+    if (focus) {
+      inspection.hide();
+      Object.assign(state, computeFeatureFocusView(state, record.length, focus));
+    }
     const nextAnchors = selectOptions.autoRangeAnchor && nextTarget
       ? appendAutomaticRangeAnchor(state.rangeAnchors, nextTarget)
       : state.rangeAnchors;
@@ -2162,7 +2205,7 @@ function installViewer(panel, record, options = {}) {
     }
     renderSelectionPanel(selectionPanel, state.selectedTarget, selectionActions());
     if (rangeChanged) renderCurrentRange({ notify: false });
-    drawViewer(ctx, canvas, status, record, state);
+    resize();
     notifySelectionChange({ preferredSelection: getRangeState(state, record).ready ? "range" : "target" });
   }
   function notifySelectionChange(payloadOptions = {}) {
@@ -2182,6 +2225,7 @@ function installViewer(panel, record, options = {}) {
       copyTranslation: (frame) => copyViewerText(proteinViewer ? "" : translateRange(getRangeForwardDna(record, range), frame, getViewerGeneticCode(record, state))),
       zoomToRange: () => {
         cancelInertia();
+        featureZoom.release();
         if (range.wraps) {
           state.viewStart = 0;
           state.viewEnd = record.length;
@@ -2244,12 +2288,13 @@ function installViewer(panel, record, options = {}) {
   updateSearchControls(searchControls);
   renderCurrentRange();
 
-  zoomIn.addEventListener("click", () => zoomAt(canvas.getBoundingClientRect().left + canvas.getBoundingClientRect().width / 2, 1.7));
-  zoomOut.addEventListener("click", () => zoomAt(canvas.getBoundingClientRect().left + canvas.getBoundingClientRect().width / 2, 1 / 1.7));
+  zoomIn.addEventListener("click", () => zoomAtFraction(0.5, 1.7));
+  zoomOut.addEventListener("click", () => zoomAtFraction(0.5, 1 / 1.7));
   panLeft.addEventListener("click", () => panByFraction(-0.25));
   panRight.addEventListener("click", () => panByFraction(0.25));
   reset.addEventListener("click", () => {
     cancelInertia();
+    featureZoom.release();
     state.viewStart = 0;
     state.viewEnd = record.length;
     drawViewer(ctx, canvas, status, record, state);
@@ -2312,9 +2357,10 @@ function installViewer(panel, record, options = {}) {
     isInteractionSuppressed: () => state.dragging
   });
   canvas.addEventListener("click", (event) => {
-    if (state.dragging) return;
+    if (state.dragging || suppressClick) { suppressClick = false; return; }
+    const rect = canvas.getBoundingClientRect();
     selectTarget(hitTestRegions(state, event.clientX, event.clientY, canvas), {
-      autoRangeAnchor: true
+      autoRangeAnchor: true, pointer: { x: event.clientX - rect.left, y: event.clientY - rect.top }
     });
   });
   canvas.addEventListener("contextmenu", (event) => {
@@ -2330,31 +2376,43 @@ function installViewer(panel, record, options = {}) {
   });
   canvas.addEventListener("wheel", (event) => {
     event.preventDefault();
-    zoomAt(event.clientX, event.deltaY < 0 ? 1.35 : 1 / 1.35);
+    zoomAt(event.clientX, event.clientY, event.deltaY < 0 ? 1.35 : 1 / 1.35);
   }, { passive: false });
+  let pinchOrigin = null;
   const cleanupPinch = installCanvasPinchZoom(canvas, {
     onStart: () => {
       cancelInertia();
       inspection.hide();
+      featureZoom.endGesture();
+      pinchOrigin = null;
+      suppressClick = true;
     },
     onChange: ({ previous, current, factor }) => {
       const rect = canvas.getBoundingClientRect();
       const { plotLeft, plotRight } = getLinearPlotBounds(rect.width);
       const plotWidth = Math.max(1, plotRight - plotLeft);
       const fraction = Math.max(0, Math.min(1, (previous.x - rect.left - plotLeft) / plotWidth));
-      const next = computeLinearZoomState(state, record.length, fraction, factor);
-      const shift = (current.x - previous.x) / plotWidth * (next.viewEnd - next.viewStart);
+      pinchOrigin ??= previous.x;
+      if (Math.abs(current.x - pinchOrigin) > 24) featureZoom.release();
+      const focus = featureZoom.anchor();
+      const next = computeLinearZoomState(state, record.length, fraction, factor, focus);
+      const shift = focus ? 0 : (current.x - previous.x) / plotWidth * (next.viewEnd - next.viewStart);
       state.viewStart = next.viewStart - shift;
       state.viewEnd = next.viewEnd - shift;
       clampView(state, record.length);
       drawViewer(ctx, canvas, status, record, state);
-    }
+    },
+    onEnd: () => { pinchOrigin = null; }
   });
   canvas.addEventListener("mousedown", (event) => {
+    if (event.button !== 0) return;
     cancelInertia();
     inspection.hide();
+    suppressClick = false;
+    state.dragMoved = false;
     state.dragging = true;
     state.dragStartX = event.clientX;
+    state.dragStartY = event.clientY;
     state.dragLastX = event.clientX;
     state.dragStartViewStart = state.viewStart;
     state.dragStartViewEnd = state.viewEnd;
@@ -2363,10 +2421,18 @@ function installViewer(panel, record, options = {}) {
     canvas.classList.add("dragging");
   });
   const onWindowMouseMove = (event) => {
-    if (!state.dragging) return;
+    if (!state.dragging && event.target !== canvas) return;
     const rect = canvas.getBoundingClientRect();
+    if (!state.dragging) {
+      featureZoom.move(event.clientX - rect.left, event.clientY - rect.top);
+      return;
+    }
     const span = state.dragStartViewEnd - state.dragStartViewStart;
     const dx = event.clientX - state.dragStartX;
+    if (Math.hypot(dx, event.clientY - state.dragStartY) > 4) {
+      featureZoom.release();
+      state.dragMoved = true;
+    }
     state.dragLastX = event.clientX;
     const { plotLeft, plotRight } = getLinearPlotBounds(rect.width);
     const bpDelta = -dx / Math.max(1, plotRight - plotLeft) * span;
@@ -2386,6 +2452,7 @@ function installViewer(panel, record, options = {}) {
     const span = state.viewEnd - state.viewStart;
     const velocity = -inertiaTracker.velocity(performance.now()) / Math.max(1, plotRight - plotLeft) * span;
     state.dragging = false;
+    suppressClick = state.dragMoved;
     canvas.classList.remove("dragging");
     if (!allowsViewerInertia(window) || !shouldStartViewerInertia({ dragDistancePx, velocity })) return;
     stopInertia = startViewerInertia({

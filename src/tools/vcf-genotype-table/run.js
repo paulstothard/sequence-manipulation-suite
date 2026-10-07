@@ -207,6 +207,8 @@ async function makeVcfViewerData(result, options, warnings, context = {}) {
           axisLabel: "Variants",
           layout: "stacked-intervals",
           featureOpacity: 0.78,
+          focusOnSelect: true,
+          focusFlankBp: 150,
           items
         }
       ]

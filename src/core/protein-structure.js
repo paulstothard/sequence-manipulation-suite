@@ -93,11 +93,18 @@ export function detectProteinStructureFormat(input, requested = "auto") {
     return explicit;
   }
   const text = cleanInput(input);
+  // Identify mmCIF from its opening syntax, before looking for PDB records.
+  // ATOM/HETATM values and even PDB-looking multiline metadata can occur inside
+  // mmCIF; none of them should cause the whole document to use fixed PDB columns.
+  // Comments and blank lines may precede the data block. Also accept the existing
+  // headerless category/loop fragments used for atom-site inputs.
+  // https://mmcif.wwpdb.org/docs/tutorials/mechanics/pdbx-mmcif-syntax.html
+  const firstContentLine = text.match(/^[ \t]*[^#\s][^\n]*/m)?.[0].trimStart() ?? "";
+  if (/^(?:data_\S*|loop_|_[^\s.]+\.[^\s]+)(?:\s|$)/i.test(firstContentLine)) {
+    return "mmcif";
+  }
   if (/^(ATOM  |HETATM|HEADER|TITLE |COMPND|MODEL |CRYST1)/m.test(text)) {
     return "pdb";
-  }
-  if (/^data_/im.test(text) || /_atom_site\./.test(text)) {
-    return "mmcif";
   }
   return "unknown";
 }

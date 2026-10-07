@@ -42,9 +42,9 @@ export function formatsFor(type, source) {
   return [fasta, summary];
 }
 export function formatHelp(type, source, format) {
-  if (format === 'gb') return 'Complete GenBank record from NCBI: nucleotide sequence, feature annotations, qualifiers, and references, preserved as supplied by the database.';
-  if (format === 'gp') return 'Complete GenPept record from NCBI: amino acid sequence, protein feature annotations, qualifiers, and references, preserved as supplied by the database.';
-  if (format === 'embl') return 'Complete EMBL record from ENA: nucleotide sequence and its annotations, preserved as supplied by the database.';
+  if (format === 'gb') return 'Complete record: nucleotide sequence, feature annotations, qualifiers, and references from NCBI.';
+  if (format === 'gp') return 'Complete record: amino acid sequence, protein feature annotations, qualifiers, and references from NCBI.';
+  if (format === 'embl') return 'Complete record: nucleotide sequence and its annotations from ENA.';
   if (format === 'uniprot' || format === 'json') return `Complete UniProt entry ${format === 'json' ? 'in JSON' : 'in native text format'}: canonical amino acid sequence, annotations, and references. For a specific isoform sequence, choose FASTA.`;
   if (format === 'fasta') return `Sequence and FASTA header only; feature annotations are omitted.${source === 'ensembl' || type === 'region' ? ' This source provides sequence-only retrieval here.' : ''}`;
   if (format === 'summary') return source === 'ncbi' || source === 'uniprot' || type === 'structure'
@@ -52,14 +52,25 @@ export function formatHelp(type, source, format) {
     : 'A compact report with length and descriptive information. The sequence is downloaded to calculate the report, then omitted from the output.';
   return format === 'cif' ? 'Structure coordinates and metadata in mmCIF format.' : 'Structure coordinates in legacy PDB format. Use mmCIF if this entry cannot be represented as PDB.';
 }
-export function getFields(type, source) {
+export function getFields(type, source, options = {}) {
   if (type === 'region') return source === 'ucsc'
     ? [text('assembly', 'Assembly', 'hg38', 'UCSC assembly identifier; hg38 is human GRCh38.'), region()]
-    : [species(), text('assembly', 'Assembly (optional)', '', 'Ensembl coordinate-system version, for example GRCh38. Blank uses the current assembly.'), region(true), choice('strand', 'Strand', [['1', 'Forward'], ['-1', 'Reverse']])];
+    : [species(), text('assembly', 'Assembly (optional)', '', 'Ensembl coordinate-system version, for example GRCh38. Blank uses the current assembly.'), region(true), choice('strand', 'Strand', [['1', 'Forward'], ['-1', 'Reverse']], String(options.strand) === '-1' ? '-1' : '1')];
   if (type === 'structure') return [text('query', source === 'rcsb' ? 'PDB ID' : 'Protein / UniProt ID', source === 'rcsb' ? '4HHB' : 'P04637')];
-  const fields = [text('query', source === 'ncbi' && type !== 'annotated' || source === 'uniprot' ? 'Accession or search' : source === 'ensembl' ? 'Ensembl stable ID' : 'Accession', source === 'uniprot' ? 'P04637' : source === 'ensembl' ? (type === 'protein' ? 'ENSP00000269305' : 'ENST00000269305') : source === 'ena' ? 'X56734.1' : type === 'protein' ? 'NP_000537.3' : type === 'annotated' ? 'NC_001416.1' : 'NM_000546.6')];
-  if (source === 'ensembl' && type === 'nucleotide') fields.push(choice('sequenceType', 'Sequence type', [['cdna', 'cDNA (transcript ID)'], ['cds', 'Coding sequence (transcript ID)'], ['genomic', 'Genomic sequence']]));
-  if ((source === 'ncbi' && type !== 'annotated') || source === 'uniprot') fields.push(choice('queryMode', 'Find by', [['auto', 'Accession or search'], ['accession', 'Accession'], ['search', 'Database search']], 'auto', 'A search shows up to 20 matches. Refine the query to narrow larger result sets.'));
+  const searchable = (source === 'ncbi' && type !== 'annotated') || source === 'uniprot';
+  const queryMode = options.queryMode === 'search' ? 'search' : 'accession';
+  const sequenceType = ['cdna', 'cds', 'genomic'].includes(options.sequenceType) ? options.sequenceType : 'cdna';
+  const fields = searchable ? [choice('queryMode', 'Lookup method', [['accession', 'Accession'], ['search', 'Database search']], queryMode)] : [];
+  if (source === 'ensembl' && type === 'nucleotide') fields.push(choice('sequenceType', 'Sequence type', [['cdna', 'cDNA'], ['cds', 'Coding sequence'], ['genomic', 'Genomic sequence']], sequenceType));
+  if (searchable && queryMode === 'search') {
+    fields.push(text('query', 'Search query', source === 'uniprot' ? 'gene:TP53 AND organism_id:9606' : 'TP53[Gene] AND Homo sapiens[Organism]', 'Search returns up to 20 matches. Choose a record to retrieve it in the selected output format.'));
+  } else if (source === 'ensembl') {
+    const genomic = type === 'nucleotide' && sequenceType === 'genomic';
+    fields.push(text('query', type === 'protein' ? 'Ensembl protein ID' : genomic ? 'Ensembl gene or transcript ID' : 'Ensembl transcript ID', type === 'protein' ? 'ENSP00000269305' : genomic ? 'ENSG00000141510' : 'ENST00000269305'));
+  } else {
+    fields.push(text('query', source === 'uniprot' ? 'UniProt accession' : source === 'ena' ? 'ENA accession' : 'NCBI accession', source === 'uniprot' ? 'P04637' : source === 'ena' ? 'X56734.1' : type === 'protein' ? 'NP_000537.3' : type === 'annotated' ? 'NC_001416.1' : 'NM_000546.6',
+      source === 'ncbi' && type !== 'protein' ? 'Sequence or assembly accession, for example NM_000546.6 or GCF_001729705.1. Assemblies retrieve all chromosomes, plasmids, and contigs as separate records.' : ''));
+  }
   return fields;
 }
 export function sendFields(task, source) {

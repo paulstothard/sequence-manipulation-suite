@@ -1,11 +1,13 @@
 import { formatsFor, identifier, parseRegion, required, sources, url, validateSelection } from './catalog.js';
 import { formatFastaRecord, parseSequenceInput } from '../fasta.js';
 import { makeToolResult } from '../workflow.js';
+import { MAX_RESPONSE_BYTES } from './limits.js';
+import { assemblyReportUrl, readAssemblySequences, verifyAssemblyRecords } from './ncbi-assembly.js';
 
 const EUTILS = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/';
-export const MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
+export { MAX_RESPONSE_BYTES } from './limits.js';
 export const MAX_REGION_BASES = 1_000_000;
-export const retrievalHosts = new Set(['eutils.ncbi.nlm.nih.gov', 'rest.uniprot.org', 'rest.ensembl.org', 'api.genome.ucsc.edu', 'www.ebi.ac.uk', 'files.rcsb.org', 'data.rcsb.org', 'alphafold.ebi.ac.uk']);
+export const retrievalHosts = new Set(['eutils.ncbi.nlm.nih.gov', 'api.ncbi.nlm.nih.gov', 'rest.uniprot.org', 'rest.ensembl.org', 'api.genome.ucsc.edu', 'www.ebi.ac.uk', 'files.rcsb.org', 'data.rcsb.org', 'alphafold.ebi.ac.uk']);
 const accessionPattern = /^(?:[A-Z]{1,6}_?\d+(?:\.\d+)?|\d+)$/i;
 const uniprotPattern = /^(?:[OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9](?:[A-Z][A-Z0-9]{2}[0-9]){1,2})(?:-\d+)?$/i;
 export function isUniProtId(value) { return uniprotPattern.test(value); }
@@ -44,6 +46,14 @@ export function buildRetrieval(options = {}) {
   const query = required(options.query, 'an accession or query');
   plan.query = query;
   if (source === 'ncbi') {
+    if (options.queryMode !== 'search' && /^GC[AF]_/i.test(query)) {
+      if (type !== 'nucleotide') throw new Error('An assembly accession identifies a genome. Choose Nucleotide sequence to retrieve its chromosomes and contigs.');
+      if (!/^GC[AF]_\d{9}\.[1-9]\d*$/i.test(query)) throw new Error('Enter a versioned assembly accession such as GCF_001729705.1 or GCA_001729705.1.');
+      plan.query = query.toUpperCase();
+      plan.responseType = 'ncbi-assembly';
+      plan.url = assemblyReportUrl(plan.query);
+      return plan;
+    }
     const db = type === 'protein' ? 'protein' : 'nuccore';
     plan.db = db;
     const search = type !== 'annotated' && (options.queryMode === 'search' || (options.queryMode !== 'accession' && !accessionPattern.test(query)));
@@ -100,6 +110,7 @@ function wait(ms, signal) {
 function safeStorage() { try { return globalThis.localStorage; } catch { return null; } }
 export function createRetrievalClient({ fetchImpl = globalThis.fetch, intervalMs = 1100, timeoutMs = 30000, maxBytes = MAX_RESPONSE_BYTES, locks = globalThis.navigator?.locks, storage = safeStorage() } = {}) {
   let queue = Promise.resolve(), nextStart = 0, cooldown = 0;
+  const sizeError = () => new Error(`The response exceeds the ${maxBytes / 1024 / 1024} MiB retrieval limit. Request a summary or a smaller region.`);
   async function request(target, signal) {
     const address = new URL(target);
     if (address.protocol !== 'https:' || !retrievalHosts.has(address.hostname)) throw new Error('Unsupported retrieval host.');
@@ -129,7 +140,7 @@ export function createRetrievalClient({ fetchImpl = globalThis.fetch, intervalMs
           }
           throw new Error(response.status === 404 ? 'No public record was found for this identifier.' : `The service returned HTTP ${response.status}. Check the identifier or try again later.`);
         }
-        if (Number(response.headers.get('content-length')) > maxBytes) { await response.body?.cancel(); throw new Error('The response exceeds the 10 MiB retrieval limit. Request a summary or a smaller region.'); }
+        if (Number(response.headers.get('content-length')) > maxBytes) { await response.body?.cancel(); throw sizeError(); }
         const reader = response.body.getReader(), decoder = new TextDecoder(), chunks = [];
         let size = 0;
         try {
@@ -137,7 +148,7 @@ export function createRetrievalClient({ fetchImpl = globalThis.fetch, intervalMs
             const { value, done } = await reader.read();
             if (done) break;
             size += value.byteLength;
-            if (size > maxBytes) throw new Error('The response exceeds the 10 MiB retrieval limit. Request a summary or a smaller region.');
+            if (size > maxBytes) throw sizeError();
             chunks.push(decoder.decode(value, { stream: true }));
           }
           chunks.push(decoder.decode());
@@ -162,6 +173,7 @@ export function createRetrievalClient({ fetchImpl = globalThis.fetch, intervalMs
 function json(text) {
   let value;
   try { value = JSON.parse(text); } catch { throw new Error('The service returned invalid JSON. Try again later.'); }
+  if (!value || typeof value !== 'object') throw new Error('The service returned invalid JSON data. Try again later.');
   if (value.error || value.ERROR) throw new Error(`Service error: ${String(value.error || value.ERROR).slice(0, 500)}`);
   return value;
 }
@@ -201,6 +213,31 @@ function result(output, extension, plan, count = 1, warnings = []) {
 export async function retrieveData(plan, client, signal) {
   const text = await client.request(plan.url, signal);
   if (signal?.aborted) throw abortError();
+  if (plan.responseType === 'ncbi-assembly') {
+    const sequences = await readAssemblySequences(plan, json(text), client, signal);
+    const bases = sequences.reduce((sum, record) => sum + record.length, 0);
+    if (!Number.isSafeInteger(bases)) throw new Error('NCBI returned an invalid assembly length.');
+    if (plan.format === 'summary') return result(summary(sequences, plan, `Assembly: ${plan.query}\nSequences: ${sequences.length}\nTotal length (bp): ${bases}\nDatabase metadata; the full sequences were not downloaded.`), 'txt', plan, sequences.length);
+    if (bases > MAX_RESPONSE_BYTES) throw new Error('The assembly sequences exceed the 25 MiB retrieval limit. Choose Summary report or download the full assembly from NCBI Datasets.');
+    const chunks = [];
+    let bytes = 0;
+    // Bounded accession batches avoid long URLs and keep cancellation available.
+    for (let offset = 0; offset < sequences.length; offset += 100) {
+      if (signal?.aborted) throw abortError();
+      const batch = sequences.slice(offset, offset + 100);
+      const target = url(`${EUTILS}efetch.fcgi`, { db: 'nuccore', id: batch.map(record => record.id).join(','), rettype: plan.format === 'gb' ? 'gbwithparts' : 'fasta', retmode: 'text' });
+      const records = await client.request(target, signal);
+      if (signal?.aborted) throw abortError();
+      const chunk = records.endsWith('\n') ? records : `${records}\n`;
+      bytes += new TextEncoder().encode(chunk).byteLength;
+      if (bytes > MAX_RESPONSE_BYTES) throw new Error('The complete assembly exceeds the 25 MiB retrieval limit. Choose FASTA or Summary report, or download it from NCBI Datasets. No partial assembly was returned.');
+      await validateRecord(records, plan, signal);
+      verifyAssemblyRecords(records, plan.format, batch);
+      chunks.push(chunk);
+    }
+    if (signal?.aborted) throw abortError();
+    return result(chunks.join(''), plan.format, plan, sequences.length);
+  }
   if (plan.responseType === 'ncbi-search') {
     const value = json(text).esearchresult;
     if (value?.errorlist) throw new Error('NCBI could not interpret the search. Check the search expression.');

@@ -109,6 +109,7 @@ export function makeRestrictionViewerTracks(record, options = {}) {
 }
 
 function normalizeTrack(track, recordLength) {
+  const focusFlankBp = Number(track.focusFlankBp ?? 150);
   const normalized = {
     id: track.id || track.type || "track",
     type: track.type || "features",
@@ -127,6 +128,10 @@ function normalizeTrack(track, recordLength) {
     fixedSlotsByType: track.fixedSlotsByType || track.slotByType,
     allowFixedSlotOverlaps: track.allowFixedSlotOverlaps === true,
     featureOpacity: track.featureOpacity,
+    ...(track.focusOnSelect === true ? {
+      focusOnSelect: true,
+      focusFlankBp: Number.isFinite(focusFlankBp) && focusFlankBp >= 0 ? focusFlankBp : 150
+    } : {}),
     generatedBy: track.generatedBy,
     items: Array.isArray(track.items) ? track.items : []
   };

@@ -125,7 +125,7 @@ export function makeConsensusViewerData(a) {
         }
       };
     }).sort((left,right)=>left.start-right.start||left.end-right.end);
-    return {id:`consensus-${index+1}`,title:consensusDisplayLabel(a.sample,output),sequence:output.sequence,topology:'linear',showSecondStrandDefault:true,tracks:[{id:'variant-sites',type:'features',label:'Variant sites',axisLabel:'Sites on consensus',layout:'stacked-intervals',featureOpacity:0.82,items}]};
+    return {id:`consensus-${index+1}`,title:consensusDisplayLabel(a.sample,output),sequence:output.sequence,topology:'linear',showSecondStrandDefault:true,tracks:[{id:'variant-sites',type:'features',label:'Variant sites',axisLabel:'Sites on consensus',layout:'stacked-intervals',featureOpacity:0.82,focusOnSelect:true,focusFlankBp:150,items}]};
   });
   return makeDnaViewerData(records,{title:'Variant consensus sequence viewer',layout:'linear'});
 }

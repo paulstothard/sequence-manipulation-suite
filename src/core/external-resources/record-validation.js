@@ -23,7 +23,7 @@ export async function validateAnnotatedDownload(text, format, signal) {
       if (sequenceHeader && Number(sequenceHeader[1]) !== declared) fail('the sequence lengths in the record disagree.');
       sequence = sequenceHeader?.[3];
     }
-    if (!sequence) fail('the full sequence is missing; try an individual sequence accession instead of an assembly/master record.');
+    if (!sequence) fail('the full sequence is missing; try an individual sequence accession instead of a sequence-less master record.');
     const letters = sequence.replace(/[\s\d]/g, '');
     if (!Number.isSafeInteger(declared) || declared < 1 || !/^[A-Za-z*]+$/.test(letters) || letters.length !== declared) fail('the sequence is incomplete or differs from its declared length.');
     count++;

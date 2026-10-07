@@ -2,6 +2,7 @@ import { parseSequenceInput } from './fasta.js';
 import { parseFlatfileRecords } from './flatfile-records.js';
 import { sequenceStreamRecordsToWorkspaceSequences } from './workspace.js';
 import { viewerRecordToWorkspaceFeatureLayers } from './workspace-layers.js';
+import { MAX_RESPONSE_BYTES } from './external-resources/limits.js';
 
 export function getRetrievedWorkspaceValues(value) {
   if (value?.kind === 'collection') return (value.items ?? []).flatMap(getRetrievedWorkspaceValues);
@@ -61,7 +62,7 @@ function uniprotJsonRecord(text) {
 export function prepareRetrievedWorkspaceRecords(text, descriptor = {}) {
   const { format, alphabet } = descriptor;
   if (descriptor.kind !== 'retrieved-sequence' || !['dna-rna', 'protein'].includes(alphabet)) throw new Error('Unsupported Workspace import.');
-  if (new TextEncoder().encode(text).byteLength > 10 * 1024 * 1024) throw new Error('Workspace retrieval import exceeds the 10 MiB limit.');
+  if (new TextEncoder().encode(text).byteLength > MAX_RESPONSE_BYTES) throw new Error('Workspace retrieval import exceeds the 25 MiB limit.');
   const records = format === 'fasta' ? parseSequenceInput(text)
     : format === 'json' ? uniprotJsonRecord(text)
       : ['gb', 'gp', 'embl', 'uniprot'].includes(format) ? flatfileRecords(text) : [];

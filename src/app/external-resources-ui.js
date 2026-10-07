@@ -4,6 +4,7 @@ import { buildRetrieval, createRetrievalClient, retrieveData } from '../core/ext
 import { buildHandoff, MAX_HANDOFF_CHARS } from '../core/external-resources/send.js';
 import { downloadText } from './file-download.js';
 import { copyTextWithFeedback } from './copy-feedback.js';
+import { createTabbedInputWorkflowTabs } from './tabbed-input-workflow.js';
 
 const storageKey = 'sms3-external-selections-v1';
 const sequenceFiles = '.fa,.fasta,.fna,.faa,.txt';
@@ -29,7 +30,8 @@ function selectField(id, label, choices, value) {
   const control = document.createElement('select'); control.id = id; control.setAttribute('aria-label', label);
   for (const item of choices) { const option = node('option', item.label); option.value = item.value; control.append(option); }
   control.value = choices.some(item => item.value === value) ? value : choices[0].value;
-  const wrapper = node('label', label, 'external-field'); wrapper.htmlFor = id; wrapper.append(control);
+  const wrapper = node('label', label, 'external-field'); wrapper.htmlFor = id;
+  const shell = node('span', '', 'external-select-control'); shell.append(control); wrapper.append(shell);
   return { wrapper, control };
 }
 export function createExternalResourcesController({ host, displayResult, resetOutput, isActive }) {
@@ -56,6 +58,9 @@ export function createExternalResourcesController({ host, displayResult, resetOu
   function showError(error) { status.textContent = error.message || String(error); status.classList.add('external-error'); }
   function data() { return { ...snapshot(), source, type: operation, task: operation, format }; }
   function busy() { action.disabled = true; cancelButton.hidden = false; fieldset.disabled = true; status.classList.remove('external-error'); }
+  function updateRetrievalAction() {
+    if (mode === 'get') action.textContent = controls.queryMode?.value === 'search' ? 'Search' : 'Retrieve';
+  }
   async function retrieve(overrides = {}) {
     invalidate();
     const runEpoch = epoch;
@@ -65,7 +70,7 @@ export function createExternalResourcesController({ host, displayResult, resetOu
     const values = { ...data(), ...overrides };
     try {
       const plan = buildRetrieval(values); if (overrides.modelId) plan.modelId = overrides.modelId;
-      busy(); status.textContent = `Retrieving from ${sources[source]}…`;
+      busy(); status.textContent = plan.kind === 'search' ? `Searching ${sources[source]}…` : `Retrieving from ${sources[source]}…`;
       const result = await retrieveData(plan, client, signal);
       if (!current()) return;
       if (result.matches || result.models) {
@@ -114,20 +119,47 @@ export function createExternalResourcesController({ host, displayResult, resetOu
     controls = {};
     for (const field of fields) {
       let wrapper, control;
+      if (mode === 'get' && field.id === 'queryMode') {
+        control = document.createElement('input'); control.type = 'hidden'; control.value = values.queryMode;
+        controls.queryMode = control;
+        const tabs = createTabbedInputWorkflowTabs({
+          modes: field.choices.map(item => ({ ...item, ariaControls: 'external-query-panel' })),
+          selectedMode: control.value, ariaLabel: field.label,
+          onSelect: value => {
+            if (control.value === value) return;
+            control.value = value; changeGetInputMode();
+          }
+        });
+        tabs.classList.add('external-query-tabs');
+        for (const tab of tabs.querySelectorAll('[role="tab"]')) tab.id = `external-query-tab-${tab.dataset.sourceMode}`;
+        parent.append(control, tabs);
+        continue;
+      }
       if (field.type === 'select') ({ wrapper, control } = selectField(`external-${field.id}`, field.label, field.choices, values[field.id]));
       else {
-        wrapper = node(field.type === 'textarea' ? 'div' : 'label', field.type === 'textarea' ? '' : field.label, 'external-field'); control = document.createElement(field.type === 'textarea' ? 'textarea' : 'input');
-        if (field.type !== 'textarea') control.type = 'text';
+        const isGetQuery = mode === 'get' && field.id === 'query';
+        const multiline = field.type === 'textarea' || isGetQuery;
+        wrapper = node(multiline ? 'div' : 'label', multiline ? '' : field.label, 'external-field'); control = document.createElement(multiline ? 'textarea' : 'input');
+        if (!multiline) control.type = 'text';
         control.id = `external-${field.id}`; control.setAttribute('aria-label', field.label); wrapper.htmlFor = control.id;
-        control.value = values[field.id] ?? ''; control.spellcheck = false; control.autocomplete = 'off'; control.setAttribute('autocapitalize', 'off'); control.setAttribute('autocorrect', 'off'); control.setAttribute('writingsuggestions', 'false');
-        control.maxLength = field.type === 'textarea' ? MAX_HANDOFF_CHARS : field.id === 'query' ? 2000 : 500;
-        if (field.type === 'textarea') control.rows = 7;
-        if (field.type === 'textarea') { const label = node('label', field.label); label.htmlFor = control.id; wrapper.append(label); }
+        control.value = values[field.id] ?? ''; control.placeholder = field.example; control.spellcheck = false; control.autocomplete = 'off'; control.setAttribute('autocapitalize', 'off'); control.setAttribute('autocorrect', 'off'); control.setAttribute('writingsuggestions', 'false');
+        control.maxLength = field.id === 'query' ? 2000 : field.type === 'textarea' ? MAX_HANDOFF_CHARS : 500;
+        if (multiline) control.rows = isGetQuery ? values.queryMode === 'search' ? 2 : 1 : 7;
+        if (multiline) { const label = node('label', field.label); label.htmlFor = control.id; wrapper.append(label); }
         wrapper.append(control);
+      }
+      wrapper.dataset.field = field.id;
+      if (mode === 'get' && field.id === 'query') {
+        wrapper.id = 'external-query-panel';
+        if (controls.queryMode) {
+          wrapper.setAttribute('role', 'tabpanel');
+          wrapper.setAttribute('aria-labelledby', `external-query-tab-${controls.queryMode.value}`);
+        }
       }
       if (field.help) { const help = node('span', field.help, 'external-help'); help.id = `${control.id}-help`; control.setAttribute('aria-describedby', help.id); wrapper.append(help); }
       controls[field.id] = control; parent.append(wrapper);
       control.addEventListener(field.type === 'select' ? 'change' : 'input', () => {
+        if (mode === 'get' && field.id === 'sequenceType') { changeGetInputMode(); return; }
         if (field.id === 'inputMode') {
           modeDrafts.set(`${key()}:${currentInputMode}`, controls.input.value);
           currentInputMode = control.value;
@@ -137,7 +169,32 @@ export function createExternalResourcesController({ host, displayResult, resetOu
       });
     }
   }
-  let handoffNote, extras, currentInputMode, fileUpload;
+  let handoffNote, extras, currentInputMode, currentGetInputMode, fileUpload;
+  const getInputMode = () => controls.queryMode?.value ?? controls.sequenceType?.value ?? 'default';
+  function updateGetFields() {
+    fields = getFields(operation, source, snapshot());
+    for (const field of fields) {
+      const control = controls[field.id];
+      if (!control || field.type === 'select') continue;
+      control.setAttribute('aria-label', field.label);
+      control.labels[0].firstChild.textContent = field.label;
+      control.placeholder = field.example;
+      if (field.id === 'query') control.rows = controls.queryMode?.value === 'search' ? 2 : 1;
+      let help = document.getElementById(`${control.id}-help`);
+      if (field.help) {
+        if (!help) { help = node('span', '', 'external-help'); help.id = `${control.id}-help`; control.parentElement.append(help); }
+        help.textContent = field.help; control.setAttribute('aria-describedby', help.id);
+      } else { help?.remove(); control.removeAttribute('aria-describedby'); }
+    }
+    if (controls.queryMode) controls.query.parentElement.setAttribute('aria-labelledby', `external-query-tab-${controls.queryMode.value}`);
+  }
+  function changeGetInputMode() {
+    modeDrafts.set(`${key()}:query:${currentGetInputMode}`, controls.query.value);
+    currentGetInputMode = getInputMode();
+    updateGetFields();
+    controls.query.value = modeDrafts.get(`${key()}:query:${currentGetInputMode}`) ?? fields.find(field => field.id === 'query').example;
+    save(); invalidate(); updateRetrievalAction();
+  }
   function addFileInput(primary, actions) {
     const browse = node('label', '', 'file-button'), file = document.createElement('input');
     file.type = 'file'; file.id = 'external-file'; file.setAttribute('aria-label', 'Choose file');
@@ -215,18 +272,35 @@ export function createExternalResourcesController({ host, displayResult, resetOu
     operation = mode === 'get' && saved.operation === 'annotated' ? 'nucleotide' : items.some(item => item.id === saved.operation) ? saved.operation : items[0].id;
     const item = items.find(item => item.id === operation);
     source = item.sources.includes(saved.source) ? saved.source : item.sources[0];
-    fields = mode === 'get' ? getFields(operation, source) : sendFields(operation, source);
-    const values = drafts.get(key()) || { ...fieldExamples(fields), ...saved.choices };
+    const draft = drafts.get(key());
+    const choices = { ...(draft ?? saved.choices) };
+    // Session storage contains selectors only, so legacy automatic mode starts
+    // in accession mode with the matching example after a reload.
+    if (mode === 'get' && choices.queryMode === 'auto') {
+      choices.queryMode = 'accession';
+    }
+    fields = mode === 'get' ? getFields(operation, source, choices) : sendFields(operation, source);
+    const values = { ...fieldExamples(fields), ...(draft ?? {}) };
+    for (const field of fields.filter(field => field.type === 'select')) {
+      values[field.id] = field.choices.some(item => item.value === choices[field.id]) ? choices[field.id] : field.example;
+    }
     if (!drafts.has(key()) && values.inputMode) values.input = sendInputExample(operation, values.inputMode);
     currentInputMode = values.inputMode;
+    host.classList.toggle('external-get-data', mode === 'get');
     fieldset = document.createElement('fieldset'); fieldset.className = 'external-fields';
     const selectors = node('div', '', 'external-selectors');
     const op = selectField('external-operation', mode === 'get' ? 'What do you want to retrieve?' : 'What do you want to do?', items.map(item => ({ value: item.id, label: item.label })), operation);
     const provider = selectField('external-source', mode === 'get' ? 'Source' : 'Service', item.sources.map(id => ({ value: id, label: sources[id] })), source);
     selectors.append(op.wrapper, provider.wrapper); fieldset.append(selectors);
     const inputs = node('div', '', 'external-inputs'); renderFields(inputs, values); fieldset.append(inputs);
+    currentGetInputMode = getInputMode();
     const actions = node('div', '', 'button-row external-input-actions');
-    actions.append(button('Load example', () => { for (const field of fields) if (field.id !== 'inputMode') controls[field.id].value = field.example; if (controls.inputMode) controls.input.value = sendInputExample(operation, controls.inputMode.value); save(); invalidate(); updateHandoffNote(); }), button('Clear input', () => { for (const field of fields) if (field.type !== 'select') controls[field.id].value = ''; save(); invalidate(); updateHandoffNote(); }));
+    actions.append(button('Load example', () => {
+      if (mode === 'get') updateGetFields();
+      for (const field of fields) if (mode === 'get' ? field.type !== 'select' : field.id !== 'inputMode') controls[field.id].value = field.example;
+      if (controls.inputMode) controls.input.value = sendInputExample(operation, controls.inputMode.value);
+      save(); invalidate(); updateHandoffNote();
+    }), button('Clear input', () => { for (const field of fields) if (field.type !== 'select') controls[field.id].value = ''; save(); invalidate(); updateHandoffNote(); }));
     if (mode === 'send' && fields.some(f => f.type === 'textarea')) {
       addFileInput(controls.input || controls.template, actions);
     } else fieldset.append(actions);
@@ -237,12 +311,12 @@ export function createExternalResourcesController({ host, displayResult, resetOu
       const help = node('p', formatHelp(operation, source, format), 'external-help'); help.id = 'external-format-help';
       output.control.setAttribute('aria-describedby', help.id);
       output.control.addEventListener('change', () => { format = output.control.value; help.textContent = formatHelp(operation, source, format); save(); invalidate(); });
-      fieldset.append(output.wrapper);
-      fieldset.append(help);
+      const outputRow = node('div', '', 'external-output-choice');
+      outputRow.append(output.wrapper, help); fieldset.append(outputRow);
     }
-    const limits = node('details', '', 'external-limits'); limits.append(node('summary', 'Limits'), node('p', mode === 'get' ? 'Responses: 10 MiB; genomic regions: 1,000,000 bases; search results: 20 matches. Requests are paced across SMS3 tabs. Shared networks also share service rate limits.' : 'Sequence/file handoffs: 1,000,000 characters; alignment and genome inputs: at most 1,000 records. External services may apply additional limits.'));
+    const limits = node('details', '', 'external-limits'); limits.append(node('summary', 'Limits'), node('p', mode === 'get' ? 'Responses: 25 MiB total; assemblies: 1,000 sequences; genomic regions: 1,000,000 bases; search results: 20 matches. Requests are paced across SMS3 tabs. Shared networks also share service rate limits.' : 'Sequence/file handoffs: 1,000,000 characters; alignment and genome inputs: at most 1,000 records. External services may apply additional limits.'));
     fieldset.append(limits); host.append(fieldset);
-    const privacy = node('p', mode === 'get' ? 'Retrieve sends the accession, search terms, or region shown above to the selected database. Your existing SMS3 sequences and Workspace records are not sent.' : 'Open or Send shares the values shown above when prefilling a form or creating a map. For copy/upload actions, you paste or upload the data on the service’s website. Ordinary SMS3 tools remain local.', 'external-privacy');
+    const privacy = node('p', mode === 'get' ? `Only the accession, query, or region above is sent to ${sources[source]}. Your Workspace records stay local.` : 'Open or Send shares the values shown above when prefilling a form or creating a map. For copy/upload actions, you paste or upload the data on the service’s website. Ordinary SMS3 tools remain local.', 'external-privacy');
     host.append(privacy);
     handoffNote = node('p', '', 'external-help'); extras = node('div', '', 'button-row');
     action = button(mode === 'get' ? 'Retrieve' : 'Open service', () => mode === 'get' ? retrieve() : send(), 'primary-button');
@@ -254,7 +328,7 @@ export function createExternalResourcesController({ host, displayResult, resetOu
     matches = node('div', '', 'external-matches'); host.append(status, matches);
     op.control.addEventListener('change', () => { save(); preferences[mode] = { operation: op.control.value }; invalidate(); render(toolId); });
     provider.control.addEventListener('change', () => { save(); preferences[mode] = { operation, source: provider.control.value }; invalidate(); render(toolId); });
-    updateHandoffNote(); save();
+    updateHandoffNote(); updateRetrievalAction(); save();
   }
   return { render, cancel };
 }

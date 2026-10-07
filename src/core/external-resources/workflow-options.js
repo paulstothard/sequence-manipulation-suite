@@ -27,7 +27,7 @@ function auxiliaryOptions(choices, selector, fieldsFor, excluded) {
 }
 export const getDataWorkflowOptions = [
   { id: 'retrieval', type: 'select', label: 'Retrieve', defaultValue: 'nucleotide:ncbi', choices: retrieveModes,
-    help: 'The incoming output supplies one accession or a genomic region. Use the Get Data tool page to search for an accession first.' },
+    help: 'The incoming output supplies one sequence or assembly accession, or a genomic region. Use the Get Data tool page to search for an accession first.' },
   { id: 'format', type: 'select', label: 'Output format', defaultValue: 'gb', dependsOn: 'retrieval',
     choices: retrieveModes.flatMap(mode => formatsFor(mode.operation, mode.source).map(([value, label]) => ({ value, label, dependsOnValue: mode.value }))) },
   ...auxiliaryOptions(retrieveModes, 'retrieval', getFields, ['query', 'queryMode', 'region']),
