@@ -1,5 +1,6 @@
 import { openHandoff, sendHandoff } from './external-handoff-ui.js';
-import { dataTypes, tasks, sources, getFields, sendFields, fieldExamples, formatsFor, formatHelp, sendInputExample, lookupModes, isRegionLookup } from '../core/external-resources/catalog.js';
+import { dataTypes, tasks, sources, getFields, sendFields, fieldExamples, formatsFor, formatHelp, sendInputExample, lookupModes, isRegionLookup, regionProduct } from '../core/external-resources/catalog.js';
+import { regionExamples, regionExample, matchingRegionExample } from '../core/external-resources/region-examples.js';
 import { buildRetrieval, createRetrievalClient, retrieveData } from '../core/external-resources/get.js';
 import { buildHandoff, MAX_HANDOFF_CHARS } from '../core/external-resources/send.js';
 import { downloadText } from './file-download.js';
@@ -165,7 +166,8 @@ export function createExternalResourcesController({ host, displayResult, resetOu
           } else changeGetInputMode();
           return;
         }
-        if (mode === 'get' && ['regionExample', 'transcriptSelection'].includes(field.id)) updateGetFields();
+        if (mode === 'get' && field.id === 'transcriptSelection') updateGetFields();
+        closeRegionExamples();
         if (field.id === 'inputMode') {
           modeDrafts.set(`${key()}:${currentInputMode}`, controls.input.value);
           currentInputMode = control.value;
@@ -175,7 +177,35 @@ export function createExternalResourcesController({ host, displayResult, resetOu
       });
     }
   }
-  let handoffNote, extras, currentInputMode, currentGetInputMode, fileUpload;
+  let handoffNote, extras, currentInputMode, currentGetInputMode, fileUpload, regionExampleList, exampleButton;
+  function closeRegionExamples() {
+    if (!regionExampleList) return;
+    regionExampleList.hidden = true;
+    exampleButton.setAttribute('aria-expanded', 'false');
+  }
+  function createRegionExamples() {
+    const list = node('div', '', 'external-region-examples');
+    list.id = 'external-region-examples'; list.hidden = true;
+    list.setAttribute('role', 'group'); list.setAttribute('aria-label', 'Region examples');
+    list.append(node('p', 'Human GRCh38 examples. Choose one to load its assembly and coordinates; your retrieval settings are kept.', 'external-help'));
+    const choices = node('div', '', 'external-example-choices');
+    for (const row of regionExamples) {
+      const example = regionExample(source, row.id);
+      const choice = button('', () => {
+        for (const id of ['assembly', 'region', 'species']) if (controls[id]) controls[id].value = example[id];
+        save(); invalidate(); closeRegionExamples(); exampleButton.focus();
+      }, 'external-example-choice');
+      choice.setAttribute('aria-label', example.label);
+      choice.append(node('strong', example.label), node('span', `${example.region} · ${(example.end - example.start + 1).toLocaleString('en-US')} bp`),
+        node('span', regionProduct(operation, snapshot()) === 'genomic' ? example.genomicHelp : example.help, 'external-help'));
+      choices.append(choice);
+    }
+    list.append(choices);
+    list.addEventListener('keydown', event => {
+      if (event.key === 'Escape') { event.preventDefault(); closeRegionExamples(); exampleButton.focus(); }
+    });
+    return list;
+  }
   const getInputMode = () => `${controls.queryMode?.value ?? 'default'}:${controls.sequenceType?.value ?? ''}`;
   function updateGetFields() {
     fields = getFields(operation, source, snapshot());
@@ -275,7 +305,7 @@ export function createExternalResourcesController({ host, displayResult, resetOu
   }
   function render(toolId) {
     cancel(); host.replaceChildren(); mode = toolId === 'get-data' ? 'get' : 'send';
-    fileUpload = null;
+    fileUpload = null; regionExampleList = null; exampleButton = null;
     const items = mode === 'get' ? dataTypes : tasks, saved = preferences[mode] || {};
     operation = mode === 'get' && ['annotated', 'region'].includes(saved.operation) ? 'nucleotide' : items.some(item => item.id === saved.operation) ? saved.operation : items[0].id;
     const item = items.find(item => item.id === operation);
@@ -304,13 +334,25 @@ export function createExternalResourcesController({ host, displayResult, resetOu
     const inputs = node('div', '', 'external-inputs'); renderFields(inputs, values); fieldset.append(inputs);
     currentGetInputMode = getInputMode();
     const actions = node('div', '', 'button-row external-input-actions');
-    actions.append(button('Load example', () => {
+    exampleButton = button('Load example', () => {
+      if (regionExampleList) {
+        regionExampleList.hidden = !regionExampleList.hidden;
+        exampleButton.setAttribute('aria-expanded', String(!regionExampleList.hidden));
+        if (!regionExampleList.hidden) regionExampleList.querySelector('button').focus();
+        return;
+      }
       if (mode === 'get') updateGetFields();
       for (const field of fields) if (mode === 'get' ? field.type !== 'select' : field.id !== 'inputMode') controls[field.id].value = field.example;
       if (controls.inputMode) controls.input.value = sendInputExample(operation, controls.inputMode.value);
       save(); invalidate(); updateHandoffNote();
-    }), button('Clear input', () => { for (const field of fields) if (field.type !== 'select') controls[field.id].value = ''; save(); invalidate(); updateHandoffNote(); }));
-    if (mode === 'send' && fields.some(f => f.type === 'textarea')) {
+    });
+    actions.append(exampleButton, button('Clear input', () => { for (const field of fields) if (field.type !== 'select') controls[field.id].value = ''; closeRegionExamples(); save(); invalidate(); updateHandoffNote(); }));
+    if (mode === 'get' && controls.queryMode?.value === 'region') {
+      regionExampleList = createRegionExamples();
+      exampleButton.setAttribute('aria-expanded', 'false'); exampleButton.setAttribute('aria-controls', regionExampleList.id);
+      actions.classList.add('external-region-actions');
+      inputs.querySelector('#external-query-panel').prepend(actions, regionExampleList);
+    } else if (mode === 'send' && fields.some(f => f.type === 'textarea')) {
       addFileInput(controls.input || controls.template, actions);
     } else fieldset.append(actions);
     if (mode === 'get') {
@@ -319,7 +361,7 @@ export function createExternalResourcesController({ host, displayResult, resetOu
       format = output.control.value;
       const help = node('p', formatHelp(operation, source, format, values), 'external-help'); help.id = 'external-format-help';
       output.control.setAttribute('aria-describedby', help.id);
-      output.control.addEventListener('change', () => { format = output.control.value; help.textContent = formatHelp(operation, source, format, snapshot()); save(); invalidate(); });
+      output.control.addEventListener('change', () => { format = output.control.value; help.textContent = formatHelp(operation, source, format, snapshot()); closeRegionExamples(); save(); invalidate(); });
       const outputRow = node('div', '', 'external-output-choice');
       outputRow.append(output.wrapper, help); fieldset.append(outputRow);
     }
@@ -350,7 +392,9 @@ export function createExternalResourcesController({ host, displayResult, resetOu
       save();
       const nextSource = provider.control.value, nextKey = `${mode}:${operation}:${nextSource}`;
       if (mode === 'get' && controls.queryMode?.value === 'region' && lookupModes(operation, nextSource).some(([id]) => id === 'region') && !drafts.has(nextKey)) {
-        drafts.set(nextKey, { queryMode: 'region', sequenceType: controls.sequenceType?.value, transcriptSelection: controls.transcriptSelection?.value, regionExample: controls.regionExample?.value });
+        const example = regionExample(nextSource, matchingRegionExample(source, snapshot()));
+        drafts.set(nextKey, { queryMode: 'region', sequenceType: controls.sequenceType?.value, transcriptSelection: controls.transcriptSelection?.value,
+          assembly: example.assembly, region: example.region, species: example.species });
       }
       preferences[mode] = { operation, source: nextSource }; invalidate(); render(toolId);
     });

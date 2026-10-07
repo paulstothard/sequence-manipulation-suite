@@ -15083,10 +15083,18 @@ details[open] > .sequence-extractor-section-header .sequence-extractor-section-h
 .external-query-tabs, .external-get-data [data-field="query"] { grid-column: 1 / -1; }
 .external-query-tabs { margin-bottom: -.15rem; flex-wrap: nowrap; align-items: stretch; }
 .external-query-tabs .file-source-tab { flex: 0 1 auto; min-width: 0; white-space: normal; }
+.external-query-tabs .file-source-tab[aria-selected="false"] { border-bottom-color: transparent; }
 .external-input-panel { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
 .external-status { white-space: pre-line; }
 .external-get-data [data-field="query"] textarea { min-height: 2.65rem; margin-top: 0; font: inherit; font-weight: 400; line-height: 1.4; }
 .external-get-data .external-input-actions { margin: .65rem 0 1.15rem; }
+.external-get-data .external-region-actions { grid-column: 1 / -1; margin: 0; }
+.external-region-examples { grid-column: 1 / -1; }
+.external-region-examples > p { margin: 0 0 .6rem; }
+.external-example-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .6rem; }
+.external-example-choice { display: flex; flex-direction: column; gap: .3rem; padding: .7rem; text-align: left; white-space: normal; min-width: 0; }
+.external-example-choice span { overflow-wrap: anywhere; }
+.external-get-data:has(.external-region-actions) .external-output-choice { margin-top: 1rem; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .external-output-choice {
   display: grid; grid-template-columns: minmax(11rem, 18rem) minmax(0, 1fr);
   align-items: center; gap: .5rem 1.25rem;
@@ -15100,7 +15108,9 @@ details[open] > .sequence-extractor-section-header .sequence-extractor-section-h
 @media (max-width: 700px) {
   .external-get-data .external-selectors, .external-get-data .external-inputs { gap: .85rem; }
   .external-input-panel { grid-template-columns: minmax(0, 1fr); gap: .85rem; }
+  .external-example-choices { grid-template-columns: minmax(0, 1fr); }
   .external-output-choice { grid-template-columns: minmax(0, 1fr); gap: .5rem; }
+  .external-get-data:has(.external-region-actions) .external-output-choice { grid-template-columns: minmax(0, 1fr); }
   .external-get-data .external-input-actions { flex-wrap: wrap; }
 }
 @media (max-width: 400px) {

@@ -36,6 +36,12 @@ export const getDataWorkflowOptions = [
   { id: 'format', type: 'select', label: 'Output format', defaultValue: 'gb', dependsOn: 'retrieval',
     choices: retrieveModes.flatMap(mode => formatsFor(mode.operation, mode.source, mode.options).map(([value, label]) => ({ value, label, dependsOnValue: mode.value }))) },
   ...auxiliaryOptions(retrieveModes, 'retrieval', getFields, ['query', 'queryMode', 'region', 'regionExample']),
+  // New region requests use reference orientation. Keep an explicit reverse
+  // choice visible in older recipes so editing does not silently alter biology.
+  { id: 'strand', type: 'select', label: 'Saved DNA orientation', defaultValue: '1',
+    choices: [{ value: '1', label: 'Reference (+)' }, { value: '-1', label: 'Reverse complement (−)' }],
+    visibleWhen: [{ option: 'strand', value: '-1' }, { option: 'retrieval', value: regionModes.filter(mode => mode.options.sequenceType === 'genomic').map(mode => mode.value) }],
+    help: 'This saved workflow requests reverse-complement DNA. Keep its original behavior or switch to reference orientation.' },
   { id: 'modelId', type: 'text', label: 'AlphaFold model ID (optional)', defaultValue: '', visibleWhen: { option: 'retrieval', value: 'structure:alphafold' },
     help: 'Required if AlphaFold returns more than one model. Choose the model on the Get Data tool page to find its ID.' }
 ];

@@ -1,7 +1,7 @@
 import { recordParserExample } from '../../examples/record-parser-example.js';
 import { parseFlatfileRecords } from '../flatfile-records.js';
 import { formatFastaRecord } from '../fasta.js';
-import { regionExample, regionExamples } from './region-examples.js';
+import { regionExample } from './region-examples.js';
 // External endpoints and handoff references are maintained in docs/external-resources.md.
 export const sources = {
   ncbi: 'NCBI', uniprot: 'UniProt', ensembl: 'Ensembl', ucsc: 'UCSC Genome Browser',
@@ -61,7 +61,7 @@ export function formatsFor(type, source, options = {}) {
   return [fasta, summary];
 }
 export function formatHelp(type, source, format, options = {}) {
-  if (isRegionLookup(type, source, options) && regionProduct(type, options) === 'genomic' && format === 'gb') return 'Genomic DNA and all NCBI feature annotations for this interval, ready for the Linear DNA Sequence Viewer or Workspace. Feature coordinates start at 1 within the retrieved sequence; boundary-crossing features retain partial-location markers.';
+  if (isRegionLookup(type, source, options) && regionProduct(type, options) === 'genomic' && format === 'gb') return 'DNA and NCBI annotations for the entire interval, ready for SMS3 sequence viewers. Feature positions are relative to the retrieved sequence; clipped features are marked partial.';
   if (isRegionLookup(type, source, options) && regionProduct(type, options) === 'genomic' && format === 'summary') return 'The interval sequence is downloaded to calculate length and composition, then omitted from the report.';
   if (isRegionLookup(type, source, options) && regionProduct(type, options) !== 'genomic') {
     if (format === 'tsv') return 'One row per selected transcript: complete genomic spans, exon coordinates, gene/transcript identifiers, and available protein identifiers. Download as TSV.';
@@ -87,13 +87,14 @@ export function getFields(type, source, options = {}) {
     const example = regionExample(source, options.regionExample), product = regionProduct(type, options);
     if (source === 'ensembl') fields.push(species());
     fields.push(text('assembly', source === 'ensembl' ? 'Assembly (optional)' : 'Assembly', example.assembly,
-      source === 'ucsc' ? 'UCSC assembly identifier; hg38 is human GRCh38.' : source === 'ncbi' ? 'Current RefSeq reference assembly accession, for example GCF_000001405.40 (human GRCh38.p14). Gene searches use primary reference chromosomes.' : 'Ensembl assembly name, for example GRCh38. Blank uses the current assembly; annotation queries verify it before retrieval.'));
-    fields.push(text('region', 'Region', example.region, product === 'genomic' ? 'Coordinates are 1-based, inclusive. Retrieves exactly this DNA interval.' : 'Coordinates are 1-based, inclusive. Finds overlapping transcripts on both strands and returns complete products in their biological orientation.'));
-    if (type === 'nucleotide' || type === 'region') fields.push(choice('sequenceType', 'Sequence type', [['genomic', 'Genomic DNA'], ['cdna', 'Transcripts (cDNA)'], ['cds', 'Coding sequences (CDS)']], product));
-    if (product === 'genomic') fields.push(choice('strand', 'Strand', [['1', 'Forward'], ['-1', 'Reverse']], String(options.strand) === '-1' ? '-1' : '1'));
-    else fields.push(choice('transcriptSelection', 'Transcripts', [['all', 'All matching transcripts'], ['canonical', source === 'ensembl' ? 'Canonical transcript per gene' : 'RefSeq / MANE Select per gene']], options.transcriptSelection === 'canonical' ? 'canonical' : 'all',
-      options.transcriptSelection !== 'canonical' ? 'Includes every transcript on either strand whose genomic span overlaps the interval. Transcripts without a coding product are reported when retrieving CDS or proteins.' : source === 'ensembl' ? 'Uses Ensembl Canonical designations on both strands. Only representatives that overlap the interval are included; missing representatives are reported.' : 'Uses RefSeq Select or MANE Select designations on both strands. No substitute is chosen for genes without a selected representative in the interval.'));
-    fields.push(choice('regionExample', 'Example region', regionExamples.map(row => [row.id, row.label]), example.id, product === 'genomic' ? example.genomicHelp : example.help));
+      source === 'ucsc' ? 'UCSC assembly ID; hg38 is human GRCh38.' : source === 'ncbi' ? `Current RefSeq reference assembly; GCF_000001405.40 is human GRCh38.p14.${product === 'genomic' ? '' : ' Product searches use primary reference chromosomes.'}` : 'Ensembl assembly, such as GRCh38. Blank uses the species’ current assembly.'));
+    fields.push(text('region', 'Genomic coordinates', example.region, 'Chromosome:start-end, with 1-based, inclusive positions. Any interval may be used, including multiple genes or intergenic DNA.'));
+    if (type === 'nucleotide' || type === 'region') fields.push(choice('sequenceType', 'Sequence type', [['genomic', 'Genomic DNA'], ['cdna', 'Transcripts (cDNA)'], ['cds', 'Coding sequences (CDS)']], product,
+      product === 'genomic' ? 'The exact interval in reference (+) orientation. Included annotations retain features from both strands.' : product === 'cdna' ? 'Complete spliced transcripts, including UTRs.' : 'Complete coding sequences. Transcripts without a CDS are reported.'));
+    if (product !== 'genomic') fields.push(choice('transcriptSelection', 'Transcripts', [['all', 'All matching transcripts'], ['canonical', source === 'ensembl' ? 'Canonical transcript per gene' : 'RefSeq / MANE Select per gene']], options.transcriptSelection === 'canonical' ? 'canonical' : 'all',
+      options.transcriptSelection !== 'canonical'
+        ? product === 'annotations' ? 'All overlapping transcripts on both strands, with their complete genomic spans and identifiers.' : 'Overlapping transcripts on both strands. Complete products are returned in biological orientation, including portions outside the interval.'
+        : source === 'ensembl' ? 'Ensembl Canonical transcripts overlapping the interval, on both strands. Missing representatives are reported; no substitute is chosen.' : 'RefSeq / MANE Select transcripts overlapping the interval, on both strands. Missing representatives are reported; no substitute is chosen.'));
     return fields;
   }
   const searchable = (source === 'ncbi' && type !== 'annotated') || source === 'uniprot';
