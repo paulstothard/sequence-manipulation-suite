@@ -1,6 +1,7 @@
 import { recordParserExample } from '../../examples/record-parser-example.js';
 import { parseFlatfileRecords } from '../flatfile-records.js';
 import { formatFastaRecord } from '../fasta.js';
+import { regionExample, regionExamples } from './region-examples.js';
 // External endpoints and handoff references are maintained in docs/external-resources.md.
 export const sources = {
   ncbi: 'NCBI', uniprot: 'UniProt', ensembl: 'Ensembl', ucsc: 'UCSC Genome Browser',
@@ -10,9 +11,9 @@ export const sources = {
   dbsnp: 'dbSNP', clinvar: 'ClinVar', gnomad: 'gnomAD'
 };
 export const dataTypes = [
-  { id: 'nucleotide', label: 'Nucleotide sequence', sources: ['ncbi', 'ena', 'ensembl'] },
-  { id: 'protein', label: 'Protein sequence', sources: ['ncbi', 'uniprot', 'ensembl'] },
-  { id: 'region', label: 'Genomic region', sources: ['ucsc', 'ensembl'] },
+  { id: 'nucleotide', label: 'Nucleotide sequence', sources: ['ncbi', 'ena', 'ensembl', 'ucsc'] },
+  { id: 'protein', label: 'Protein sequence', sources: ['ncbi', 'uniprot', 'ensembl', 'ucsc'] },
+  { id: 'annotations', label: 'Gene / transcript annotations', sources: ['ncbi', 'ensembl', 'ucsc'] },
   { id: 'structure', label: 'Protein structure', sources: ['rcsb', 'alphafold'] }
 ];
 export const tasks = [
@@ -32,16 +33,41 @@ const dna = '>TP53_cds_fragment\nATGGAGGAGCCGCAGTCAGATCCTAGCGTCGAGCCCCCTCTGAGTCA
 const protein = '>TP53_fragment\nMEEPQSDPSVEPPLSQETFSDLWKLLPENNVLSPLPSQAMDDLMLSPDDIEQWFTEDPGP';
 const species = () => text('species', 'Species', 'homo_sapiens', 'Ensembl species name, for example homo_sapiens or mus_musculus.');
 const region = (ensembl = false, gdv = false) => text('region', 'Region', gdv ? 'NC_000017.11:7668421-7687490' : `${ensembl ? '17' : 'chr17'}:7668421-7687490`, 'Coordinates are 1-based, inclusive.');
-export function formatsFor(type, source) {
+export function lookupModes(type, source) {
+  if (type === 'region' || type === 'annotations' || source === 'ucsc') return [['region', 'By genomic region']];
+  const modes = [['accession', 'By accession']];
+  if (source === 'ncbi' || source === 'uniprot') modes.push(['search', 'By search terms']);
+  if (type !== 'structure' && ['ncbi', 'ensembl'].includes(source)) modes.push(['region', 'By genomic region']);
+  return modes;
+}
+export function regionProduct(type, options = {}) {
+  return type === 'protein' ? 'protein' : type === 'annotations' ? 'annotations' : ['genomic', 'cdna', 'cds'].includes(options.sequenceType) ? options.sequenceType : 'genomic';
+}
+export function isRegionLookup(type, source, options = {}) {
+  return type === 'region' || lookupModes(type, source)[0][0] === 'region' || options.queryMode === 'region';
+}
+export function formatsFor(type, source, options = {}) {
   const fasta = ['fasta', 'FASTA'], summary = ['summary', 'Summary report'];
   if (type === 'structure') return [['cif', 'mmCIF'], ['pdb', 'PDB'], summary];
-  if (type === 'region' || source === 'ensembl') return [fasta, summary];
+  if (type === 'annotations') return [['tsv', 'Gene / transcript table'], summary];
+  if (isRegionLookup(type, source, options)) {
+    const product = regionProduct(type, options);
+    return source === 'ncbi' && ['genomic', 'cdna', 'protein'].includes(product) ? [fasta, product === 'protein' ? ['gp', 'GenPept'] : ['gb', 'GenBank'], summary] : [fasta, summary];
+  }
+  if (source === 'ensembl') return [fasta, summary];
   if (source === 'ncbi') return [type === 'protein' ? ['gp', 'GenPept'] : ['gb', 'GenBank'], fasta, summary];
   if (source === 'ena') return [['embl', 'EMBL'], fasta, summary];
   if (source === 'uniprot') return [['uniprot', 'UniProt'], ['json', 'UniProt JSON'], fasta, summary];
   return [fasta, summary];
 }
-export function formatHelp(type, source, format) {
+export function formatHelp(type, source, format, options = {}) {
+  if (isRegionLookup(type, source, options) && regionProduct(type, options) === 'genomic' && format === 'gb') return 'Genomic DNA and all NCBI feature annotations for this interval, ready for the Linear DNA Sequence Viewer or Workspace. Feature coordinates start at 1 within the retrieved sequence; boundary-crossing features retain partial-location markers.';
+  if (isRegionLookup(type, source, options) && regionProduct(type, options) === 'genomic' && format === 'summary') return 'The interval sequence is downloaded to calculate length and composition, then omitted from the report.';
+  if (isRegionLookup(type, source, options) && regionProduct(type, options) !== 'genomic') {
+    if (format === 'tsv') return 'One row per selected transcript: complete genomic spans, exon coordinates, gene/transcript identifiers, and available protein identifiers. Download as TSV.';
+    if (format === 'summary') return 'Annotation metadata and transcript identifiers, without downloading product sequences.';
+    if (format === 'fasta') return 'Complete products of overlapping transcripts, in biological orientation. Results may extend beyond the entered interval; multiple products are separate FASTA records.';
+  }
   if (format === 'gb') return 'Complete record: nucleotide sequence, feature annotations, qualifiers, and references from NCBI.';
   if (format === 'gp') return 'Complete record: amino acid sequence, protein feature annotations, qualifiers, and references from NCBI.';
   if (format === 'embl') return 'Complete record: nucleotide sequence and its annotations from ENA.';
@@ -53,17 +79,28 @@ export function formatHelp(type, source, format) {
   return format === 'cif' ? 'Structure coordinates and metadata in mmCIF format.' : 'Structure coordinates in legacy PDB format. Use mmCIF if this entry cannot be represented as PDB.';
 }
 export function getFields(type, source, options = {}) {
-  if (type === 'region') return source === 'ucsc'
-    ? [text('assembly', 'Assembly', 'hg38', 'UCSC assembly identifier; hg38 is human GRCh38.'), region()]
-    : [species(), text('assembly', 'Assembly (optional)', '', 'Ensembl coordinate-system version, for example GRCh38. Blank uses the current assembly.'), region(true), choice('strand', 'Strand', [['1', 'Forward'], ['-1', 'Reverse']], String(options.strand) === '-1' ? '-1' : '1')];
   if (type === 'structure') return [text('query', source === 'rcsb' ? 'PDB ID' : 'Protein / UniProt ID', source === 'rcsb' ? '4HHB' : 'P04637')];
+  const modes = lookupModes(type, source);
+  const queryMode = modes.some(([id]) => id === options.queryMode) ? options.queryMode : modes[0][0];
+  const fields = [choice('queryMode', 'Lookup method', modes, queryMode)];
+  if (queryMode === 'region') {
+    const example = regionExample(source, options.regionExample), product = regionProduct(type, options);
+    if (source === 'ensembl') fields.push(species());
+    fields.push(text('assembly', source === 'ensembl' ? 'Assembly (optional)' : 'Assembly', example.assembly,
+      source === 'ucsc' ? 'UCSC assembly identifier; hg38 is human GRCh38.' : source === 'ncbi' ? 'Current RefSeq reference assembly accession, for example GCF_000001405.40 (human GRCh38.p14). Gene searches use primary reference chromosomes.' : 'Ensembl assembly name, for example GRCh38. Blank uses the current assembly; annotation queries verify it before retrieval.'));
+    fields.push(text('region', 'Region', example.region, product === 'genomic' ? 'Coordinates are 1-based, inclusive. Retrieves exactly this DNA interval.' : 'Coordinates are 1-based, inclusive. Finds overlapping transcripts on both strands and returns complete products in their biological orientation.'));
+    if (type === 'nucleotide' || type === 'region') fields.push(choice('sequenceType', 'Sequence type', [['genomic', 'Genomic DNA'], ['cdna', 'Transcripts (cDNA)'], ['cds', 'Coding sequences (CDS)']], product));
+    if (product === 'genomic') fields.push(choice('strand', 'Strand', [['1', 'Forward'], ['-1', 'Reverse']], String(options.strand) === '-1' ? '-1' : '1'));
+    else fields.push(choice('transcriptSelection', 'Transcripts', [['all', 'All matching transcripts'], ['canonical', source === 'ensembl' ? 'Canonical transcript per gene' : 'RefSeq / MANE Select per gene']], options.transcriptSelection === 'canonical' ? 'canonical' : 'all',
+      options.transcriptSelection !== 'canonical' ? 'Includes every transcript on either strand whose genomic span overlaps the interval. Transcripts without a coding product are reported when retrieving CDS or proteins.' : source === 'ensembl' ? 'Uses Ensembl Canonical designations on both strands. Only representatives that overlap the interval are included; missing representatives are reported.' : 'Uses RefSeq Select or MANE Select designations on both strands. No substitute is chosen for genes without a selected representative in the interval.'));
+    fields.push(choice('regionExample', 'Example region', regionExamples.map(row => [row.id, row.label]), example.id, product === 'genomic' ? example.genomicHelp : example.help));
+    return fields;
+  }
   const searchable = (source === 'ncbi' && type !== 'annotated') || source === 'uniprot';
-  const queryMode = options.queryMode === 'search' ? 'search' : 'accession';
   const sequenceType = ['cdna', 'cds', 'genomic'].includes(options.sequenceType) ? options.sequenceType : 'cdna';
-  const fields = searchable ? [choice('queryMode', 'Lookup method', [['accession', 'Accession'], ['search', 'Database search']], queryMode)] : [];
   if (source === 'ensembl' && type === 'nucleotide') fields.push(choice('sequenceType', 'Sequence type', [['cdna', 'cDNA'], ['cds', 'Coding sequence'], ['genomic', 'Genomic sequence']], sequenceType));
   if (searchable && queryMode === 'search') {
-    fields.push(text('query', 'Search query', source === 'uniprot' ? 'gene:TP53 AND organism_id:9606' : 'TP53[Gene] AND Homo sapiens[Organism]', 'Search returns up to 20 matches. Choose a record to retrieve it in the selected output format.'));
+    fields.push(text('query', 'Search terms', source === 'uniprot' ? 'gene:TP53 AND organism_id:9606' : 'TP53[Gene] AND Homo sapiens[Organism]', 'Search returns up to 20 matches. Choose a record to retrieve it in the selected output format.'));
   } else if (source === 'ensembl') {
     const genomic = type === 'nucleotide' && sequenceType === 'genomic';
     fields.push(text('query', type === 'protein' ? 'Ensembl protein ID' : genomic ? 'Ensembl gene or transcript ID' : 'Ensembl transcript ID', type === 'protein' ? 'ENSP00000269305' : genomic ? 'ENSG00000141510' : 'ENST00000269305'));

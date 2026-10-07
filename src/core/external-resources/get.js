@@ -1,4 +1,4 @@
-import { formatsFor, identifier, parseRegion, required, sources, url, validateSelection } from './catalog.js';
+import { formatsFor, identifier, parseRegion, required, sources, url, validateSelection, isRegionLookup, regionProduct } from './catalog.js';
 import { formatFastaRecord, parseSequenceInput } from '../fasta.js';
 import { makeToolResult } from '../workflow.js';
 import { MAX_RESPONSE_BYTES } from './limits.js';
@@ -23,17 +23,37 @@ export function uniprotId(value) {
 }
 export function buildRetrieval(options = {}) {
   // Keep old saved/request descriptions compatible with the unified sequence menu.
+  if (options.type === 'region') options = { ...options, type: 'nucleotide', queryMode: 'region' };
   const type = options.type === 'annotated' ? 'nucleotide' : options.type ?? 'nucleotide', source = options.source ?? 'ncbi';
   validateSelection('get', type, source);
-  const format = options.format ?? formatsFor(type, source)[0][0];
-  if (!formatsFor(type, source).some(([id]) => id === format)) throw new Error('Choose an output format supported by this source.');
+  const format = options.format ?? formatsFor(type, source, options)[0][0];
+  if (!formatsFor(type, source, options).some(([id]) => id === format)) throw new Error('Choose an output format supported by this source.');
   const plan = { type, source, format, responseType: 'text', kind: 'record', label: sources[source] };
-  if (type === 'region') {
+  if (isRegionLookup(type, source, options)) {
+    if (!['ncbi', 'ucsc', 'ensembl'].includes(source) || type === 'structure') throw new Error('This source does not support genomic region retrieval.');
     const r = parseRegion(options.region, MAX_REGION_BASES);
     plan.region = r;
+    const product = regionProduct(type, options), strand = product === 'genomic' ? String(options.strand ?? '1') : '1';
+    if (!['1', '-1'].includes(strand)) throw new Error('Choose a forward or reverse strand.');
+    if (options.sequenceType && type === 'nucleotide' && !['genomic', 'cdna', 'cds'].includes(options.sequenceType)) throw new Error('Choose genomic DNA, transcripts, or coding sequences.');
+    const selection = product === 'genomic' ? 'all' : options.transcriptSelection ?? 'all';
+    if (!['all', 'canonical'].includes(selection)) throw new Error('Choose all matching transcripts or the source’s representative transcripts.');
+    Object.assign(plan, { product, strand, selection, selectionLabel: selection === 'all' ? 'All matching transcripts' : source === 'ensembl' ? 'Ensembl Canonical transcript per gene' : 'RefSeq / MANE Select per gene' });
+    if (source === 'ensembl') {
+      plan.species = identifier(options.species, 'species');
+      plan.assembly = options.assembly ? identifier(options.assembly, 'assembly') : '';
+    } else plan.assembly = identifier(options.assembly, 'assembly');
+    if (product !== 'genomic' || source === 'ncbi') {
+      if (source === 'ncbi' && !/^GCF_\d{9}\.[1-9]\d*$/.test(plan.assembly)) throw new Error('Enter a versioned RefSeq reference assembly accession such as GCF_000001405.40.');
+      plan.responseType = 'region-products';
+      plan.url = source === 'ensembl' ? url(`https://rest.ensembl.org/info/assembly/${plan.species}`, { 'content-type': 'application/json' })
+        : source === 'ncbi' ? `https://api.ncbi.nlm.nih.gov/datasets/v2/genome/accession/${plan.assembly}/dataset_report`
+        : url('https://api.genome.ucsc.edu/getData/track', { genome: plan.assembly, track: 'ncbiRefSeq', chrom: r.chrom, start: r.start - 1, end: r.end });
+      return plan;
+    }
     if (source === 'ucsc') {
       const assembly = identifier(options.assembly, 'assembly');
-      plan.url = url('https://api.genome.ucsc.edu/getData/sequence', { genome: assembly, chrom: r.chrom, start: r.start - 1, end: r.end });
+      plan.url = url('https://api.genome.ucsc.edu/getData/sequence', { genome: assembly, chrom: r.chrom, start: r.start - 1, end: r.end, ...(strand === '-1' ? { revComp: 1 } : {}) });
       plan.title = `${assembly} ${r.chrom}:${r.start}-${r.end}`;
       plan.responseType = 'ucsc';
     } else {
@@ -111,9 +131,14 @@ function safeStorage() { try { return globalThis.localStorage; } catch { return 
 export function createRetrievalClient({ fetchImpl = globalThis.fetch, intervalMs = 1100, timeoutMs = 30000, maxBytes = MAX_RESPONSE_BYTES, locks = globalThis.navigator?.locks, storage = safeStorage() } = {}) {
   let queue = Promise.resolve(), nextStart = 0, cooldown = 0;
   const sizeError = () => new Error(`The response exceeds the ${maxBytes / 1024 / 1024} MiB retrieval limit. Request a summary or a smaller region.`);
-  async function request(target, signal) {
+  async function request(target, signal, options = {}) {
     const address = new URL(target);
     if (address.protocol !== 'https:' || !retrievalHosts.has(address.hostname)) throw new Error('Unsupported retrieval host.');
+    let post = {};
+    if (options.json !== undefined) {
+      if (address.hostname !== 'rest.ensembl.org' || !['/lookup/id', '/sequence/id'].includes(address.pathname) || !Array.isArray(options.json.ids) || !options.json.ids.length || options.json.ids.length > 50 || options.json.ids.some(id => typeof id !== 'string' || !/^[A-Za-z][A-Za-z0-9_.-]{1,99}$/.test(id)) || Object.keys(options.json).length !== 1) throw new Error('Unsupported batch retrieval request.');
+      post = { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(options.json) };
+    }
     const requestOnce = async () => {
       if (signal?.aborted) throw abortError();
       let saved = 0;
@@ -128,7 +153,7 @@ export function createRetrievalClient({ fetchImpl = globalThis.fetch, intervalMs
       let timedOut = false;
       const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
       try {
-        const response = await fetchImpl(target, { signal: controller.signal, mode: 'cors', credentials: 'omit', referrerPolicy: 'no-referrer' });
+        const response = await fetchImpl(target, { ...post, signal: controller.signal, mode: 'cors', credentials: 'omit', referrerPolicy: 'no-referrer' });
         if (!response.ok) {
           if (response.status === 429 || response.status === 503) {
             const raw = response.headers.get('retry-after');
@@ -210,7 +235,18 @@ function result(output, extension, plan, count = 1, warnings = []) {
   }
   return value;
 }
-export async function retrieveData(plan, client, signal) {
+export async function retrieveData(plan, client, signal, onProgress) {
+  if (plan.responseType === 'region-products') {
+    const { regionSession } = await import('./region-common.js');
+    const session = regionSession(client, signal, onProgress);
+    const adapter = plan.source === 'ensembl' ? (await import('./ensembl-region.js')).retrieveEnsemblRegion
+      : plan.source === 'ncbi' ? (await import('./ncbi-region.js')).retrieveNcbiRegion : (await import('./ucsc-region.js')).retrieveUcscRegion;
+    const value = await adapter(plan, session);
+    if (!value.genomicText) return value;
+    const output = await validateRecord(value.genomicText, { ...plan, title: value.title, url: value.target }, signal);
+    output.retrievalSummary = `Source: ${value.annotation}\nAssembly: ${value.assembly}\nRegion: ${plan.region.chrom}:${plan.region.start}-${plan.region.end} (1-based, inclusive)\nStrand: ${plan.strand === '-1' ? 'Reverse complement' : 'Forward'}\nLength: ${plan.region.length} bp\n${plan.format === 'gb' ? 'Sequence and all supplied annotations retained. Viewer and feature coordinates are local to this interval, starting at 1. Save to workspace or load the GenBank file in the Linear DNA Sequence Viewer.\n' : ''}`;
+    return output;
+  }
   const text = await client.request(plan.url, signal);
   if (signal?.aborted) throw abortError();
   if (plan.responseType === 'ncbi-assembly') {

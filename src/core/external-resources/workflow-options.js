@@ -3,15 +3,20 @@ import { dataTypes, tasks, sources, formatsFor, getFields, sendFields } from './
 const modes = items => items.flatMap(item => item.sources.map(source => ({
   value: `${item.id}:${source}`, label: `${item.label} — ${sources[source]}`, operation: item.id, source
 })));
-const retrieveModes = modes(dataTypes), sendModes = modes(tasks);
+const regionModes = ['ncbi', 'ensembl', 'ucsc'].flatMap(source => [
+  ['region', 'Genomic DNA', 'nucleotide', 'genomic'], ['region-cdna', 'Transcripts (cDNA)', 'nucleotide', 'cdna'],
+  ['region-cds', 'Coding sequences (CDS)', 'nucleotide', 'cds'], ['region-protein', 'Proteins', 'protein', 'protein']
+].map(([id, label, operation, sequenceType]) => ({ value: `${id}:${source}`, label: `${label} by genomic region — ${sources[source]}`, operation, source, options: { queryMode: 'region', ...(operation === 'nucleotide' ? { sequenceType } : {}) } })));
+const retrieveModes = [...modes(dataTypes).filter(mode => mode.source !== 'ucsc' || mode.operation === 'annotations'), ...regionModes], sendModes = modes(tasks);
 
 // Keep workflow controls in sync with the standalone tools. The incoming step
 // supplies the accession, region, sequence, template, structure, or variant.
 function auxiliaryOptions(choices, selector, fieldsFor, excluded) {
   const grouped = new Map();
   for (const mode of choices) {
-    for (const field of fieldsFor(mode.operation, mode.source)) {
+    for (const field of fieldsFor(mode.operation, mode.source, mode.options)) {
       if (excluded.includes(field.id)) continue;
+      if (mode.options?.sequenceType && field.id === 'sequenceType') continue;
       if (!grouped.has(field.id)) grouped.set(field.id, { ...field, choices: [], modes: [] });
       const option = grouped.get(field.id);
       option.modes.push(mode.value);
@@ -29,8 +34,8 @@ export const getDataWorkflowOptions = [
   { id: 'retrieval', type: 'select', label: 'Retrieve', defaultValue: 'nucleotide:ncbi', choices: retrieveModes,
     help: 'The incoming output supplies one sequence or assembly accession, or a genomic region. Use the Get Data tool page to search for an accession first.' },
   { id: 'format', type: 'select', label: 'Output format', defaultValue: 'gb', dependsOn: 'retrieval',
-    choices: retrieveModes.flatMap(mode => formatsFor(mode.operation, mode.source).map(([value, label]) => ({ value, label, dependsOnValue: mode.value }))) },
-  ...auxiliaryOptions(retrieveModes, 'retrieval', getFields, ['query', 'queryMode', 'region']),
+    choices: retrieveModes.flatMap(mode => formatsFor(mode.operation, mode.source, mode.options).map(([value, label]) => ({ value, label, dependsOnValue: mode.value }))) },
+  ...auxiliaryOptions(retrieveModes, 'retrieval', getFields, ['query', 'queryMode', 'region', 'regionExample']),
   { id: 'modelId', type: 'text', label: 'AlphaFold model ID (optional)', defaultValue: '', visibleWhen: { option: 'retrieval', value: 'structure:alphafold' },
     help: 'Required if AlphaFold returns more than one model. Choose the model on the Get Data tool page to find its ID.' }
 ];
@@ -41,9 +46,10 @@ export const sendDataWorkflowOptions = [
 ];
 
 export function retrievalOptions(input, options = {}) {
-  const [type, source] = options.retrieval?.split(':') ?? [options.type ?? 'nucleotide', options.source ?? 'ncbi'];
+  const selected = retrieveModes.find(mode => mode.value === options.retrieval);
+  const [type, source] = selected ? [selected.operation, selected.source] : options.retrieval?.split(':') ?? [options.type ?? 'nucleotide', options.source ?? 'ncbi'];
   if (options.queryMode === 'search') throw new Error('Workflow retrieval needs an accession. Search on the Get Data tool page, then use the chosen accession as workflow input.');
-  return { ...options, type, source, queryMode: 'accession', query: input.trim(), region: input.trim() };
+  return { ...options, type, source, queryMode: options.queryMode ?? 'accession', ...selected?.options, query: input.trim(), region: input.trim() };
 }
 export function handoffOptions(input, options = {}) {
   const [task, source] = options.destination?.split(':') ?? [options.task ?? 'similar', options.source ?? 'blast'];

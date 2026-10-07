@@ -15,7 +15,7 @@ import {
 } from "./workflow-stream-labels.js";
 import { tableStreamToTsv } from "./table-output-format.js";
 import { validateWorkflowDefinition } from "../core/workflow-engine.js";
-import { getAvailableToolWorkflowOutputs } from "../core/tool-option-choices.js";
+import { getAvailableToolWorkflowOutputs, getToolOutputFormatOption } from "../core/tool-option-choices.js";
 import { exportDelimitedTable } from "../core/table.js";
 
 function sequenceRecordsToFasta(stream) {
@@ -48,7 +48,7 @@ export function isAdvancedWorkflowOutput(stream, outputs = []) {
   if (stream.hidden || stream.advanced || stream.kind === "warnings" || stream.kind === "stats-records" || stream.kind === "text-records") {
     return true;
   }
-  return stream.id === "primary" && outputs.some((output) => output.id !== "primary" && output.kind !== "warnings");
+  return stream.id === "primary" && stream.advanced !== false && outputs.some((output) => output.id !== "primary" && output.kind !== "warnings");
 }
 
 export function getUserSelectableWorkflowOutputs(tool, optionValues = {}) {
@@ -90,17 +90,14 @@ export function getRecommendedWorkflowOutputId(tool, optionValues = {}) {
 }
 
 function normalizeWorkflowOutputSelection(tool, step) {
-  const options = (tool?.metadata.options ?? []).flatMap(function flatten(option) {
-    return option.type === "group" ? (option.options ?? []).flatMap(flatten) : [option];
-  });
-  const outputFormat = options.find((option) => option.id === "outputFormat");
+  const outputFormat = getToolOutputFormatOption(tool?.metadata);
   if (!outputFormat || !step.selectStream || step.selectStream === "primary") return;
   const outputs = getAvailableToolWorkflowOutputs(tool.metadata, step.options);
   if (outputFormat.dependsOn && !outputs.some((output) => output.id === step.selectStream)) {
     step.selectStream = getRecommendedWorkflowOutputId(tool, step.options);
   }
   const format = outputs.find((output) => output.id === step.selectStream)?.outputFormat;
-  if (format) step.options = { ...step.options, outputFormat: format };
+  if (format) step.options = { ...step.options, [outputFormat.id]: format };
 }
 
 export function createWorkflowBuilderController({
@@ -1883,6 +1880,10 @@ export function createWorkflowBuilderController({
           updateSelectedWorkflowStep(
             (selectedStep) => {
               const nextOptions = { ...(selectedStep.options ?? {}), [option.id]: select.value };
+              if (option.id === tool.metadata.workflow?.outputFormatOption) {
+                const selectedOutput = tool.metadata.workflow.outputs.find(output => output.id === selectedStep.selectStream);
+                if (selectedOutput?.outputFormat && selectedOutput.outputFormat !== select.value) selectedStep.selectStream = "primary";
+              }
               selectedStep.options = normalizeDependentOptionValues(editableOptions, nextOptions);
             },
             `Updated ${step.id} option ${option.label}.`

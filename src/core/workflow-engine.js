@@ -5,6 +5,7 @@ import { formatFastaRecord, parseSequenceInput } from "./fasta.js";
 import { isWorkflowStreamCompatible } from "./workflow-contracts.js";
 import { makeCollectionStream, makeTableStream, makeTextStream } from "./workflow.js";
 import { applyFixedToolLimits } from "./tool-limit-options.js";
+import { getToolOutputFormatOption } from "./tool-option-choices.js";
 
 const STEP_TYPES = new Set([
   ...Object.keys(labWorkflowOperations),
@@ -66,18 +67,12 @@ function getToolOutputContract(tool, streamId = "primary") {
   return tool?.metadata.workflow?.outputs?.find((output) => output.id === streamId);
 }
 
-function flattenOptions(options = []) {
-  return options.flatMap((option) =>
-    option.type === "group" ? flattenOptions(option.options ?? []) : [option]
-  );
-}
-
 function inferOutputFormatForStream(tool, streamName = "primary") {
   if (streamName === "primary") {
     return undefined;
   }
 
-  const outputFormat = flattenOptions(tool?.metadata.options ?? []).find((option) => option.id === "outputFormat");
+  const outputFormat = getToolOutputFormatOption(tool?.metadata);
   const choices = new Set((outputFormat?.choices ?? []).map((choice) => choice.value));
   const declaredFormat = getToolOutputContract(tool, streamName)?.outputFormat;
   // A typed workflow output can use a compatibility format that is deliberately
@@ -111,10 +106,11 @@ function inferOutputFormatForStream(tool, streamName = "primary") {
 
 function makeToolOptionsForSelectedStream(tool, step) {
   const options = applyFixedToolLimits(tool?.metadata, step.options ?? {});
-  if (!Object.hasOwn(options, "outputFormat")) {
+  const formatId = getToolOutputFormatOption(tool?.metadata)?.id ?? "outputFormat";
+  if (!Object.hasOwn(options, formatId)) {
     const inferred = inferOutputFormatForStream(tool, step.selectStream ?? "primary");
     if (inferred) {
-      options.outputFormat = inferred;
+      options[formatId] = inferred;
     }
   }
   return options;

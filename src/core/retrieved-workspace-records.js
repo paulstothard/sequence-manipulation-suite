@@ -1,5 +1,5 @@
 import { parseSequenceInput } from './fasta.js';
-import { parseFlatfileRecords } from './flatfile-records.js';
+import { parseFlatfileRecords, flatfileRecordDisplayId } from './flatfile-records.js';
 import { sequenceStreamRecordsToWorkspaceSequences } from './workspace.js';
 import { viewerRecordToWorkspaceFeatureLayers } from './workspace-layers.js';
 import { MAX_RESPONSE_BYTES } from './external-resources/limits.js';
@@ -28,7 +28,7 @@ function flatfileRecords(text) {
     }));
     const omitted = record.features.length - features.length;
     return {
-      ...record, title: `${record.accession} ${record.title}`.trim(), features, sourceText,
+      ...record, title: `${flatfileRecordDisplayId(record)} ${record.title}`.trim(), features, sourceText,
       warnings: [...parsed.warnings, ...(omitted ? [`${omitted} feature location(s) could not be shown; they remain in the original record.`] : [])]
     };
   });

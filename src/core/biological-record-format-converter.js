@@ -3,6 +3,7 @@ import { formatFastaRecord, parseSequenceInput } from "./fasta.js";
 import {
   extractLocationSequence,
   flatfileFeatureColumns,
+  flatfileRecordDisplayId,
   flatfileRecordsToFeatureRows,
   flatfileRecordsToSequenceRecords,
   parseInsdcLocation,
@@ -749,7 +750,7 @@ export function makeBiologicalRecordViewerRecords(records, options = {}) {
     .filter((record) => record.sequence)
     .map((record) => ({
       id: record.accession,
-      title: record.accession,
+      title: flatfileRecordDisplayId(record),
       sequence: record.sequence,
       topology: topologyOverride || record.topology,
       alphabet: record.molecule === "protein" ? "protein" : "dna-rna",

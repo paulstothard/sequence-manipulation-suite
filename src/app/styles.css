@@ -4835,6 +4835,13 @@ legend {
   max-width: 38rem;
 }
 
+.workspace-source-picker select {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .workspace-multi-source-picker {
   max-width: 48rem;
   padding: 0.75rem;
@@ -9909,6 +9916,10 @@ legend {
   min-height: 1.85rem;
   padding: 0.32rem 0.6rem;
   white-space: nowrap;
+}
+
+.dna-viewer-track-controls:not([open]) > .dna-viewer-track-list {
+  display: none;
 }
 
 .dna-viewer-track-controls[open] .dna-viewer-track-list {
@@ -15072,6 +15083,8 @@ details[open] > .sequence-extractor-section-header .sequence-extractor-section-h
 .external-query-tabs, .external-get-data [data-field="query"] { grid-column: 1 / -1; }
 .external-query-tabs { margin-bottom: -.15rem; flex-wrap: nowrap; align-items: stretch; }
 .external-query-tabs .file-source-tab { flex: 0 1 auto; min-width: 0; white-space: normal; }
+.external-input-panel { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.external-status { white-space: pre-line; }
 .external-get-data [data-field="query"] textarea { min-height: 2.65rem; margin-top: 0; font: inherit; font-weight: 400; line-height: 1.4; }
 .external-get-data .external-input-actions { margin: .65rem 0 1.15rem; }
 .external-output-choice {
@@ -15086,6 +15099,7 @@ details[open] > .sequence-extractor-section-header .sequence-extractor-section-h
 .external-matches:empty { display: none; }
 @media (max-width: 700px) {
   .external-get-data .external-selectors, .external-get-data .external-inputs { gap: .85rem; }
+  .external-input-panel { grid-template-columns: minmax(0, 1fr); gap: .85rem; }
   .external-output-choice { grid-template-columns: minmax(0, 1fr); gap: .5rem; }
   .external-get-data .external-input-actions { flex-wrap: wrap; }
 }

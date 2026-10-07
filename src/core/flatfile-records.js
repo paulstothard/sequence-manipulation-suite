@@ -207,6 +207,23 @@ function parseGenbankFeatures(recordText) {
   return features;
 }
 
+// NCBI EFetch interval records keep the chromosome accession, but their
+// sequence and features use local coordinates. Retain the original interval
+// separately so an imported fragment is not labelled as the whole chromosome.
+export function parseGenbankRegion(recordText) {
+  const accession = recordText.match(/^VERSION\s+(\S+)/m)?.[1];
+  const match = recordText.match(/^ACCESSION\s+\S+\s+REGION:\s*(?:(complement)\((\d+)(?:\.\.(\d+))?\)|(\d+)(?:\.\.(\d+))?)[ \t\r]*$/m);
+  if (!accession || !match) return null;
+  const start = Number(match[2] ?? match[4]), end = Number(match[3] ?? match[5] ?? start);
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 1 || end < start) return null;
+  return { accession, start, end, strand: match[1] ? '-' : '+' };
+}
+
+export function flatfileRecordDisplayId(record) {
+  const region = record.sourceRegion;
+  return region ? `${record.accession}:${region.start}-${region.end}${region.strand === '-' ? ' (reverse complement)' : ''}` : record.accession;
+}
+
 function parseGenbankRecord(recordText) {
   const fields = parseHeaderLines(recordText);
   const locusLine = recordText.match(/^LOCUS\s+(.+)$/m)?.[1] ?? "";
@@ -215,6 +232,7 @@ function parseGenbankRecord(recordText) {
   const features = parseGenbankFeatures(recordText);
   const accession = fields.get("VERSION") || fields.get("ACCESSION") || locusParts[0] || "GenBank record";
   const isProtein = locusParts.some((part) => part.toLowerCase() === "aa");
+  const sourceRegion = parseGenbankRegion(recordText);
   return makeParsedRecord({
     format: isProtein ? "GenPept" : recordText.startsWith("LOCUS") ? "GenBank/DDBJ" : "GenBank",
     accession,
@@ -223,6 +241,7 @@ function parseGenbankRecord(recordText) {
     molecule: isProtein ? "protein" : locusParts.includes("RNA") ? "RNA" : locusParts.includes("DNA") ? "DNA" : "",
     topology: locusParts.includes("circular") ? "circular" : locusParts.includes("linear") ? "linear" : "",
     sequence,
+    ...(sourceRegion && sourceRegion.end - sourceRegion.start + 1 === sequence.length ? { sourceRegion } : {}),
     features
   });
 }
@@ -336,7 +355,7 @@ function parseUniprotRecord(recordText) {
   });
 }
 
-function makeParsedRecord({ format, accession, title, organism, molecule, topology, sequence, features }) {
+function makeParsedRecord({ format, accession, title, organism, molecule, topology, sequence, features, sourceRegion }) {
   const warnings = sequence ? [] : [`${accession}: no sequence section was found.`];
   const normalizedFeatures = features.map((feature, index) => {
     const parsedLocation = parseInsdcLocation(feature.locationLines.join(""));
@@ -370,6 +389,7 @@ function makeParsedRecord({ format, accession, title, organism, molecule, topolo
     molecule,
     topology,
     sequence,
+    ...(sourceRegion ? { sourceRegion } : {}),
     features: normalizedFeatures,
     warnings
   };

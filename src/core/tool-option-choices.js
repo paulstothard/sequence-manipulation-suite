@@ -19,6 +19,11 @@ function flattenOptions(options = []) {
   return options.flatMap((option) => option.type === "group" ? flattenOptions(option.options) : [option]);
 }
 
+export function getToolOutputFormatOption(metadata) {
+  const id = metadata?.workflow?.outputFormatOption ?? "outputFormat";
+  return flattenOptions(metadata?.options).find(option => option.id === id);
+}
+
 // Explicit output-format contracts share the tool's dependent choice rules.
 export function getAvailableToolWorkflowOutputs(metadata, optionValues = {}) {
   const outputs = (metadata?.workflow?.outputs ?? []).map(output =>
@@ -26,7 +31,7 @@ export function getAvailableToolWorkflowOutputs(metadata, optionValues = {}) {
       ? { ...output, layout: 'circular' } : output
   );
   const options = flattenOptions(metadata?.options);
-  const outputFormat = options.find((option) => option.id === "outputFormat");
+  const outputFormat = getToolOutputFormatOption(metadata);
   if (!outputFormat?.dependsOn) return outputs;
   const values = { ...Object.fromEntries(options.map((option) => [option.id, option.defaultValue])), ...optionValues };
   const choices = getToolOptionChoices(outputFormat, values);
