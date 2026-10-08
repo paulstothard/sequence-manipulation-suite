@@ -1,4 +1,4 @@
-export const referenceDataManifest = {
+export default {
   "schemaVersion": 1,
   "datasets": [
     {
@@ -134,8 +134,22 @@ export const referenceDataManifest = {
       ],
       "validationTest": "test/reference-data-protein-digest.test.js",
       "notes": "Six independently encoded ExPASy specificity models for single-enzyme protein digestion; pinned Pyteomics oracle fixtures validate behavior."
+    },
+    {
+      "id": "external-resources",
+      "name": "External resource catalogue",
+      "fetchScript": "reference-data:fetch:external-resources",
+      "buildScript": "reference-data:build:external-resources",
+      "requiresNetworkForFetch": true,
+      "offlineBuild": true,
+      "sourceDirectory": "scripts/reference-data/sources/external-resources",
+      "generatedFiles": [
+        "src/reference-data/external-resources/catalogue.json",
+        "src/reference-data/external-resources/catalogue.js",
+        "src/reference-data/external-resources/provenance.json"
+      ],
+      "validationTest": "test/reference-data-external-resources.test.js",
+      "notes": "Common species, provider-specific assemblies and shared Get Data / Send Data service information. Timestamped API metadata; offline rebuild validates the checked-in catalogue when the source cache is absent."
     }
   ]
 };
-
-export default referenceDataManifest;

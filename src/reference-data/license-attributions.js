@@ -1,3 +1,5 @@
+import externalResourceCatalogue from './external-resources/catalogue.js';
+
 export const softwareLicenseAttributions = [
   {
     "category": "Runtime library",
@@ -419,6 +421,13 @@ export const softwareLicenseAttributions = [
 ];
 
 export const referenceDataLicenseTerms = {
+  "external-resources": {
+    version: `${externalResourceCatalogue.checkedAt.slice(0, 10)} catalogue snapshot`,
+    license: "Attributed factual identifiers and names; no upstream software, sequences or annotations bundled.",
+    source: "NCBI Taxonomy/Datasets, Ensembl REST, UCSC REST and SMS3 service adapter metadata.",
+    sourceUrl: "https://www.ncbi.nlm.nih.gov/home/about/policies/",
+    notes: "Exact source URLs, timestamps, response hashes and provider terms are recorded in external-resources/provenance.json. Get Data and Send Data share this catalogue."
+  },
   "protein-digest": {
     version: "1.0.0 (2026-09-07)",
     license: "Independently encoded scientific specificity facts; no upstream software or descriptive passages bundled.",

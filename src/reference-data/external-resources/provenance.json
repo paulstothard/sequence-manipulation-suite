@@ -1,0 +1,179 @@
+{
+  "name": "External resource catalogue",
+  "version": "1 / 2026-10-08",
+  "accessDate": "2026-10-08",
+  "sourceName": "NCBI Taxonomy and Datasets; Ensembl REST; UCSC REST; SMS3 service adapters",
+  "sourceUrl": "https://www.ncbi.nlm.nih.gov/datasets/docs/v2/",
+  "upstreamVersion": "Timestamped public metadata snapshots; exact assemblies retained",
+  "buildScript": "scripts/reference-data/build-external-resource-data.mjs",
+  "license": "Small factual identifier/name catalogue with source attribution; no upstream software, sequences, annotations or database dumps bundled.",
+  "terms": [
+    "https://www.ncbi.nlm.nih.gov/home/about/policies/",
+    "https://www.ensembl.org/info/about/legal/disclaimer.html",
+    "https://genome.ucsc.edu/conditions.html"
+  ],
+  "assumptions": [
+    "Common-species convenience list, not an exhaustive species database.",
+    "Assemblies remain source-specific; no cross-provider coordinate equivalence or conversion is inferred.",
+    "Catalogue dates describe the snapshot. Retrieval revalidates supported assembly versions and annotation tracks.",
+    "Ensembl choices include only resolved species in the configured REST service. NCBI choices include RefSeq references. UCSC choices include active database identifiers, including older assemblies.",
+    "Service tasks describe SMS3 adapters. Changes to API or form behavior require adapter tests, not merely a catalogue refresh."
+  ],
+  "counts": {
+    "organisms": 18,
+    "assemblies": 93,
+    "services": 18
+  },
+  "evidence": [
+    {
+      "url": "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=taxonomy&id=9606,10090,10116,9913,9615,7955,7227,4932,3702,562,9823,9031,9940,6239,4577,511145,559292,224308&retmode=json",
+      "checkedAt": "2026-10-08T01:36:05.958Z",
+      "sha256": "af04bdc909955404e631fd78848a21910effe7f0bb265ca5759e7717231f1a5c"
+    },
+    {
+      "url": "https://rest.ensembl.org/info/species?content-type=application/json",
+      "checkedAt": "2026-10-08T01:36:08.565Z",
+      "sha256": "15ca46142fe2140bd212ce72b74f05223426aa8004975ea4f18db95030da80c2"
+    },
+    {
+      "url": "https://api.genome.ucsc.edu/list/ucscGenomes",
+      "checkedAt": "2026-10-08T01:36:08.884Z",
+      "sha256": "a88339bc7d00816995ee40332dfeaec836d06261cb074c7703b7d260ca93fd0b"
+    },
+    {
+      "url": "https://api.ncbi.nlm.nih.gov/datasets/v2/genome/taxon/9606/dataset_report?filters.reference_only=true&page_size=100",
+      "checkedAt": "2026-10-08T01:36:10.165Z",
+      "sha256": "8c34eddba3c3873c5d6589db9efae52613f43647ff61e997d54950bca8ff0f0f"
+    },
+    {
+      "url": "https://rest.ensembl.org/info/assembly/homo_sapiens?content-type=application/json",
+      "checkedAt": "2026-10-08T01:36:11.455Z",
+      "sha256": "8c3f035bf4a5ea90af98730335f3f60d82929da36aa3dde91276844134180487"
+    },
+    {
+      "url": "https://api.ncbi.nlm.nih.gov/datasets/v2/genome/taxon/10090/dataset_report?filters.reference_only=true&page_size=100",
+      "checkedAt": "2026-10-08T01:36:12.065Z",
+      "sha256": "4dc3bf791be5a90d697a4581c6c24fbeb8eaa98445ce071574cd41a00528183e"
+    },
+    {
+      "url": "https://rest.ensembl.org/info/assembly/mus_musculus?content-type=application/json",
+      "checkedAt": "2026-10-08T01:36:16.972Z",
+      "sha256": "3d4403d94a9763b426447af6f549987e4c8517bd98c1dbf2fbcd3596053ae674"
+    },
+    {
+      "url": "https://api.ncbi.nlm.nih.gov/datasets/v2/genome/taxon/10116/dataset_report?filters.reference_only=true&page_size=100",
+      "checkedAt": "2026-10-08T01:36:17.560Z",
+      "sha256": "3c7733efc0beae49d08dbe66a5fd795e253796a65ec4f303193144cfcc74a998"
+    },
+    {
+      "url": "https://rest.ensembl.org/info/assembly/rattus_norvegicus?content-type=application/json",
+      "checkedAt": "2026-10-08T01:36:18.378Z",
+      "sha256": "9f09c055f8ee75234fe4b6615ca8733b2f8378b7d0958a80b2aa1cd543726b79"
+    },
+    {
+      "url": "https://api.ncbi.nlm.nih.gov/datasets/v2/genome/taxon/9913/dataset_report?filters.reference_only=true&page_size=100",
+      "checkedAt": "2026-10-08T01:36:19.571Z",
+      "sha256": "6cf00820b0b80cc8fe166966ff507696565e053502c4dd90c84ec0e9c3881ff9"
+    },
+    {
+      "url": "https://rest.ensembl.org/info/assembly/bos_taurus?content-type=application/json",
+      "checkedAt": "2026-10-08T01:36:22.186Z",
+      "sha256": "18924d83a9f67046eb0178aa847a9dd6c62b270450fbffd3be50844df2ba81e8"
+    },
+    {
+      "url": "https://api.ncbi.nlm.nih.gov/datasets/v2/genome/taxon/9615/dataset_report?filters.reference_only=true&page_size=100",
+      "checkedAt": "2026-10-08T01:36:22.589Z",
+      "sha256": "f9eda22576d4cfe21ffeb88e0ba5ccbc3683e4ed9363880fbf96c7de9515ee4f"
+    },
+    {
+      "url": "https://rest.ensembl.org/info/assembly/canis_lupus_familiaris?content-type=application/json",
+      "checkedAt": "2026-10-08T01:36:24.682Z",
+      "sha256": "9c80bc067ef446bb54de58cdb30152e1156352cc48f793fa7c75d09e1a1841b0"
+    },
+    {
+      "url": "https://api.ncbi.nlm.nih.gov/datasets/v2/genome/taxon/7955/dataset_report?filters.reference_only=true&page_size=100",
+      "checkedAt": "2026-10-08T01:36:24.982Z",
+      "sha256": "f1249c5521f46acea12b5542dd4e5f5e16e31d23d8c3ad1289e174c0174898ae"
+    },
+    {
+      "url": "https://rest.ensembl.org/info/assembly/danio_rerio?content-type=application/json",
+      "checkedAt": "2026-10-08T01:36:26.706Z",
+      "sha256": "565e1fe086a7567e45cc2f2f5c2d54147105ce33dde91b1d46fef2aa30f77c54"
+    },
+    {
+      "url": "https://api.ncbi.nlm.nih.gov/datasets/v2/genome/taxon/7227/dataset_report?filters.reference_only=true&page_size=100",
+      "checkedAt": "2026-10-08T01:36:27.197Z",
+      "sha256": "6f434c56a0fe07bc362d4663dcf67814e480df1c7e1a41a2e8968f41532182b7"
+    },
+    {
+      "url": "https://api.ncbi.nlm.nih.gov/datasets/v2/genome/taxon/4932/dataset_report?filters.reference_only=true&page_size=100",
+      "checkedAt": "2026-10-08T01:36:28.287Z",
+      "sha256": "eea3ad4615328e7cf871868e85cc305c5e836ee8d4be4b37ba85b8be6d85b926"
+    },
+    {
+      "url": "https://api.ncbi.nlm.nih.gov/datasets/v2/genome/taxon/3702/dataset_report?filters.reference_only=true&page_size=100",
+      "checkedAt": "2026-10-08T01:36:29.408Z",
+      "sha256": "10e7d7ca7ef4e4bc3a6d4e178aab7813988bf60a048cff4f62f595d14ea0ea40"
+    },
+    {
+      "url": "https://api.ncbi.nlm.nih.gov/datasets/v2/genome/taxon/562/dataset_report?filters.reference_only=true&page_size=100",
+      "checkedAt": "2026-10-08T01:36:30.582Z",
+      "sha256": "afaa9427c5bb197ab0a433c70954e827a42e46dcdf114c26c847b796fb696f0b"
+    },
+    {
+      "url": "https://api.ncbi.nlm.nih.gov/datasets/v2/genome/taxon/9823/dataset_report?filters.reference_only=true&page_size=100",
+      "checkedAt": "2026-10-08T01:36:31.630Z",
+      "sha256": "ac5a7fa116e161e6f24d56b0b6319373380120c9a598019801f9f6f7a99e7966"
+    },
+    {
+      "url": "https://rest.ensembl.org/info/assembly/sus_scrofa?content-type=application/json",
+      "checkedAt": "2026-10-08T01:36:33.941Z",
+      "sha256": "8d327c771924946dd39d0c60589c8ce79ce6a8fd3630230c6efa5326d4c8f9a3"
+    },
+    {
+      "url": "https://api.ncbi.nlm.nih.gov/datasets/v2/genome/taxon/9031/dataset_report?filters.reference_only=true&page_size=100",
+      "checkedAt": "2026-10-08T01:36:34.298Z",
+      "sha256": "10ad8f0557b1593364c234559be043451a2c6915419b61c41107a9d8d1c71b2f"
+    },
+    {
+      "url": "https://rest.ensembl.org/info/assembly/gallus_gallus?content-type=application/json",
+      "checkedAt": "2026-10-08T01:36:42.295Z",
+      "sha256": "84e3586b07f8312b5b22f5de61c595169920280a65926097ee054af1fd8fdc44"
+    },
+    {
+      "url": "https://api.ncbi.nlm.nih.gov/datasets/v2/genome/taxon/9940/dataset_report?filters.reference_only=true&page_size=100",
+      "checkedAt": "2026-10-08T01:36:42.736Z",
+      "sha256": "d0922df1579fde21f163229f379f8a1f87248dbf331fde7349dd701df6420dbb"
+    },
+    {
+      "url": "https://rest.ensembl.org/info/assembly/ovis_aries?content-type=application/json",
+      "checkedAt": "2026-10-08T01:36:43.713Z",
+      "sha256": "70797951aab6b655a114300176c625e96990e4ec16cd906e6bc1a3d1bcce0641"
+    },
+    {
+      "url": "https://api.ncbi.nlm.nih.gov/datasets/v2/genome/taxon/6239/dataset_report?filters.reference_only=true&page_size=100",
+      "checkedAt": "2026-10-08T01:36:44.835Z",
+      "sha256": "91af19052ffaba68b3b30aecf393bb07d8a5a38b8d2089b394e4272aa736f0da"
+    },
+    {
+      "url": "https://api.ncbi.nlm.nih.gov/datasets/v2/genome/taxon/4577/dataset_report?filters.reference_only=true&page_size=100",
+      "checkedAt": "2026-10-08T01:36:46.027Z",
+      "sha256": "5308f0a54f0dc5c3d56a5539ee9639a79f7c6c47eb877b1e4f3cdf0fb0d6cb6e"
+    },
+    {
+      "url": "https://api.ncbi.nlm.nih.gov/datasets/v2/genome/taxon/511145/dataset_report?filters.reference_only=true&page_size=100",
+      "checkedAt": "2026-10-08T01:36:47.018Z",
+      "sha256": "e0d7e165dda7acab416ca4e2d393c204a79deac0f2268b7d243c6323d4287849"
+    },
+    {
+      "url": "https://api.ncbi.nlm.nih.gov/datasets/v2/genome/taxon/559292/dataset_report?filters.reference_only=true&page_size=100",
+      "checkedAt": "2026-10-08T01:36:48.174Z",
+      "sha256": "eea3ad4615328e7cf871868e85cc305c5e836ee8d4be4b37ba85b8be6d85b926"
+    },
+    {
+      "url": "https://api.ncbi.nlm.nih.gov/datasets/v2/genome/taxon/224308/dataset_report?filters.reference_only=true&page_size=100",
+      "checkedAt": "2026-10-08T01:36:49.240Z",
+      "sha256": "db3753c95d9fa9ac100871c5a05333e2d0d16d476a21235adea0e6b09ed3ead2"
+    }
+  ]
+}

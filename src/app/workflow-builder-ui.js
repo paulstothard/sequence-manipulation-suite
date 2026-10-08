@@ -17,6 +17,7 @@ import { tableStreamToTsv } from "./table-output-format.js";
 import { validateWorkflowDefinition } from "../core/workflow-engine.js";
 import { getAvailableToolWorkflowOutputs, getToolOutputFormatOption } from "../core/tool-option-choices.js";
 import { exportDelimitedTable } from "../core/table.js";
+import { installAssemblyPicker } from "./assembly-picker-ui.js";
 
 function sequenceRecordsToFasta(stream) {
   return (stream.records ?? [])
@@ -2011,6 +2012,24 @@ export function createWorkflowBuilderController({
       }
     }
 
+    // Keep serialized recipes explicit: selectors write the provider's exact
+    // assembly/species fields and never replace custom or saved identifiers.
+    const resourceMode = step.options.retrieval || step.options.destination;
+    const source = resourceMode?.split(':')[1];
+    const assembly = grid.querySelector('input[name="assembly"]');
+    const species = grid.querySelector('input[name="species"]');
+    if (['get-data', 'send-data'].includes(step.toolId) && ['ncbi', 'ucsc', 'ensembl', 'gdv'].includes(source) && (assembly || (step.toolId === 'send-data' && species))) {
+      if (species) species.closest('label').dataset.field = 'species';
+      const picker = installAssemblyPicker({
+        wrapper: (assembly || species).closest('label'), assembly, species, source, allowDiscovery: false,
+        changed: () => updateSelectedWorkflowStep(selectedStep => {
+          selectedStep.options = { ...selectedStep.options,
+            ...(assembly ? { assembly: assembly.value } : {}), ...(species ? { species: species.value } : {}) };
+        }, 'Updated organism / assembly. Check that the incoming coordinates or variant match the selected assembly.')
+      });
+      // Custom recipes begin with their identifier fields visible.
+      if (!picker.selectedOrganism()) grid.querySelector('.assembly-picker details').open = true;
+    }
     container.append(grid);
   }
 

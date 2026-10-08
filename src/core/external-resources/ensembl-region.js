@@ -51,9 +51,16 @@ export async function retrieveEnsemblRegion(plan, session) {
       row.proteinId = versioned(protein); row.proteinStableId = protein.id; row.proteinVersion = protein.version; row.proteinLength = protein.length;
     }
   }
+  return retrieveEnsemblProducts(plan, selected, session, { warnings, assembly: info.assembly_name, annotation: `Ensembl (${info.genebuild_last_geneset_update || 'current annotation'})`, matchedCount: rows.length, geneCount: new Set(rows.map(row => row.geneId)).size });
+}
+
+export async function retrieveEnsemblProducts(plan, rows, session, metadata) {
+  const warnings = [...(metadata.warnings ?? [])];
+  const selected = selectTranscripts(rows, plan.selectedIds ?? 'all', warnings, 'Ensembl Canonical');
   const codingOnly = ['protein', 'cds'].includes(plan.product);
-  const products = codingOnly ? selected.filter(row => row.proteinId) : selected;
-  if (codingOnly && products.length < selected.length) warnings.push(`${selected.length - products.length} selected transcript(s) have no annotated protein product and were excluded from ${plan.product === 'protein' ? 'protein' : 'CDS'} output.`);
+  const eligible = codingOnly ? selected.filter(row => row.proteinId) : selected;
+  const products = plan.product === 'protein' ? [...new Map(eligible.map(row => [row.proteinId, row])).values()] : eligible;
+  if (codingOnly && eligible.length < selected.length) warnings.push(`${selected.length - eligible.length} selected transcript(s) have no annotated protein product and were excluded from ${plan.product === 'protein' ? 'protein' : 'CDS'} output.`);
   const records = [];
   if (!['summary', 'tsv'].includes(plan.format)) {
     for (let offset = 0; offset < products.length; offset += 50) {
@@ -72,9 +79,9 @@ export async function retrieveEnsemblRegion(plan, session) {
         const seq = returned.get(protein ? row.proteinStableId : row.stableId);
         requireData(seq && seq.version === (protein ? row.proteinVersion : row.version));
         if (plan.product !== 'cds') requireData(seq.seq.length === (protein ? row.proteinLength : row.length));
-        records.push({ id: protein ? row.proteinId : row.id, transcriptId: row.id, geneId: row.geneId, description: row.name, sequence: seq.seq });
+        records.push({ id: protein ? row.proteinId : row.id, transcriptId: protein ? eligible.filter(item => item.proteinId === row.proteinId).map(item => item.id).join(',') : row.id, geneId: row.geneId, description: row.name, sequence: seq.seq });
       }
     }
   }
-  return regionResult(plan, { rows: selected, records, warnings, assembly: info.assembly_name, annotation: `Ensembl (${info.genebuild_last_geneset_update || 'current annotation'})`, matchedCount: rows.length, geneCount: new Set(rows.map(row => row.geneId)).size }, session);
+  return regionResult(plan, { rows: selected, records, ...metadata, warnings }, session);
 }

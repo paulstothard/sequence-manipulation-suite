@@ -58,6 +58,11 @@ export function regionSession(client, signal, onProgress = () => {}) {
 }
 export function selectTranscripts(rows, selection, warnings, label) {
   if (selection === 'all') return rows;
+  if (Array.isArray(selection)) {
+    const ids = new Set(selection);
+    requireData(ids.size > 0 && ids.size === selection.length && selection.every(id => rows.some(row => row.id === id)), 'Choose one or more available transcripts; the selection may have changed.');
+    return rows.filter(row => ids.has(row.id));
+  }
   const selected = rows.filter(row => row.representative);
   const genes = new Set(rows.map(row => row.geneId || row.geneName));
   const selectedGenes = new Set(selected.map(row => row.geneId || row.geneName));
@@ -82,32 +87,34 @@ export const regionColumns = [
   ['geneName', 'Gene'], ['id', 'Transcript ID'], ['chromosome', 'Chromosome / sequence'],
   ['start', 'Start (1-based)'], ['end', 'End (inclusive)'], ['strand', 'Strand'], ['proteinId', 'Protein ID'],
   ['biotype', 'Type'], ['length', 'Transcript length (nt)'], ['proteinLength', 'Protein length (aa)'],
-  ['representative', 'Representative designation'], ['name', 'Transcript name'], ['geneId', 'Gene ID'],
+  ['status', 'Reference / predicted status'], ['cdsLength', 'CDS length (nt)'], ['proteinName', 'Protein / isoform'], ['representative', 'Representative designation'], ['name', 'Transcript name'], ['geneId', 'Gene ID'],
   ['exons', 'Exons (1-based, inclusive)'], ['assembly', 'Assembly'], ['source', 'Annotation source']
-].map(([id, label]) => ({ id, label, ...(['start', 'end', 'length', 'proteinLength'].includes(id) ? { type: 'number' } : {}) }));
+].map(([id, label]) => ({ id, label, ...(['start', 'end', 'length', 'proteinLength', 'cdsLength'].includes(id) ? { type: 'number' } : {}) }));
 
 export function regionResult(plan, model, session) {
   const { rows, records = [], warnings = [], assembly, annotation, matchedCount = rows.length, geneCount = new Set(rows.map(r => r.geneId || r.geneName)).size } = model;
   const metadataOnly = ['summary', 'tsv'].includes(plan.format);
-  const report = `Source: ${annotation}\nAssembly: ${assembly}\nRegion: ${plan.region.chrom}:${plan.region.start}-${plan.region.end} (1-based, inclusive)\nStrands: Both\nSelection: ${plan.selectionLabel}\nOverlapping transcripts: ${matchedCount}\nMatching genes: ${geneCount}\nSelected transcripts: ${rows.length}\n${metadataOnly ? 'Sequences were not downloaded.' : `Returned sequences: ${records.length}`}\nComplete products of overlapping transcripts in their biological orientation; sequences are not clipped to the query interval.\n`;
-  const tableRows = rows.map(row => ({ ...row, source: annotation, assembly, chromosome: row.chromosome ?? plan.region.chrom,
+  const rowLabel = rows.some(row => row.hasTranscript === false) ? 'products' : 'transcripts';
+  const regionLabel = plan.region ? `${plan.region.chrom}:${plan.region.start}-${plan.region.end}` : 'No genomic placement supplied';
+  const report = `${plan.geneLabel ? `Gene: ${plan.geneLabel}\nOrganism: ${plan.organism}\n` : ''}Source: ${annotation}\nAssembly: ${assembly}\nRegion: ${regionLabel} (1-based, inclusive)\nStrands: ${plan.geneLabel ? plan.region?.strand || 'Not supplied' : 'Both'}\nSelection: ${plan.selectionLabel}\n${plan.geneLabel ? 'Associated' : 'Overlapping'} ${rowLabel}: ${matchedCount}\nMatching genes: ${geneCount}\nSelected ${rowLabel}: ${rows.length}\n${metadataOnly ? 'Sequences were not downloaded.' : `Returned sequences: ${records.length}`}\nComplete products of ${plan.geneLabel ? 'the selected gene' : 'overlapping transcripts'} in their biological orientation; sequences are not clipped to the query interval.\n`;
+  const tableRows = rows.map(row => ({ ...row, ...(row.hasTranscript === false ? { id: '', length: null } : {}), source: annotation, assembly, chromosome: row.chromosome ?? plan.region?.chrom,
     exons: (row.exons ?? []).map(exon => `${exon.start}-${exon.end}`).join(';') }));
   let output, extension, streams = {};
   if (plan.format === 'tsv') {
     output = [regionColumns.map(c => c.id).join('\t'), ...tableRows.map(row => regionColumns.map(c => cleanText(row[c.id])).join('\t'))].join('\n') + '\n';
     streams.table = makeTableStream(regionColumns, tableRows, 'retrieved-region-annotations'); extension = 'tsv';
   } else if (plan.format === 'summary' || !records.length) {
-    output = `${report}\n${rows.map(row => `${row.id} | gene=${row.geneId || row.geneName} | ${row.chromosome ?? plan.region.chrom}:${row.start}-${row.end}:${row.strand} | ${row.biotype || ''}${row.proteinId ? ` | protein=${row.proteinId}` : ''}`).join('\n')}\n`;
+    output = `${report}\n${rows.map(row => `${row.id}${row.hasTranscript === false ? ' (protein)' : ''} | gene=${row.geneId || row.geneName} | ${row.start ? `${row.chromosome ?? plan.region?.chrom}:${row.start}-${row.end}:${row.strand}` : 'Genomic placement not supplied'} | ${row.biotype || ''}${row.proteinId ? ` | protein=${row.proteinId}` : ''}`).join('\n')}\n`;
     extension = 'txt';
   } else {
-    output = model.nativeText ?? records.map(record => formatFastaRecord(`${record.id} ${cleanText(record.description)} [gene=${record.geneId || record.geneName}] [transcript=${record.transcriptId}] [assembly=${assembly}] [source=${annotation}]`, record.sequence)).join('');
+    output = model.nativeText ?? records.map(record => formatFastaRecord(`${record.id} ${cleanText(record.description)} [gene=${record.geneId || record.geneName}] [transcript=${record.transcriptId}] [assembly=${assembly}] [source=${annotation}] [sequence_type=${plan.product}]${plan.organism ? ` [organism=${cleanText(plan.organism)}]` : ''}`, record.sequence)).join('');
     extension = plan.format;
   }
   requireData(new TextEncoder().encode(output).byteLength <= MAX_RESPONSE_BYTES, 'The complete output exceeds 25 MiB. Request a smaller region.');
-  const stem = `${plan.source}_${plan.region.chrom}_${plan.region.start}-${plan.region.end}_${plan.product}`;
+  const stem = `${plan.source}_${plan.region ? `${plan.region.chrom}_${plan.region.start}-${plan.region.end}` : 'gene_products'}_${plan.product}`;
   const value = makeToolResult({ output, warnings, recordsProcessed: metadataOnly ? rows.length : records.length,
     download: { filename: `${stem}.${extension}`, mimeType: extension === 'fasta' ? 'text/x-fasta' : extension === 'tsv' ? 'text/tab-separated-values' : 'text/plain' }, streams,
-    optionsUsed: { source: annotation, assembly, region: `${plan.region.chrom}:${plan.region.start}-${plan.region.end}`, selection: plan.selectionLabel } });
+    optionsUsed: { source: annotation, assembly, region: regionLabel, selection: plan.selectionLabel } });
   value.retrievalSummary = report;
   value.retrievalFormat = extension === 'txt' ? 'report' : extension;
   value.regionMetadata = { assembly, annotation, matchedCount, geneCount, selectedCount: rows.length, returnedCount: records.length, urls: session.urls };

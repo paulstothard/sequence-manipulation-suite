@@ -1,3 +1,5 @@
+import externalResourceCatalogue from '../reference-data/external-resources/catalogue.js';
+import { dataTypes, tasks } from '../core/external-resources/catalog.js';
 import { codonUsageReferences } from "../reference-data/codon-usage/references.js";
 import dnaRnaMotifs from "../reference-data/motifs/dna-rna-motifs.js";
 import proteinMotifs from "../reference-data/motifs/protein-motifs.js";
@@ -636,6 +638,28 @@ export function makeReferenceTopics(sortedTools) {
     ]
   },
   {
+    id: "external-services",
+    label: "External services",
+    title: "External Services",
+    summary: "Resources supported by Get Data and Send Data. Both tools use this shared service catalogue.",
+    columns: ["Service", "Get Data", "Send Data", "Website", "Documentation"],
+    rows: externalResourceCatalogue.services.map(row => [row.name, row.get.map(id => dataTypes.find(item => item.id === id)?.label || id).join(", ") || "—", row.send.map(id => tasks.find(item => item.id === id)?.label || id).join(", ") || "—", row.homepage, row.documentation]),
+    searchable: { label: "Search services", rowNoun: "service" },
+    notes: ["Available operations are those supported by SMS3. External services may change their capabilities or availability."],
+    citations: []
+  },
+  {
+    id: "organisms-assemblies",
+    label: "Organisms and assemblies",
+    title: "Organisms And Assemblies",
+    searchable: { label: "Search species and assemblies", rowNoun: "assembly", rowPlural: "assemblies" },
+    summary: "Bundled assembly choices for common organisms. Get Data and Send Data use these provider-specific identifiers without converting coordinates between assemblies.",
+    columns: ["Organism", "Taxonomy ID", "Source", "Assembly", "Provider ID", "Assembly organism / strain", "Catalogue status", "Checked"],
+    rows: externalResourceCatalogue.assemblies.map(row => [externalResourceCatalogue.organisms.find(item => item.taxId === row.taxId).label, row.taxId, externalResourceCatalogue.services.find(item => item.id === row.source).name, row.name, row.id, row.organism || row.assemblyTaxId, row.status, row.checkedAt.slice(0, 10)]),
+    notes: ["Catalogue dates describe a bundled snapshot, not a promise of current availability. Find assemblies checks a provider for newer or additional choices.", "NCBI regional products require a supported current RefSeq reference; UCSC products require the selected assembly's RefSeq tracks. Retrieval validates these restrictions.", "Ensembl uses the annotation assembly supported by its configured REST service. Common names shared across services do not imply identical coordinates."],
+    citations: [{ label: "NCBI Datasets", url: "https://www.ncbi.nlm.nih.gov/datasets/docs/v2/" }, { label: "Ensembl REST", url: "https://rest.ensembl.org/" }, { label: "UCSC REST", url: "https://genome.ucsc.edu/goldenPath/help/api.html" }]
+  },
+  {
     id: "reference-data-builds",
     label: "Reference data inventory",
     title: "Reference Data Inventory",
@@ -707,10 +731,10 @@ export function makeReferenceTopics(sortedTools) {
     id: "privacy-offline",
     label: "Privacy and local processing",
     title: "Privacy And Local Processing",
-    summary: "Analysis tools process data in your browser. The Get Data and Send Data tools connect to external services when you retrieve records, run a workflow with Get Data, or choose Open or Send.",
+    summary: "Analysis tools process data in your browser. Get Data and Send Data contact external services for explicit searches, organism/assembly discovery, record retrieval, workflows with Get Data, and Open or Send actions.",
     notes: [
       "Sequence analysis, file processing, and plotting run in your browser. Their inputs are not uploaded to an SMS3 server, and downloads are generated in the browser.",
-      "The Get Data tool sends the accession, search terms, or region you enter to the selected public database when you click Retrieve or run a workflow containing a Get Data step. In workflows, the preceding output supplies the accession or region.",
+      "Get Data sends the organism, accession, search terms, or region you enter to the selected public database when you search, choose a gene, retrieve records, or run a workflow containing Get Data. In workflows, the preceding output supplies the accession or region. Get Data and Send Data can also request public organism and assembly metadata when you choose Find; their bundled menus work locally.",
       "The Send Data tool shares the displayed data or identifiers with the selected service when you click Open or Send. For services that require manual submission, you paste or upload the data on their website. External services apply their own privacy policies.",
       "Opening either tool, loading an example, or editing its inputs does not contact external services.",
       "SMS3 does not use cookies.",

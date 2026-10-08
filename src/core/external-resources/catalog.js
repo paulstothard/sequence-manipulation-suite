@@ -1,19 +1,17 @@
+import { commonOrganisms } from './organisms.js';
+import resourceCatalogue from '../../reference-data/external-resources/catalogue.js';
 import { recordParserExample } from '../../examples/record-parser-example.js';
 import { parseFlatfileRecords } from '../flatfile-records.js';
 import { formatFastaRecord } from '../fasta.js';
 import { regionExample } from './region-examples.js';
 // External endpoints and handoff references are maintained in docs/external-resources.md.
-export const sources = {
-  ncbi: 'NCBI', uniprot: 'UniProt', ensembl: 'Ensembl', ucsc: 'UCSC Genome Browser',
-  ena: 'ENA', rcsb: 'RCSB PDB', alphafold: 'AlphaFold DB', blast: 'NCBI BLAST',
-  primer: 'NCBI Primer-BLAST', gdv: 'NCBI Genome Data Viewer', proksee: 'Proksee',
-  interpro: 'InterPro', hmmer: 'HMMER', clustalo: 'Clustal Omega', foldseek: 'Foldseek',
-  dbsnp: 'dbSNP', clinvar: 'ClinVar', gnomad: 'gnomAD'
-};
+export const sources = Object.fromEntries(resourceCatalogue.services.map(row => [row.id, row.name]));
 export const dataTypes = [
+  { id: 'gene', label: 'Gene and its sequences', sources: ['ncbi', 'ensembl'] },
   { id: 'nucleotide', label: 'Nucleotide sequence', sources: ['ncbi', 'ena', 'ensembl', 'ucsc'] },
   { id: 'protein', label: 'Protein sequence', sources: ['ncbi', 'uniprot', 'ensembl', 'ucsc'] },
   { id: 'annotations', label: 'Gene / transcript annotations', sources: ['ncbi', 'ensembl', 'ucsc'] },
+  { id: 'assembly', label: 'Whole genome assembly', sources: ['ncbi'] },
   { id: 'structure', label: 'Protein structure', sources: ['rcsb', 'alphafold'] }
 ];
 export const tasks = [
@@ -34,8 +32,12 @@ const protein = '>TP53_fragment\nMEEPQSDPSVEPPLSQETFSDLWKLLPENNVLSPLPSQAMDDLMLSP
 const species = () => text('species', 'Species', 'homo_sapiens', 'Ensembl species name, for example homo_sapiens or mus_musculus.');
 const region = (ensembl = false, gdv = false) => text('region', 'Region', gdv ? 'NC_000017.11:7668421-7687490' : `${ensembl ? '17' : 'chr17'}:7668421-7687490`, 'Coordinates are 1-based, inclusive.');
 export function lookupModes(type, source) {
+  if (type === 'gene') return [['gene', 'By gene']];
+  if (type === 'assembly') return [['search', 'By organism'], ['accession', 'By assembly accession']];
+  if (type === 'structure') return [['accession', 'By identifier'], ['search', 'By protein name']];
   if (type === 'region' || type === 'annotations' || source === 'ucsc') return [['region', 'By genomic region']];
   const modes = [['accession', 'By accession']];
+  if (source === 'uniprot') modes.push(['name', 'By protein name']);
   if (source === 'ncbi' || source === 'uniprot') modes.push(['search', 'By search terms']);
   if (type !== 'structure' && ['ncbi', 'ensembl'].includes(source)) modes.push(['region', 'By genomic region']);
   return modes;
@@ -47,6 +49,8 @@ export function isRegionLookup(type, source, options = {}) {
   return type === 'region' || lookupModes(type, source)[0][0] === 'region' || options.queryMode === 'region';
 }
 export function formatsFor(type, source, options = {}) {
+  if (type === 'gene') return [['fasta', 'FASTA'], ['summary', 'Summary report']];
+  if (type === 'assembly') return [['summary', 'Summary report'], ['fasta', 'FASTA'], ['gb', 'GenBank']];
   const fasta = ['fasta', 'FASTA'], summary = ['summary', 'Summary report'];
   if (type === 'structure') return [['cif', 'mmCIF'], ['pdb', 'PDB'], summary];
   if (type === 'annotations') return [['tsv', 'Gene / transcript table'], summary];
@@ -68,6 +72,7 @@ export function formatHelp(type, source, format, options = {}) {
     if (format === 'summary') return 'Annotation metadata and transcript identifiers, without downloading product sequences.';
     if (format === 'fasta') return 'Complete products of overlapping transcripts, in biological orientation. Results may extend beyond the entered interval; multiple products are separate FASTA records.';
   }
+  if (type === 'assembly') return format === 'summary' ? 'Assembly members and lengths; sequences are not downloaded.' : `All assembly members as separate ${format === 'gb' ? 'GenBank records with native annotations' : 'FASTA records without feature annotations'}. Large assemblies exceed the 25 MiB limit; choose Summary report to inspect them first.`;
   if (format === 'gb') return 'Complete record: nucleotide sequence, feature annotations, qualifiers, and references from NCBI.';
   if (format === 'gp') return 'Complete record: amino acid sequence, protein feature annotations, qualifiers, and references from NCBI.';
   if (format === 'embl') return 'Complete record: nucleotide sequence and its annotations from ENA.';
@@ -79,7 +84,18 @@ export function formatHelp(type, source, format, options = {}) {
   return format === 'cif' ? 'Structure coordinates and metadata in mmCIF format.' : 'Structure coordinates in legacy PDB format. Use mmCIF if this entry cannot be represented as PDB.';
 }
 export function getFields(type, source, options = {}) {
-  if (type === 'structure') return [text('query', source === 'rcsb' ? 'PDB ID' : 'Protein / UniProt ID', source === 'rcsb' ? '4HHB' : 'P04637')];
+  if (type === 'gene') return [text('organism', 'Organism', 'Homo sapiens'), text('query', 'Gene symbol, name, or ID', 'HBB')];
+  if (type === 'assembly') return [choice('queryMode', 'Lookup method', lookupModes(type, source), options.queryMode === 'accession' ? 'accession' : 'search'),
+    ...(options.queryMode === 'accession' ? [text('query', 'Assembly accession', 'GCF_001729705.1', 'The entire assembly is returned as separate chromosome, plasmid, and contig records.')] : [choice('organism', 'Organism', commonOrganisms.map(row => [row.taxId, row.label]), options.organism ?? '9606')])];
+  if (source === 'uniprot' && options.queryMode === 'name') return [choice('queryMode', 'Lookup method', lookupModes(type, source), 'name'), choice('organism', 'Organism', [['', 'All organisms'], ...commonOrganisms.map(row => [row.taxId, row.label])], options.organism ?? '9606'), text('query', 'Protein name or gene symbol', 'hemoglobin', 'Find proteins by familiar names; choose among the matching UniProt records.')];
+
+  if (type === 'structure') {
+    const search = options.queryMode === 'search';
+    return [choice('queryMode', 'Lookup method', lookupModes(type, source), search ? 'search' : 'accession'),
+      ...(search ? [choice('organism', 'Organism', [['', 'All organisms'], ...commonOrganisms.map(row => [row.taxId, row.label])], options.organism ?? '9606')] : []),
+      text('query', search ? 'Protein name or identifier' : source === 'rcsb' ? 'PDB ID' : 'Protein / UniProt ID', search ? 'hemoglobin' : source === 'rcsb' ? '4HHB' : 'P04637',
+        source === 'rcsb' ? 'RCSB PDB contains experimentally determined structures. Choose a match to inspect its method and resolution.' : 'AlphaFold provides predicted models. Name searches find UniProt proteins; model availability is checked when retrieving.')];
+  }
   const modes = lookupModes(type, source);
   const queryMode = modes.some(([id]) => id === options.queryMode) ? options.queryMode : modes[0][0];
   const fields = [choice('queryMode', 'Lookup method', modes, queryMode)];

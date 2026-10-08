@@ -3,11 +3,13 @@ import { formatFastaRecord, parseSequenceInput } from '../fasta.js';
 import { makeToolResult } from '../workflow.js';
 import { MAX_RESPONSE_BYTES } from './limits.js';
 import { assemblyReportUrl, readAssemblySequences, verifyAssemblyRecords } from './ncbi-assembly.js';
+import { knownOrganism } from './organisms.js';
+import { regionSession } from './region-common.js';
 
 const EUTILS = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/';
 export { MAX_RESPONSE_BYTES } from './limits.js';
 export const MAX_REGION_BASES = 1_000_000;
-export const retrievalHosts = new Set(['eutils.ncbi.nlm.nih.gov', 'api.ncbi.nlm.nih.gov', 'rest.uniprot.org', 'rest.ensembl.org', 'api.genome.ucsc.edu', 'www.ebi.ac.uk', 'files.rcsb.org', 'data.rcsb.org', 'alphafold.ebi.ac.uk']);
+export const retrievalHosts = new Set(['eutils.ncbi.nlm.nih.gov', 'api.ncbi.nlm.nih.gov', 'rest.uniprot.org', 'rest.ensembl.org', 'api.genome.ucsc.edu', 'www.ebi.ac.uk', 'files.rcsb.org', 'data.rcsb.org', 'search.rcsb.org', 'alphafold.ebi.ac.uk']);
 const accessionPattern = /^(?:[A-Z]{1,6}_?\d+(?:\.\d+)?|\d+)$/i;
 const uniprotPattern = /^(?:[OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9](?:[A-Z][A-Z0-9]{2}[0-9]){1,2})(?:-\d+)?$/i;
 export function isUniProtId(value) { return uniprotPattern.test(value); }
@@ -23,12 +25,26 @@ export function uniprotId(value) {
 }
 export function buildRetrieval(options = {}) {
   // Keep old saved/request descriptions compatible with the unified sequence menu.
+  if (options.type === 'assembly') {
+    if ((options.source ?? 'ncbi') !== 'ncbi') throw new Error('Whole-assembly retrieval uses NCBI.');
+    if (options.format && !formatsFor('assembly', 'ncbi').some(([id]) => id === options.format)) throw new Error('Choose a supported assembly output format.');
+    if (options.queryMode !== 'accession') return { source: 'ncbi', type: 'assembly', format: options.format ?? 'summary', kind: 'search', responseType: 'assembly-search', organism: options.organism ?? '9606', pageToken: options.pageToken ?? '', url: 'https://api.ncbi.nlm.nih.gov/datasets/v2/genome/taxon' };
+    if (!/^GC[AF]_\d{9}\.[1-9]\d*$/i.test(options.query ?? '')) throw new Error('Enter a versioned whole-assembly accession. Use Nucleotide sequence for individual records.');
+    options = { ...options, type: 'nucleotide' };
+  }
+
+  if (options.type === 'gene') {
+    validateSelection('get', 'gene', options.source ?? 'ncbi');
+    return { ...options, responseType: 'gene-discovery', source: options.source ?? 'ncbi', query: required(options.query, 'a gene name or ID'), organism: options.organism || 'Human' };
+  }
   if (options.type === 'region') options = { ...options, type: 'nucleotide', queryMode: 'region' };
   const type = options.type === 'annotated' ? 'nucleotide' : options.type ?? 'nucleotide', source = options.source ?? 'ncbi';
   validateSelection('get', type, source);
   const format = options.format ?? formatsFor(type, source, options)[0][0];
   if (!formatsFor(type, source, options).some(([id]) => id === format)) throw new Error('Choose an output format supported by this source.');
   const plan = { type, source, format, responseType: 'text', kind: 'record', label: sources[source] };
+  if (type === 'structure' && options.queryMode === 'search') return { ...plan, kind: 'search', responseType: 'structure-search', query: required(options.query, 'a protein name or identifier', 200), organism: options.organism ?? '', page: options.page ?? 0, url: source === 'rcsb' ? 'https://search.rcsb.org/rcsbsearch/v2/query' : 'https://rest.uniprot.org/uniprotkb/search' };
+
   if (isRegionLookup(type, source, options)) {
     if (!['ncbi', 'ucsc', 'ensembl'].includes(source) || type === 'structure') throw new Error('This source does not support genomic region retrieval.');
     const r = parseRegion(options.region, MAX_REGION_BASES);
@@ -88,11 +104,11 @@ export function buildRetrieval(options = {}) {
       if (format === 'summary') plan.responseType = 'ncbi-summary';
     }
   } else if (source === 'uniprot') {
-    const search = options.queryMode === 'search' || (options.queryMode !== 'accession' && !isUniProtId(query));
+    const search = ['search', 'name'].includes(options.queryMode) || (options.queryMode !== 'accession' && !isUniProtId(query));
     if (search || format === 'summary') {
       plan.kind = search ? 'search' : 'record';
       plan.responseType = 'uniprot-summary';
-      plan.url = url('https://rest.uniprot.org/uniprotkb/search', { query: search ? query : `accession:${uniprotId(query)}`, format: 'tsv', fields: 'accession,id,protein_name,organism_name,length', size: 20 });
+      plan.url = url('https://rest.uniprot.org/uniprotkb/search', { query: search ? (options.queryMode === 'name' && options.organism ? `(${query}) AND organism_id:${identifier(options.organism, 'organism')}` : query) : `accession:${uniprotId(query)}`, format: 'tsv', fields: 'accession,id,protein_name,organism_name,length', size: 20 });
     } else {
       const id = uniprotId(query);
       if (format !== 'fasta' && /-\d+$/.test(id)) throw new Error('UniProt annotated entries describe the canonical sequence. Choose FASTA for this isoform, or enter the base UniProt accession for its complete entry.');
@@ -154,6 +170,7 @@ export function createRetrievalClient({ fetchImpl = globalThis.fetch, intervalMs
       const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
       try {
         const response = await fetchImpl(target, { ...post, signal: controller.signal, mode: 'cors', credentials: 'omit', referrerPolicy: 'no-referrer' });
+        if (response.status === 204 && address.hostname === 'search.rcsb.org') return JSON.stringify({ result_set: [], total_count: 0 });
         if (!response.ok) {
           if (response.status === 429 || response.status === 503) {
             const raw = response.headers.get('retry-after');
@@ -236,8 +253,19 @@ function result(output, extension, plan, count = 1, warnings = []) {
   return value;
 }
 export async function retrieveData(plan, client, signal, onProgress) {
+  if (plan.responseType === 'assembly-search') {
+    const value = await (await import('./assembly-catalog.js')).findAssemblies(plan, client, signal);
+    return { matches: value.rows.map(row => ({ ...row, title: `${row.label} — whole assembly${row.sequenceCount ? `, ${row.sequenceCount} contigs` : ''}` })), total: value.total, nextPageToken: value.nextPageToken };
+  }
+  if (plan.responseType === 'structure-search') return (await import('./structure-search.js')).searchStructures(plan, client, signal);
+  if (plan.responseType === 'gene-discovery') {
+    const { searchGenes, loadGene, retrieveGene } = await import('./gene.js');
+    const organism = typeof plan.organism === 'object' ? plan.organism : knownOrganism(plan.organism);
+    if (!plan.geneId) return searchGenes({ ...plan, organism }, client, signal);
+    const model = await loadGene({ ...plan, id: plan.geneId, organism }, client, signal, onProgress);
+    return retrieveGene(model, plan, client, signal, onProgress);
+  }
   if (plan.responseType === 'region-products') {
-    const { regionSession } = await import('./region-common.js');
     const session = regionSession(client, signal, onProgress);
     const adapter = plan.source === 'ensembl' ? (await import('./ensembl-region.js')).retrieveEnsemblRegion
       : plan.source === 'ncbi' ? (await import('./ncbi-region.js')).retrieveNcbiRegion : (await import('./ucsc-region.js')).retrieveUcscRegion;
@@ -314,7 +342,7 @@ export async function retrieveData(plan, client, signal, onProgress) {
   }
   return validateRecord(text, plan, signal);
 }
-async function validateRecord(text, plan, signal) {
+export async function validateRecord(text, plan, signal) {
   if (plan.type === 'structure') {
     if (plan.format === 'cif' ? !/^data_/m.test(text) : !/^(?:HEADER|ATOM  |HETATM)/m.test(text)) throw new Error('The service did not return a valid structure record in the selected format.');
     return result(text, plan.format, plan);

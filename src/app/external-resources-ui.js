@@ -1,3 +1,6 @@
+import { installAssemblyPicker } from './assembly-picker-ui.js';
+import { bundledAssemblies, knownOrganism } from '../core/external-resources/organisms.js';
+import { createGeneDiscoveryController } from './gene-discovery-ui.js';
 import { openHandoff, sendHandoff } from './external-handoff-ui.js';
 import { dataTypes, tasks, sources, getFields, sendFields, fieldExamples, formatsFor, formatHelp, sendInputExample, lookupModes, isRegionLookup, regionProduct } from '../core/external-resources/catalog.js';
 import { regionExamples, regionExample, matchingRegionExample } from '../core/external-resources/region-examples.js';
@@ -38,6 +41,7 @@ function selectField(id, label, choices, value) {
 export function createExternalResourcesController({ host, displayResult, resetOutput, isActive }) {
   const preferences = readPreferences(), drafts = new Map(), modeDrafts = new Map(), lookupDrafts = new Map(), client = createRetrievalClient();
   const formatChoices = { ...preferences.get?.formats };
+  let geneController, geneDraft, assemblyPicker;
   let mode, operation, source, format, controls = {}, fields = [], abortController, epoch = 0, status, matches, action, cancelButton, fieldset;
   const snapshot = () => Object.fromEntries(Object.entries(controls).map(([id, control]) => [id, control.value]));
   const key = () => `${mode}:${operation}:${source}`;
@@ -50,6 +54,9 @@ export function createExternalResourcesController({ host, displayResult, resetOu
     try { sessionStorage.setItem(storageKey, JSON.stringify(preferences)); } catch { /* session storage is optional */ }
   }
   function cancel() {
+    if (geneController) geneDraft = geneController.snapshot();
+    geneController?.cancel();
+    assemblyPicker?.cancel();
     epoch++;
     abortController?.abort(); abortController = null;
     if (action) action.disabled = false;
@@ -61,7 +68,7 @@ export function createExternalResourcesController({ host, displayResult, resetOu
   function data() { return { ...snapshot(), source, type: operation, task: operation, format }; }
   function busy() { action.disabled = true; cancelButton.hidden = false; fieldset.disabled = true; status.classList.remove('external-error'); }
   function updateRetrievalAction() {
-    if (mode === 'get') action.textContent = controls.queryMode?.value === 'search' ? 'Search' : 'Retrieve';
+    if (mode === 'get') action.textContent = ['search', 'name'].includes(controls.queryMode?.value) ? 'Search' : 'Retrieve';
   }
   async function retrieve(overrides = {}) {
     invalidate();
@@ -82,9 +89,17 @@ export function createExternalResourcesController({ host, displayResult, resetOu
         for (const row of rows) {
           const item = node('div', '', 'external-match');
           const choose = button(row.id, () => retrieve(result.models ? { modelId: row.id } : { query: row.id, queryMode: 'accession' }));
-          const description = node('span', [row.title, row.organism, row.length ? `${row.length.toLocaleString()} ${operation === 'protein' ? 'aa' : 'bp'}` : ''].filter(Boolean).join(' · '));
+          const description = node('span', [row.title, row.organism, row.length ? `${row.length.toLocaleString()} ${operation === 'protein' || row.molecule === 'protein' ? 'aa' : 'bp'}` : '', row.status, row.method, row.resolution].filter(Boolean).join(' · '));
           item.append(choose, description); matches.append(item);
         }
+        if (result.nextPageToken) matches.append(button('Next assemblies', () => retrieve({ pageToken: result.nextPageToken })));
+        if (result.pageSize && result.total > result.pageSize) {
+          const page = result.page ?? 0, navigation = node('div', '', 'button-row');
+          if (page) navigation.append(button('Previous matches', () => retrieve({ page: page - 1 })));
+          if ((page + 1) * result.pageSize < result.total) navigation.append(button('Next matches', () => retrieve({ page: page + 1 })));
+          matches.append(navigation);
+        }
+
       } else {
         await displayResult(result, values.query || values.region || '', { outputFormat: result.retrievalFormat || (plan.format === 'summary' ? 'report' : plan.format) }, current, signal);
         if (current()) status.textContent = result.retrievalSummary || `Retrieved from ${sources[source]}. Copy or download the result below.`;
@@ -193,7 +208,7 @@ export function createExternalResourcesController({ host, displayResult, resetOu
       const example = regionExample(source, row.id);
       const choice = button('', () => {
         for (const id of ['assembly', 'region', 'species']) if (controls[id]) controls[id].value = example[id];
-        save(); invalidate(); closeRegionExamples(); exampleButton.focus();
+        assemblyPicker?.update(); save(); invalidate(); closeRegionExamples(); exampleButton.focus();
       }, 'external-example-choice');
       choice.setAttribute('aria-label', example.label);
       choice.append(node('strong', example.label), node('span', `${example.region} · ${(example.end - example.start + 1).toLocaleString('en-US')} bp`),
@@ -304,7 +319,7 @@ export function createExternalResourcesController({ host, displayResult, resetOu
     }
   }
   function render(toolId) {
-    cancel(); host.replaceChildren(); mode = toolId === 'get-data' ? 'get' : 'send';
+    cancel(); geneController = null; assemblyPicker = null; host.replaceChildren(); mode = toolId === 'get-data' ? 'get' : 'send';
     fileUpload = null; regionExampleList = null; exampleButton = null;
     const items = mode === 'get' ? dataTypes : tasks, saved = preferences[mode] || {};
     operation = mode === 'get' && ['annotated', 'region'].includes(saved.operation) ? 'nucleotide' : items.some(item => item.id === saved.operation) ? saved.operation : items[0].id;
@@ -331,7 +346,32 @@ export function createExternalResourcesController({ host, displayResult, resetOu
     const op = selectField('external-operation', mode === 'get' ? 'What do you want to retrieve?' : 'What do you want to do?', items.map(item => ({ value: item.id, label: item.label })), operation);
     const provider = selectField('external-source', mode === 'get' ? 'Source' : 'Service', item.sources.map(id => ({ value: id, label: sources[id] })), source);
     selectors.append(op.wrapper, provider.wrapper); fieldset.append(selectors);
+    if (mode === 'get' && operation === 'gene') {
+      host.append(fieldset);
+      const discovery = node('div'); host.append(discovery);
+      geneController = createGeneDiscoveryController({ host: discovery, source, client, displayResult, resetOutput, isActive, initialValues: geneDraft });
+      controls = {}; fields = []; action = null; cancelButton = null; status = null; matches = null;
+      const change = (operation, source) => {
+        preferences.get = { operation, source };
+        try { sessionStorage.setItem(storageKey, JSON.stringify(preferences)); } catch { /* optional */ }
+        invalidate(); render(toolId);
+      };
+      op.control.addEventListener('change', () => { const next = items.find(item => item.id === op.control.value); change(next.id, next.sources.includes(source) ? source : next.sources[0]); });
+      provider.control.addEventListener('change', () => change(operation, provider.control.value));
+      return;
+    }
+
     const inputs = node('div', '', 'external-inputs'); renderFields(inputs, values); fieldset.append(inputs);
+    if ((mode === 'get' && controls.queryMode?.value === 'region') || (mode === 'send' && ['region', 'variant'].includes(operation) && ['ucsc', 'ensembl', 'gdv'].includes(source))) assemblyPicker = installAssemblyPicker({
+      wrapper: (controls.assembly || controls.species).closest('[data-field]'), assembly: controls.assembly, species: controls.species, source, client,
+      initialOrganism: values.organism && (typeof values.organism === 'object' ? values.organism : knownOrganism(values.organism)),
+      changed: () => {
+        if (controls.region) { controls.region.value = ''; controls.region.placeholder = 'Chromosome:start-end'; }
+        else if (mode === 'send' && controls.input) controls.input.value = '';
+        save(); invalidate(); updateHandoffNote();
+      }
+    });
+
     currentGetInputMode = getInputMode();
     const actions = node('div', '', 'button-row external-input-actions');
     exampleButton = button('Load example', () => {
@@ -344,9 +384,10 @@ export function createExternalResourcesController({ host, displayResult, resetOu
       if (mode === 'get') updateGetFields();
       for (const field of fields) if (mode === 'get' ? field.type !== 'select' : field.id !== 'inputMode') controls[field.id].value = field.example;
       if (controls.inputMode) controls.input.value = sendInputExample(operation, controls.inputMode.value);
+      assemblyPicker?.update();
       save(); invalidate(); updateHandoffNote();
     });
-    actions.append(exampleButton, button('Clear input', () => { for (const field of fields) if (field.type !== 'select') controls[field.id].value = ''; closeRegionExamples(); save(); invalidate(); updateHandoffNote(); }));
+    actions.append(exampleButton, button('Clear input', () => { for (const field of fields) if (field.type !== 'select') controls[field.id].value = ''; assemblyPicker?.update(); closeRegionExamples(); save(); invalidate(); updateHandoffNote(); }));
     if (mode === 'get' && controls.queryMode?.value === 'region') {
       regionExampleList = createRegionExamples();
       exampleButton.setAttribute('aria-expanded', 'false'); exampleButton.setAttribute('aria-controls', regionExampleList.id);
@@ -392,9 +433,14 @@ export function createExternalResourcesController({ host, displayResult, resetOu
       save();
       const nextSource = provider.control.value, nextKey = `${mode}:${operation}:${nextSource}`;
       if (mode === 'get' && controls.queryMode?.value === 'region' && lookupModes(operation, nextSource).some(([id]) => id === 'region') && !drafts.has(nextKey)) {
-        const example = regionExample(nextSource, matchingRegionExample(source, snapshot()));
+        const exampleId = matchingRegionExample(source, snapshot());
+        const organism = assemblyPicker?.selectedOrganism(), assembly = bundledAssemblies(nextSource, organism)[0];
+        const example = exampleId ? regionExample(nextSource, exampleId) : { assembly: assembly?.id || '', species: assembly?.species || '', region: '' };
         drafts.set(nextKey, { queryMode: 'region', sequenceType: controls.sequenceType?.value, transcriptSelection: controls.transcriptSelection?.value,
-          assembly: example.assembly, region: example.region, species: example.species });
+          assembly: example.assembly, region: example.region, species: example.species, organism });
+      } else if (mode === 'send' && assemblyPicker && ['ucsc', 'ensembl', 'gdv'].includes(nextSource) && !drafts.has(nextKey)) {
+        const organism = assemblyPicker.selectedOrganism(), assembly = bundledAssemblies(nextSource, organism)[0];
+        drafts.set(nextKey, { ...snapshot(), assembly: assembly?.id || '', species: assembly?.species || '', region: '', input: '', organism });
       }
       preferences[mode] = { operation, source: nextSource }; invalidate(); render(toolId);
     });

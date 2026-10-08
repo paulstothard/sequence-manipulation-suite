@@ -42,28 +42,7 @@ async function regionAssembly(plan, session) {
 }
 export async function retrieveNcbiRegion(plan, session) {
   const { genome, chromosome, assembly, annotation } = await regionAssembly(plan, session);
-  if (plan.product === 'genomic') {
-    const annotated = plan.format === 'gb';
-    session.progress(annotated ? 'Retrieving genomic DNA and NCBI feature annotations…' : 'Retrieving genomic DNA…');
-    const target = encodeUrl(`${EUTILS}efetch.fcgi`, { db: 'nuccore', id: chromosome.refseq_accession, seq_start: plan.region.start, seq_stop: plan.region.end, strand: plan.strand === '-1' ? 2 : 1, rettype: annotated ? 'gbwithparts' : 'fasta', retmode: 'text' });
-    const text = await session.request(target);
-    const title = `${chromosome.refseq_accession}_${plan.region.start}-${plan.region.end}${plan.strand === '-1' ? '_reverse' : ''}`;
-    if (annotated) {
-      requireData(await validateAnnotatedDownload(text, 'gb', session.signal) === 1);
-      const returnedRegion = parseGenbankRegion(text);
-      // EFetch omits REGION only for a complete chromosome on its forward strand.
-      const wholeChromosome = plan.strand === '1' && plan.region.start === 1 && plan.region.end === chromosome.length && !/^ACCESSION[^\r\n]*\bREGION:/m.test(text) && text.match(/^VERSION\s+(\S+)/m)?.[1] === chromosome.refseq_accession;
-      requireData(wholeChromosome || (returnedRegion?.accession === chromosome.refseq_accession && returnedRegion.start === plan.region.start && returnedRegion.end === plan.region.end && returnedRegion.strand === (plan.strand === '-1' ? '-' : '+')), 'NCBI did not return the exact chromosome version, interval and strand requested. No region was substituted.');
-      const sequence = text.match(/^ORIGIN[^\r\n]*\r?\n([\s\S]*?)^\/\//m)?.[1]?.replace(/[\s\d]/g, '') ?? '';
-      requireData(sequence.length === plan.region.length && /^[ACGTURYSWKMBDHVN]+$/i.test(sequence));
-      return { genomicText: text, assembly, annotation, target, title };
-    }
-    requireData(text.trim().startsWith('>'));
-    const records = parseSequenceInput(text);
-    const interval = plan.strand === '-1' ? `c${plan.region.end}-${plan.region.start}` : `${plan.region.start}-${plan.region.end}`;
-    requireData(records.length === 1 && records[0].title.split(/\s/)[0] === `${chromosome.refseq_accession}:${interval}` && records[0].sequence.length === plan.region.length && /^[ACGTURYSWKMBDHVN]+$/i.test(records[0].sequence));
-    return { genomicText: text, assembly, annotation, target, title };
-  }
+  if (plan.product === 'genomic') return retrieveNcbiGenomic(plan, session, { chromosome, assembly, annotation });
   session.progress('Searching NCBI Gene for this chromosome interval…');
   const term = `${chromosome.chr_name}[chr] AND ${plan.region.start}:${plan.region.end}[chrpos] AND txid${genome.organism.tax_id}[Organism] AND alive[prop]`;
   const search = (await session.json(encodeUrl(`${EUTILS}esearch.fcgi`, { db: 'gene', term, retmode: 'json', retmax: MAX_REGION_GENES + 1 }))).esearchresult;
@@ -115,9 +94,15 @@ export async function retrieveNcbiRegion(plan, session) {
   checkTranscriptCount(rows);
   if (genesWithoutTranscripts) warnings.push(`${genesWithoutTranscripts} matching NCBI Gene record(s) have no transcript records in the product report.`);
   if (!rows.length) warnings.push('No annotated transcripts overlap this interval on the requested reference chromosome.');
-  const selected = selectTranscripts(rows, plan.selection, warnings, 'RefSeq/MANE Select');
-  const products = ['protein', 'cds'].includes(plan.product) ? selected.filter(row => row.proteinId && (plan.product !== 'cds' || row.cdsLength)) : selected;
-  if (products.length < selected.length) warnings.push(`${selected.length - products.length} selected transcript(s) have no annotated ${plan.product === 'protein' ? 'protein' : 'CDS'} product and were excluded.`);
+  return retrieveNcbiProducts(plan, rows, session, { warnings, assembly, annotation: `NCBI RefSeq (${annotation})`, geneCount: search.idlist.length });
+}
+
+// Shared by genomic-region discovery and exact NCBI Gene product selection.
+export async function retrieveNcbiProducts(plan, rows, session, metadata) {
+  const warnings = [...(metadata.warnings ?? [])];
+  const selected = selectTranscripts(rows, plan.selectedIds ?? plan.selection, warnings, 'RefSeq/MANE Select');
+  const products = ['protein', 'cds'].includes(plan.product) ? selected.filter(row => row.proteinId && (plan.product !== 'cds' || row.cdsLength)) : plan.product === 'cdna' ? selected.filter(row => row.hasTranscript !== false) : selected;
+  if (products.length < selected.length) warnings.push(`${selected.length - products.length} selected record(s) have no annotated ${plan.product === 'protein' ? 'protein' : plan.product === 'cdna' ? 'transcript' : 'CDS'} product and were excluded.`);
   const records = [], nativeChunks = [];
   if (!['summary', 'tsv'].includes(plan.format)) {
     const protein = plan.product === 'protein';
@@ -150,9 +135,32 @@ export async function retrieveNcbiRegion(plan, session) {
       for (const id of batch) {
         const mapped = products.filter(row => (protein ? row.proteinId : row.id) === id), row = mapped[0];
         requireData(sequences.has(id));
-        records.push({ id, transcriptId: mapped.map(row => row.id).join(','), geneId: row.geneId, description: row.name, sequence: sequences.get(id) });
+        records.push({ id, transcriptId: mapped.filter(row => row.hasTranscript !== false).map(row => row.id).join(','), geneId: row.geneId, description: row.name, sequence: sequences.get(id) });
       }
     }
   }
-  return regionResult(plan, { rows: selected, records, nativeText: nativeChunks.length ? nativeChunks.join('\n') : undefined, warnings, assembly, annotation: `NCBI RefSeq (${annotation})`, matchedCount: rows.length, geneCount: search.idlist.length }, session);
+  return regionResult(plan, { rows: selected, records, nativeText: nativeChunks.length ? nativeChunks.join('\n') : undefined, ...metadata, warnings, matchedCount: rows.length }, session);
+}
+
+export async function retrieveNcbiGenomic(plan, session, { chromosome, assembly, annotation }) {
+  const annotated = plan.format === 'gb';
+  session.progress(annotated ? 'Retrieving genomic DNA and NCBI feature annotations…' : 'Retrieving genomic DNA…');
+  const target = encodeUrl(`${EUTILS}efetch.fcgi`, { db: 'nuccore', id: chromosome.refseq_accession, seq_start: plan.region.start, seq_stop: plan.region.end, strand: plan.strand === '-1' ? 2 : 1, rettype: annotated ? 'gbwithparts' : 'fasta', retmode: 'text' });
+  const text = await session.request(target);
+  const title = `${chromosome.refseq_accession}_${plan.region.start}-${plan.region.end}${plan.strand === '-1' ? '_reverse' : ''}`;
+  if (annotated) {
+    requireData(await validateAnnotatedDownload(text, 'gb', session.signal) === 1);
+    const returnedRegion = parseGenbankRegion(text);
+    // EFetch omits REGION only for a complete chromosome on its forward strand.
+    const wholeChromosome = plan.strand === '1' && plan.region.start === 1 && plan.region.end === chromosome.length && !/^ACCESSION[^\r\n]*\bREGION:/m.test(text) && text.match(/^VERSION\s+(\S+)/m)?.[1] === chromosome.refseq_accession;
+    requireData(wholeChromosome || (returnedRegion?.accession === chromosome.refseq_accession && returnedRegion.start === plan.region.start && returnedRegion.end === plan.region.end && returnedRegion.strand === (plan.strand === '-1' ? '-' : '+')), 'NCBI did not return the exact chromosome version, interval and strand requested. No region was substituted.');
+    const sequence = text.match(/^ORIGIN[^\r\n]*\r?\n([\s\S]*?)^\/\//m)?.[1]?.replace(/[\s\d]/g, '') ?? '';
+    requireData(sequence.length === plan.region.length && /^[ACGTURYSWKMBDHVN]+$/i.test(sequence));
+    return { genomicText: text, assembly, annotation, target, title };
+  }
+  requireData(text.trim().startsWith('>'));
+  const records = parseSequenceInput(text);
+  const interval = plan.strand === '-1' ? `c${plan.region.end}-${plan.region.start}` : `${plan.region.start}-${plan.region.end}`;
+  requireData(records.length === 1 && records[0].title.split(/\s/)[0] === `${chromosome.refseq_accession}:${interval}` && records[0].sequence.length === plan.region.length && /^[ACGTURYSWKMBDHVN]+$/i.test(records[0].sequence));
+  return { genomicText: text, assembly, annotation, target, title };
 }

@@ -15119,3 +15119,32 @@ details[open] > .sequence-extractor-section-header .sequence-extractor-section-h
 .external-help, .external-privacy { color: var(--muted-text); }
 .external-error { color: var(--warning-text); }
 .external-match { border-color: var(--border); }
+.gene-discovery { margin-top: 1rem; }
+.gene-discovery .external-selectors { align-items: end; }
+.gene-products { margin-top: 1rem; min-width: 0; }
+.gene-products legend { font-size: 1.1rem; font-weight: 650; overflow-wrap: anywhere; }
+.gene-products .external-fields { min-width: 0; }
+.gene-products .external-selectors { margin-block: .7rem; }
+.gene-records { margin-block: 1rem; }
+.gene-records .button-row { flex-wrap: wrap; margin-top: .6rem; }
+.gene-record-list { max-height: 34rem; overflow: auto; border-block: 1px solid var(--border); }
+.gene-record { display: flex; gap: .7rem; padding: .7rem .2rem; align-items: flex-start; border-bottom: 1px solid var(--border); cursor: pointer; }
+.gene-record input[type="checkbox"] { flex: 0 0 auto; width: 1.1rem; height: 1.1rem; margin-top: .2rem; }
+.gene-record > span { min-width: 0; display: grid; gap: .2rem; overflow-wrap: anywhere; }
+.gene-record > span > span { font-size: .875rem; color: var(--muted-text); }
+.gene-record:has(input:disabled) { opacity: .65; }
+.gene-preflight { padding: .8rem; background: var(--panel-bg); border-left: 3px solid var(--accent); overflow-wrap: anywhere; }
+.gene-match p { margin-block: .3rem; }
+.gene-discovery [hidden], .gene-products [hidden] { display: none; }
+@media (max-width: 600px) {
+  .gene-discovery .external-selectors, .gene-products .external-selectors { grid-template-columns: minmax(0, 1fr); }
+  .gene-products .button-row, .gene-discovery .button-row { flex-wrap: wrap; }
+}
+
+.assembly-picker { display: grid; gap: .6rem; min-width: 0; }
+.assembly-picker > [hidden] { display: none; }
+.assembly-picker details .external-field { margin-top: .6rem; }
+@media (max-width: 400px) {
+  .external-query-tabs { flex-wrap: wrap; }
+  .external-query-tabs .file-source-tab { flex: 1 1 7rem; }
+}
