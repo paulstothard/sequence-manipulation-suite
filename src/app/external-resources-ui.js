@@ -293,7 +293,8 @@ export function createExternalResourcesController({ host, displayResult, resetOu
       const label = controls.inputMode.value === 'accession' ? (operation === 'genome' ? 'NCBI accession' : 'UniProt accession') : controls.inputMode.value === 'genbank' ? 'GenBank / EMBL record' : operation === 'genome' ? 'Sequence or FASTA' : 'Protein sequence or FASTA';
       controls.input.labels[0].textContent = label;
       controls.input.setAttribute('aria-label', label);
-      controls.input.rows = controls.inputMode.value === 'accession' ? 2 : 7;
+      controls.input.rows = controls.inputMode.value === 'accession' ? 1 : 7;
+      controls.input.parentElement.classList.toggle('external-identifier-input', controls.inputMode.value === 'accession');
     }
     if (fileUpload) {
       const [label, accept] = controls.inputMode?.value === 'genbank'
@@ -411,11 +412,11 @@ export function createExternalResourcesController({ host, displayResult, resetOu
     const recipients = source === 'ucsc' && isRegionLookup(operation, source, values) && (operation !== 'nucleotide' || values.sequenceType !== 'genomic') ? 'UCSC Genome Browser and NCBI RefSeq' : sources[source];
     const privacy = node('p', mode === 'get' ? `Only the accession, query, or region above and the matching public identifiers are sent to ${recipients}. Your Workspace records stay local.` : 'Open or Send shares the values shown above when prefilling a form or creating a map. For copy/upload actions, you paste or upload the data on the service’s website. Ordinary SMS3 tools remain local.', 'external-privacy');
     host.append(privacy);
-    handoffNote = node('p', '', 'external-help'); extras = node('div', '', 'button-row');
+    handoffNote = node('p', '', 'external-help external-handoff-note'); extras = node('div', '', 'external-handoff-extras');
     action = button(mode === 'get' ? 'Retrieve' : 'Open service', () => mode === 'get' ? retrieve() : send(), 'primary-button');
     cancelButton = button('Cancel retrieval', () => { cancel(); resetOutput(); status.textContent = 'Retrieval cancelled. Inputs were kept.'; }); cancelButton.hidden = true;
     const runRow = node('div', '', 'button-row'); runRow.append(action, cancelButton);
-    if (mode === 'send') host.append(handoffNote, extras);
+    if (mode === 'send') { host.append(handoffNote); runRow.append(extras); }
     host.append(runRow);
     status = node('p', '', 'external-status'); status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
     matches = node('div', '', 'external-matches'); host.append(status, matches);

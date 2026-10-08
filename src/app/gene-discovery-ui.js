@@ -70,16 +70,21 @@ export function createGeneDiscoveryController({ host, source, client, displayRes
       const response = await geneApi.searchGenes({ source, query: query.input.value, organism: chosenOrganism, page }, client, signal);
       if (!current()) return;
       status.textContent = response.total ? `${response.total.toLocaleString()} gene matches. Showing ${page * 20 + 1}–${page * 20 + response.matches.length}. Choose a gene to see its sequences.` : 'No matching genes. Try a symbol, synonym, or a shorter name.';
+      const list = el('ul', '', 'gene-match-list'); list.setAttribute('aria-label', 'Gene matches'); list.setAttribute('role', 'list');
       for (const row of response.matches) {
-        const item = el('div', '', 'external-match gene-match');
-        const description = el('div'); description.append(el('strong', row.title), el('p', [row.organism, `Gene ID: ${row.id}`, row.chromosome ? `Chromosome ${row.chromosome}` : '', row.assembly].filter(Boolean).join(' · '), 'external-help'));
+        const item = el('li', '', 'gene-match'), description = el('div', '', 'gene-match-content');
+        const heading = el('h3', '', 'gene-match-heading'); heading.append(el('strong', row.symbol), el('span', row.title));
+        description.append(heading, el('p', [row.organism, `${source === 'ncbi' ? 'NCBI Gene' : 'Ensembl gene'}: ${row.id}`, row.chromosome ? `Chromosome ${row.chromosome}` : '', row.assembly].filter(Boolean).join(' · '), 'external-help'));
         if (row.aliases) description.append(el('p', `Also known as: ${row.aliases}`, 'external-help'));
-        item.append(button(`${row.symbol} — ${row.id}`, () => chooseGene(row)), description); results.append(item);
+        const choose = button('View sequences', () => chooseGene(row), 'gene-match-action');
+        choose.setAttribute('aria-label', `View sequences for ${row.symbol} (${row.id})`);
+        item.append(description, choose); list.append(item);
       }
+      if (list.childElementCount) results.append(list);
       const navigation = el('div', '', 'button-row');
       if (page) navigation.append(button('Previous gene matches', () => runSearch(page - 1)));
       if ((page + 1) * 20 < response.total) navigation.append(button('Next gene matches', () => runSearch(page + 1)));
-      results.append(navigation);
+      if (navigation.childElementCount) results.append(navigation);
     });
   }
   async function chooseGene(row) {
@@ -93,27 +98,45 @@ export function createGeneDiscoveryController({ host, source, client, displayRes
   }
   function renderProducts() {
     products.replaceChildren();
-    const section = el('fieldset', '', 'external-fields'); section.append(el('legend', `${model.symbol} — ${model.title}`));
-    section.append(el('p', `${model.organism} · ${source === 'ncbi' ? 'NCBI Gene' : 'Ensembl'} ${model.id}`, 'external-help'));
+    // A normal heading lets WebKit reflow this grid fieldset when the form resizes.
+    const section = el('fieldset', '', 'external-fields'), identity = el('div', '', 'gene-product-identity');
+    const heading = el('h3', `${model.symbol} — ${model.title}`, 'gene-product-heading'); heading.id = 'gene-product-heading';
+    section.setAttribute('aria-labelledby', heading.id);
+    identity.append(heading, el('p', `${model.organism} · ${source === 'ncbi' ? 'NCBI Gene' : 'Ensembl'} ${model.id}`, 'external-help')); section.append(identity);
     const selectors = el('div', '', 'external-selectors');
     const assembly = field('Assembly', '0', model.placements.length ? model.placements.map((row, i) => [String(i), row.label]) : [['0', 'No genomic placement supplied']]);
     const initialRows = model.rowsByPlacement[0];
     const product = field('Sequence type', initialRows.some(row => row.hasTranscript !== false) ? 'cdna' : initialRows.some(row => row.proteinId) ? 'protein' : 'genomic', geneApi.geneProducts.map(([id, label]) => [id, label]));
     selectors.append(assembly.wrapper, product.wrapper); section.append(selectors);
-    const description = el('p', '', 'external-help'), location = el('p', '', 'external-help'); section.append(description, location);
-    const genomic = el('div', '', 'external-selectors');
+    const description = el('span', '', 'external-help'), location = el('span', '', 'external-help');
+    description.id = 'gene-product-help'; location.id = 'gene-assembly-help';
+    product.input.setAttribute('aria-describedby', description.id); assembly.input.setAttribute('aria-describedby', location.id);
+    product.wrapper.append(description); assembly.wrapper.append(location);
+    const genomic = el('div', '', 'gene-genomic-options');
     const orientation = field('DNA orientation', 'reference', [['reference', 'Reference chromosome (+)'], ['gene', 'Gene direction (5′ → 3′)']]); genomic.append(orientation.wrapper);
-    const advanced = el('details'); advanced.append(el('summary', 'Flanking sequence (optional)'));
+    const advanced = el('details', '', 'option-group option-group-collapsible gene-flanks'); advanced.append(el('summary', 'Flanking sequence (optional)'));
     const flankFields = el('div', '', 'external-selectors');
     const upstream = field('Upstream flank (bp)', '0'), downstream = field('Downstream flank (bp)', '0');
     for (const value of [upstream, downstream]) { value.input.type = 'number'; value.input.min = '0'; value.input.max = '100000'; value.input.step = '1'; flankFields.append(value.wrapper); }
     advanced.append(el('p', 'Upstream and downstream follow the gene’s strand. Flanks apply only to genomic DNA.', 'external-help'), flankFields); genomic.append(advanced); section.append(genomic);
     const recordsPanel = el('div', '', 'gene-records');
-    const filter = field('Filter transcripts and proteins', ''); recordsPanel.append(filter.wrapper);
+    recordsPanel.append(el('h3', 'Choose records to retrieve', 'gene-record-heading'), el('p', 'Checked records will be retrieved.', 'external-help gene-record-help'));
     const tools = el('div', '', 'button-row'); recordsPanel.append(tools);
+    const searchControls = el('div', '', 'gene-record-search');
+    const filter = field('Search this list', ''); filter.input.type = 'search'; filter.input.placeholder = 'ID, name, or annotation';
+    const clearSearch = button('Clear search', () => {
+      filter.input.value = ''; recordPage = 0; renderRecords();
+      if (searchControls.hidden) records.querySelector('input')?.focus();
+      else filter.input.focus();
+    });
+    const searchHelp = el('p', 'Search narrows the displayed list. Checked records stay selected when hidden.', 'external-help');
+    searchHelp.id = 'gene-record-search-help'; filter.input.setAttribute('aria-describedby', searchHelp.id);
+    searchControls.append(filter.wrapper, clearSearch, searchHelp); recordsPanel.append(searchControls);
     const count = el('p', '', 'external-help'); count.setAttribute('role', 'status'); recordsPanel.append(count);
     const records = el('div', '', 'gene-record-list'); recordsPanel.append(records); section.append(recordsPanel);
-    const output = field('Output format', 'fasta', geneApi.geneFormats(source, 'cdna')), formatHelp = el('p', '', 'external-help'); section.append(output.wrapper, formatHelp);
+    const output = field('Output format', 'fasta', geneApi.geneFormats(source, 'cdna')), formatHelp = el('p', '', 'external-help');
+    formatHelp.id = 'gene-format-help'; output.input.setAttribute('aria-describedby', formatHelp.id);
+    const outputChoice = el('div', '', 'external-output-choice'); outputChoice.append(output.wrapper, formatHelp); section.append(outputChoice);
     const preview = el('p', '', 'gene-preflight'); preview.setAttribute('aria-live', 'polite'); section.append(preview);
     const retrieve = button('Retrieve selected records', () => execute(async (signal, current) => {
       resetOutput(); status.textContent = 'Retrieving the selected products…';
@@ -122,7 +145,8 @@ export function createGeneDiscoveryController({ host, source, client, displayRes
       await displayResult(value, model.symbol, { outputFormat: value.retrievalFormat || output.input.value }, current, signal);
       if (current()) status.textContent = value.retrievalSummary || 'Retrieved selected records.';
     }), 'primary-button');
-    section.append(retrieve, el('p', 'Limits: 25 MiB per retrieval; 1,000 transcripts; genomic DNA up to 1,000,000 bases. Larger requests fail without partial output.', 'external-help')); products.append(section);
+    const retrieveActions = el('div', '', 'button-row'); retrieveActions.append(retrieve);
+    section.append(retrieveActions, el('p', 'Limits: 25 MiB per retrieval; 1,000 transcripts; genomic DNA up to 1,000,000 bases. Larger requests fail without partial output.', 'external-help')); products.append(section);
     let recordPage = 0;
     const rows = () => [...model.rowsByPlacement[Number(assembly.input.value)]].sort((a, b) => Number(Boolean(b.representative)) - Number(Boolean(a.representative)) || a.id.localeCompare(b.id, 'en', { numeric: true }));
     const available = row => product.input.value === 'protein' ? Boolean(row.proteinId) : product.input.value === 'cds' ? Boolean(source === 'ncbi' ? row.cdsLength : row.proteinId) : product.input.value === 'cdna' ? row.hasTranscript !== false : true;
@@ -147,20 +171,30 @@ export function createGeneDiscoveryController({ host, source, client, displayRes
       const term = filter.input.value.trim().toLowerCase(), all = rows();
       const filtered = all.filter(row => [row.id, row.name, row.proteinId, row.proteinName, row.biotype, row.status, row.representative].join(' ').toLowerCase().includes(term));
       recordPage = Math.min(recordPage, Math.max(0, Math.ceil(filtered.length / 20) - 1));
+      searchControls.hidden = all.length <= 1 && !filter.input.value;
+      clearSearch.disabled = !filter.input.value;
       records.replaceChildren();
-      count.textContent = `${selected.size} selected of ${all.filter(available).length} available · ${filtered.length} matching the filter. Selection is kept across pages.`;
+      function updateCount() {
+        const hiddenSelected = selected.size - filtered.filter(row => selected.has(row.id)).length;
+        const shown = filtered.length > 20 ? `Showing ${recordPage * 20 + 1}–${Math.min((recordPage + 1) * 20, filtered.length)} of ${filtered.length}` : String(filtered.length);
+        const noun = term ? (filtered.length === 1 ? 'search match' : 'search matches') : (filtered.length === 1 ? 'record' : 'records');
+        count.textContent = `${selected.size} selected for retrieval · ${all.filter(available).length} available · ${shown} ${noun}.`;
+        if (hiddenSelected) count.textContent += ` ${hiddenSelected} selected record${hiddenSelected === 1 ? ' is' : 's are'} hidden by this search.`;
+      }
+      updateCount();
       for (const row of filtered.slice(recordPage * 20, recordPage * 20 + 20)) {
         const label = el('label', '', 'gene-record'), check = el('input'); check.type = 'checkbox'; check.checked = selected.has(row.id); check.disabled = !available(row); check.setAttribute('aria-label', `Select ${row.id}`);
         const text = el('span'); text.append(el('strong', `${row.id}${row.name ? ` — ${row.name}` : ''}`));
         text.append(el('span', `${row.hasTranscript === false ? 'No separate transcript or CDS record supplied' : `${row.length.toLocaleString()} nt · ${row.biotype ? row.biotype.replaceAll('_', ' ').toLowerCase() : 'Transcript'}`} · ${row.status || 'Source annotation'}${row.representative ? ` · ${row.representative}` : ''}`));
         text.append(el('span', row.proteinId ? `Protein: ${row.proteinId} · ${row.proteinLength.toLocaleString()} aa${row.proteinName ? ` · ${row.proteinName}` : ''}${row.cdsLength ? ` · CDS ${row.cdsLength.toLocaleString()} nt` : ''}` : 'No annotated protein or CDS'));
         if (!available(row)) text.append(el('span', 'Unavailable for this sequence type', 'external-help'));
-        check.addEventListener('change', () => { if (check.checked) selected.add(row.id); else selected.delete(row.id); count.textContent = `${selected.size} selected of ${all.filter(available).length} available · ${filtered.length} matching the filter. Selection is kept across pages.`; preflight(); }); label.append(check, text); records.append(label);
+        check.addEventListener('change', () => { if (check.checked) selected.add(row.id); else selected.delete(row.id); updateCount(); preflight(); }); label.append(check, text); records.append(label);
       }
-      if (!filtered.length) records.append(el('p', all.length ? 'No transcripts match this filter.' : 'This source provides no transcript products for this gene on the selected assembly. Genomic DNA may still be available.', 'external-help'));
+      if (!filtered.length) records.append(el('p', all.length ? 'No records match this search. Clear search to show all records.' : 'This source provides no transcript products for this gene on the selected assembly. Genomic DNA may still be available.', 'external-help'));
       const pagination = el('div', '', 'button-row');
       if (recordPage) pagination.append(button('Previous transcripts', () => { recordPage--; renderRecords(); }));
-      if ((recordPage + 1) * 20 < filtered.length) pagination.append(button('Next transcripts', () => { recordPage++; renderRecords(); })); records.append(pagination); preflight();
+      if ((recordPage + 1) * 20 < filtered.length) pagination.append(button('Next transcripts', () => { recordPage++; renderRecords(); }));
+      if (pagination.childElementCount) records.append(pagination); preflight();
     }
     tools.append(button('Select all available', () => { selected = new Set(rows().filter(available).map(row => row.id)); renderRecords(); }), button('Select representatives', () => { selected = new Set(rows().filter(row => available(row) && row.representative).map(row => row.id)); renderRecords(); }), button('Clear selection', () => { selected.clear(); renderRecords(); }));
     function update(resetSelection = false) {

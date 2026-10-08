@@ -15075,44 +15075,59 @@ details[open] > .sequence-extractor-section-header .sequence-extractor-section-h
   min-height: 2.65rem; padding-right: 2.25rem;
 }
 .external-field input:not([type="file"]) { min-height: 2.65rem; }
+/* Keep request values readable while a retrieval temporarily locks the form. */
+.external-fields:disabled .external-field :is(input, select, textarea):disabled {
+  opacity: 1;
+  -webkit-text-fill-color: var(--text);
+}
 .external-select-control select:focus-visible, .external-field input:focus-visible {
   outline: 2px solid var(--accent); outline-offset: 2px;
 }
-.external-get-data .external-selectors { margin-bottom: 1rem; }
-.external-get-data .external-field { margin-bottom: 0; }
+.external-resources { container: external-form / inline-size; }
+.external-resources .external-fields { gap: 1rem; }
+.external-resources .external-selectors,
+.external-resources .external-inputs { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.external-resources .external-selectors { margin: 0; }
+.external-resources .external-field { margin-bottom: 0; }
+.external-resources .external-help { overflow-wrap: anywhere; }
+.external-resources .external-fields > .external-help { margin: 0; }
+.external-resources .external-field textarea { margin-top: 0; }
+.external-resources .external-identifier-input textarea { min-height: 2.65rem; font: inherit; font-weight: 400; }
+.external-handoff-note { margin: .75rem 0; max-width: 85ch; }
+.external-handoff-extras { display: contents; }
+/* Shared label/control/help rows keep neighboring controls aligned when text wraps. */
+.external-resources .external-selectors > .external-field,
+.external-resources .external-inputs > .external-field:not(:has(textarea)),
+.external-get-data .external-input-panel > .external-field {
+  display: grid; grid-template-rows: subgrid; grid-row: span 3; gap: .4rem;
+}
+.external-resources .external-selectors > .external-field > *,
+.external-resources .external-inputs > .external-field:not(:has(textarea)) > *,
+.external-get-data .external-input-panel > .external-field > * { align-self: start; }
 .external-query-tabs, .external-get-data [data-field="query"] { grid-column: 1 / -1; }
-.external-query-tabs { margin-bottom: -.15rem; flex-wrap: nowrap; align-items: stretch; }
+.external-query-tabs { margin-bottom: 0; flex-wrap: nowrap; align-items: stretch; }
 .external-query-tabs .file-source-tab { flex: 0 1 auto; min-width: 0; white-space: normal; }
 .external-query-tabs .file-source-tab[aria-selected="false"] { border-bottom-color: transparent; }
 .external-input-panel { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
 .external-status { white-space: pre-line; }
 .external-get-data [data-field="query"] textarea { min-height: 2.65rem; margin-top: 0; font: inherit; font-weight: 400; line-height: 1.4; }
-.external-get-data .external-input-actions { margin: .65rem 0 1.15rem; }
+.external-resources .external-input-actions { margin: 0; }
 .external-get-data .external-region-actions { grid-column: 1 / -1; margin: 0; }
 .external-region-examples { grid-column: 1 / -1; }
 .external-region-examples > p { margin: 0 0 .6rem; }
 .external-example-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .6rem; }
 .external-example-choice { display: flex; flex-direction: column; gap: .3rem; padding: .7rem; text-align: left; white-space: normal; min-width: 0; }
 .external-example-choice span { overflow-wrap: anywhere; }
-.external-get-data:has(.external-region-actions) .external-output-choice { margin-top: 1rem; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .external-output-choice {
-  display: grid; grid-template-columns: minmax(11rem, 18rem) minmax(0, 1fr);
-  align-items: center; gap: .5rem 1.25rem;
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start; gap: .5rem 1rem;
   padding-top: 1rem; border-top: 1px solid var(--border);
 }
-.external-output-choice .external-help { margin: 0; }
-.external-get-data .external-limits { margin: 1rem 0 .5rem; }
-.external-get-data .external-privacy { margin: .75rem 0; max-width: 85ch; }
+.external-output-choice .external-help { grid-column: 1 / -1; margin: 0; max-width: 85ch; }
+.external-resources .external-limits { margin: 0; }
+.external-resources .external-privacy { margin: .75rem 0; max-width: 85ch; }
 .external-status:empty { min-height: 0; margin: 0; }
 .external-matches:empty { display: none; }
-@media (max-width: 700px) {
-  .external-get-data .external-selectors, .external-get-data .external-inputs { gap: .85rem; }
-  .external-input-panel { grid-template-columns: minmax(0, 1fr); gap: .85rem; }
-  .external-example-choices { grid-template-columns: minmax(0, 1fr); }
-  .external-output-choice { grid-template-columns: minmax(0, 1fr); gap: .5rem; }
-  .external-get-data:has(.external-region-actions) .external-output-choice { grid-template-columns: minmax(0, 1fr); }
-  .external-get-data .external-input-actions { flex-wrap: wrap; }
-}
 @media (max-width: 400px) {
   .external-get-data .external-input-actions button { padding-inline: .55rem; font-size: .875rem; }
 }
@@ -15120,30 +15135,72 @@ details[open] > .sequence-extractor-section-header .sequence-extractor-section-h
 .external-error { color: var(--warning-text); }
 .external-match { border-color: var(--border); }
 .gene-discovery { margin-top: 1rem; }
-.gene-discovery .external-selectors { align-items: end; }
+.gene-discovery .external-selectors { align-items: start; }
 .gene-products { margin-top: 1rem; min-width: 0; }
-.gene-products legend { font-size: 1.1rem; font-weight: 650; overflow-wrap: anywhere; }
+.gene-product-identity { display: grid; gap: .35rem; min-width: 0; }
+.gene-product-identity > * { margin: 0; overflow-wrap: anywhere; }
+.gene-product-heading { font-size: 1.1rem; font-weight: 650; }
 .gene-products .external-fields { min-width: 0; }
-.gene-products .external-selectors { margin-block: .7rem; }
-.gene-records { margin-block: 1rem; }
+.gene-genomic-options { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+.gene-flanks > .external-help { margin-block: 0 .75rem; }
+.external-get-data .gene-flanks > .external-selectors { margin: 0 .8rem; }
+.gene-records { margin: 0; }
+.gene-record-heading { margin: 0; color: var(--text); font-size: 1rem; }
+.gene-record-help { margin: .35rem 0 .6rem; }
 .gene-records .button-row { flex-wrap: wrap; margin-top: .6rem; }
+.gene-record-search { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: .5rem .65rem; margin-top: 1rem; }
+.gene-record-search > button { min-height: 2.65rem; }
+.gene-record-search > .external-help { grid-column: 1 / -1; margin: 0; }
 .gene-record-list { max-height: 34rem; overflow: auto; border-block: 1px solid var(--border); }
 .gene-record { display: flex; gap: .7rem; padding: .7rem .2rem; align-items: flex-start; border-bottom: 1px solid var(--border); cursor: pointer; }
+.gene-record:last-child { border-bottom: 0; }
+.gene-records:not([hidden]) + .external-output-choice { border-top: 0; padding-top: 0; }
 .gene-record input[type="checkbox"] { flex: 0 0 auto; width: 1.1rem; height: 1.1rem; margin-top: .2rem; }
 .gene-record > span { min-width: 0; display: grid; gap: .2rem; overflow-wrap: anywhere; }
 .gene-record > span > span { font-size: .875rem; color: var(--muted-text); }
 .gene-record:has(input:disabled) { opacity: .65; }
-.gene-preflight { padding: .8rem; background: var(--panel-bg); border-left: 3px solid var(--accent); overflow-wrap: anywhere; }
-.gene-match p { margin-block: .3rem; }
+.gene-preflight { margin: 0; padding: .8rem; background: var(--panel-bg); border-left: 3px solid var(--accent); overflow-wrap: anywhere; }
+.gene-match-list { list-style: none; margin: .85rem 0 0; padding: 0; border-top: 1px solid var(--border); }
+.gene-match { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 1rem; padding-block: 1rem; border-bottom: 1px solid var(--border); }
+.gene-match-content { display: grid; gap: .3rem; min-width: 0; overflow-wrap: anywhere; }
+.gene-match-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem .75rem; margin: 0; color: var(--text); font-size: 1rem; font-weight: 400; line-height: 1.5; }
+.gene-match-heading > strong { font-weight: 700; }
+.gene-match-heading > span { min-width: 0; }
+.gene-match-content p { margin: 0; }
+.gene-match-action { min-height: 2.65rem; white-space: nowrap; }
 .gene-discovery [hidden], .gene-products [hidden] { display: none; }
-@media (max-width: 600px) {
-  .gene-discovery .external-selectors, .gene-products .external-selectors { grid-template-columns: minmax(0, 1fr); }
+@container external-form (max-width: 36rem) {
+  .gene-record-search { grid-template-columns: minmax(0, 1fr); }
+  .gene-record-search > button { justify-self: start; }
+  .gene-match { grid-template-columns: minmax(0, 1fr); gap: .75rem; }
+  .gene-match-action { justify-self: start; }
   .gene-products .button-row, .gene-discovery .button-row { flex-wrap: wrap; }
 }
 
 .assembly-picker { display: grid; gap: .6rem; min-width: 0; }
-.assembly-picker > [hidden] { display: none; }
+.assembly-picker-choices, .assembly-picker-organism { display: grid; gap: .6rem; min-width: 0; }
+.assembly-picker [hidden] { display: none; }
 .assembly-picker details .external-field { margin-top: .6rem; }
+.external-resources .assembly-picker { grid-column: 1 / -1; gap: .75rem; }
+.external-resources .assembly-picker-choices,
+.external-resources .assembly-picker-identifiers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; align-items: start; }
+.external-resources .assembly-picker .external-help { margin: 0; }
+.external-resources .assembly-picker-identifiers { margin-top: .75rem; }
+.external-resources .assembly-picker-identifiers .external-field { margin: 0; }
+.external-resources .external-matches:not(:empty) { display: grid; gap: .5rem; }
+.external-resources .external-matches > button { justify-self: start; max-width: 100%; white-space: normal; text-align: left; overflow-wrap: anywhere; }
+@container external-form (max-width: 44rem) {
+  .external-resources .external-selectors, .external-resources .external-inputs,
+  .external-input-panel, .external-example-choices, .external-output-choice,
+  .external-resources .assembly-picker-choices, .external-resources .assembly-picker-identifiers { grid-template-columns: minmax(0, 1fr); }
+  .external-resources .external-selectors > .external-field,
+  .external-resources .external-inputs > .external-field:not(:has(textarea)),
+  .external-get-data .external-input-panel > .external-field { display: flex; grid-row: auto; }
+  .external-resources .external-selectors > .external-field > *,
+  .external-resources .external-inputs > .external-field:not(:has(textarea)) > *,
+  .external-get-data .external-input-panel > .external-field > * { align-self: stretch; }
+  .external-input-heading { align-items: start; flex-direction: column; }
+}
 @media (max-width: 400px) {
   .external-query-tabs { flex-wrap: wrap; }
   .external-query-tabs .file-source-tab { flex: 1 1 7rem; }

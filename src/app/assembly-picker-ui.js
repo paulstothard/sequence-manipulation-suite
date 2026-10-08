@@ -30,10 +30,13 @@ export function installAssemblyPicker({ wrapper, assembly, species, source, clie
   if (hasAssemblyInput) {
     (wrapper.querySelector('label') || wrapper).firstChild.textContent = 'Assembly identifier'; assembly.setAttribute('aria-label', 'Assembly identifier');
   }
-  const container = node('div'); container.className = 'assembly-picker'; wrapper.before(container); advanced.append(wrapper);
+  const container = node('div'); container.className = 'assembly-picker'; wrapper.before(container);
+  const identifiers = node('div'); identifiers.className = 'assembly-picker-identifiers'; advanced.append(identifiers); identifiers.append(wrapper);
   const speciesWrapper = species?.closest('[data-field="species"]');
-  if (speciesWrapper && speciesWrapper !== wrapper) advanced.append(speciesWrapper);
-  container.append(organismField.label, customField, assemblyField.label, actions, optionsHost, message, advanced);
+  if (speciesWrapper && speciesWrapper !== wrapper) identifiers.append(speciesWrapper);
+  const organismGroup = node('div'); organismGroup.className = 'assembly-picker-organism'; organismGroup.append(organismField.label, customField);
+  const choices = node('div'); choices.className = 'assembly-picker-choices'; choices.append(organismGroup, assemblyField.label);
+  container.append(choices, actions, optionsHost, message, advanced);
   const reference = node('a', 'About these species and assemblies'); reference.href = '#reference=organisms-assemblies'; reference.className = 'external-help'; container.append(reference);
 
   function showOrganism() {
