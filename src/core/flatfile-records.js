@@ -125,7 +125,7 @@ function locationExpression(part, depth = 0) {
   if (!match) return {kind:'unsupported',reason:part.includes(':')?'Remote location requires an external sequence; extraction is unavailable.':'Unsupported or malformed location syntax.'};
   const start=Number(match[1]),end=Number(match[3]??match[1]);
   if (!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start<1||end<1||(match[2]!=='^'&&end<start)) return {kind:'unsupported',reason:'Invalid location coordinates.'};
-  return {kind:match[2]==='^'?'site':'span',start,end};
+  return {kind:match[2]==='^'?'site':'span',start,end,partialStart:/^[<>]/.test(part),partialEnd:/\.\.[<>]/.test(part)};
 }
 
 export function parseInsdcLocation(locationText) {
@@ -164,6 +164,24 @@ export function extractLocationSequence(sequence, parsedLocation) {
   // Legacy normalized records without source syntax only describe a uniform-strand join.
   const joined=parsedLocation.ranges.map(r=>sequence.slice(r.start-1,r.end)).join('');
   return (parsedLocation.strand==='-'?reverseComplement(joined):joined).toUpperCase();
+}
+
+// Spliced sequence order, including nested complement(join(...)) and joins of
+// individually complemented spans. Offsets can be mapped without expanding a
+// large feature into an array of every nucleotide position.
+export function locationSequenceSegments(location) {
+  if (!location?.supported || !location.ranges?.length) return [];
+  const visit = node => {
+    if (node.kind === 'span') return [{ start: node.start, end: node.end, strand: '+', partialStart: node.partialStart, partialEnd: node.partialEnd }];
+    if (node.kind === 'join') return node.children.flatMap(visit);
+    if (node.kind === 'complement') return visit(node.children[0]).reverse().map(part => ({
+      ...part, strand: part.strand === '+' ? '-' : '+', partialStart: part.partialEnd, partialEnd: part.partialStart
+    }));
+    return [];
+  };
+  if (location.location) return visit(locationExpression(location.location));
+  const parts = location.ranges.map(part => ({ ...part, strand: '+', partialStart: Boolean(location.partial), partialEnd: Boolean(location.partial) }));
+  return location.strand === '-' ? parts.reverse().map(part => ({ ...part, strand: '-' })) : parts;
 }
 
 function parseGenbankFeatures(recordText) {

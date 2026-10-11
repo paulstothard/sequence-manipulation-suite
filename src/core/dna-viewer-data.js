@@ -1,3 +1,4 @@
+import { prepareViewerAnnotationTracks, viewerGeneFeatureLegend } from './viewer-annotation-models.js';
 import { makeViewerTrackSummary } from "./viewer-track-summary.js";
 
 export function makeDnaViewerStream(viewer) {
@@ -19,6 +20,8 @@ export function makeDnaViewerData(records, options = {}) {
     geneticCode: String(options.geneticCode ?? "1"),
     records: records.map((record, index) => {
       const recordLength = Number(record.length) || String(record.sequence ?? "").length;
+      const tracks = prepareViewerAnnotationTracks(record.tracks);
+      const legend = record.geneFeatureLegend ?? viewerGeneFeatureLegend(tracks);
       return {
         id: record.id || `record-${index + 1}`,
         title: record.title || `Record ${index + 1}`,
@@ -30,8 +33,12 @@ export function makeDnaViewerData(records, options = {}) {
         showSecondStrandDefault: record.showSecondStrandDefault,
         showForwardTranslationsDefault: record.showForwardTranslationsDefault,
         showReverseTranslationsDefault: record.showReverseTranslationsDefault,
+        ...(record.hideRulers === true ? { hideRulers: true } : {}),
+        compactLayout: record.compactLayout !== false,
+        sequencePosition: record.sequencePosition || "top",
+        ...(legend.length ? { geneFeatureLegend: legend } : {}),
         compositionControls: normalizeCompositionControls(record.compositionControls ?? options.compositionControls),
-        tracks: (record.tracks ?? []).map((track) => normalizeTrack(track, recordLength))
+        tracks: tracks.map((track) => normalizeTrack(track, recordLength))
       };
     })
   };
@@ -114,6 +121,9 @@ function normalizeTrack(track, recordLength) {
     id: track.id || track.type || "track",
     type: track.type || "features",
     label: track.label || track.type || "Track",
+    ...(track.visibilityGroup?.id && track.visibilityGroup?.label ? {
+      visibilityGroup: { id: String(track.visibilityGroup.id), label: String(track.visibilityGroup.label) }
+    } : {}),
     axisLabel: track.axisLabel,
     metric: track.metric,
     unit: track.unit,

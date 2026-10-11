@@ -1,4 +1,6 @@
 import { getDataMetadata } from "./get-data/metadata.js";
+import { geneViewerMetadata } from "./gene-viewer/metadata.js";
+import { geneViewerExample } from "../examples/gene-viewer-example.js";
 import { runGetData } from "./get-data/run.js";
 import { sendDataMetadata } from "./send-data/metadata.js";
 import { runSendData } from "./send-data/run.js";
@@ -2279,6 +2281,7 @@ augcaunn`
     run: runOrfFinder,
     example: orfFinderExample
   },
+  { metadata: geneViewerMetadata, run: async (...args) => (await import('./gene-viewer/run.js')).runGeneViewer(...args), example: geneViewerExample },
   { metadata: getDataMetadata, run: runGetData, example: 'NC_001422.1' },
   { metadata: sendDataMetadata, run: runSendData, example: '>TP53_fragment\nMEEPQSDPSVEPPLSQETFSDLWKLLPENNVLSPLPSQAMDDLMLSPDDIEQWFTEDPGP' }
 ];

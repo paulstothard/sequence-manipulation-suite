@@ -35,7 +35,9 @@ function makeFeatureItems(record) {
       label: getProteinFeatureLabel(feature),
       name: feature.gene || feature.locus_tag || feature.product || feature.protein_id || feature.feature,
       type: feature.feature,
-      location: feature.location
+      location: feature.location,
+      sequenceLocation: feature.parsedLocation,
+      parts: feature.parsedLocation.ranges.map(part => ({ start: part.start, end: part.end }))
     }));
 }
 

@@ -14,6 +14,7 @@ import {
 } from "./viewer-inertia.js";
 import { installCanvasVisualInspection } from "./visual-inspection.js";
 import { installCanvasPinchZoom } from "./viewer-pinch-zoom.js";
+import { viewerWheelZoomFactor } from "./viewer-wheel-zoom.js";
 import { copyTextWithFeedback } from "./copy-feedback.js";
 
 const CHANNELS = ["A", "C", "G", "T"];
@@ -824,14 +825,14 @@ function renderSingleSangerTraceViewer(container, data, documentActions) {
   viewInfo.className = "sanger-trace-view-info";
   viewInfo.dataset.sangerControl = "viewInfo";
 
-  const zoomOut = makeButton("-", "Zoom out from the center of the current view");
-  const zoomIn = makeButton("+", "Zoom in at the center of the current view");
+  const zoomOut = makeButton("-", "Zoom out from the center of the current view (- or _ with the trace focused).");
+  const zoomIn = makeButton("+", "Zoom in at the center of the current view (+ or = with the trace focused).");
   zoomOut.setAttribute("aria-label", "Zoom out");
   zoomIn.setAttribute("aria-label", "Zoom in");
   const reset = makeButton("Reset view", "Restore the default zoom and show the start of the retained read. Edits and clipping are preserved.");
-  const previousBase = makeButton("‹", "Select the previous base in the read.");
+  const previousBase = makeButton("‹", "Select the previous base in the read (Left Arrow with the trace focused).");
   previousBase.setAttribute("aria-label", "Previous base");
-  const nextBase = makeButton("›", "Select the next base in the read.");
+  const nextBase = makeButton("›", "Select the next base in the read (Right Arrow with the trace focused).");
   nextBase.setAttribute("aria-label", "Next base");
   const jumpStart = makeButton("Go to 5′ end", "Show and select the first base of the full read.");
   const jumpEnd = makeButton("Go to 3′ end", "Show and select the last base of the full read.");
@@ -1228,8 +1229,10 @@ function renderSingleSangerTraceViewer(container, data, documentActions) {
     inspection.inspect(target, sangerInspectionTargetPosition(canvas, target), { shouldAnnounce: true });
   };
   canvas.addEventListener("wheel", (event) => {
+    const factor = viewerWheelZoomFactor(event);
+    if (factor === 1) return;
     event.preventDefault();
-    if (event.deltaY) zoomBy(event.deltaY < 0 ? 1.25 : 1 / 1.25, zoomFractionForPointer(event.clientX));
+    zoomBy(factor, zoomFractionForPointer(event.clientX));
   }, passiveWheelOptions);
   const cleanupPinch = installCanvasPinchZoom(canvas, {
     onStart: () => {

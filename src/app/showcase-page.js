@@ -20,6 +20,7 @@ const SHOWCASE_VIEWER_ALLOWLIST = new Map([
   ["alignment-viewer", new Set(["interactive-viewer"])],
   ["circular-dna-sequence-viewer", new Set(["interactive-viewer"])],
   ["dna-sequence-viewer", new Set(["interactive-viewer"])],
+  ["gene-viewer", new Set(["interactive-viewer"])],
   ["protein-conservation-structure-viewer", new Set(["interactive-viewer"])],
   ["protein-sequence-viewer", new Set(["interactive-viewer"])],
   ["protein-structure-viewer", new Set(["interactive-viewer"])],

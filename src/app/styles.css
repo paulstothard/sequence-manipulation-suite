@@ -9779,6 +9779,75 @@ legend {
   transform: scale(1);
 }
 
+.dna-viewer-feature-groups {
+  align-items: center;
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.dna-viewer-feature-groups-heading {
+  color: var(--viewer-muted, #64748b);
+  font-size: 0.78rem;
+  margin-right: 0.15rem;
+}
+
+.dna-viewer-gene-model-key {
+  color: var(--viewer-muted, #64748b);
+  display: inline-flex;
+  flex-wrap: wrap;
+  font-size: 0.75rem;
+  gap: 0.4rem 0.7rem;
+  margin-left: 0.4rem;
+}
+
+.dna-viewer-gene-model-key > span {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.3rem;
+}
+
+.dna-viewer-gene-model-key i {
+  display: inline-block;
+  width: 12px;
+}
+
+.dna-viewer-feature-groups label {
+  cursor: pointer;
+  max-width: 100%;
+  white-space: normal;
+}
+
+.dna-viewer-feature-groups input {
+  flex: 0 0 auto;
+}
+
+.dna-viewer-feature-groups label:has(input:indeterminate) {
+  border-color: var(--viewer-accent, #7cc4b7);
+}
+
+.dna-viewer-feature-groups input:indeterminate::before {
+  clip-path: none;
+  height: 2px;
+  transform: scale(1);
+}
+
+.dna-viewer-feature-group-actions {
+  display: inline-flex;
+  gap: 0.3rem;
+}
+
+.dna-viewer-feature-group-actions button {
+  background: var(--viewer-surface, #ffffff);
+  border: 1px solid var(--viewer-border, #dbe3ec);
+  color: var(--viewer-text, #334155);
+  font-size: 0.78rem;
+  min-height: 1.85rem;
+  padding: 0.2rem 0.55rem;
+}
+
 .dna-viewer-track-controls {
   background: var(--viewer-surface, #ffffff);
   border: 1px solid var(--viewer-border, #dbe3ec);
@@ -10437,6 +10506,42 @@ legend {
 .dna-viewer-range-path-toggle:focus-visible {
   outline: 2px solid var(--viewer-focus, #38bdf8);
   outline-offset: 2px;
+}
+
+.dna-viewer-feature-sequence {
+  display: grid;
+  gap: 0.4rem;
+  min-width: 0;
+}
+.dna-viewer-feature-sequence label {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+  font-size: 0.8rem;
+}
+.dna-viewer-feature-sequence select {
+  width: 100%;
+  min-width: 0;
+  padding: 0.4rem;
+  border: 1px solid var(--viewer-border-strong, #cbd5e1);
+  border-radius: 6px;
+  background: var(--viewer-surface, #fff);
+  color: var(--viewer-text, #172026);
+  font: inherit;
+}
+.dna-viewer-feature-sequence-summary,
+.dna-viewer-feature-sequence-status {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--viewer-muted, #64748b);
+}
+.dna-viewer-feature-sequence-status:empty { display: none; }
+.interactive-sequence-viewer-inspector .dna-viewer-feature-sequence-actions {
+  display: flex;
+  flex-wrap: wrap;
+}
+.interactive-sequence-viewer-inspector .dna-viewer-feature-sequence-actions button {
+  width: auto;
 }
 
 .dna-viewer-selection-details {

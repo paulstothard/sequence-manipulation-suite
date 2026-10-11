@@ -26,6 +26,14 @@ export function makeFeatureLabelFont(fontSize, options = {}) {
   return `${weight} ${size}px ${family}`;
 }
 
+// Curved text places each glyph separately, so whole-string kerning does not
+// describe its occupied arc. Use the same advances for fitting and drawing.
+export function measureCurvedLabel(ctx, text) {
+  const characters = Array.from(String(text));
+  const widths = characters.map(character => Math.max(1, ctx.measureText(character).width));
+  return { characters, widths, width: widths.reduce((sum, width) => sum + width, 0) };
+}
+
 export function getFeatureLabelRenderPlan(ctx, label, availableWidth, pixelsPerUnit, options = {}) {
   const text = String(label ?? "").trim();
   const width = Number(availableWidth);
@@ -43,7 +51,7 @@ export function getFeatureLabelRenderPlan(ctx, label, availableWidth, pixelsPerU
 
   const previousFont = ctx.font;
   ctx.font = font;
-  const measuredWidth = ctx.measureText(text).width;
+  const measuredWidth = options.curved ? measureCurvedLabel(ctx, text).width : ctx.measureText(text).width;
   ctx.font = previousFont;
   const requiredWidth = measuredWidth + padding;
 

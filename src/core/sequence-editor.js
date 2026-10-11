@@ -122,9 +122,11 @@ function applyFeatureTrackOverrides(records, overrides = [], warnings = []) {
 }
 
 function makeAnnotatedFeatureTrack(record) {
+  const viewerItems = makeBiologicalRecordViewerRecords([record])[0]?.tracks[0]?.items ?? [];
   const items = (record.features ?? [])
     .filter((feature) => feature.feature !== "source" && feature.parsedLocation?.supported && feature.parsedLocation.start && feature.parsedLocation.end)
-    .map((feature) => ({
+    .map((feature, index) => ({
+      ...viewerItems[index],
       start: feature.parsedLocation.start,
       end: feature.parsedLocation.end,
       strand: feature.parsedLocation.strand,
@@ -654,6 +656,14 @@ function remapFeatureItemForEdit(item, edit) {
     length: sumPartLength(sortedParts)
   };
   if (status !== "unchanged") {
+    // Source location syntax describes the original record, not edited coordinates.
+    // Current parts remain available for extraction; changed CDSs need review
+    // before residue placement can be inferred again.
+    delete updated.sequenceLocation;
+    if (status === "affected" || status === "stale") {
+      delete updated.translation;
+      delete updated.translationSource;
+    }
     updated.status = status === item.editStatus && item.status ? item.status : featureStatusText(status, edit.operation);
     updated.editHistory = [...(item.editHistory ?? []), {operation: edit.operation, status: latestStatus, originalStart, originalEnd, start: newStart, end: newEnd}].slice(-50);
     updated.editStatus = status;

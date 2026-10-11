@@ -1,3 +1,4 @@
+import { geneFeatureClass, GENE_FEATURE_STYLES } from '../core/gene-viewer-feature-style.js';
 import { isViewerGeneratedCompositionTrack } from "./dna-viewer-composition-controls.js";
 import { showCopiedFeedback } from "./copy-feedback.js";
 
@@ -64,6 +65,7 @@ export function makeTargetKey(target) {
 
 export function viewerTargetsMatch(selected, target) {
   if (!selected || !target) return false;
+  if (selected.cdsParentKey && selected.cdsParentKey === makeTargetKey(target)) return true;
   if (selected.key && selected.key === makeTargetKey(target)) return true;
   return selected.kind === "search-result" &&
     selected.trackId &&
@@ -217,7 +219,7 @@ export function getViewerTrackItems(track, state) {
 export function getViewerFeatureTypeStyle(item, fallback = "#2563eb") {
   const direct = item?.color || item?.stroke || item?.fillColor;
   const type = getViewerItemTypeKey(item);
-  const stroke = direct || FEATURE_TYPE_COLORS.get(type) || FEATURE_TYPE_PALETTE[hashString(type) % FEATURE_TYPE_PALETTE.length] || fallback;
+  const stroke = direct || GENE_FEATURE_STYLES[geneFeatureClass(type)]?.color || FEATURE_TYPE_COLORS.get(type) || FEATURE_TYPE_PALETTE[hashString(type) % FEATURE_TYPE_PALETTE.length] || fallback;
   return {
     stroke,
     fill: colorWithAlpha(stroke, 0.18) || colorWithAlpha(fallback, 0.18) || "#dbeafe"
@@ -237,6 +239,8 @@ export function makeViewerItemTargetDetails(item = {}) {
     productSize: item.productSize,
     genomicPosition: item.genomicPosition,
     genomicCoordinates: item.genomicCoordinates,
+    genomicSpan: item.genomicSpan,
+    genomicStrand: item.genomicStrand,
     referenceId: item.referenceId,
     referenceName: item.referenceName,
     referenceAccession: item.referenceAccession,
@@ -253,6 +257,9 @@ export function makeViewerItemTargetDetails(item = {}) {
     info: item.info,
     sampleGenotypes: item.sampleGenotypes,
     featureId: item.featureId,
+    sequenceLocation: item.sequenceLocation,
+    transcriptId: item.transcriptId,
+    proteinId: item.proteinId,
     readName: item.readName,
     flag: item.flag,
     paired: item.paired,
@@ -305,7 +312,8 @@ export function normalizeViewerDetailRows(details) {
 
 export function getVisibleViewerTracks(record, state) {
   const hidden = state?.hiddenTrackIds ?? new Set();
-  return (record?.tracks ?? []).filter((track, index) => !hidden.has(getViewerTrackKey(track, index)));
+  return (record?.tracks ?? []).filter((track, index) => !hidden.has(getViewerTrackKey(track, index))
+    && (!hasHiddenViewerItemTypes(track, state) || getViewerTrackItems(track, state).length > 0));
 }
 
 export function getViewerTrackDisplayMode(track, state) {
@@ -346,6 +354,7 @@ export function createViewerTrackControls(record, state, onChange, options = {})
   summary.textContent = "Track settings";
   const list = document.createElement("div");
   list.className = "dna-viewer-track-list";
+  const visibilityUpdates = [];
   tracks.forEach((track, index) => {
     const key = getViewerTrackKey(track, index);
     const row = document.createElement("div");
@@ -358,6 +367,7 @@ export function createViewerTrackControls(record, state, onChange, options = {})
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
     checkbox.checked = !state.hiddenTrackIds.has(key);
+    visibilityUpdates.push(() => { checkbox.checked = !state.hiddenTrackIds.has(key); });
     checkbox.addEventListener("change", () => {
       if (checkbox.checked) {
         state.hiddenTrackIds.delete(key);
@@ -419,6 +429,7 @@ export function createViewerTrackControls(record, state, onChange, options = {})
         const typeCheckbox = document.createElement("input");
         typeCheckbox.type = "checkbox";
         typeCheckbox.checked = !hiddenTypes.has(entry.type);
+        visibilityUpdates.push(() => { typeCheckbox.checked = !state.hiddenTrackItemTypes.get(key)?.has(entry.type); });
         typeCheckbox.addEventListener("change", () => {
           const nextHidden = state.hiddenTrackItemTypes.get(key) || new Set();
           if (typeCheckbox.checked) {
@@ -447,6 +458,7 @@ export function createViewerTrackControls(record, state, onChange, options = {})
     list.append(row);
   });
   details.append(summary, list);
+  details.syncVisibility = () => visibilityUpdates.forEach(update => update());
   return details;
 }
 
@@ -812,19 +824,20 @@ export function renderSelectionPanel(panel, target, actions = {}) {
     rows.append(term, description);
   }
 
+  const featureSequences = actions.featureSequenceControls?.(target);
   const buttons = document.createElement("div");
   buttons.className = "dna-viewer-selection-actions";
   addAction(buttons, "Copy coordinates", () => actions.copyText?.(formatCoordinates(target)), Boolean(target.position || target.start || target.end));
-  addAction(buttons, "Copy sequence", () => actions.copySequence?.(target), Boolean(target.start || target.end || target.position));
+  addAction(buttons, "Copy sequence", () => actions.copySequence?.(target), !featureSequences && Boolean(target.start || target.end || target.position));
   const translation = getSelectionTranslation(target);
-  const canCopyTranslation = actions.canCopyTranslation
+  const canCopyTranslation = !featureSequences && (actions.canCopyTranslation
     ? actions.canCopyTranslation(target, translation)
-    : Boolean(translation);
+    : Boolean(translation));
   addAction(
     buttons,
     "Copy translation",
     () => actions.copyTranslation?.(target) ?? actions.copyText?.(translation),
-    canCopyTranslation
+    !featureSequences && canCopyTranslation
   );
   addAction(buttons, "Zoom to selection", () => actions.zoomToTarget?.(target), Boolean(target.start || target.end || target.position));
   addAction(buttons, "Zoom to mate", () => actions.zoomToMate?.(target), actions.canZoomToMate?.(target) ?? Boolean(target.matePresentInViewer));
@@ -832,7 +845,8 @@ export function renderSelectionPanel(panel, target, actions = {}) {
     addAction(buttons, `Show ${target.enzyme} sites`, () => actions.showRelatedSites?.(target), true);
   }
 
-  panel.append(heading, rows, buttons);
+  if (featureSequences) panel.append(heading, featureSequences, buttons, rows);
+  else panel.append(heading, rows, buttons);
 }
 
 export function getSelectionTranslation(target) {
@@ -1033,8 +1047,11 @@ export function makeTooltipText(target) {
         target.recognition || ""
       ].filter(Boolean).join(" | ");
     case "interval":
+      if (target.cdsResidueIndex) return [target.label || 'CDS', target.aminoAcid === '*' ? `Stop after residue ${target.cdsResidueIndex - 1}` : `${target.aminoAcid}${target.cdsResidueIndex}`,
+        target.codon, `bases ${target.cdsPositions.join(', ')}`, target.cdsSplitCodon ? 'split codon across CDS segments' : ''].filter(Boolean).join(' | ');
       return [
         target.label || target.type || "Feature",
+        target.modelRegion || target.featureType,
         target.genomicCoordinates || `coordinates ${formatCoordinates(target)}`,
         target.strand ? `${target.strand} strand` : "",
         formatLength(target)

@@ -1,3 +1,10 @@
+import { hasCdsTranslations, CDS_TRANSLATION_HELP, drawLinearCdsTranslation } from './viewer-cds-translation.js';
+import { continuousFeatureChevronRows, drawLinearFeatureChevrons, usesFeatureChevrons } from './viewer-feature-chevrons.js';
+import { createViewerGeneModelKey } from './viewer-gene-model-key.js';
+import { viewerAlignmentPosition, drawViewerAlignmentGuide } from './viewer-alignment-guide.js';
+import { createFeatureSequenceControls } from "./viewer-feature-sequence-ui.js";
+import { createViewerFeatureGroupControls } from "./viewer-feature-group-controls.js";
+import { calculateLinearViewerRows, linearViewerCanvasSize } from "../core/linear-viewer-layout.js";
 import { geneticCodes, getStartCodons, makeCodonMap } from "../core/genetic-code.js";
 import { complementDnaRnaSequence } from "../core/sequence.js";
 import { DNA_VIEWER_SEARCH_RESULT_LIMIT } from "../core/viewer-limits.js";
@@ -6,6 +13,8 @@ import { traceTranslationArrow } from "../core/translation-arrow-geometry.js";
 import {
   clipStackedIntervalLayout,
   createStackedIntervalLayout,
+  makeLinearPartConnectors,
+  makeLinearIntervalCopies,
   isStackedIntervalTrack
 } from "../core/viewer-track-layout.js";
 import { downloadCanvasPng, downloadCanvasSvg, makeSafeFileStem } from "./canvas-export.js";
@@ -61,6 +70,7 @@ import {
 } from "./viewer-inertia.js";
 import { installCanvasVisualInspection } from "./visual-inspection.js";
 import { installCanvasPinchZoom } from "./viewer-pinch-zoom.js";
+import { viewerWheelZoomFactor } from "./viewer-wheel-zoom.js";
 import { calculateBaseSelectionMarker } from "./base-selection-marker.js";
 import { createFeatureZoomController, featureFocus } from "./viewer-feature-focus.js";
 
@@ -200,7 +210,7 @@ function limitZoomPanFraction(pointerFraction) {
   return Math.sign(offset) * Math.min(ZOOM_LIMIT_WHEEL_PAN_MAX_FRACTION, strength * ZOOM_LIMIT_WHEEL_PAN_MAX_FRACTION);
 }
 
-export function computeLinearZoomState(state, length, pointerFraction, factor, focus = null) {
+export function computeLinearZoomState(state, length, pointerFraction, factor, focus = null, { panAtLimit = false } = {}) {
   const current = clampLinearViewRange(state?.viewStart, state?.viewEnd, length);
   const safeLength = Math.max(1, Number(length) || 1);
   const minSpan = Math.min(safeLength, MIN_LINEAR_VIEW_SPAN);
@@ -213,8 +223,10 @@ export function computeLinearZoomState(state, length, pointerFraction, factor, f
 
   const newSpan = Math.max(minSpan, Math.min(safeLength, oldSpan / zoomFactor));
   let nextStart;
-  if (!focus && zoomFactor > 1 && oldSpan <= minSpan + 1e-9 && Math.abs(newSpan - oldSpan) < 1e-9) {
-    nextStart = current.viewStart + oldSpan * limitZoomPanFraction(fraction);
+  if (panAtLimit && !focus && zoomFactor > 1 && oldSpan <= minSpan + 1e-9 && Math.abs(newSpan - oldSpan) < 1e-9) {
+    // Preserve the former 1.35x step's pan distance while making small trackpad
+    // deltas additive, just like zooming. Event frequency must not set pan speed.
+    nextStart = current.viewStart + oldSpan * limitZoomPanFraction(fraction) * Math.log(zoomFactor) / Math.log(1.35);
   } else {
     const anchorBp = focus?.center ?? current.viewStart + fraction * oldSpan;
     nextStart = anchorBp - fraction * newSpan;
@@ -228,8 +240,8 @@ export function computeFeatureFocusView(state, length, focus) {
   return clampLinearViewRange(focus.center - span / 2, focus.center + span / 2, length);
 }
 
-export function shouldDrawLinearSequenceLetter(x, plotLeft, plotRight) {
-  return x >= plotLeft + LINEAR_SEQUENCE_LETTER_EDGE_PADDING && x <= plotRight - LINEAR_SEQUENCE_LETTER_EDGE_PADDING;
+export function shouldDrawLinearSequenceLetter(x, plotLeft, plotRight, edgePadding = LINEAR_SEQUENCE_LETTER_EDGE_PADDING) {
+  return x >= plotLeft + edgePadding && x <= plotRight - edgePadding;
 }
 
 export function shouldDrawAlignedReadBaseLetter(x, readLeft, readRight, plotLeft, plotRight) {
@@ -446,10 +458,9 @@ function drawLinearBaseAnchorOutline(ctx, { x, y, base, pxPerBp, theme }) {
   ctx.restore();
 }
 
-function drawLinearSelectedCodonMarker(ctx, { x1, x2, y, strand, theme }) {
+function drawLinearSelectedCodonMarker(ctx, { x1, x2, y, strand, theme, height = 24 }) {
   const left = x1 + 1;
   const width = Math.max(1, x2 - x1 - 2);
-  const height = 24;
   const top = y - height / 2;
   ctx.save();
   ctx.fillStyle = theme.selectedFill;
@@ -464,10 +475,9 @@ function drawLinearSelectedCodonMarker(ctx, { x1, x2, y, strand, theme }) {
   ctx.restore();
 }
 
-function drawLinearCodonAnchorOutline(ctx, { x1, x2, y, strand, theme }) {
+function drawLinearCodonAnchorOutline(ctx, { x1, x2, y, strand, theme, height = 22 }) {
   const left = x1 + 1;
   const width = Math.max(1, x2 - x1 - 2);
-  const height = 22;
   ctx.save();
   ctx.strokeStyle = theme.selectedStroke;
   ctx.lineWidth = 2;
@@ -771,6 +781,10 @@ function visibleTrackItemCount(track, state, viewStart, viewEnd) {
   return visibleIntervalItems(track, state, viewStart, viewEnd).length;
 }
 
+function hasVisibleGeneModels(record, state) {
+  return getVisibleViewerTracks(record, state).some(track => getViewerTrackItems(track, state).some(item => item.geneModel || item.geneFeatureClass || record.geneFeatureLegend?.length));
+}
+
 function buildLinearTrackLayouts(record, state, pxPerBp) {
   return getVisibleViewerTracks(record, state).map((track) => {
     const displayMode = getViewerTrackDisplayMode(track, state);
@@ -810,8 +824,8 @@ function buildLinearTrackLayouts(record, state, pxPerBp) {
       viewStart: state.viewStart,
       viewEnd: state.viewEnd
     });
-    const slotHeight = displayMode === "squished" ? SQUISHED_FEATURE_SLOT_HEIGHT : FEATURE_SLOT_HEIGHT;
-    const height = 18 + layout.slotCount * slotHeight + (layout.hidden.length > 0 ? 16 : 0);
+    const slotHeight = displayMode === "squished" ? SQUISHED_FEATURE_SLOT_HEIGHT : record.compactLayout ? 14 : FEATURE_SLOT_HEIGHT;
+    const height = (record.compactLayout ? 10 : 18) + layout.slotCount * slotHeight + (layout.hidden.length > 0 ? 16 : 0);
     return {
       track,
       displayMode,
@@ -862,80 +876,14 @@ function getCachedLinearSlotLayout(record, state, track) {
 }
 
 function computeLinearRows(record, state, pxPerBp) {
-  let trackY = 88;
-  const trackYs = [];
-  for (const trackLayout of buildLinearTrackLayouts(record, state, pxPerBp)) {
-    trackYs.push({
-      ...trackLayout,
-      y: trackY + trackLayout.height / 2,
-      topY: trackY
-    });
-    trackY += trackLayout.height;
-  }
-  if (record.hideSequenceInterpretationControls === true) {
-    const bottomRulerY = Math.max(trackY + 32, 154);
-    return {
-      trackYs,
-      plus1Y: null,
-      plus2Y: null,
-      plus3Y: null,
-      dnaTopY: null,
-      dnaBottomY: null,
-      minus1Y: null,
-      minus2Y: null,
-      minus3Y: null,
-      bottomRulerY,
-      markerTop: 28,
-      markerBottom: bottomRulerY + 14
-    };
-  }
-  if (isProteinRecord(record)) {
-    const sequenceY = Math.max(trackY + 42, 154);
-    const bottomRulerY = sequenceY + 48;
-    return {
-      trackYs,
-      plus1Y: null,
-      plus2Y: null,
-      plus3Y: null,
-      dnaTopY: sequenceY,
-      dnaBottomY: null,
-      minus1Y: null,
-      minus2Y: null,
-      minus3Y: null,
-      bottomRulerY,
-      markerTop: 28,
-      markerBottom: bottomRulerY + 14
-    };
-  }
-  const translationRowGap = 32;
-  const plus1Y = Math.max(trackY + 18, 154);
-  const plus2Y = plus1Y + translationRowGap;
-  const plus3Y = plus2Y + translationRowGap;
-  const dnaTopY = (state.showForwardTranslations ? plus3Y : plus1Y - translationRowGap) + 42;
-  const dnaBottomY = state.showSecondStrand ? dnaTopY + 30 : null;
-  const minus1Y = state.showSecondStrand ? dnaBottomY + 46 : dnaTopY + 48;
-  const minus2Y = minus1Y + translationRowGap;
-  const minus3Y = minus2Y + translationRowGap;
-  const finalContentY = state.showReverseTranslations
-    ? minus3Y
-    : state.showSecondStrand
-      ? dnaBottomY
-      : dnaTopY;
-  const bottomRulerY = finalContentY + 48;
-  return {
-    trackYs,
-    plus1Y,
-    plus2Y,
-    plus3Y,
-    dnaTopY,
-    dnaBottomY,
-    minus1Y,
-    minus2Y,
-    minus3Y,
-    bottomRulerY,
-    markerTop: 28,
-    markerBottom: bottomRulerY + 14
-  };
+  return calculateLinearViewerRows(buildLinearTrackLayouts(record, state, pxPerBp), {
+    ...state,
+    hideSequence: record.hideSequenceInterpretationControls === true,
+    protein: isProteinRecord(record),
+    compactLayout: record.compactLayout,
+    hideRulers: record.hideRulers,
+    sequencePosition: record.sequencePosition
+  });
 }
 
 function drawLinearRuler(ctx, state, layout, options = {}) {
@@ -974,7 +922,9 @@ function drawLinearRuler(ctx, state, layout, options = {}) {
 
 function drawTranslationRow(ctx, record, state, y, frameLabel, frameOffset, strand, layout, theme) {
   const { plotLeft, plotRight, pxPerBp } = layout;
-  ctx.font = "12px system-ui, sans-serif";
+  const codonHeight = record.compactLayout ? 14 : 22;
+  const hitHalfHeight = record.compactLayout ? 7.5 : 13;
+  ctx.font = `${record.compactLayout ? 11 : 12}px system-ui, sans-serif`;
   ctx.fillStyle = theme.muted;
   ctx.textAlign = "right";
   ctx.textBaseline = "middle";
@@ -1030,7 +980,7 @@ function drawTranslationRow(ctx, record, state, y, frameLabel, frameOffset, stra
       codon,
       aminoAcid: aa
     };
-    addRectHit(state, { x1, y1: y - 13, x2, y2: y + 13 }, target);
+    addRectHit(state, { x1, y1: y - hitHalfHeight, x2, y2: y + hitHalfHeight }, target);
     const selected = viewerTargetMatches(state, target);
     const anchored = viewerTargetIsRangeAnchor(state, target);
     const searchActive = searchTargetMatches(state, target);
@@ -1038,18 +988,18 @@ function drawTranslationRow(ctx, record, state, y, frameLabel, frameOffset, stra
     ctx.fillStyle = aa === "*" ? theme.stopFill : isStart ? theme.startFill : theme.aminoAcidFill;
     ctx.lineWidth = searchActive ? 2 : 1;
     ctx.lineJoin = "round";
-    traceTranslationArrow(ctx, x1 + 1, y - 11, Math.max(1, x2 - x1 - 2), 22, strand);
+    traceTranslationArrow(ctx, x1 + 1, y - codonHeight / 2, Math.max(1, x2 - x1 - 2), codonHeight, strand);
     ctx.fill();
     ctx.stroke();
     if (selected) {
-      drawLinearSelectedCodonMarker(ctx, { x1, x2, y, strand, theme });
+      drawLinearSelectedCodonMarker(ctx, { x1, x2, y, strand, theme, height: codonHeight + 2 });
     }
-    ctx.font = "13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+    ctx.font = `${record.compactLayout ? 10 : 13}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
     ctx.fillStyle = aa === "*" ? theme.stopText : isStart ? theme.startText : theme.aminoAcidText;
     ctx.textAlign = "center";
     ctx.fillText(aa, (x1 + x2) / 2, y);
     if (anchored) {
-      drawLinearCodonAnchorOutline(ctx, { x1, x2, y, strand, theme });
+      drawLinearCodonAnchorOutline(ctx, { x1, x2, y, strand, theme, height: codonHeight });
     }
   }
 }
@@ -1076,9 +1026,14 @@ function drawViewer(ctx, canvas, status, record, state) {
   ctx.fillRect(0, 0, width, height);
   ctx.textBaseline = "middle";
   drawLinearSearchMarkers(ctx, state, layout, theme);
+  const guidePosition = viewerAlignmentPosition(state, record.length);
+  if (guidePosition !== null && guidePosition - 0.5 >= state.viewStart && guidePosition - 0.5 <= state.viewEnd) {
+    const x = bpToX(guidePosition - 0.5, plotLeft, plotRight, state.viewStart, state.viewEnd);
+    drawViewerAlignmentGuide(ctx, { x, y: rows.markerTop }, { x, y: rows.markerBottom }, theme);
+  }
 
   const rulerY = 46;
-  drawLinearRuler(ctx, state, layout, { y: rulerY, labelsAbove: true, theme });
+  if (!record.hideRulers) drawLinearRuler(ctx, state, layout, { y: rulerY, labelsAbove: true, theme });
 
   for (const { track, y: trackY, topY, height, quantitative, stacked, summary, displayMode, slotHeight, layout: trackSlotLayout } of rows.trackYs) {
     const color = getViewerTrackColor(theme, track);
@@ -1181,13 +1136,25 @@ function drawViewer(ctx, canvas, status, record, state) {
       const rowSlotHeight = slotHeight || FEATURE_SLOT_HEIGHT;
       const defaultRectHeight = compactTrack ? 7 : 12;
       const hitHalfHeight = compactTrack ? 5 : 7;
-      const slotBaseY = topY + (compactTrack ? 10 : 13);
+      const slotBaseY = topY + (record.compactLayout ? 9 : compactTrack ? 10 : 13);
+      const continuousRows = continuousFeatureChevronRows(getViewerTrackItems(track, state));
+      const continuousItems = new Set(continuousRows.flatMap(row => row.members));
+      const rowLabelGaps = new Map();
+      for (const connector of makeLinearPartConnectors(getViewerTrackItems(track, state), state)) {
+        const y = slotBaseY + connector.slot * rowSlotHeight;
+        ctx.strokeStyle = getViewerFeatureTypeStyle(connector.item, color).stroke;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(bpToX(connector.start, plotLeft, plotRight, state.viewStart, state.viewEnd), y);
+        ctx.lineTo(bpToX(connector.end, plotLeft, plotRight, state.viewStart, state.viewEnd), y);
+        ctx.stroke();
+      }
       for (const placement of placements) {
         const item = placement.item;
         const itemIndex = placement.itemIndex;
         const showsReadBases = !compactTrack && Array.isArray(item.alignedReadBases) && item.alignedReadBases.length > 0 &&
           pxPerBp >= ALIGNED_READ_BASE_PX_PER_BP;
-        const rectHeight = showsReadBases ? 14 : defaultRectHeight;
+        const rectHeight = item.geneModel?.role === "transcript" ? (compactTrack ? 3 : 5) : showsReadBases ? 14 : defaultRectHeight;
         let x1 = Math.max(plotLeft, bpToX(placement.start, plotLeft, plotRight, state.viewStart, state.viewEnd));
         let x2 = Math.min(plotRight, bpToX(placement.end, plotLeft, plotRight, state.viewStart, state.viewEnd));
         // Keep subpixel variants visible and clickable without changing their coordinates.
@@ -1218,14 +1185,24 @@ function drawViewer(ctx, canvas, status, record, state) {
         };
         const hitPadding = track.focusOnSelect === true ? 3 : 0;
         addRectHit(state, { x1: Math.max(plotLeft, x1 - hitPadding), y1: laneY - hitHalfHeight, x2: Math.min(plotRight, x2 + hitPadding), y2: laneY + hitHalfHeight }, target);
+        for (const utr of item.geneModel?.utrs ?? []) {
+          const start = Math.max(placement.start, utr.start - 1), end = Math.min(placement.end, utr.end);
+          if (end <= start) continue;
+          addRectHit(state, {
+            x1: bpToX(start, plotLeft, plotRight, state.viewStart, state.viewEnd),
+            x2: bpToX(end, plotLeft, plotRight, state.viewStart, state.viewEnd),
+            y1: laneY - hitHalfHeight, y2: laneY + hitHalfHeight
+          }, { ...target, modelRegion: utr.type, details: [['Region', utr.type], ...(target.details ?? [])] });
+        }
         const highlighted = viewerTargetMatches(state, target);
-        ctx.fillStyle = itemStyle.fill;
+        ctx.fillStyle = item.geneModel?.role === "CDS" ? itemStyle.stroke : itemStyle.fill;
         ctx.strokeStyle = itemStyle.stroke;
         ctx.lineWidth = 1;
         const previousAlpha = ctx.globalAlpha;
         if (placement.fixedSlot) ctx.globalAlpha = Number(track.featureOpacity) || 0.68;
-        const terminalVisible = featureArrowTerminalVisible({ ...placement, partCount: item.parts?.length ?? 1 }, item.strand);
-        const headLength = track.type === "digest-fragments" || item.type === "source"
+        const terminalVisible = featureArrowTerminalVisible({ ...placement, partCount: placement.partCount ?? item.parts?.length ?? 1 }, item.strand);
+        const chevrons = usesFeatureChevrons(track, item);
+        const headLength = chevrons || track.type === "digest-fragments" || item.type === "source"
           ? 0
           : alignedReadArrowHeadLength(widthPx, rectHeight, item, item.strand, terminalVisible, pxPerBp, compactTrack);
         drawLinearIntervalShape(ctx, x1, laneY - rectHeight / 2, widthPx, rectHeight, item.strand, headLength, !highlighted);
@@ -1242,13 +1219,28 @@ function drawViewer(ctx, canvas, status, record, state) {
           widthPx,
           height: rectHeight
         }, theme);
+        const cdsDrawn = drawLinearCdsTranslation(ctx, record, item, state, placement, target, {
+          toX: bp => bpToX(bp, plotLeft, plotRight, state.viewStart, state.viewEnd),
+          y: laneY, height: rectHeight, pxPerBase: pxPerBp,
+          ink: item.geneModel?.role === 'CDS' || theme.dark ? '#ffffff' : '#7c2d12'
+        });
+        if (cdsDrawn) {
+          if (!rowLabelGaps.has(placement.slot)) rowLabelGaps.set(placement.slot, []);
+          rowLabelGaps.get(placement.slot).push({ start: x1, end: x2 });
+        }
         const labelPlan = getFeatureLabelRenderPlan(ctx, item.label || item.name || item.type || "", widthPx - headLength, pxPerBp, {
           minSize: 8,
           maxSize: 10,
           padding: 8,
           minAvailableWidth: 24
         });
-        if (!readBasesDrawn && !compactTrack && labelPlan.fits) {
+        const showLabel = !cdsDrawn && !readBasesDrawn && !compactTrack && !item.geneModel && labelPlan.fits;
+        if (!cdsDrawn && chevrons && !continuousItems.has(item)) drawLinearFeatureChevrons(ctx, x1, x1 + widthPx, laneY, rectHeight, item.strand,
+          item.geneModel?.role === 'CDS' || theme.dark ? '#ffffff' : itemStyle.stroke,
+          showLabel ? labelPlan.measuredWidth : 0);
+        if (showLabel) {
+          if (!rowLabelGaps.has(placement.slot)) rowLabelGaps.set(placement.slot, []);
+          rowLabelGaps.get(placement.slot).push({ start: x1 + (widthPx - labelPlan.measuredWidth) / 2, end: x1 + (widthPx + labelPlan.measuredWidth) / 2 });
           ctx.save();
           ctx.fillStyle = theme.label;
           ctx.textAlign = "center";
@@ -1256,6 +1248,19 @@ function drawViewer(ctx, canvas, status, record, state) {
           ctx.font = labelPlan.font;
           ctx.fillText(labelPlan.label, linearIntervalLabelCenter(x1, widthPx, item.strand, headLength), laneY);
           ctx.restore();
+        }
+      }
+      for (const row of continuousRows) {
+        if (trackSlotLayout && row.item.slot >= trackSlotLayout.slotCount) continue;
+        const toX = bp => bpToX(bp, plotLeft, plotRight, state.viewStart, state.viewEnd);
+        const coding = makeLinearIntervalCopies([{ parts: row.codingParts }], { ...state, length: record.length })
+          .map(part => ({ start: toX(part.start), end: toX(part.end) }));
+        const color = theme.dark ? '#ffffff' : getViewerFeatureTypeStyle(row.item).stroke;
+        for (const span of makeLinearIntervalCopies([{ start: row.item.start, end: row.item.end }], { ...state, length: record.length })) {
+          drawLinearFeatureChevrons(ctx, toX(span.start), toX(span.end), slotBaseY + row.item.slot * rowSlotHeight,
+            compactTrack ? 6 : 8, row.item.strand,
+            x => coding.some(part => x >= part.start && x <= part.end) ? '#ffffff' : color,
+            0, rowLabelGaps.get(row.item.slot));
         }
       }
       if ((trackSlotLayout?.hidden?.length ?? 0) > 0) {
@@ -1303,7 +1308,8 @@ function drawViewer(ctx, canvas, status, record, state) {
           const terminalVisible = item.strand === "+"
             ? part.end === end && part.end <= state.viewEnd
             : part.start === start && part.start - 1 >= state.viewStart;
-          const headLength = track.type === "digest-fragments" || item.type === "source"
+          const chevrons = usesFeatureChevrons(track, item);
+          const headLength = chevrons || track.type === "digest-fragments" || item.type === "source"
             ? 0
             : alignedReadArrowHeadLength(widthPx, rectHeight, item, item.strand, terminalVisible, pxPerBp, compactTrack);
           drawLinearIntervalShape(ctx, x1, trackY - rectHeight / 2, widthPx, rectHeight, item.strand, headLength, !highlighted);
@@ -1325,7 +1331,10 @@ function drawViewer(ctx, canvas, status, record, state) {
             padding: 10,
             minAvailableWidth: 24
           });
-          if (!readBasesDrawn && !compactTrack && labelPlan.fits) {
+          const showLabel = !readBasesDrawn && !compactTrack && labelPlan.fits;
+          if (chevrons) drawLinearFeatureChevrons(ctx, x1, x1 + widthPx, trackY, rectHeight, item.strand,
+            theme.dark ? '#ffffff' : itemStyle.stroke, showLabel ? labelPlan.measuredWidth : 0);
+          if (showLabel) {
             ctx.save();
             ctx.fillStyle = theme.label;
             ctx.textAlign = "center";
@@ -1360,15 +1369,19 @@ function drawViewer(ctx, canvas, status, record, state) {
   if (record.hideSequenceInterpretationControls) {
     // Placeholder-reference tracks such as VCF and SAM/BAM should keep coordinate rulers
     // and features, but not display fake N bases as if a reference sequence was supplied.
-  } else if (canRevealSequenceDetail(record, state) && pxPerBp >= 10) {
+  } else if (canRevealSequenceDetail(record, state) && pxPerBp >= (record.compactLayout ? 8 : 10)) {
     const first = Math.max(0, Math.floor(state.viewStart));
     const last = Math.min(record.length - 1, Math.ceil(state.viewEnd));
-    ctx.font = "14px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+    const baseHitHalfHeight = record.compactLayout ? 7 : 12;
+    ctx.font = `${record.compactLayout ? 12 : 14}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
+    // Reserve the actual glyph width, so fully visible terminal bases are not
+    // suppressed on narrow canvases. Partial letters still stay outside the plot.
+    const letterEdgePadding = ctx.measureText('M').width / 2 + 1;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     for (let index = first; index <= last; index += 1) {
       const x = bpToX(index + 0.5, plotLeft, plotRight, state.viewStart, state.viewEnd);
-      if (!shouldDrawLinearSequenceLetter(x, plotLeft, plotRight)) {
+      if (!shouldDrawLinearSequenceLetter(x, plotLeft, plotRight, letterEdgePadding)) {
         continue;
       }
       const base = record.sequence[index];
@@ -1382,7 +1395,7 @@ function drawViewer(ctx, canvas, status, record, state) {
         base,
         alphabet: proteinViewer ? "protein" : "dna-rna"
       };
-      addRectHit(state, { x1: x - pxPerBp / 2, y1: dnaTopY - 12, x2: x + pxPerBp / 2, y2: dnaTopY + 12 }, target);
+      addRectHit(state, { x1: x - pxPerBp / 2, y1: dnaTopY - baseHitHalfHeight, x2: x + pxPerBp / 2, y2: dnaTopY + baseHitHalfHeight }, target);
       if (viewerTargetMatches(state, target)) {
         drawLinearSelectedBaseMarker(ctx, { x, y: dnaTopY, base, pxPerBp, theme });
       }
@@ -1402,7 +1415,7 @@ function drawViewer(ctx, canvas, status, record, state) {
           strand: "-",
           base: complement
         };
-        addRectHit(state, { x1: x - pxPerBp / 2, y1: dnaBottomY - 12, x2: x + pxPerBp / 2, y2: dnaBottomY + 12 }, complementTarget);
+        addRectHit(state, { x1: x - pxPerBp / 2, y1: dnaBottomY - baseHitHalfHeight, x2: x + pxPerBp / 2, y2: dnaBottomY + baseHitHalfHeight }, complementTarget);
         if (viewerTargetMatches(state, complementTarget)) {
           drawLinearSelectedBaseMarker(ctx, { x, y: dnaBottomY, base: complement, pxPerBp, theme });
         }
@@ -1426,7 +1439,7 @@ function drawViewer(ctx, canvas, status, record, state) {
       ctx.lineTo(plotRight, dnaBottomY);
       ctx.stroke();
     }
-    ctx.font = "12px system-ui, sans-serif";
+    ctx.font = `${record.compactLayout ? 10 : 12}px system-ui, sans-serif`;
     ctx.fillStyle = theme.muted;
     ctx.textAlign = "center";
     ctx.textBaseline = "alphabetic";
@@ -1437,10 +1450,21 @@ function drawViewer(ctx, canvas, status, record, state) {
         : "zoom in to reveal DNA bases";
     const fittedRevealText = ctx.measureText(revealText).width <= plotRight - plotLeft
       ? revealText : proteinViewer ? "Zoom in to reveal residues" : "Zoom in to reveal bases";
-    ctx.fillText(fittedRevealText, (plotLeft + plotRight) / 2, showSecondStrand ? dnaBottomY + 24 : dnaTopY + 24);
+    if (record.compactLayout && record.sequencePosition === "top") {
+      // Overlay the zoom hint on the DNA line so it cannot collide with the
+      // tightly spaced translation rows or the first annotation track.
+      const hintWidth = ctx.measureText(fittedRevealText).width + 8;
+      ctx.fillStyle = theme.background;
+      ctx.fillRect((plotLeft + plotRight - hintWidth) / 2, dnaTopY - 7, hintWidth, 14);
+      ctx.fillStyle = theme.muted;
+      ctx.textBaseline = "middle";
+      ctx.fillText(fittedRevealText, (plotLeft + plotRight) / 2, dnaTopY);
+    } else {
+      ctx.fillText(fittedRevealText, (plotLeft + plotRight) / 2, showSecondStrand ? dnaBottomY + 24 : dnaTopY + 24);
+    }
   }
   if (!record.hideSequenceInterpretationControls) {
-    ctx.font = "12px system-ui, sans-serif";
+    ctx.font = `${record.compactLayout ? 11 : 12}px system-ui, sans-serif`;
     ctx.fillStyle = theme.muted;
     ctx.textAlign = "right";
     ctx.fillText(proteinViewer ? "Protein" : "DNA +", plotLeft - 12, dnaTopY);
@@ -1455,10 +1479,34 @@ function drawViewer(ctx, canvas, status, record, state) {
     drawTranslationRow(ctx, record, state, minus3Y, "-3", 2, "-", layout, theme);
   }
 
-  drawLinearRuler(ctx, state, layout, { y: bottomRulerY, labelsAbove: false, theme });
+  if (!record.hideRulers && !record.compactLayout) drawLinearRuler(ctx, state, layout, { y: bottomRulerY, labelsAbove: false, theme });
 
   for (const outline of selectedIntervalOutlines) {
     drawLinearSelectedIntervalOutline(ctx, { ...outline, plotLeft, plotRight, theme });
+  }
+
+  if (hasVisibleGeneModels(record, state)) {
+    ctx.fillStyle = theme.muted;
+    ctx.font = "10px system-ui, sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    const legend = record.geneFeatureLegend;
+    if (legend?.length) {
+      const width = legend.reduce((sum, entry) => sum + 28 + ctx.measureText(entry.label).width, 0) - 10;
+      let x = Math.min(plotLeft, Math.max(12, plotRight - width));
+      for (const entry of legend) {
+        const y = rows.markerBottom + 9;
+        ctx.fillStyle = entry.color;
+        ctx.fillRect(x, y - entry.height / 2, 12, entry.height);
+        ctx.fillStyle = theme.muted;
+        ctx.fillText(entry.label, x + 18, y);
+        x += 28 + ctx.measureText(entry.label).width;
+      }
+    } else {
+      const key = "UTR: thin · CDS: thick · intron: line";
+      const keyX = Math.min(plotLeft, Math.max(12, plotRight - ctx.measureText(key).width));
+      ctx.fillText(key, keyX, rows.markerBottom + 9);
+    }
   }
 
   status.textContent = "";
@@ -1759,7 +1807,10 @@ function makeLinearViewerSnapshot(record, state, searchControls) {
     showSecondStrand: state.showSecondStrand,
     showForwardTranslations: state.showForwardTranslations,
     showReverseTranslations: state.showReverseTranslations,
+    showCdsTranslations: state.showCdsTranslations,
     composition: snapshotViewerCompositionState(state),
+    hiddenTrackIds: Array.from(state.hiddenTrackIds || []),
+    hiddenTrackItemTypes: Array.from(state.hiddenTrackItemTypes || [], ([key, types]) => [key, Array.from(types)]),
     trackDisplayModes: Array.from(state.trackDisplayModes || []),
     rangeAnchors: Array.isArray(state.rangeAnchors) ? state.rangeAnchors.map((anchor) => ({ ...anchor })) : [],
     useOppositeRangePath: state.useOppositeRangePath === true,
@@ -1840,8 +1891,11 @@ function installViewer(panel, record, options = {}) {
   const secondStrandToggle = makeCheckboxToggle("Second strand", true);
   const forwardTranslationToggle = makeCheckboxToggle("+ translation", true);
   const reverseTranslationToggle = makeCheckboxToggle("- translation", true);
+  const cdsTranslationToggle = makeCheckboxToggle("CDS translation", true);
+  cdsTranslationToggle.label.title = CDS_TRANSLATION_HELP;
+  cdsTranslationToggle.label.hidden = !hasCdsTranslations(record);
   const geneticCodeControl = makeGeneticCodeSelect(record.geneticCode || "1");
-  toggles.append(secondStrandToggle.label, forwardTranslationToggle.label, reverseTranslationToggle.label, geneticCodeControl.control);
+  toggles.append(secondStrandToggle.label, forwardTranslationToggle.label, reverseTranslationToggle.label, cdsTranslationToggle.label, geneticCodeControl.control);
   if (hideDnaInterpretationControls) {
     secondStrandToggle.label.hidden = true;
     forwardTranslationToggle.label.hidden = true;
@@ -1868,6 +1922,7 @@ function installViewer(panel, record, options = {}) {
     geneticCode: record.geneticCode || preserved?.geneticCode || "1",
     showSecondStrand: !hideDnaInterpretationControls && (preserved ? preserved.showSecondStrand !== false : record.showSecondStrandDefault !== false),
     showForwardTranslations: !hideDnaInterpretationControls && (preserved ? preserved.showForwardTranslations !== false : record.showForwardTranslationsDefault !== false),
+    showCdsTranslations: preserved?.showCdsTranslations !== false,
     showReverseTranslations: !hideDnaInterpretationControls && (preserved ? preserved.showReverseTranslations !== false : record.showReverseTranslationsDefault !== false),
     dragging: false,
     dragStartX: 0,
@@ -1885,8 +1940,9 @@ function installViewer(panel, record, options = {}) {
     activeSearchTarget: null,
     searchNavigationStarted: false,
     hitRegions: [],
-    hiddenTrackIds: new Set(),
-    hiddenTrackItemTypes: new Map(),
+    hiddenTrackIds: new Set(Array.isArray(preserved?.hiddenTrackIds) ? preserved.hiddenTrackIds : []),
+    hiddenTrackItemTypes: new Map(Array.isArray(preserved?.hiddenTrackItemTypes)
+      ? preserved.hiddenTrackItemTypes.filter(entry => Array.isArray(entry) && Array.isArray(entry[1])).map(([key, types]) => [key, new Set(types)]) : []),
     trackDisplayModes: new Map(Array.isArray(preserved?.trackDisplayModes) ? preserved.trackDisplayModes : [])
   };
   const featureZoom = createFeatureZoomController(record);
@@ -1896,16 +1952,28 @@ function installViewer(panel, record, options = {}) {
     state.trackLayoutCache = new WeakMap();
     scheduleResize();
   });
-  const trackControls = createViewerTrackControls(record, state, () => {
+  function updateTrackVisibility() {
+    cancelInertia();
+    trackControls?.syncVisibility();
+    featureGroupControls?.sync();
     featureZoom.release();
     state.trackLayoutCache = new WeakMap();
+    if (searchControls.scope.value === "features" && searchControls.input.value.trim()) {
+      runSearch(searchControls, "features", searchControls.input.value);
+    }
     scheduleResize();
-  }, {
+  }
+  const trackControls = createViewerTrackControls(record, state, updateTrackVisibility, {
     displayModes: true
   });
+  const featureGroupControls = createViewerFeatureGroupControls(record, state, updateTrackVisibility);
+  if (featureGroupControls) toolbar.append(featureGroupControls.element);
+  const modelKey = createViewerGeneModelKey(record);
+  if (modelKey) (featureGroupControls?.element ?? toolbar).append(modelKey);
   secondStrandToggle.input.checked = state.showSecondStrand;
   forwardTranslationToggle.input.checked = state.showForwardTranslations;
   reverseTranslationToggle.input.checked = state.showReverseTranslations;
+  cdsTranslationToggle.input.checked = state.showCdsTranslations;
   if (compositionControls) {
     menuControls.append(compositionControls);
   }
@@ -1919,15 +1987,15 @@ function installViewer(panel, record, options = {}) {
     const span = state.viewEnd - state.viewStart;
     const pxPerBp = (plotRight - plotLeft) / Math.max(1, span);
     const rows = computeLinearRows(record, state, pxPerBp);
-    const minimumHeight = options.compactPreview === true ? 340 : 520;
-    const desiredHeight = Math.max(minimumHeight, Math.min(920, rows.markerBottom + 70));
+    const minimumHeight = 80;
+    const desiredHeight = Math.max(minimumHeight, rows.markerBottom + (record.compactLayout ? hasVisibleGeneModels(record, state) ? 30 : 16 : 70));
     if (Math.abs(rect.height - desiredHeight) > 2) {
       canvas.style.height = `${desiredHeight}px`;
       rect = canvas.getBoundingClientRect();
     }
-    const dpr = window.devicePixelRatio || 1;
-    const nextWidth = Math.max(1, Math.round(rect.width * dpr));
-    const nextHeight = Math.max(1, Math.round(rect.height * dpr));
+    const { width: nextWidth, height: nextHeight, pixelRatio: dpr } = linearViewerCanvasSize(
+      rect.width, rect.height, window.devicePixelRatio || 1
+    );
     if (canvas.width !== nextWidth) canvas.width = nextWidth;
     if (canvas.height !== nextHeight) canvas.height = nextHeight;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -1951,9 +2019,9 @@ function installViewer(panel, record, options = {}) {
       resize();
     });
   }
-  function zoomAtFraction(pointerFraction, factor, focus = featureZoom.anchor()) {
+  function zoomAtFraction(pointerFraction, factor, focus = featureZoom.anchor(), options = {}) {
     cancelInertia();
-    const next = computeLinearZoomState(state, record.length, pointerFraction, factor, focus);
+    const next = computeLinearZoomState(state, record.length, pointerFraction, factor, focus, options);
     state.viewStart = next.viewStart;
     state.viewEnd = next.viewEnd;
     resize();
@@ -1962,8 +2030,11 @@ function installViewer(panel, record, options = {}) {
     const rect = canvas.getBoundingClientRect();
     const { plotLeft, plotRight } = getLinearPlotBounds(rect.width);
     const x = Math.max(plotLeft, Math.min(plotRight, clientX - rect.left));
-    const focus = featureZoom.wheel({ x, y: clientY - rect.top, now: performance.now(), regions: state.hitRegions, viewStart: state.viewStart, viewEnd: state.viewEnd, plotLeft, plotRight });
-    zoomAtFraction((x - plotLeft) / Math.max(1, plotRight - plotLeft), factor, focus);
+    const focus = featureZoom.wheel({ x, y: clientY - rect.top, now: performance.now(), regions: state.hitRegions, viewStart: state.viewStart, viewEnd: state.viewEnd, plotLeft, plotRight,
+      atZoomLimit: state.viewEnd - state.viewStart <= Math.min(record.length, MIN_LINEAR_VIEW_SPAN) + 1e-9 });
+    // Only a gesture that starts fully zoomed may pan. Momentum from zooming
+    // into a feature must stop there instead of immediately sliding past it.
+    zoomAtFraction((x - plotLeft) / Math.max(1, plotRight - plotLeft), factor, focus, { panAtLimit: featureZoom.panAtLimit() });
   }
   function panByFraction(fraction) {
     cancelInertia();
@@ -2155,6 +2226,7 @@ function installViewer(panel, record, options = {}) {
         state.useOppositeRangePath = false;
         renderCurrentRange({ redraw: true });
       },
+      featureSequenceControls: selected => createFeatureSequenceControls(record, selected),
       copyText: copyViewerText,
       copySequence: (selected) => copyViewerText(getLinearSequence(record, selected)),
       canCopyTranslation: (selected, translation = getSelectionTranslation(selected)) =>
@@ -2324,16 +2396,21 @@ function installViewer(panel, record, options = {}) {
   secondStrandToggle.input.addEventListener("change", () => {
     cancelInertia();
     state.showSecondStrand = secondStrandToggle.input.checked;
-    drawViewer(ctx, canvas, status, record, state);
+    resize();
   });
   forwardTranslationToggle.input.addEventListener("change", () => {
     cancelInertia();
     state.showForwardTranslations = forwardTranslationToggle.input.checked;
-    drawViewer(ctx, canvas, status, record, state);
+    resize();
   });
   reverseTranslationToggle.input.addEventListener("change", () => {
     cancelInertia();
     state.showReverseTranslations = reverseTranslationToggle.input.checked;
+    resize();
+  });
+  cdsTranslationToggle.input.addEventListener("change", () => {
+    cancelInertia();
+    state.showCdsTranslations = cdsTranslationToggle.input.checked;
     drawViewer(ctx, canvas, status, record, state);
   });
   geneticCodeControl.select.addEventListener("change", () => {
@@ -2347,7 +2424,7 @@ function installViewer(panel, record, options = {}) {
     getTargets: () => getViewerHitTargets(state),
     hitTest: (event) => hitTestRegions(state, event.clientX, event.clientY, canvas),
     getText: makeTooltipText,
-    getKey: (target) => target.key || makeTargetKey(target),
+    getKey: (target) => `${target.key || makeTargetKey(target)}${target.modelRegion ? `|${target.modelRegion}` : ""}`,
     getPosition: (target) => getViewerTargetClientPosition(state, target, canvas),
     onActivate: (target) => selectTarget(target, { keepIfSame: true, autoRangeAnchor: true }),
     onActiveChange: (target) => {
@@ -2375,8 +2452,10 @@ function installViewer(panel, record, options = {}) {
     });
   });
   canvas.addEventListener("wheel", (event) => {
+    const factor = viewerWheelZoomFactor(event);
+    if (factor === 1) return;
     event.preventDefault();
-    zoomAt(event.clientX, event.clientY, event.deltaY < 0 ? 1.35 : 1 / 1.35);
+    zoomAt(event.clientX, event.clientY, factor);
   }, { passive: false });
   let pinchOrigin = null;
   const cleanupPinch = installCanvasPinchZoom(canvas, {

@@ -1,6 +1,7 @@
 import { addTimestampToFilename, makeSafeFileStem } from "./canvas-export.js";
 import { installCanvasVisualInspection } from "./visual-inspection.js";
 import { copyTextWithFeedback } from "./copy-feedback.js";
+import { viewerWheelZoomFactor } from "./viewer-wheel-zoom.js";
 import { PROTEIN_STRUCTURE_KEYBOARD_INSPECTION_LIMIT, PROTEIN_STRUCTURE_NEAREST_ATOM_PICK_LIMIT, PROTEIN_STRUCTURE_SEARCH_SUGGESTION_LIMIT } from "../core/viewer-limits.js";
 
 const BACKGROUND_COLORS = {
@@ -14,7 +15,6 @@ const DEFAULT_LIGAND_OPACITY = 1;
 const DEFAULT_WATER_OPACITY = 0.85;
 const DEFAULT_SURFACE_OPACITY = 0.55;
 const RESIDUE_SPHERE_SCALE = 1.18;
-const WHEEL_ZOOM_FACTOR = 1.14;
 const MAX_STRUCTURE_SEARCH_OPTIONS = PROTEIN_STRUCTURE_SEARCH_SUGGESTION_LIMIT;
 const DEFAULT_STRUCTURE_SELECTION_COLOR = "#14b8a6";
 const STRUCTURE_SELECTION_COLORS = [
@@ -81,14 +81,6 @@ export function isProteinStructureResiduePickGesture(startPoint, endPoint, optio
   const dy = Number(endPoint.clientY) - Number(startPoint.clientY);
   if (!Number.isFinite(dx) || !Number.isFinite(dy)) return false;
   return Math.hypot(dx, dy) <= tolerance;
-}
-
-export function proteinStructureWheelZoomFactor(deltaY) {
-  const numericDeltaY = Number(deltaY);
-  if (!Number.isFinite(numericDeltaY) || numericDeltaY === 0) {
-    return 1;
-  }
-  return numericDeltaY < 0 ? WHEEL_ZOOM_FACTOR : 1 / WHEEL_ZOOM_FACTOR;
 }
 
 function residueKeyFromParts(chain, residueNumber, insertionCode = "") {
@@ -1508,11 +1500,14 @@ export function renderProteinStructureViewer(container, payload = {}) {
       viewerHost.addEventListener(eventName, cancelPointerPick);
     }
     viewerHost.addEventListener("wheel", (event) => {
-      event.preventDefault();
+      const factor = viewerWheelZoomFactor(event);
+      // Own this input even when horizontal-only: 3Dmol's legacy wheel handler
+      // must not apply a second interpretation. Leave page scrolling available.
       event.stopImmediatePropagation();
+      if (factor === 1) return;
+      event.preventDefault();
       cancelPointerPick();
-      const factor = proteinStructureWheelZoomFactor(event.deltaY);
-      if (factor !== 1 && typeof viewer.zoom === "function") {
+      if (typeof viewer.zoom === "function") {
         viewer.zoom(factor);
         viewer.render();
       }

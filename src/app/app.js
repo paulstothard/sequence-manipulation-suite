@@ -786,16 +786,11 @@ function renderHomeView() {
 
   const note = document.createElement("p");
   note.className = "home-note";
-  const getData = document.createElement("a");
-  getData.href = "#tool=get-data";
-  getData.textContent = "Get Data";
   const sendData = document.createElement("a");
   sendData.href = "#tool=send-data";
   sendData.textContent = "Send Data";
   note.append(
-    "Analysis tools process your data in this browser. The ",
-    getData,
-    " tool retrieves public records from external databases when you choose Retrieve or run a workflow containing it; the ",
+    "Analysis tools process your data locally in your browser. The ",
     sendData,
     " tool shares selected data with external services when you choose Open or Send."
   );
@@ -1094,6 +1089,7 @@ function renderExternalResources(toolId) {
   if (!externalResourcesController) externalResourcesController = createExternalResourcesController({
     host: document.getElementById('externalResources'),
     displayResult: displayToolResult,
+    runGeneViewer: (input, options, context) => runAppTool(tools.find(tool => tool.metadata.id === 'gene-viewer'), input, options, context),
     resetOutput: () => resetToolOutputViewer('No output yet.'),
     isActive: id => state.activeView === 'tool' && state.selectedTool.metadata.id === id
   });

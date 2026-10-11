@@ -12,16 +12,24 @@ function pinchPosition(touches) {
 
 export function installCanvasPinchZoom(canvas, { onStart, onChange, onEnd }) {
   let previous = null;
+  let suppressClickUntil = 0;
+  const finish = () => {
+    if (previous) {
+      onEnd?.();
+      suppressClickUntil = Date.now() + 500;
+    }
+    previous = null;
+  };
   const start = (event) => {
     const current = pinchPosition(event.targetTouches);
-    if (!current) return;
+    if (!current) { finish(); return; }
     event.preventDefault();
     if (!previous) onStart?.();
     previous = current;
   };
   const move = (event) => {
     const current = pinchPosition(event.targetTouches);
-    if (!current) return;
+    if (!current) { finish(); return; }
     event.preventDefault();
     if (!previous) {
       onStart?.();
@@ -31,15 +39,26 @@ export function installCanvasPinchZoom(canvas, { onStart, onChange, onEnd }) {
     previous = current;
   };
   const end = (event) => {
-    if (event.type !== "touchcancel" && event.targetTouches.length >= 2) return;
-    if (previous) onEnd?.();
-    previous = null;
+    if (event.type !== "touchcancel" && event.targetTouches.length === 2) return;
+    finish();
   };
+  // A compatibility click after a pinch must not select a base or feature.
+  // A fresh pointer action (or keyboard activation) is still an intentional click.
+  const click = (event) => {
+    if (event.detail === 0 || (!previous && Date.now() >= suppressClickUntil)) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  };
+  const pointerDown = () => { if (!previous) suppressClickUntil = 0; };
+  canvas.addEventListener("click", click, true);
+  canvas.addEventListener("pointerdown", pointerDown);
   canvas.addEventListener("touchstart", start, { passive: false });
   canvas.addEventListener("touchmove", move, { passive: false });
   canvas.addEventListener("touchend", end);
   canvas.addEventListener("touchcancel", end);
   return () => {
+    canvas.removeEventListener("click", click, true);
+    canvas.removeEventListener("pointerdown", pointerDown);
     canvas.removeEventListener("touchstart", start);
     canvas.removeEventListener("touchmove", move);
     canvas.removeEventListener("touchend", end);

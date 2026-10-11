@@ -120,6 +120,8 @@ function createEditorSession({ host, toolbar, downloadHost, tool, source, read, 
   };
   const undo = nativeHistory ? null : button("Undo", () => travel(-1));
   const redo = nativeHistory ? null : button("Redo", () => travel(1));
+  if (undo) undo.title = "Undo (Ctrl+Z or Command+Z with the editor focused).";
+  if (redo) redo.title = "Redo (Ctrl+Shift+Z / Command+Shift+Z or Ctrl+Y / Command+Y with the editor focused).";
   const history = document.createElement("details");
   history.className = "editor-session-history";
   const summary = document.createElement("summary");

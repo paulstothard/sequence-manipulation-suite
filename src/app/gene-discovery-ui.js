@@ -12,7 +12,7 @@ function field(label, value = '', choices) {
   else wrapper.append(input);
   return { wrapper, input };
 }
-export function createGeneDiscoveryController({ host, source, client, displayResult, resetOutput, isActive, initialValues }) {
+export function createGeneDiscoveryController({ host, source, client, displayResult, resetOutput, isActive, initialValues, toolId = 'get-data', onGeneSelected }) {
   let geneApi;
   let controller, epoch = 0, model, selected = new Set(), page = 0, chosenOrganism = initialValues ? initialValues.organism : knownOrganism('Human');
   const form = el('fieldset', '', 'external-fields gene-discovery'), inputs = el('div', '', 'external-selectors');
@@ -29,7 +29,7 @@ export function createGeneDiscoveryController({ host, source, client, displayRes
     cancel(); resetOutput(); model = null; results.replaceChildren(); products.replaceChildren(); organismMatches.replaceChildren();
     organism.input.value = commonOrganisms[0].taxId; chosenOrganism = commonOrganisms[0]; customOrganism.wrapper.hidden = findOrganismButton.hidden = true; query.input.value = 'HBB'; status.textContent = '';
   }), button('Clear input', () => { query.input.value = ''; invalidateSearch(); })); form.append(actions);
-  const privacy = el('p', `Search sends the organism and gene name to ${source === 'ncbi' ? 'NCBI' : 'Ensembl'}. Sequences are downloaded only after you choose products and select Retrieve.`, 'external-privacy');
+  const privacy = el('p', `Search sends the organism and gene name to ${source === 'ncbi' ? 'NCBI' : 'Ensembl'}. ${onGeneSelected ? 'Sequence and region annotations are downloaded only after you select View region. Viewing happens locally in your browser.' : 'Sequences are downloaded only after you choose products and select Retrieve.'}`, 'external-privacy');
   const status = el('p', '', 'external-status'); status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
   const cancelButton = button('Cancel retrieval', () => { cancel(); resetOutput(); status.textContent = 'Cancelled. Your selections were kept.'; }); cancelButton.hidden = true;
   const results = el('div', '', 'external-matches'), products = el('div', '', 'gene-products');
@@ -42,7 +42,7 @@ export function createGeneDiscoveryController({ host, source, client, displayRes
   query.input.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); void runSearch(0); } });
   async function execute(work) {
     cancel(); const currentEpoch = epoch; controller = new AbortController(); const signal = controller.signal;
-    const current = () => currentEpoch === epoch && isActive('get-data') && host.isConnected;
+    const current = () => currentEpoch === epoch && isActive(toolId) && host.isConnected;
     form.disabled = true; products.querySelectorAll('fieldset').forEach(n => n.disabled = true); cancelButton.hidden = false; status.classList.remove('external-error');
     try {
       geneApi ??= await import('../core/external-resources/gene.js');
@@ -69,15 +69,15 @@ export function createGeneDiscoveryController({ host, source, client, displayRes
       status.textContent = 'Searching genes…';
       const response = await geneApi.searchGenes({ source, query: query.input.value, organism: chosenOrganism, page }, client, signal);
       if (!current()) return;
-      status.textContent = response.total ? `${response.total.toLocaleString()} gene matches. Showing ${page * 20 + 1}–${page * 20 + response.matches.length}. Choose a gene to see its sequences.` : 'No matching genes. Try a symbol, synonym, or a shorter name.';
+      status.textContent = response.total ? `${response.total.toLocaleString()} gene matches. Showing ${page * 20 + 1}–${page * 20 + response.matches.length}. ${onGeneSelected ? 'Select a gene to load its sequence and annotations.' : 'Choose a gene to see its sequences.'}` : 'No matching genes. Try a symbol, synonym, or a shorter name.';
       const list = el('ul', '', 'gene-match-list'); list.setAttribute('aria-label', 'Gene matches'); list.setAttribute('role', 'list');
       for (const row of response.matches) {
         const item = el('li', '', 'gene-match'), description = el('div', '', 'gene-match-content');
         const heading = el('h3', '', 'gene-match-heading'); heading.append(el('strong', row.symbol), el('span', row.title));
         description.append(heading, el('p', [row.organism, `${source === 'ncbi' ? 'NCBI Gene' : 'Ensembl gene'}: ${row.id}`, row.chromosome ? `Chromosome ${row.chromosome}` : '', row.assembly].filter(Boolean).join(' · '), 'external-help'));
         if (row.aliases) description.append(el('p', `Also known as: ${row.aliases}`, 'external-help'));
-        const choose = button('View sequences', () => chooseGene(row), 'gene-match-action');
-        choose.setAttribute('aria-label', `View sequences for ${row.symbol} (${row.id})`);
+        const choose = button(onGeneSelected ? 'Select gene' : 'View sequences', () => chooseGene(row), 'gene-match-action');
+        choose.setAttribute('aria-label', `${onGeneSelected ? 'Select gene' : 'View sequences for'} ${row.symbol} (${row.id})`);
         item.append(description, choose); list.append(item);
       }
       if (list.childElementCount) results.append(list);
@@ -93,7 +93,12 @@ export function createGeneDiscoveryController({ host, source, client, displayRes
       status.textContent = 'Reading gene products…';
       const value = await geneApi.loadGene({ source, id: row.id, organism: { ...chosenOrganism, taxId: row.taxId || chosenOrganism.taxId } }, client, signal, message => { if (current()) status.textContent = message; });
       if (!current()) return;
-      model = value; results.replaceChildren(); status.textContent = 'Choose a sequence type and records below. No sequences have been downloaded.'; renderProducts();
+      model = value; results.replaceChildren();
+      if (onGeneSelected) {
+        await onGeneSelected({ model, host: products, execute, signal, current, setStatus: message => { status.textContent = message; } });
+      } else {
+        status.textContent = 'Choose a sequence type and records below. No sequences have been downloaded.'; renderProducts();
+      }
     });
   }
   function renderProducts() {

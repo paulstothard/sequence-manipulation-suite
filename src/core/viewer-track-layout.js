@@ -2,6 +2,22 @@ export function isStackedIntervalTrack(track) {
   return track?.type === "features" || track?.layout === "stacked-intervals";
 }
 
+// Optional intron connectors for compound features assigned to a stable lane.
+// Parts retain 1-based inclusive coordinates; drawing intervals are 0-based.
+export function makeLinearPartConnectors(items, { viewStart, viewEnd }) {
+  const connectors = [];
+  for (const item of items) {
+    if (!item.connectParts || !Number.isInteger(item.slot) || item.slot < 0) continue;
+    const parts = [...(item.parts ?? [])].sort((a, b) => a.start - b.start);
+    for (let index = 1; index < parts.length; index++) {
+      const start = Math.max(viewStart, parts[index - 1].end);
+      const end = Math.min(viewEnd, parts[index].start - 1);
+      if (end > start) connectors.push({ item, slot: item.slot, start, end });
+    }
+  }
+  return connectors;
+}
+
 function normalizeSlot(value) {
   const slot = Number.parseInt(value, 10);
   return Number.isFinite(slot) && slot >= 0 ? slot : null;
@@ -36,7 +52,7 @@ export function makeLinearIntervalCopies(items = [], options = {}) {
   const viewEnd = Number(options.viewEnd ?? length);
   const copies = [];
   items.forEach((item, itemIndex) => {
-    const rawParts = Array.isArray(item.parts) && item.parts.length > 0
+    const rawParts = Array.isArray(item.displayParts) ? item.displayParts : Array.isArray(item.parts) && item.parts.length > 0
       ? item.parts
       : [{ start: item.start, end: item.end }];
     rawParts.forEach((part, partIndex) => {
@@ -54,6 +70,7 @@ export function makeLinearIntervalCopies(items = [], options = {}) {
             item,
             itemIndex,
             partIndex,
+            partCount: rawParts.length,
             start: clippedStart,
             end: clippedEnd,
             sourceStart: start,

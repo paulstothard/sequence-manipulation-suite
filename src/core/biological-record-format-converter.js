@@ -765,6 +765,10 @@ export function makeBiologicalRecordViewerRecords(records, options = {}) {
           .map((feature) => {
             const standardName = firstQualifier(feature, "standard_name");
             return {
+              sequenceLocation: feature.parsedLocation,
+              featureId: firstQualifier(feature, "ID") || feature.id,
+              parentIds: (firstQualifier(feature, "Parent") || "").split(",").filter(Boolean),
+              transcriptId: firstQualifier(feature, "transcript_id"),
               start: feature.parsedLocation.start,
               end: feature.parsedLocation.end,
               strand: feature.parsedLocation.strand,
@@ -782,6 +786,13 @@ export function makeBiologicalRecordViewerRecords(records, options = {}) {
               translation: feature.translation,
               translationTable: firstQualifier(feature, "transl_table"),
               codonStart: firstQualifier(feature, "codon_start"),
+              // These importers currently discard column 8 (CDS phase). Do not
+              // imply that frame-1 translation of their coordinates is reliable.
+              ...(/^(GFF3|GTF)\+FASTA$/.test(feature.format) && feature.feature === "CDS"
+                ? { translationMappingIssue: "This import does not retain the CDS phase needed to place translation." } : {}),
+              ...(feature.qualifiers?.transl_except ? { translationExceptions: feature.qualifiers.transl_except } : {}),
+              ...(feature.qualifiers?.exception ? { translationException: firstQualifier(feature, "exception") } : {}),
+              ...(feature.qualifiers?.pseudo || feature.qualifiers?.pseudogene ? { pseudo: true } : {}),
               translationSource: feature.translation ? "record" : ""
             };
           })

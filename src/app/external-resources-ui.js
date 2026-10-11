@@ -1,6 +1,7 @@
 import { installAssemblyPicker } from './assembly-picker-ui.js';
 import { bundledAssemblies, knownOrganism } from '../core/external-resources/organisms.js';
 import { createGeneDiscoveryController } from './gene-discovery-ui.js';
+import { createGeneViewerController } from './gene-viewer-ui.js';
 import { openHandoff, sendHandoff } from './external-handoff-ui.js';
 import { dataTypes, tasks, sources, getFields, sendFields, fieldExamples, formatsFor, formatHelp, sendInputExample, lookupModes, isRegionLookup, regionProduct } from '../core/external-resources/catalog.js';
 import { regionExamples, regionExample, matchingRegionExample } from '../core/external-resources/region-examples.js';
@@ -38,10 +39,10 @@ function selectField(id, label, choices, value) {
   const shell = node('span', '', 'external-select-control'); shell.append(control); wrapper.append(shell);
   return { wrapper, control };
 }
-export function createExternalResourcesController({ host, displayResult, resetOutput, isActive }) {
+export function createExternalResourcesController({ host, displayResult, resetOutput, isActive, runGeneViewer }) {
   const preferences = readPreferences(), drafts = new Map(), modeDrafts = new Map(), lookupDrafts = new Map(), client = createRetrievalClient();
   const formatChoices = { ...preferences.get?.formats };
-  let geneController, geneDraft, assemblyPicker;
+  let geneController, geneDraft, geneViewerController, geneViewerDraft, assemblyPicker;
   let mode, operation, source, format, controls = {}, fields = [], abortController, epoch = 0, status, matches, action, cancelButton, fieldset;
   const snapshot = () => Object.fromEntries(Object.entries(controls).map(([id, control]) => [id, control.value]));
   const key = () => `${mode}:${operation}:${source}`;
@@ -54,6 +55,8 @@ export function createExternalResourcesController({ host, displayResult, resetOu
     try { sessionStorage.setItem(storageKey, JSON.stringify(preferences)); } catch { /* session storage is optional */ }
   }
   function cancel() {
+    if (geneViewerController) geneViewerDraft = geneViewerController.snapshot();
+    geneViewerController?.cancel();
     if (geneController) geneDraft = geneController.snapshot();
     geneController?.cancel();
     assemblyPicker?.cancel();
@@ -320,7 +323,12 @@ export function createExternalResourcesController({ host, displayResult, resetOu
     }
   }
   function render(toolId) {
-    cancel(); geneController = null; assemblyPicker = null; host.replaceChildren(); mode = toolId === 'get-data' ? 'get' : 'send';
+    cancel(); geneController = null; geneViewerController = null; assemblyPicker = null; host.replaceChildren(); mode = toolId === 'get-data' ? 'get' : 'send';
+    if (toolId === 'gene-viewer') {
+      host.classList.add('external-get-data');
+      geneViewerController = createGeneViewerController({ host, client, displayResult, resetOutput, isActive, runGeneViewer, initialValues: geneViewerDraft });
+      return;
+    }
     fileUpload = null; regionExampleList = null; exampleButton = null;
     const items = mode === 'get' ? dataTypes : tasks, saved = preferences[mode] || {};
     operation = mode === 'get' && ['annotated', 'region'].includes(saved.operation) ? 'nucleotide' : items.some(item => item.id === saved.operation) ? saved.operation : items[0].id;
