@@ -3422,6 +3422,12 @@ function installCircularViewer(panel, record, options = {}) {
   });
   const onMouseDown = (event) => {
     if (event.button !== 0) return;
+    // Cancel native selection at the start of a mouse drag. Touch callbacks
+    // retain their own gesture arbitration; keyboard inspection stays focused.
+    if (event.type === "mousedown") {
+      event.preventDefault();
+      canvas.focus({ preventScroll: true });
+    }
     cancelInertia();
     resetZoomAnchors();
     inspection.hide();

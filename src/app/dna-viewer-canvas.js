@@ -2489,6 +2489,13 @@ function installViewer(panel, record, options = {}) {
   });
   const onMouseDown = (event) => {
     if (event.button !== 0) return;
+    // Cancel native selection before the browser starts its mouse-drag state.
+    // Touch pan callbacks pass coordinates, not MouseEvents; keep their scroll
+    // arbitration in installCanvasPinchZoom. Preserve keyboard inspection focus.
+    if (event.type === "mousedown") {
+      event.preventDefault();
+      canvas.focus({ preventScroll: true });
+    }
     cancelInertia();
     inspection.hide();
     suppressClick = false;

@@ -10316,6 +10316,10 @@ legend {
   height: 520px;
   min-width: 42rem;
   touch-action: pan-y;
+  /* Prevent native canvas selection, including iOS selection paths that can
+     bypass cancelled mouse events. Scope this to the gesture surface. */
+  -webkit-user-select: none;
+  user-select: none;
   width: 100%;
 }
 
