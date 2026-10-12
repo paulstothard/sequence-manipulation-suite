@@ -2459,6 +2459,10 @@ function installViewer(panel, record, options = {}) {
   }, { passive: false });
   let pinchOrigin = null;
   const cleanupPinch = installCanvasPinchZoom(canvas, {
+    onContact: () => { cancelInertia(); inspection.hide(); },
+    onPanStart: (event) => onMouseDown(event),
+    onPanMove: (event) => onWindowMouseMove(event),
+    onPanEnd: (event) => onWindowMouseUp(event),
     onStart: () => {
       cancelInertia();
       inspection.hide();
@@ -2483,7 +2487,7 @@ function installViewer(panel, record, options = {}) {
     },
     onEnd: () => { pinchOrigin = null; }
   });
-  canvas.addEventListener("mousedown", (event) => {
+  const onMouseDown = (event) => {
     if (event.button !== 0) return;
     cancelInertia();
     inspection.hide();
@@ -2498,7 +2502,8 @@ function installViewer(panel, record, options = {}) {
     inertiaTracker.reset();
     inertiaTracker.add(event.clientX, performance.now());
     canvas.classList.add("dragging");
-  });
+  };
+  canvas.addEventListener("mousedown", onMouseDown);
   const onWindowMouseMove = (event) => {
     if (!state.dragging && event.target !== canvas) return;
     const rect = canvas.getBoundingClientRect();
@@ -2533,7 +2538,7 @@ function installViewer(panel, record, options = {}) {
     state.dragging = false;
     suppressClick = state.dragMoved;
     canvas.classList.remove("dragging");
-    if (!allowsViewerInertia(window) || !shouldStartViewerInertia({ dragDistancePx, velocity })) return;
+    if (event.cancelled || !allowsViewerInertia(window) || !shouldStartViewerInertia({ dragDistancePx, velocity })) return;
     stopInertia = startViewerInertia({
       initialVelocity: velocity,
       step: (deltaBp) => {

@@ -1235,10 +1235,15 @@ function renderSingleSangerTraceViewer(container, data, documentActions) {
     zoomBy(factor, zoomFractionForPointer(event.clientX));
   }, passiveWheelOptions);
   const cleanupPinch = installCanvasPinchZoom(canvas, {
+    onContact: () => { stopActiveInertia(); inspection.hide(); },
+    onPanStart: (event) => startPointerDrag({ ...event, preventDefault() {} }),
+    onPanMove: (event) => { if (dragState) handleDragMove(event); },
+    onPanEnd: (event) => finishPointerDrag(event),
+    onTap: (event) => { selectNearestBase(canvas, state, event); render(); },
     onStart: () => {
       stopActiveInertia();
       inspection.hide();
-      if (dragState) canvas.releasePointerCapture?.(dragState.pointerId);
+      if (dragState?.pointerId !== undefined) canvas.releasePointerCapture?.(dragState.pointerId);
       dragState = null;
       canvas.classList.remove("dragging", "clipping");
     },
@@ -1280,7 +1285,7 @@ function renderSingleSangerTraceViewer(container, data, documentActions) {
       zoomBy(1 / 1.25);
     }
   }, listenerOptions);
-  canvas.addEventListener("pointerdown", (event) => {
+  const startPointerDrag = (event) => {
     if (event.button !== 0) return;
     event.preventDefault();
     stopActiveInertia();
@@ -1296,7 +1301,7 @@ function renderSingleSangerTraceViewer(container, data, documentActions) {
     };
     velocityTracker.reset();
     velocityTracker.add(event.clientX, performance.now());
-    canvas.setPointerCapture?.(event.pointerId);
+    if (event.pointerId !== undefined) canvas.setPointerCapture?.(event.pointerId);
     canvas.classList.toggle("dragging", dragState.type === "pan");
     canvas.classList.toggle("clipping", dragState.type !== "pan");
     if (dragState.type === "pan") {
@@ -1305,8 +1310,12 @@ function renderSingleSangerTraceViewer(container, data, documentActions) {
     }
     setClipBoundary(state, dragState.type, baseIndexFromPointer(canvas, state, event));
     render(`Dragging ${dragState.type === "clip-start" ? "5'" : "3'"} clip at base ${state.selectedIndex}.`);
+  };
+  canvas.addEventListener("pointerdown", (event) => {
+    if (event.pointerType !== "touch") startPointerDrag(event);
   }, listenerOptions);
   canvas.addEventListener("pointermove", (event) => {
+    if (event.pointerType === "touch") return;
     if (!dragState || event.pointerId !== dragState.pointerId) return;
     event.preventDefault();
     dragState.pointerMoveSeen = true;
@@ -1316,8 +1325,9 @@ function renderSingleSangerTraceViewer(container, data, documentActions) {
     if (!dragState || event.pointerId !== dragState.pointerId) return;
     const finished = dragState;
     dragState = null;
-    canvas.releasePointerCapture?.(event.pointerId);
+    if (event.pointerId !== undefined) canvas.releasePointerCapture?.(event.pointerId);
     canvas.classList.remove("dragging", "clipping");
+    if (event.cancelled || event.type === "pointercancel") return;
     if (finished.type !== "pan") {
       render(`Clipping boundaries: bases ${state.clipStart}-${state.clipEnd}.`);
       return;
@@ -1345,8 +1355,9 @@ function renderSingleSangerTraceViewer(container, data, documentActions) {
       setStatus(panel, "Trace view panned.");
     }
   };
-  canvas.addEventListener("pointerup", finishPointerDrag, listenerOptions);
-  canvas.addEventListener("pointercancel", finishPointerDrag, listenerOptions);
+  const finishNonTouchDrag = (event) => { if (event.pointerType !== "touch") finishPointerDrag(event); };
+  canvas.addEventListener("pointerup", finishNonTouchDrag, listenerOptions);
+  canvas.addEventListener("pointercancel", finishNonTouchDrag, listenerOptions);
   canvas.addEventListener("pointerleave", (event) => {
     if (!dragState) {
       canvas.classList.remove("clip-hover");

@@ -10320,6 +10320,7 @@ legend {
 }
 
 .dna-circular-viewer-canvas {
+  touch-action: none;
   height: 760px;
 }
 

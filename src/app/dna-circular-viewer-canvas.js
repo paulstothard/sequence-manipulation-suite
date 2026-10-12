@@ -3406,6 +3406,11 @@ function installCircularViewer(panel, record, options = {}) {
     }, 320);
   }, { passive: false });
   const cleanupPinch = installCanvasPinchZoom(canvas, {
+    onContact: () => { cancelInertia(); inspection.hide(); },
+    onPanStart: (event) => onMouseDown(event),
+    onPanMove: (event) => onWindowMouseMove(event),
+    onPanEnd: (event) => onWindowMouseUp(event),
+    panAxis: "both",
     onStart: () => {
       cancelInertia();
       resetZoomAnchors();
@@ -3415,7 +3420,8 @@ function installCircularViewer(panel, record, options = {}) {
       zoomAt(current.x, current.y, factor);
     }
   });
-  canvas.addEventListener("mousedown", (event) => {
+  const onMouseDown = (event) => {
+    if (event.button !== 0) return;
     cancelInertia();
     resetZoomAnchors();
     inspection.hide();
@@ -3435,7 +3441,8 @@ function installCircularViewer(panel, record, options = {}) {
     inertiaTracker.reset();
     inertiaTracker.add(state.viewCenter, performance.now());
     canvas.classList.add("dragging");
-  });
+  };
+  canvas.addEventListener("mousedown", onMouseDown);
   const onWindowMouseMove = (event) => {
     if (!state.dragging) {
       if (event.target === canvas) {
@@ -3489,7 +3496,7 @@ function installCircularViewer(panel, record, options = {}) {
     state.dragging = false;
     state.dragMode = "";
     canvas.classList.remove("dragging");
-    if (!shouldSpin) return;
+    if (event.cancelled || !shouldSpin) return;
     stopInertia = startViewerInertia({
       initialVelocity: velocity,
       step: (deltaBp) => {

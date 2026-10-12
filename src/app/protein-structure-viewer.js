@@ -1513,6 +1513,21 @@ export function renderProteinStructureViewer(container, payload = {}) {
       }
     }, { capture: true, passive: false });
     viewerHost.addEventListener("touchstart", cancelPointerPick, { passive: true });
+    viewerHost.addEventListener("touchend", (event) => {
+      if (!event.targetTouches.length) return;
+      // 3Dmol ends dragging on every body touchend. Handle a partial release
+      // here and rebase its pinned input handler on the remaining finger(s).
+      event.stopPropagation();
+      cancelPointerPick();
+      viewer._handleMouseUp?.(event);
+      clearTimeout(viewer.longTouchTimeout);
+      viewer._handleMouseDown?.(event);
+    });
+    viewerHost.addEventListener("touchcancel", (event) => {
+      cancelPointerPick();
+      clearTimeout(viewer.longTouchTimeout);
+      viewer._handleMouseUp?.(event);
+    });
     viewerHost.addEventListener("click", (event) => {
       structureInspection.hide();
       if (residuePickingSuppressed()) {
