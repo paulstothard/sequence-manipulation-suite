@@ -1,7 +1,7 @@
 import { addTimestampToFilename, makeSafeFileStem } from "./canvas-export.js";
 import { installCanvasVisualInspection } from "./visual-inspection.js";
 import { copyTextWithFeedback } from "./copy-feedback.js";
-import { viewerWheelZoomFactor } from "./viewer-wheel-zoom.js";
+import { installStructureZoomInput } from "./structure-viewer-zoom.js";
 import { PROTEIN_STRUCTURE_KEYBOARD_INSPECTION_LIMIT, PROTEIN_STRUCTURE_NEAREST_ATOM_PICK_LIMIT, PROTEIN_STRUCTURE_SEARCH_SUGGESTION_LIMIT } from "../core/viewer-limits.js";
 
 const BACKGROUND_COLORS = {
@@ -1257,6 +1257,7 @@ export function renderProteinStructureViewer(container, payload = {}) {
   let viewerModels;
   let structureSearchIndex = { entries: [], byId: new Map() };
   let structureInspection = { cleanup() {}, hide() {}, inspect() {}, refresh() {} };
+  let cleanupZoomInput = () => {};
   try {
     viewer = window.$3Dmol.createViewer(viewerHost, {
       backgroundColor: getBackgroundColor(settings.background),
@@ -1499,19 +1500,7 @@ export function renderProteinStructureViewer(container, payload = {}) {
     for (const eventName of ["mouseleave", "pointerleave", "pointercancel", "blur"]) {
       viewerHost.addEventListener(eventName, cancelPointerPick);
     }
-    viewerHost.addEventListener("wheel", (event) => {
-      const factor = viewerWheelZoomFactor(event);
-      // Own this input even when horizontal-only: 3Dmol's legacy wheel handler
-      // must not apply a second interpretation. Leave page scrolling available.
-      event.stopImmediatePropagation();
-      if (factor === 1) return;
-      event.preventDefault();
-      cancelPointerPick();
-      if (typeof viewer.zoom === "function") {
-        viewer.zoom(factor);
-        viewer.render();
-      }
-    }, { capture: true, passive: false });
+    cleanupZoomInput = installStructureZoomInput(viewerHost, viewer, cancelPointerPick);
     viewerHost.addEventListener("touchstart", cancelPointerPick, { passive: true });
     viewerHost.addEventListener("touchend", (event) => {
       if (!event.targetTouches.length) return;
@@ -1552,6 +1541,7 @@ export function renderProteinStructureViewer(container, payload = {}) {
     viewer.render();
     status.textContent = "Ready";
   } catch (error) {
+    cleanupZoomInput();
     viewerHost.textContent = error?.message || "Could not render this structure.";
     return;
   }
@@ -1661,6 +1651,7 @@ export function renderProteinStructureViewer(container, payload = {}) {
   });
   container._sms3VisualCleanup = () => {
     disposed = true;
+    cleanupZoomInput();
     structureInspection.cleanup();
     resizeObserver.disconnect();
     container._sms3PortableViewerSnapshot = null;

@@ -18,7 +18,7 @@ export const tasks = [
   { id: 'similar', label: 'Search for similar sequences', sources: ['blast'] },
   { id: 'primers', label: 'Check primers', sources: ['primer'] },
   { id: 'region', label: 'View a genomic region', sources: ['ucsc', 'ensembl', 'gdv'] },
-  { id: 'genome', label: 'Visualize a genome', sources: ['proksee'] },
+  { id: 'genome', label: 'Visualize a microbial genome', sources: ['proksee'] },
   { id: 'protein', label: 'Analyze a protein', sources: ['interpro', 'hmmer'] },
   { id: 'align', label: 'Align sequences', sources: ['clustalo'] },
   { id: 'structure', label: 'View/search structures', sources: ['rcsb', 'alphafold', 'foldseek'] },
@@ -133,9 +133,9 @@ export function sendFields(task, source) {
   if (task === 'region') return source === 'ensembl' ? [species(), region(true)] : [text('assembly', 'Assembly', source === 'ucsc' ? 'hg38' : 'GCF_000001405.40'), region(false, source === 'gdv')];
   if (task === 'genome') return [choice('inputMode', 'Input type', [['fasta', 'Sequence / FASTA'], ['genbank', 'GenBank / EMBL file'], ['accession', 'NCBI accession']]), area('input', 'Genome data', sendInputExample('genome', 'fasta'), 'FASTA is sent through the Proksee project API. Annotated files and accessions are prepared for Proksee’s import form.')];
   if (task === 'protein') return source === 'interpro'
-    ? [choice('inputMode', 'Input type', [['sequence', 'Protein sequence'], ['accession', 'UniProt accession']]), area('input', 'Protein sequence or UniProt accession', protein)]
+    ? [choice('inputMode', 'Input type', [['sequence', 'Protein sequences (up to 100)'], ['accession', 'UniProt accession']]), area('input', 'Protein sequence or UniProt accession', protein)]
     : [area('input', 'Protein sequence or FASTA', protein)];
-  if (task === 'align') return [area('input', 'Multiple FASTA sequences', `${protein}\n>TP53_variant_fragment\nMEEPQSDPSVEPPLSQETFSDLWKLLPENNVLSPLPSQAMDDLMLSPDDIEQWFTEDPGS`)];
+  if (task === 'align') return [area('input', 'Multiple FASTA sequences', `${protein}\n>TP53_variant_fragment\nMEEPQSDPSVEPPLSQETFSDLWKLLPENNVLSPLPSQAMDDLMLSPDDIEQWFTEDPGS\n>TP53_variant_2_fragment\nMEEPQSDPSVEPPLSQETFSDLWKLLPENNVLSPLPSQAMDDLMLSPDDIEQWFTEDPGA`, 'Enter at least three sequences, each with a unique FASTA identifier.'), choice('sequenceType', 'Sequence type', [['auto', 'Automatic'], ['protein', 'Protein'], ['dna', 'DNA'], ['rna', 'RNA']], 'auto', 'Automatic treats IUPAC nucleotide-only input as DNA/RNA. Choose Protein explicitly for ambiguous short proteins.')];
   if (task === 'structure') return source === 'foldseek' ? [area('input', 'Structure (PDB or mmCIF)', '', 'Choose a structure file or paste its text, then download the prepared file for upload to Foldseek.')] : [text('input', source === 'rcsb' ? 'PDB ID' : 'UniProt accession', source === 'rcsb' ? '4HHB' : 'P04637')];
   if (source === 'gnomad') return [text('input', 'Variant (chromosome-position-ref-alt)', '17-7674220-C-T', 'Use GRCh38 coordinates.'), text('dataset', 'gnomAD dataset', 'gnomad_r4')];
   if (source === 'ensembl') return [species(), text('input', 'Variant ID', 'rs429358')];

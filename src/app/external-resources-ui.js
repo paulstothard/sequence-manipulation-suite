@@ -168,7 +168,7 @@ export function createExternalResourcesController({ host, displayResult, resetOu
         wrapper = node(multiline ? 'div' : 'label', multiline ? '' : field.label, 'external-field'); control = document.createElement(multiline ? 'textarea' : 'input');
         if (!multiline) control.type = 'text';
         control.id = `external-${field.id}`; control.setAttribute('aria-label', field.label); wrapper.htmlFor = control.id;
-        control.value = values[field.id] ?? ''; control.placeholder = field.example; control.spellcheck = false; control.autocomplete = 'off'; control.setAttribute('autocapitalize', 'off'); control.setAttribute('autocorrect', 'off'); control.setAttribute('writingsuggestions', 'false');
+        control.value = values[field.id] ?? ''; control.placeholder = mode === 'send' && field.id === 'region' ? 'Chromosome:start-end' : field.example; control.spellcheck = false; control.autocomplete = 'off'; control.setAttribute('autocapitalize', 'off'); control.setAttribute('autocorrect', 'off'); control.setAttribute('writingsuggestions', 'false');
         control.maxLength = field.id === 'query' ? 2000 : field.type === 'textarea' ? MAX_HANDOFF_CHARS : 500;
         if (multiline) control.rows = isGetQuery ? values.queryMode === 'search' ? 2 : 1 : 7;
         if (multiline) { const label = node('label', field.label); label.htmlFor = control.id; wrapper.append(label); }
@@ -301,7 +301,9 @@ export function createExternalResourcesController({ host, displayResult, resetOu
     }
     if (fileUpload) {
       const [label, accept] = controls.inputMode?.value === 'genbank'
-        ? ['Drop GenBank or EMBL file here', '.gb,.gbk,.genbank,.embl,.txt'] : fileInputs[operation];
+        ? ['Drop GenBank or EMBL file here', '.gb,.gbk,.genbank,.embl,.txt']
+        : operation === 'protein' && source === 'interpro'
+          ? ['Drop one plain-text protein sequence or FASTA records here', sequenceFiles] : fileInputs[operation];
       fileUpload.drop.textContent = label; fileUpload.file.accept = accept;
       fileUpload.drop.hidden = fileUpload.browse.hidden = controls.inputMode?.value === 'accession';
       fileUpload.drop.classList.remove('drag-over');
@@ -310,7 +312,7 @@ export function createExternalResourcesController({ host, displayResult, resetOu
       const plan = buildHandoff(data());
       action.textContent = plan.actionLabel;
       handoffNote.textContent = plan.instructions;
-      if (plan.method === 'manual' || plan.method === 'api') {
+      if (plan.input) {
         const copy = button(plan.method === 'api' ? 'Copy map JSON' : 'Copy data', async () => {
           try { await copyTextWithFeedback(copy, plan.input); } catch (error) { showError(error); }
         });
@@ -415,7 +417,7 @@ export function createExternalResourcesController({ host, displayResult, resetOu
       const outputRow = node('div', '', 'external-output-choice');
       outputRow.append(output.wrapper, help); fieldset.append(outputRow);
     }
-    const limits = node('details', '', 'external-limits'); limits.append(node('summary', 'Limits'), node('p', mode === 'get' ? 'Responses: 25 MiB total; assemblies: 1,000 sequences; genomic regions: 1,000,000 bases and 1,000 transcripts; NCBI region searches: 500 genes; search results: 20 matches. Larger requests fail without returning partial data. Requests are paced across SMS3 tabs. Shared networks also share service rate limits.' : 'Sequence/file handoffs: 1,000,000 characters; alignment and genome inputs: at most 1,000 records. External services may apply additional limits.'));
+    const limits = node('details', '', 'external-limits'); limits.append(node('summary', 'Limits'), node('p', mode === 'get' ? 'Responses: 25 MiB total; assemblies: 1,000 sequences; genomic regions: 1,000,000 bases and 1,000 transcripts; NCBI region searches: 500 genes; search results: 20 matches. Larger requests fail without returning partial data. Requests are paced across SMS3 tabs. Shared networks also share service rate limits.' : 'Sequence/file handoffs: 1,000,000 characters; InterPro: at most 100 sequences; alignment: 3–1,000 records; genome: at most 1,000 records. Larger inputs are rejected. InterPro and Clustal Omega links longer than 8,000 characters require paste/upload. External services may apply additional limits.'));
     fieldset.append(limits); host.append(fieldset);
     const recipients = source === 'ucsc' && isRegionLookup(operation, source, values) && (operation !== 'nucleotide' || values.sequenceType !== 'genomic') ? 'UCSC Genome Browser and NCBI RefSeq' : sources[source];
     const privacy = node('p', mode === 'get' ? `Only the accession, query, or region above and the matching public identifiers are sent to ${recipients}. Your Workspace records stay local.` : 'Open or Send shares the values shown above when prefilling a form or creating a map. For copy/upload actions, you paste or upload the data on the service’s website. Ordinary SMS3 tools remain local.', 'external-privacy');
@@ -449,7 +451,12 @@ export function createExternalResourcesController({ host, displayResult, resetOu
           assembly: example.assembly, region: example.region, species: example.species, organism });
       } else if (mode === 'send' && assemblyPicker && ['ucsc', 'ensembl', 'gdv'].includes(nextSource) && !drafts.has(nextKey)) {
         const organism = assemblyPicker.selectedOrganism(), assembly = bundledAssemblies(nextSource, organism)[0];
-        drafts.set(nextKey, { ...snapshot(), assembly: assembly?.id || '', species: assembly?.species || '', region: '', input: '', organism });
+        const current = snapshot();
+        // Translate only the exact bundled example, including its assembly or
+        // species. Custom coordinates still require input for the new provider.
+        const isExample = operation === 'region' && fields.every(field => String(current[field.id] ?? '').trim() === String(field.example));
+        const example = isExample ? fieldExamples(sendFields(operation, nextSource)) : {};
+        drafts.set(nextKey, { ...current, assembly: assembly?.id || '', species: assembly?.species || '', region: '', input: '', organism, ...example });
       }
       preferences[mode] = { operation, source: nextSource }; invalidate(); render(toolId);
     });

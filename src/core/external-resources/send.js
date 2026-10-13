@@ -3,12 +3,15 @@ import { pdbId, uniprotId } from './get.js';
 import { formatFastaRecord, parseSequenceInput } from '../fasta.js';
 
 export const MAX_HANDOFF_CHARS = 1_000_000;
-export function validatedSequences(value, { alphabet = 'auto', multiple = false, max = MAX_HANDOFF_CHARS } = {}) {
+// SMS3's conservative link-size ceiling; larger inputs retain the manual handoff.
+export const MAX_INTERPRO_URL_CHARS = 8_000;
+export const MAX_CLUSTALO_URL_CHARS = 8_000;
+export function validatedSequences(value, { alphabet = 'auto', multiple = false, minRecords = 2, maxRecords = 1000, max = MAX_HANDOFF_CHARS } = {}) {
   const input = required(value, 'sequence data', max);
   const records = parseSequenceInput(input);
-  if ((!multiple && records.length !== 1) || (multiple && records.length < 2)) throw new Error(multiple ? 'Enter at least two FASTA records.' : 'Enter exactly one sequence.');
-  if (records.length > 1000) throw new Error('Use at most 1,000 records per handoff.');
-  if (multiple && records.some(r => !r.hadHeader)) throw new Error('Give each sequence a FASTA header.');
+  if ((!multiple && records.length !== 1) || (multiple && records.length < minRecords)) throw new Error(multiple ? `Enter at least ${minRecords === 2 ? 'two' : minRecords} FASTA records.` : 'Enter exactly one sequence.');
+  if (records.length > maxRecords) throw new Error(`Use at most ${maxRecords.toLocaleString('en-US')} records per handoff.`);
+  if (multiple && records.length > 1 && records.some(r => !r.hadHeader)) throw new Error('Give each sequence a FASTA header.');
   for (const record of records) {
     record.sequence = record.sequence.toUpperCase();
     if (!record.sequence || !/^[ACDEFGHIKLMNPQRSTVWYBXZOU*]+$/.test(record.sequence)) throw new Error('Sequences must contain amino-acid or IUPAC nucleotide letters. Remove gaps, numbers, and other symbols first.');
@@ -75,12 +78,38 @@ export function buildHandoff(options = {}) {
   } else if (task === 'protein') {
     if (service === 'interpro' && options.inputMode === 'accession') plan = { url: `https://www.ebi.ac.uk/interpro/protein/UniProt/${uniprotId(input)}/` };
     else {
-      const data = fasta(validatedSequences(input, { alphabet: 'protein' }));
-      return manual(service, service === 'interpro' ? 'https://www.ebi.ac.uk/interpro/search/sequence/' : 'https://www.ebi.ac.uk/Tools/hmmer/search/phmmer', data, 'protein.fasta', `Copy the prepared FASTA, open ${sources[service]}, and paste it into the sequence search form. Submit the analysis there.`);
+      const data = fasta(validatedSequences(input, { alphabet: 'protein', ...(service === 'interpro' ? { multiple: true, minRecords: 1, maxRecords: 100 } : {}) }));
+      if (service === 'interpro') {
+        // InterPro consumes an encoded FASTA path segment, then clears it from
+        // the address bar. Verified against the live form on 2026-10-12:
+        // https://github.com/ProteinsWebTeam/interpro7-client/blob/master/src/components/IPScan/Search/index.tsx
+        const target = 'https://www.ebi.ac.uk/interpro/search/sequence/';
+        const prefilled = `${target}${encodeURIComponent(data)}/`;
+        if (prefilled.length > MAX_INTERPRO_URL_CHARS) {
+          return { ...manual(service, target, data, 'protein.fasta', 'This FASTA input is too long to prefill using a link. Copy or download the prepared FASTA, open InterPro, and paste or upload it into the sequence search form. Submit the analysis there.'), actionLabel: 'Open InterPro to paste' };
+        }
+        plan = { url: prefilled, input: data, filename: 'protein.fasta', instructions: 'Opens InterPro with your sequences filled in. Review the options and submit the analysis there.' };
+      } else {
+        return manual(service, 'https://www.ebi.ac.uk/Tools/hmmer/search/phmmer', data, 'protein.fasta', `Copy the prepared FASTA, open ${sources[service]}, and paste it into the sequence search form. Submit the analysis there.`);
+      }
     }
   } else if (task === 'align') {
-    const records = validatedSequences(input, { multiple: true });
-    return manual(service, 'https://www.ebi.ac.uk/jdispatcher/msa/clustalo', fasta(records), 'sequences.fasta', 'Copy or download the prepared FASTA, open Clustal Omega, and paste or upload it. Select the correct sequence type and submit the alignment there.');
+    const requestedType = options.sequenceType ?? 'auto';
+    if (!['auto', 'protein', 'dna', 'rna'].includes(requestedType)) throw new Error('Choose a supported sequence type.');
+    const records = validatedSequences(input, { multiple: true, minRecords: 3, alphabet: ['dna', 'rna'].includes(requestedType) ? 'dna' : 'auto' });
+    const isNucleotide = records.every(record => /^[ACGTURYSWKMBDHVN]+$/.test(record.sequence));
+    const isRna = records.some(record => record.sequence.includes('U')) && records.every(record => !record.sequence.includes('T'));
+    const stype = requestedType === 'auto' ? isNucleotide ? isRna ? 'rna' : 'dna' : 'protein' : requestedType;
+    // EBI's FASTA input must not have empty lines between records.
+    const data = records.map(record => formatFastaRecord(record.title, record.sequence)).join('');
+    // Job Dispatcher's MSA form consumes wflSequence and stype. Live form and
+    // client checked on 2026-10-12; see docs/external-resources.md for evidence.
+    const target = 'https://www.ebi.ac.uk/jdispatcher/msa/clustalo';
+    const prefilled = url(target, { stype, wflSequence: data });
+    if (prefilled.length > MAX_CLUSTALO_URL_CHARS) {
+      return { ...manual(service, url(target, { stype }), data, 'sequences.fasta', 'This FASTA input is too long to prefill using a link. Copy or download the prepared FASTA, open Clustal Omega, and paste or upload it. Review the sequence type and submit the alignment there.'), actionLabel: 'Open Clustal Omega to paste' };
+    }
+    plan = { url: prefilled, input: data, filename: 'sequences.fasta', instructions: 'Opens Clustal Omega with your sequences and sequence type filled in. If the sequence box is blank, reload the page or use Copy data and paste it there. Review the options and submit the alignment there.' };
   } else if (task === 'structure') {
     if (service === 'rcsb') plan = { url: `https://www.rcsb.org/structure/${pdbId(input)}` };
     if (service === 'alphafold') plan = { url: `https://alphafold.ebi.ac.uk/entry/${uniprotId(input)}` };
