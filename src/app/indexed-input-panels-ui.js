@@ -30,6 +30,7 @@ export function createIndexedInputPanelsController({
   loadInputFile,
   clearToolOutput,
   updateToolOptionSuggestions,
+  maybeLoadInputModeExampleIfSafe,
   flattenOptions,
   pluralize
 }) {
@@ -992,8 +993,27 @@ function removeGenericFastaSourcePanel() {
   document.querySelector("#fastaSourceInputPanel")?.remove();
 }
 
+function getGenericSourceOption() {
+  return flattenOptions(getSelectedTool()?.metadata?.options ?? []).find(option => option.id === "sourceMode");
+}
+
+function getGenericSourceModes() {
+  const option = getGenericSourceOption();
+  return Object.fromEntries((option?.choices ?? []).map(choice => {
+    const fallback = FASTA_SOURCE_TAB_MODES[choice.value] ?? {};
+    const config = { ...fallback, ...choice, tabText: choice.label,
+      fastaLabel: choice.fileLabel ?? fallback.fastaLabel,
+      fastaAccept: choice.accept ?? fallback.fastaAccept,
+      fastaDropLabel: choice.dropLabel ?? fallback.fastaDropLabel };
+    if (option.inputCapabilities?.alphabet === "dna-rna") {
+      config.fastaAccept = config.fastaAccept?.split(",").filter(extension => !extension.startsWith(".faa")).join(",");
+    }
+    return [choice.value, config];
+  }));
+}
+
 function getGenericFastaSourceMode(panel = document.querySelector("#fastaSourceInputPanel")) {
-  return FASTA_SOURCE_TAB_MODES[panel?.dataset.sourceMode] ? panel.dataset.sourceMode : "loaded";
+  return getGenericSourceModes()[panel?.dataset.sourceMode] ? panel.dataset.sourceMode : (getGenericSourceOption()?.defaultValue ?? "loaded");
 }
 
 function getGenericFastaBundleFiles() {
@@ -1035,7 +1055,7 @@ function updateGenericFastaBundleStatus(panel = document.querySelector("#fastaSo
     return;
   }
   const sourceMode = getGenericFastaSourceMode(panel);
-  if (sourceMode === "loaded") {
+  if (["loaded", "annotated"].includes(sourceMode)) {
     status.hidden = true;
     status.replaceChildren();
     return;
@@ -1079,16 +1099,17 @@ function updateGenericLoadedFastaStatus(panel = document.querySelector("#fastaSo
 }
 
 function setGenericFastaSourceMode(mode, panel = document.querySelector("#fastaSourceInputPanel")) {
-  if (!FASTA_SOURCE_TAB_MODES[mode]) {
+  const modes = getGenericSourceModes();
+  if (!modes[mode]) {
     return;
   }
   const sourcePanel = panel ?? getGenericFastaSourcePanel();
-  const config = FASTA_SOURCE_TAB_MODES[mode];
+  const config = modes[mode];
   const usesSplitInput = selectedToolUsesSplitFastaSource();
   sourcePanel.dataset.sourceMode = mode;
   sourcePanel.classList.toggle("fasta-source-split-input-panel", usesSplitInput);
   sourcePanel.classList.add("indexed-fasta-card");
-  ensureSourceModeRadios(sourcePanel, "sourceMode", FASTA_SOURCE_TAB_MODES, mode);
+  ensureSourceModeRadios(sourcePanel, "sourceMode", modes, mode);
   updateTabbedInputWorkflowTabs(sourcePanel, mode, { tabSelector: ".file-source-tab" });
   const title = sourcePanel.querySelector("#fastaSourceTitle");
   if (title) {
@@ -1105,9 +1126,11 @@ function setGenericFastaSourceMode(mode, panel = document.querySelector("#fastaS
   }
   const indexedBundle = sourcePanel.querySelector("#fastaSourceIndexedFiles");
   if (indexedBundle) {
-    indexedBundle.hidden = mode === "loaded";
+    indexedBundle.hidden = ["loaded", "annotated"].includes(mode);
   }
-  setPrimaryFastaEditorVisible(mode === "loaded");
+  const annotatedSlot = sourcePanel.querySelector("#sequenceSourceAnnotatedFiles");
+  if (annotatedSlot) annotatedSlot.hidden = mode !== "annotated";
+  setPrimaryFastaEditorVisible(["loaded", "annotated"].includes(mode));
   const fastaTitle = sourcePanel.querySelector('[data-file-slot="fastaFile"] .indexed-fasta-file-slot-heading strong');
   if (fastaTitle) {
     fastaTitle.textContent = config.fastaLabel;
@@ -1221,8 +1244,11 @@ function appendGenericFastaFileSlot(parent, { id, label, accept, dropLabel }) {
 }
 
 function appendGenericLoadedFastaSlot(parent) {
+  const config = getGenericSourceModes().loaded;
+  const labels = { label: config.fastaLabel, accept: config.fastaAccept, dropLabel: config.fastaDropLabel };
   if (selectedToolUsesStreamedLoadedFastaSource()) {
     appendFastaRegionLoadedFileSlot(parent, {
+      ...labels,
       inputId: "loadedFastaFile",
       retainFile: true,
       statusText: (file) => `Selected ${file.name} (${file.size.toLocaleString()} bytes). Run will scan this file instead of the editor text.`
@@ -1231,6 +1257,7 @@ function appendGenericLoadedFastaSlot(parent) {
   }
   if (selectedToolUsesSplitFastaSource()) {
     appendFastaRegionLoadedFileSlot(parent, {
+      ...labels,
       loadFile: async (file) => {
         const textarea = getPrimarySplitInputSection()?.querySelector(".split-input-textarea");
         if (!textarea) {
@@ -1245,26 +1272,30 @@ function appendGenericLoadedFastaSlot(parent) {
     });
     return;
   }
-  appendFastaRegionLoadedFileSlot(parent);
+  appendFastaRegionLoadedFileSlot(parent, labels);
 }
 
 function renderGenericFastaSourcePanel(panel) {
   panel.textContent = "";
   panel.dataset.rendered = "true";
   panel.dataset.streamedLoadedFile = String(selectedToolUsesStreamedLoadedFastaSource());
+  panel.dataset.toolId = getSelectedTool().metadata.id;
+  const modes = getGenericSourceModes();
+  const defaultMode = getGenericSourceOption()?.defaultValue ?? "loaded";
   const sourceTabs = createSourceModeTabs({
-    modes: FASTA_SOURCE_TAB_MODES,
-    selectedMode: "loaded",
-    ariaLabel: "FASTA source type",
+    modes,
+    selectedMode: defaultMode,
+    ariaLabel: "Sequence input type",
     onSelect: (mode) => {
       setGenericFastaSourceMode(mode);
+      maybeLoadInputModeExampleIfSafe?.();
       dispatchToolOptionChange("sourceMode");
       clearToolOutput();
     }
   });
   const title = document.createElement("strong");
   title.id = "fastaSourceTitle";
-  title.textContent = "FASTA source";
+  title.textContent = getGenericSourceOption()?.label ?? "FASTA source";
   const description = document.createElement("p");
   description.id = "fastaSourceDescription";
   description.className = "file-source-description";
@@ -1272,6 +1303,13 @@ function renderGenericFastaSourcePanel(panel) {
   loadedFiles.id = "fastaSourceLoadedFiles";
   loadedFiles.className = "indexed-fasta-file-bundle";
   appendGenericLoadedFastaSlot(loadedFiles);
+  const annotatedFiles = document.createElement("div");
+  annotatedFiles.id = "sequenceSourceAnnotatedFiles";
+  if (modes.annotated) appendFastaRegionLoadedFileSlot(annotatedFiles, {
+    inputId: "annotatedSequenceFile", label: modes.annotated.fastaLabel,
+    accept: modes.annotated.fastaAccept, dropLabel: modes.annotated.fastaDropLabel,
+    statusText: file => `Loaded ${file.name} into the sequence editor`
+  });
 
   const indexedFiles = document.createElement("div");
   indexedFiles.id = "fastaSourceIndexedFiles";
@@ -1308,8 +1346,8 @@ function renderGenericFastaSourcePanel(panel) {
   const status = document.createElement("div");
   status.id = "fastaSourceBundleStatus";
   status.className = "indexed-fasta-status-row";
-  panel.append(sourceTabs, title, description, loadedFiles, indexedFiles, status);
-  setGenericFastaSourceMode("loaded", panel);
+  panel.append(sourceTabs, title, description, loadedFiles, annotatedFiles, indexedFiles, status);
+  setGenericFastaSourceMode(defaultMode, panel);
 }
 
 function updateFastaSourceInputUi() {
@@ -1320,6 +1358,7 @@ function updateFastaSourceInputUi() {
   const panel = getGenericFastaSourcePanel();
   const needsRender =
     panel.dataset.rendered !== "true" ||
+    panel.dataset.toolId !== getSelectedTool().metadata.id ||
     panel.dataset.streamedLoadedFile !== String(selectedToolUsesStreamedLoadedFastaSource()) ||
     !panel.querySelector(".file-source-tabs") ||
     !panel.querySelector("#fastaSourceIndexedFiles") ||
@@ -1556,22 +1595,25 @@ function appendFastaRegionLoadedFileSlot(parent, {
   inputId = "loadedFastaSourceFile",
   loadFile: customLoadFile,
   retainFile = false,
+  label = "Paste/upload FASTA file",
+  accept = ".fa,.fasta,.fna,.faa,.txt,.fa.gz,.fasta.gz,.fna.gz,.faa.gz,.gz",
+  dropLabel = "Drop FASTA or FASTA.GZ here",
   statusText
 } = {}) {
   const slot = document.createElement("div");
-  slot.id = "fastaRegionLoadedFileSlot";
+  slot.id = inputId === "annotatedSequenceFile" ? "annotatedSequenceFileSlot" : "fastaRegionLoadedFileSlot";
   slot.className = "indexed-fasta-file-slot";
   const heading = document.createElement("div");
   heading.className = "indexed-fasta-file-slot-heading";
   const title = document.createElement("strong");
-  title.textContent = "Paste/upload FASTA file";
+  title.textContent = label;
   const browse = document.createElement("label");
   browse.className = "file-button file-option-browse";
   const input = document.createElement("input");
   input.id = inputId;
   input.type = "file";
-  input.accept = ".fa,.fasta,.fna,.faa,.txt,.fa.gz,.fasta.gz,.fna.gz,.faa.gz,.gz";
-  input.setAttribute("aria-label", "Paste/upload FASTA source file");
+  input.accept = accept;
+  input.setAttribute("aria-label", label);
   const browseText = document.createElement("span");
   browseText.textContent = "Browse file";
   browse.append(input, browseText);
@@ -1579,7 +1621,7 @@ function appendFastaRegionLoadedFileSlot(parent, {
   const dropZone = document.createElement("div");
   dropZone.className = "drop-zone indexed-fasta-file-drop-zone";
   dropZone.tabIndex = 0;
-  dropZone.textContent = "Drop FASTA or FASTA.GZ here";
+  dropZone.textContent = dropLabel;
   const status = document.createElement("div");
   status.id = `${inputId}Status`;
   status.className = "indexed-fasta-status-row";

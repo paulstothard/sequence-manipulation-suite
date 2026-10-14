@@ -1,8 +1,9 @@
-import { parseDnaRnaSequenceOrFlatfile } from "./dna-input-records.js";
-import { formatFastaRecord, parseSequenceInput } from "./fasta.js";
+import { parsePcrTemplateInput, makePcrTemplateFeatureTracks } from "./pcr-template-input.js";
+import { formatFastaRecord } from "./fasta.js";
 import { makeDnaViewerData } from "./dna-viewer-data.js";
 import { makeRestrictionGelSvg } from "./restriction-tools.js";
 import { cleanDnaRnaSequence, complementDnaRnaSequence } from "./sequence.js";
+import { parsePrimerSequences } from "./primer-input.js";
 import { effectiveToolLimit } from "./tool-limit-policy.js";
 
 export const pcrProductTableColumns = [
@@ -105,27 +106,6 @@ function comparePrimerAt(template, primer, start, options, threePrimeSide = "rig
     }
   }
   return mismatches;
-}
-
-function parsePrimers(text, warnings) {
-  const fastaRecords = parseSequenceInput(text, "sequence");
-  const records = fastaRecords.length > 0
-    ? fastaRecords
-    : String(text ?? "")
-      .split(/\r?\n/)
-      .map((line, index) => ({ title: `Primer ${index + 1}`, sequence: line.trim() }))
-      .filter((record) => record.sequence);
-
-  return records.map((record, index) => {
-    const cleaned = cleanDnaRnaSequence(record.sequence, { preserveCase: false, keepGaps: false });
-    if (cleaned.removedCount > 0) {
-      warnings.push(`${record.title || `Primer ${index + 1}`}: removed ${cleaned.removedCount} non-DNA/RNA character(s).`);
-    }
-    return {
-      title: record.title || `Primer ${index + 1}`,
-      sequence: cleaned.sequence.replaceAll("U", "T")
-    };
-  }).filter((primer) => primer.sequence.length > 0);
 }
 
 function findPrimerBindingSites(template, primer, options, remainingSiteLimit = Number.POSITIVE_INFINITY, context = {}) {
@@ -317,6 +297,7 @@ function cleanTemplateRecords(templateRecords, warnings) {
       warnings.push(`${record.title || `Template ${index + 1}`}: removed ${cleaned.removedCount} non-DNA/RNA character(s).`);
     }
     return {
+      ...record,
       title: record.title || `Template ${index + 1}`,
       sequence: cleaned.sequence.replaceAll("U", "T")
     };
@@ -340,14 +321,14 @@ export function findInSilicoPcrProducts(input, options = {}, context = {}) {
   const normalized = normalizePcrOptions(options);
   const warnings = [];
   const { templateText, primerText } = splitInput(input);
-  const parsedTemplates = parseDnaRnaSequenceOrFlatfile(templateText, {
+  const parsedTemplates = parsePcrTemplateInput(templateText, {
     fallbackTitle: "sequence",
     label: "Template input",
     convertUtoT: true
   });
   warnings.push(...parsedTemplates.warnings);
   const templateRecords = parsedTemplates.records;
-  const primers = parsePrimers(primerText, warnings);
+  const primers = parsePrimerSequences(primerText, warnings);
   if (templateRecords.length === 0) {
     return { records: [], primers, rows: [], warnings: [...warnings, "No template sequence was provided."], charactersRemoved: parsedTemplates.charactersRemoved };
   }
@@ -401,14 +382,14 @@ export async function findInSilicoPcrProductsAsync(input, options = {}, context 
   await context.yieldIfNeeded?.();
 
   const { templateText, primerText } = splitInput(input);
-  const parsedTemplates = parseDnaRnaSequenceOrFlatfile(templateText, {
+  const parsedTemplates = parsePcrTemplateInput(templateText, {
     fallbackTitle: "sequence",
     label: "Template input",
     convertUtoT: true
   });
   warnings.push(...parsedTemplates.warnings);
   const templateRecords = parsedTemplates.records;
-  const primers = parsePrimers(primerText, warnings);
+  const primers = parsePrimerSequences(primerText, warnings);
   if (templateRecords.length === 0) {
     return { records: [], primers, rows: [], warnings: [...warnings, "No template sequence was provided."], charactersRemoved: parsedTemplates.charactersRemoved, options: normalized };
   }
@@ -595,7 +576,7 @@ export function makePcrViewerData(result, options = {}) {
     const primerItems = (result.siteRows ?? [])
       .filter((row) => row.template === record.title)
       .map(makePrimerViewerItem);
-    const tracks = [];
+    const tracks = makePcrTemplateFeatureTracks(record);
     if (productItems.length > 0) {
       tracks.push({
         id: "pcr-products",

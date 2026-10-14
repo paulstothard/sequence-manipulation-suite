@@ -1,5 +1,8 @@
+import { assertPlainSequenceOrFasta } from "./sequence-input-format.js";
+
 export function parseSequenceInput(input, fallbackTitle = "sequence") {
   const text = String(input ?? "").replace(/\r\n?/g, "\n").trim();
+  assertPlainSequenceOrFasta(text);
   if (!text) {
     return [];
   }

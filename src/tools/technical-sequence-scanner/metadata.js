@@ -66,7 +66,7 @@ export const technicalSequenceScannerMetadata = {
     ]
   },
   options: [
-    ...makeFastaSourceInputOptions({ includeStreamedFile: true }),
+    ...makeFastaSourceInputOptions({ includeStreamedFile: true, alphabet: "dna-rna", allowPlainSequence: true }),
     {
       id: "sequenceClass",
       type: "select",

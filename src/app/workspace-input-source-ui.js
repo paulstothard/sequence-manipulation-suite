@@ -264,7 +264,8 @@ export function createWorkspaceInputSourceController({
   syncToolOptionsForWorkspaceSequences = () => {},
   clearToolOutput,
   clearWorkflowOutput,
-  retireWorkflowRun = () => {}
+  retireWorkflowRun = () => {},
+  onWorkflowInputChange = () => {}
 }) {
   const toolModeById = new Map();
   const selectedSequenceIdsByToolId = new Map();
@@ -631,6 +632,7 @@ export function createWorkspaceInputSourceController({
         retireWorkflowRun();
         setWorkflowInputSourceMode(value);
         renderWorkflowSource(workflow, needsInput);
+        onWorkflowInputChange();
         clearWorkflowOutput();
       }
     });
@@ -642,6 +644,7 @@ export function createWorkspaceInputSourceController({
         retireWorkflowRun();
         selectedWorkflowSequenceIdsByWorkflow.set(workflow, ids);
         renderWorkflowSource(workflow, needsInput);
+        onWorkflowInputChange();
         clearWorkflowOutput();
       };
       const valid = selected.length >= requirement.minRecords &&

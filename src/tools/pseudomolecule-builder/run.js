@@ -54,7 +54,7 @@ function sequenceRecordStream(result) {
     kind: "sequence-records",
     alphabet: "dna-rna",
     schema: "pseudomolecule-sequence",
-    records: [{ title: result.id, sequence: result.sequence }]
+    records: [{ title: result.id, sequence: result.sequence, ...(result.record ? { features: result.record.features, topology: result.record.topology } : {}) }]
   };
 }
 

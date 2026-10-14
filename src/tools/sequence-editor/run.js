@@ -49,7 +49,7 @@ export async function runSequenceEditor(input = "", options = {}, context = {}) 
   context.throwIfCancelled?.();
   await context.yieldIfNeeded?.();
 
-  const result = prepareSequenceEditorData(input, { ...normalized, context });
+  const result = prepareSequenceEditorData(input, { ...normalized, workflowSequenceRecords: options.workflowSequenceRecords, context });
   context.reportProgress?.({ phase: "building-output", progress: 0.8 });
   context.throwIfCancelled?.();
   await context.yieldIfNeeded?.();

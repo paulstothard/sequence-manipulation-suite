@@ -495,8 +495,9 @@ export function flatfileRecordsToSequenceRecords(records, mode = "whole") {
   return records
     .filter((record) => record.sequence && record.molecule !== "protein")
     .map((record) => ({
+      ...record,
       title: record.accession,
-      sequence: record.sequence,
+      description: record.title,
       sourceTitle: record.accession
     }));
 }

@@ -1,4 +1,4 @@
-import { parseSequenceInput } from "./fasta.js";
+import { parsePrimerRecords } from "./primer-input.js";
 import { complementDnaRnaSequence } from "./sequence.js";
 import { exportDelimitedTable } from "./table.js";
 
@@ -56,7 +56,7 @@ function getTmMethod(length) {
 }
 
 export function analyzePrimerOligos(input) {
-  const records = parseSequenceInput(input, "oligo");
+  const records = parsePrimerRecords(input, "Oligo");
   const warnings = [];
   const rows = records.map((record) => {
     const sequence = record.sequence.toUpperCase().replace(/U/g, "T");

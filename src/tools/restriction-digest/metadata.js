@@ -1,3 +1,4 @@
+import { makeFastaSourceInputOptions } from "../fasta-source-options.js";
 import { restrictionEnzymeRecords } from "../../reference-data/restriction-enzymes/records.js";
 import {
   getRestrictionEnzymeChoices,
@@ -25,6 +26,7 @@ export const restrictionDigestMetadata = {
   workerModule: "../tools/restriction-digest/run.js",
   workerExport: "runRestrictionDigest",
   workflow: {
+    sequenceRecordInput: true,
     inputs: [
       { id: "input", kind: "text", mediaType: "text/plain" },
       { id: "sequenceRecords", kind: "sequence-records", alphabet: "dna-rna" }
@@ -43,6 +45,7 @@ export const restrictionDigestMetadata = {
     ]
   },
   options: [
+    ...makeFastaSourceInputOptions({ includeIndexed: false, alphabet: "dna-rna", allowPlainSequence: true, annotatedRecords: true, featurePolicy: "viewer" }),
     {
       type: "group",
       label: "Digest enzymes",

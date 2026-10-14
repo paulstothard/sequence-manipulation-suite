@@ -35,7 +35,7 @@ export const dnaRnaPatternFinderMetadata = {
     ]
   },
   options: [
-    ...makeFastaSourceInputOptions({ includeStreamedFile: true }),
+    ...makeFastaSourceInputOptions({ includeStreamedFile: true, alphabet: "dna-rna", allowPlainSequence: true }),
     {
       id: "pattern",
       type: "text",

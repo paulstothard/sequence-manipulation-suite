@@ -1,3 +1,4 @@
+import { PRIMER_INPUT_HELP } from "../primer-input-options.js";
 import { getRestrictionEnzymeChoices } from "../../core/restriction-tools.js";
 import { geneticCodes } from "../../core/genetic-code.js";
 import { restrictionEnzymeRecords } from "../../reference-data/restriction-enzymes/records.js";
@@ -42,9 +43,10 @@ export const sequenceExtractorMetadata = {
       {
         id: "primers",
         label: "Primer sequences (optional)",
-        dropLabel: "Drop primer sequences or FASTA records here",
+        dropLabel: "Drop primer FASTA or text file here",
+        description: PRIMER_INPUT_HELP,
         accept: ".fa,.fasta,.txt,.seq",
-        placeholder: "Paste named primer FASTA records. Primers are matched on both strands."
+        placeholder: "Paste named FASTA records or one primer per line. Primers are matched on both strands."
       }
     ]
   },
@@ -52,6 +54,7 @@ export const sequenceExtractorMetadata = {
   workerModule: "../tools/sequence-extractor/run.js",
   workerExport: "runSequenceExtractor",
   workflow: {
+    sequenceRecordInput: true,
     inputs: [
       { id: "input", kind: "text", mediaType: "text/plain" },
       { id: "sequenceRecords", kind: "sequence-records", alphabet: "dna-rna" }

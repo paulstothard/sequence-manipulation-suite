@@ -1,3 +1,4 @@
+import { readWorkflowSequenceRecords } from "./workflow-sequence-input.js";
 import { parseUnsignedIntegerToken } from "./integer-token.js";
 import { formatFastaRecord, parseSequenceInput } from "./fasta.js";
 import {
@@ -801,6 +802,11 @@ export function makeBiologicalRecordViewerRecords(records, options = {}) {
 }
 
 export function parseBiologicalRecordInput(input, options = {}) {
+  const workflowRecords = readWorkflowSequenceRecords(input, options);
+  if (workflowRecords) return {
+    records: workflowRecords.map(record => ({ ...record, accession: record.accession ?? record.title, title: record.description ?? record.title, molecule: options.workflowSequenceRecords.alphabet === "protein" ? "protein" : "DNA", features: record.features ?? [] })),
+    warnings: [], sourceFormat: "workflow records"
+  };
   const requestedInputFormat = options.inputFormat && options.inputFormat !== "auto" ? options.inputFormat : "auto";
   const flatfileInput = flatfileInputPart(input);
   const requestedPaired = requestedInputFormat === "gff3-fasta" || requestedInputFormat === "gtf-fasta" || requestedInputFormat === "bed-fasta";

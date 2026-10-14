@@ -1,3 +1,4 @@
+import { makeSequenceFeatureTracks } from "../../core/sequence-feature-tracks.js";
 import { parseDnaRnaSequenceOrFlatfile } from "../../core/dna-input-records.js";
 import { makeDnaViewerData, makeDnaViewerStream, makeRestrictionViewerTracks } from "../../core/dna-viewer-data.js";
 import {
@@ -136,7 +137,7 @@ function makeInteractiveViewer(records, options) {
     sequence: record.sequence,
     length: record.length,
     topology: options.topology,
-    tracks: makeRestrictionViewerTracks(record, { includeFragments: true })
+    tracks: [...makeSequenceFeatureTracks(record), ...makeRestrictionViewerTracks(record, { includeFragments: true })]
   })), {
     title: "Restriction digest viewer",
     geneticCode: options.geneticCode,
@@ -148,6 +149,7 @@ export function runRestrictionDigest(input, options = {}, context = {}) {
   context.reportProgress?.({ phase: "parsing-input", progress: 0.05 });
   const normalized = normalizeOptions(options);
   const parsedInput = parseDnaRnaSequenceOrFlatfile(input, {
+    workflowSequenceRecords: options.workflowSequenceRecords,
     fallbackTitle: "sequence",
     label: "Restriction input"
   });
@@ -184,7 +186,7 @@ export function runRestrictionDigest(input, options = {}, context = {}) {
     }
     const hits = findRestrictionSites(cleaned.sequence, enzymes, context, normalized);
     records.push({
-      title: record.title,
+      ...record,
       sequence: cleaned.sequence,
       length: cleaned.sequence.length,
       hits,

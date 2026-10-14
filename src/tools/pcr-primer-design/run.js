@@ -9,6 +9,7 @@ import {
 import { makeDnaViewerData, makeDnaViewerStream } from "../../core/dna-viewer-data.js";
 import { makeTableStream, makeTextStream, makeToolResult } from "../../core/workflow.js";
 import { loadReferenceGenomeRecords } from "../reference-genome-runner.js";
+import { makePcrTemplateFeatureTracks } from "../../core/pcr-template-input.js";
 import { effectiveToolLimit } from "../../core/tool-limit-policy.js";
 
 const OUTPUT_FORMATS = new Set(["report", "tsv", "primer-fasta", "product-fasta", "interactive-viewer", "interactive-circular-viewer"]);
@@ -22,16 +23,10 @@ function isInteractiveViewerFormat(outputFormat) {
 }
 
 function makePrimerDesignViewerData(result, outputFormat) {
-  const rowsByTemplate = new Map();
-  for (const row of result.rows) {
-    const key = row.template || "Template";
-    if (!rowsByTemplate.has(key)) rowsByTemplate.set(key, []);
-    rowsByTemplate.get(key).push(row);
-  }
   const circular = outputFormat === "interactive-circular-viewer";
   return makeDnaViewerData(result.records.map((record, index) => {
     const title = record.title || `Template ${index + 1}`;
-    const rows = rowsByTemplate.get(title) ?? [];
+    const rows = result.rows.filter(row => row.recordIndex === index);
     const productItems = rows.map((row) => ({
       start: row.left_start,
       end: row.right_end,
@@ -81,6 +76,7 @@ function makePrimerDesignViewerData(result, outputFormat) {
       length: record.sequence.length,
       topology: circular ? "circular" : "linear",
       tracks: [
+        ...makePcrTemplateFeatureTracks(record),
         ...(productItems.length > 0
           ? [{
               id: "primer-design-products",

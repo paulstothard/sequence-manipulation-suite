@@ -36,7 +36,7 @@ export const vectorContaminationScannerMetadata = {
     ]
   },
   options: [
-    ...makeFastaSourceInputOptions({ includeStreamedFile: true }),
+    ...makeFastaSourceInputOptions({ includeStreamedFile: true, alphabet: "dna-rna", allowPlainSequence: true }),
     {
       id: "sensitivity",
       type: "select",

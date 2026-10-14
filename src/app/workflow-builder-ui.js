@@ -1,3 +1,5 @@
+import { workflowInputDisplayText, findWorkflowFeatureInput } from "../core/workflow-input-state.js";
+import { previewDesignFeatures } from "../core/design-feature-input.js";
 import { labWorkflowOperations } from "../core/workflow-lab-operations.js";
 import { applyFixedToolLimits, getFixedLimitOptionDefaults } from "../core/tool-limit-options.js";
 import { parseEditorDocument } from "./editor-session.js";
@@ -469,7 +471,7 @@ export function createWorkflowBuilderController({
       elements.workflowSaveName.value = savedWorkflow.name;
       const inputStep = workflow.steps?.find((step) => step.type === "input");
       workspaceInputSources.setWorkflowInputSourceMode("paste");
-      elements.workflowInput.value = inputStep?.text ?? "";
+      elements.workflowInput.value = workflowInputDisplayText(inputStep);
       renderWorkflowView();
       clearWorkflowOutput();
       setWorkflowSavedStatus(`Loaded "${savedWorkflow.name}".`);
@@ -541,6 +543,7 @@ export function createWorkflowBuilderController({
         if (!validation.valid || selected.length === 0 || workspaceInputText === null) {
           throw new Error(validation.message || "Choose compatible Workspace records or switch the workflow input to Paste / upload.");
         }
+        delete inputStep.stream;
         inputStep.text = workspaceInputText;
         inputStep.workspaceSources = selected.map((sequence) => ({
           id: sequence.id,
@@ -554,6 +557,7 @@ export function createWorkflowBuilderController({
           delete inputStep.workspaceSource;
         }
       } else {
+        if (elements.workflowInput.value !== workflowInputDisplayText(inputStep)) delete inputStep.stream;
         inputStep.text = elements.workflowInput.value;
         delete inputStep.workspaceSource;
         delete inputStep.workspaceSources;
@@ -1225,6 +1229,7 @@ export function createWorkflowBuilderController({
       list.append(item);
     });
     elements.workflowSummary.append(list);
+    refreshWorkflowFeatureOptions();
     renderWorkflowBuilderControls();
   }
 
@@ -1723,6 +1728,47 @@ export function createWorkflowBuilderController({
     container.append(grid);
   }
 
+  function workflowFeaturePreview(workflow, step, tool) {
+    if (!flattenOptions(tool?.metadata.options ?? []).some(option => option.choicesFrom === "input-features")) return null;
+    const source = findWorkflowFeatureInput(workflow, step);
+    if (!source) return null;
+    let input = source.stream ?? source.text ?? "";
+    if (source === workflow.steps.find(item => item.type === "input")) {
+      const workspaceText = workspaceInputSources.getWorkflowInputText(getActiveWorkflowDefinition());
+      input = workspaceText ?? (source.stream && elements.workflowInput.value === workflowInputDisplayText(source)
+        ? source.stream : elements.workflowInput.value);
+    }
+    return previewDesignFeatures(input, tool.metadata.id);
+  }
+
+  function refreshWorkflowFeatureOptions() {
+    const workflow = workflowFromJsonOrActive();
+    for (const item of elements.workflowSummary.querySelectorAll(".workflow-step-item")) {
+      const select = item.querySelector('select[name="targetFeature"]');
+      if (!select) continue;
+      const step = workflow.steps.find(step => step.id === item.dataset.stepId);
+      const tool = getToolById(step?.toolId);
+      const option = flattenOptions(tool?.metadata.options ?? []).find(option => option.choicesFrom === "input-features");
+      if (!option) continue;
+      const preview = workflowFeaturePreview(workflow, step, tool);
+      const value = step.options?.targetFeature ?? "";
+      populateDependentSelect(select, { ...option, choices: [...option.choices, ...(preview?.features ?? [])] }, step.options ?? {}, value);
+      const unavailable = Boolean(preview && value && !preview.features.some(feature => feature.value === value));
+      select.setAttribute("aria-invalid", String(unavailable));
+      let status = item.querySelector('[data-workflow-feature-status]');
+      if (!status) {
+        status = document.createElement("p");
+        status.dataset.workflowFeatureStatus = "";
+        status.className = "workflow-builder-guidance";
+        select.parentElement.after(status);
+      }
+      status.textContent = unavailable
+        ? "The selected feature is unavailable in the current input. Select a current feature or choose All input sequences."
+        : preview?.message ?? "";
+      status.hidden = !status.textContent;
+    }
+  }
+
   function renderWorkflowStepEditor(container, step) {
     const workflow = workflowFromJsonOrActive();
     const heading = document.createElement("h4");
@@ -1810,6 +1856,9 @@ export function createWorkflowBuilderController({
       !fixedLimitIds.has(option.id)
     );
 
+    const preview = workflowFeaturePreview(workflow, step, tool);
+    if (preview) editableOptions = editableOptions.map(option => option.choicesFrom === "input-features"
+      ? { ...option, choices: [...option.choices, ...preview.features] } : option);
     const grid = document.createElement("div");
     grid.className = "workflow-option-grid";
     step.options = normalizeDependentOptionValues(editableOptions, applyFixedToolLimits(tool?.metadata, {
@@ -2173,6 +2222,7 @@ export function createWorkflowBuilderController({
     getWorkflowStepKindLabel,
     describeWorkflowStep,
     renderWorkflowView,
+    refreshWorkflowFeatureOptions,
     renderWorkflowBuilderControls,
     refreshSavedWorkflowList,
     saveCurrentWorkflowToLibrary,

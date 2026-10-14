@@ -1,3 +1,4 @@
+import { makeDesignFeatureOptions, designFeaturePreviewLimit } from "../design-feature-options.js";
 import { pcrPrimerDesignTableColumns } from "../../core/pcr-primer-design.js";
 import { makeOptionalReferenceGenomeOptionGroup } from "../reference-genome-options.js";
 
@@ -5,15 +6,20 @@ export const pcrPrimerDesignMetadata = {
   id: "pcr-primer-design",
   name: "PCR Primer Design",
   category: "Restriction, PCR & Primers",
-  tags: ["DNA", "raw", "FASTA", "GenBank", "EMBL", "DDBJ", "primer", "coordinates", "statistics"],
+  tags: ["DNA", "raw", "FASTA", "BED", "GFF", "GTF", "GenBank", "EMBL", "DDBJ", "primer", "coordinates", "statistics"],
   summary: "Design ranked PCR primer pairs for local DNA templates with transparent browser scoring and Primer3-checked fixtures.",
-  inputType: "Template DNA sequence, FASTA records, or GenBank/DDBJ/EMBL template records",
+  inputType: "Template DNA sequence, FASTA records, GenBank/DDBJ/EMBL records, or GFF3/GTF/BED annotations with FASTA",
   outputType: "Primer design report, candidate table, primer FASTA, product FASTA, or linear DNA sequence viewer",
+  splitInput: {
+    workspaceSourcePanel: true,
+    panels: [{ id: "template", label: "Template sequence", dropLabel: "Drop one plain-text template DNA sequence or FASTA records here", accept: ".fa,.fasta,.fna,.ffn,.fa.gz,.fasta.gz,.fna.gz,.ffn.gz,.gz,.txt,.seq" }]
+  },
   fileInput: {
     dropLabel: "Drop one plain-text template DNA sequence, FASTA records, or GenBank/DDBJ/EMBL template records here",
     accept: ".fa,.fasta,.fna,.ffn,.fa.gz,.fasta.gz,.fna.gz,.ffn.gz,.gb,.gbk,.genbank,.embl,.ddbj,.gz,.txt,.seq"
   },
   workflow: {
+    sequenceRecordInput: true,
     inputs: [
       { id: "input", kind: "text", mediaType: "text/plain" },
       { id: "sequenceRecords", kind: "sequence-records", alphabet: "dna-rna" }
@@ -61,6 +67,7 @@ export const pcrPrimerDesignMetadata = {
       ]
     },
     { id: "returnCount", type: "number", label: "Primer pairs to return", defaultValue: 10, min: 1, max: 5000, step: 1, help: "Large candidate tables can be slow to render; keep this modest for normal exploratory use." },
+    makeDesignFeatureOptions("pcr"),
     {
       id: "templateRegions",
       type: "group",
@@ -179,7 +186,8 @@ export const pcrPrimerDesignMetadata = {
           step: 100000,
           visibleWhen: { option: "referenceGenomeMode", value: ["indexed", "bgzf"] },
           help: "Total indexed reference bases scanned for primer binding hits."
-        }
+        },
+        designFeaturePreviewLimit
       ]
     },
     {

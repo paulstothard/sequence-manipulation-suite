@@ -1,3 +1,4 @@
+import { makeFastaSourceInputOptions } from "../fasta-source-options.js";
 import {
   sirnaDesignTableColumns,
   sirnaReferenceMatchColumns
@@ -35,6 +36,7 @@ export const sirnaDesignMetadata = {
   workerModule: "../tools/sirna-design/run.js",
   workerExport: "runSirnaDesign",
   options: [
+    ...makeFastaSourceInputOptions({ includeIndexed: false, alphabet: "dna-rna", allowPlainSequence: true, annotatedRecords: true, featurePolicy: "none" }),
     {
       type: "group",
       label: "Candidate rules",

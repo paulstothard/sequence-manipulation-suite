@@ -34,7 +34,7 @@ export const codonUsageMetadata = {
     ]
   },
   options: [
-    ...makeFastaSourceInputOptions({ includeStreamedFile: true }),
+    ...makeFastaSourceInputOptions({ includeStreamedFile: true, alphabet: "dna-rna", allowPlainSequence: true }),
     {
       id: "geneticCode",
       type: "radio",

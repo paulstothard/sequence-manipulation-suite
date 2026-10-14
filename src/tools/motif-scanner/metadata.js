@@ -140,7 +140,7 @@ export const dnaRnaMotifScannerMetadata = {
   workerExport: "runDnaRnaMotifScannerWorker",
   workflow: makeWorkflow("dna-rna", "dna-rna-motif-scanner"),
   options: [
-    ...makeFastaSourceInputOptions({ includeStreamedFile: true }),
+    ...makeFastaSourceInputOptions({ includeStreamedFile: true, alphabet: "dna-rna", allowPlainSequence: true }),
     {
       id: "motifDatabase",
       type: "select",

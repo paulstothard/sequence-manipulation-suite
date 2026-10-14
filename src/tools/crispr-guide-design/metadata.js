@@ -1,3 +1,5 @@
+import { makeDesignFeatureOptions, designFeaturePreviewLimit } from "../design-feature-options.js";
+import { makeFastaSourceInputOptions } from "../fasta-source-options.js";
 import {
   crisprGuideDesignColumns,
   crisprReferenceMatchColumns
@@ -20,6 +22,7 @@ export const crisprGuideDesignMetadata = {
   workerModule: "../tools/crispr-guide-design/run.js",
   workerExport: "runCrisprGuideDesign",
   workflow: {
+    sequenceRecordInput: true,
     inputs: [
       { id: "input", kind: "text", mediaType: "text/plain" },
       { id: "sequenceRecords", kind: "sequence-records", alphabet: "dna-rna" }
@@ -38,6 +41,8 @@ export const crisprGuideDesignMetadata = {
     ]
   },
   options: [
+    ...makeFastaSourceInputOptions({ includeIndexed: false, alphabet: "dna-rna", allowPlainSequence: true, annotatedRecords: true, featurePolicy: "viewer" }),
+    makeDesignFeatureOptions("crispr"),
     {
       type: "group",
       label: "PAM model",
@@ -153,7 +158,8 @@ export const crisprGuideDesignMetadata = {
           help: "Only the top-ranked candidates up to this count are returned for each record." },
         { id: "mapMaxCandidatesPerRecord", type: "number", label: "Map candidates per record", defaultValue: 80, min: 1, max: 500, step: 1,
           visibleWhen: { option: "outputFormat", value: ["text-map", "svg-map"] },
-          help: "Limits how many returned candidates are drawn in the map." }
+          help: "Limits how many returned candidates are drawn in the map." },
+        designFeaturePreviewLimit
       ]
     },
     {

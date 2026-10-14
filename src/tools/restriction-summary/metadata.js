@@ -22,6 +22,7 @@ export const restrictionSummaryMetadata = {
   workerModule: "../tools/restriction-summary/run.js",
   workerExport: "runRestrictionSummaryWorker",
   workflow: {
+    sequenceRecordInput: true,
     inputs: [
       { id: "input", kind: "text", mediaType: "text/plain" },
       { id: "sequenceRecords", kind: "sequence-records", alphabet: "dna-rna" }
@@ -37,7 +38,7 @@ export const restrictionSummaryMetadata = {
     ]
   },
   options: [
-    ...makeFastaSourceInputOptions({ includeStreamedFile: true }),
+    ...makeFastaSourceInputOptions({ includeStreamedFile: true, alphabet: "dna-rna", allowPlainSequence: true, annotatedRecords: true, featurePolicy: "viewer" }),
     {
       id: "enzymeIds",
       type: "select",

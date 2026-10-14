@@ -155,8 +155,8 @@ function parseEditorInputRecords(input, fallbackTitle, warnings = [], options = 
   const requestedInputFormat = String(options.inputFormat ?? "").toLowerCase();
   const pairedFormat = ["gff3-fasta", "gtf-fasta", "bed-fasta"].includes(requestedInputFormat) ||
     /^##FASTA\s*$/m.test(String(input ?? ""));
-  if (pairedFormat) {
-    const parsed = parseBiologicalRecordInput(input, { inputFormat: requestedInputFormat || "auto" });
+  if (pairedFormat || options.workflowSequenceRecords) {
+    const parsed = parseBiologicalRecordInput(input, { inputFormat: requestedInputFormat || "auto", workflowSequenceRecords: options.workflowSequenceRecords });
     const nucleotideRecords = parsed.records.filter((record) => record.sequence && record.molecule !== "protein");
     if (nucleotideRecords.length > 0) {
       const viewerRecords = makeBiologicalRecordViewerRecords(nucleotideRecords);

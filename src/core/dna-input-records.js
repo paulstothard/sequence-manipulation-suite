@@ -1,3 +1,4 @@
+import { readWorkflowSequenceRecords } from "./workflow-sequence-input.js";
 import { parseSequenceInput } from "./fasta.js";
 import { parseFlatfileRecords } from "./flatfile-records.js";
 import { cleanDnaRnaSequence } from "./sequence.js";
@@ -39,6 +40,14 @@ export function parseDnaRnaSequenceOrFlatfile(input, options = {}) {
   const label = options.label ?? "Input";
   const warnings = [];
   let charactersRemoved = 0;
+
+  const workflowRecords = readWorkflowSequenceRecords(input, options);
+  if (workflowRecords) {
+    const records = workflowRecords.map((record, index) => cleanRecordSequence(record, fallbackTitle, index, options, warnings));
+    // Removing bases would make imported feature coordinates invalid.
+    if (records.some(record => record.removedCount > 0 && record.features?.length)) throw new Error("Workflow feature coordinates require unmodified input sequences.");
+    return { records, warnings, charactersRemoved: records.reduce((sum, record) => sum + record.removedCount, 0), source: "workflow records" };
+  }
 
   if (!text.trim()) {
     return { records: [], warnings, charactersRemoved, source: "empty" };

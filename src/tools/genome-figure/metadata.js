@@ -23,6 +23,7 @@ const genomeFigureSplitInput = {
 };
 
 const genomeFigureWorkflow = {
+  sequenceRecordInput: true,
   inputs: [
     { id: "input", kind: "text", mediaType: "text/plain" },
     { id: "sequenceRecords", kind: "sequence-records", alphabet: "dna-rna" }

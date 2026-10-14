@@ -1,4 +1,5 @@
-import { parseDnaRnaSequenceOrFlatfile } from "./dna-input-records.js";
+import { resolveDesignFeatureTarget, designFeatureTargetLabel, primerPairMatchesFeature } from "./design-feature-targets.js";
+import { parsePcrTemplateInput } from "./pcr-template-input.js";
 import { formatFastaRecord } from "./fasta.js";
 import { cleanDnaRnaSequence, complementDnaRnaSequence } from "./sequence.js";
 import { exportDelimitedTable } from "./table.js";
@@ -32,7 +33,8 @@ export const pcrPrimerDesignTableColumns = [
   { id: "left_hairpin_stem", label: "Left hairpin stem", type: "number" },
   { id: "right_hairpin_stem", label: "Right hairpin stem", type: "number" },
   { id: "left_reference_matches", label: "Left reference matches", type: "number" },
-  { id: "right_reference_matches", label: "Right reference matches", type: "number" }
+  { id: "right_reference_matches", label: "Right reference matches", type: "number" },
+  { id: "target_feature", label: "Target feature", type: "string" }
 ];
 
 const EXACT_DNA = /^[ACGT]+$/;
@@ -420,14 +422,17 @@ export function normalizePcrPrimerDesignOptions(options = {}) {
     returnCount: clampInteger(options.returnCount, 10, 1, 5000),
     maxTemplateLength: effectiveToolLimit(options, "maxTemplateLength", clampInteger(options.maxTemplateLength, 20000, 100, 1000000)),
     maxPairsToEvaluate: effectiveToolLimit(options, "maxPairsToEvaluate", clampInteger(options.maxPairsToEvaluate, 250000, 1000, 5000000)),
+    targetFeature: String(options.targetFeature ?? ""),
+    featureTargetMode: options.featureTargetMode === "within" ? "within" : "flank",
     targetRegion: String(options.targetRegion ?? "").trim(),
     excludedRegions: String(options.excludedRegions ?? "").trim(),
     lineWidth: clampInteger(options.lineWidth, 60, 10, 200)
   };
 }
 
-function cleanTemplateRecords(input, warnings) {
-  const parsed = parseDnaRnaSequenceOrFlatfile(input, {
+function cleanTemplateRecords(input, warnings, options) {
+  const parsed = parsePcrTemplateInput(input, {
+    workflowSequenceRecords: options.workflowSequenceRecords,
     fallbackTitle: "template",
     label: "Template input",
     convertUtoT: true
@@ -440,6 +445,7 @@ function cleanTemplateRecords(input, warnings) {
       warnings.push(`${record.title || `Template ${index + 1}`}: ${ambiguousCount} ambiguous base(s) were kept in the template but skipped as primer-binding positions.`);
     }
     return {
+      ...record,
       title: record.title || `Template ${index + 1}`,
       sequence
     };
@@ -457,7 +463,10 @@ export async function designPcrPrimers(input, options = {}, context = {}) {
   context.throwIfCancelled?.();
   await context.yieldIfNeeded?.();
 
-  const { records, charactersRemoved } = cleanTemplateRecords(input, warnings);
+  const { records, charactersRemoved } = cleanTemplateRecords(input, warnings, options);
+  const featureTarget = resolveDesignFeatureTarget(records, normalized.targetFeature);
+  if (featureTarget?.partial && normalized.featureTargetMode === "flank") throw new Error("This feature has partial boundaries. Choose Design within feature or provide a template with complete feature boundaries.");
+  if (featureTarget?.crossesOrigin && normalized.featureTargetMode === "flank") throw new Error("This feature crosses the sequence origin or has parts out of coordinate order. Amplify entire feature requires a linear span; choose Design within feature or rotate the annotated template first.");
   if (records.length === 0) {
     return { records, rows: [], warnings: [...warnings, "No template sequence was provided."], charactersRemoved, options: normalized };
   }
@@ -467,6 +476,7 @@ export async function designPcrPrimers(input, options = {}, context = {}) {
   let evaluatedPairs = 0;
   for (let recordIndex = 0; recordIndex < records.length; recordIndex += 1) {
     const record = records[recordIndex];
+    if (featureTarget && featureTarget.recordIndex !== recordIndex) continue;
     totalBases += record.sequence.length;
     context.reportProgress?.({
       phase: "scanning-template",
@@ -512,12 +522,13 @@ export async function designPcrPrimers(input, options = {}, context = {}) {
             if (right.startIndex <= left.endExclusive) {
               continue;
             }
+            if (!primerPairMatchesFeature(featureTarget, normalized.featureTargetMode, left, right)) continue;
             const productSize = right.endExclusive - left.startIndex;
             const flankedTarget = targetRegions.length > 0 ? findFlankedTarget(left, right, targetRegions) : null;
             if (targetRegions.length > 0 && !flankedTarget) {
               continue;
             }
-            candidateRows.push(makePairRow(record, left, right, productSize, record.sequence, normalized, flankedTarget));
+            candidateRows.push({ ...makePairRow(record, left, right, productSize, record.sequence, normalized, flankedTarget), recordIndex, target_feature: featureTarget?.label ?? "" });
             evaluatedPairs += 1;
             if (evaluatedPairs >= normalized.maxPairsToEvaluate) {
               capped = true;
@@ -570,7 +581,7 @@ export async function designPcrPrimers(input, options = {}, context = {}) {
     }
   }
 
-  if (rows.length === 0 && warnings.length === 0) {
+  if (rows.length === 0) {
     warnings.push("No primer pairs passed the current constraints.");
   }
   context.reportProgress?.({ phase: "finished", progress: 1 });
@@ -600,6 +611,7 @@ export function makePcrPrimerDesignReport(result) {
     "PCR Primer Design",
     "",
     `Templates: ${result.records.length}`,
+    `Feature target: ${designFeatureTargetLabel(result.options.targetFeature)}${result.options.targetFeature ? (result.options.featureTargetMode === "within" ? "; product within one feature part" : "; primers outside the full feature span") : ""}`,
     `Candidate primer pairs returned: ${result.rows.length}`,
     `Product size range: ${result.options.minProductLength}-${result.options.maxProductLength} bp`,
     `Target region(s): ${result.options.targetRegion || "none"}`,

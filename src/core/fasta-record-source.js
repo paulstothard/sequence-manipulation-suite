@@ -1,3 +1,4 @@
+import { requireSequenceTextChunks } from "./sequence-input-format.js";
 import {
   streamTextFileChunks,
   streamTextLineSegments
@@ -87,7 +88,7 @@ async function* iterateTextFasta({ input, file, limits, allowRawSequence, record
       }
     })
     : makeStringChunks(input, limits);
-  const lineSegments = streamTextLineSegments(chunkStream, {
+  const lineSegments = streamTextLineSegments(requireSequenceTextChunks(chunkStream), {
     signal: context.signal,
     maxSegmentCharacters: limits.chunkSize
   });

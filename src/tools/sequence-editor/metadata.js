@@ -42,6 +42,7 @@ export const sequenceEditorMetadata = {
   workerModule: "../tools/sequence-editor/run.js",
   workerExport: "runSequenceEditor",
   workflow: {
+    sequenceRecordInput: true,
     inputs: [
       { id: "input", kind: "text", mediaType: "text/plain" },
       { id: "sequenceRecords", kind: "sequence-records", alphabet: "dna-rna" }

@@ -1,3 +1,6 @@
+import { makeSequenceFeatureTracks } from "../../core/sequence-feature-tracks.js";
+import { readTextFile } from "../../core/compressed-text-reader.js";
+import { isAnnotatedSequenceFile } from "../../core/sequence-input-format.js";
 import { parseDnaRnaSequenceOrFlatfile } from "../../core/dna-input-records.js";
 import { openCleanDnaRnaFastaSource } from "../../core/fasta-dna-record-source.js";
 import { iterateFastaFixedWindowSegments } from "../../core/fasta-fixed-window-segments.js";
@@ -52,7 +55,7 @@ function cleanRecord(record, options, warnings) {
   if (cleaned.sequence.length === 0) {
     warnings.push(`${record.title}: no DNA/RNA sequence characters were found.`);
   }
-  return { title: record.title, sequence: cleaned.sequence, removedCount: cleaned.removedCount };
+  return { ...record, sequence: cleaned.sequence, removedCount: cleaned.removedCount };
 }
 
 function summarizePositions(hits) {
@@ -169,9 +172,9 @@ function makeInteractiveViewer(analyzedRecords, options) {
     sequence: record.sequence,
     length: record.length,
     topology: options.topology,
-    tracks: makeRestrictionViewerTracks({
+    tracks: [...makeSequenceFeatureTracks(record), ...makeRestrictionViewerTracks({
       hits: record.shownHits
-    })
+    })]
   })), {
     title: "Restriction summary viewer",
     geneticCode: options.geneticCode,
@@ -183,6 +186,7 @@ export function runRestrictionSummary(input, options = {}, context = {}) {
   context.reportProgress?.({ phase: "parsing-input", progress: 0.05 });
   const normalized = normalizeOptions(options);
   const parsedInput = parseDnaRnaSequenceOrFlatfile(input, {
+    workflowSequenceRecords: options.workflowSequenceRecords,
     fallbackTitle: "sequence",
     label: "Restriction input"
   });
@@ -210,7 +214,7 @@ export function runRestrictionSummary(input, options = {}, context = {}) {
     charactersRemoved += cleaned.removedCount;
     const allHits = findRestrictionSites(cleaned.sequence, enzymes, context, normalized);
     analyzedRecords.push({
-      title: cleaned.title,
+      ...cleaned,
       sequence: cleaned.sequence,
       length: cleaned.sequence.length,
       allHits,
@@ -302,6 +306,12 @@ function finishRestrictionSummary({ analyzedRecords, enzymes, normalized, warnin
 export const restrictionSummaryRunner = runRestrictionSummary;
 
 export async function runRestrictionSummaryWorker(input, options = {}, context = {}) {
+  if (!["indexed", "bgzf"].includes(options.sourceMode) && options.loadedFastaFile?.stream &&
+      await isAnnotatedSequenceFile(options.loadedFastaFile, context)) {
+    const text = await readTextFile(options.loadedFastaFile, { signal: context.signal });
+    context.throwIfCancelled?.();
+    return runRestrictionSummary(text, options, context);
+  }
   const largeSource = Boolean(options.loadedFastaFile?.stream || ["indexed", "bgzf"].includes(options.sourceMode) || (String(input ?? "").length > MAX_PASTED_FASTA_CHARACTERS_FOR_RICH_OUTPUTS && !/^\s*(LOCUS|ID\s)/i.test(String(input ?? ""))));
   if (!largeSource) return runRestrictionSummary(input, options, context);
   const normalized = normalizeOptions(options);

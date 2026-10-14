@@ -1,3 +1,4 @@
+import { OLIGO_INPUT_HELP } from "../primer-input-options.js";
 import { primerOligoPropertyColumns } from "../../core/primer-oligo-properties.js";
 
 export const primerOligoPropertiesMetadata = {
@@ -6,10 +7,11 @@ export const primerOligoPropertiesMetadata = {
   category: "Restriction, PCR & Primers",
   tags: ["DNA", "RNA", "raw", "FASTA", "GC", "primer", "statistics"],
   summary: "Calculate basic DNA/RNA oligo length, base counts, GC percent, simple Tm estimate, and reverse complement.",
-  inputType: "DNA/RNA primer/oligo sequence or FASTA records",
+  inputType: "DNA/RNA primer/oligo sequences, one per line, or FASTA records",
   outputType: "Oligo property report or table",
   fileInput: {
-    dropLabel: "Drop one plain-text DNA/RNA primer/oligo sequence or FASTA records here",
+    dropLabel: "Drop primer/oligo FASTA or text file here",
+    help: OLIGO_INPUT_HELP,
     accept: ".fa,.fasta,.fna,.ffn,.fa.gz,.fasta.gz,.fna.gz,.ffn.gz,.gz,.txt,.seq"
   },
   workflow: {

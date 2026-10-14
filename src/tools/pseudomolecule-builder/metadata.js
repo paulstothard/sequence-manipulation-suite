@@ -32,6 +32,7 @@ export const pseudomoleculeBuilderMetadata = {
   workerModule: "../tools/pseudomolecule-builder/run.js",
   workerExport: "runPseudomoleculeBuilder",
   workflow: {
+    sequenceRecordInput: true,
     inputs: [
       { id: "input", kind: "text", mediaType: "text/plain" },
       { id: "sequenceRecords", kind: "sequence-records", alphabet: "dna-rna" }

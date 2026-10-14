@@ -20,6 +20,10 @@ export function validateWorkflowContract(metadata) {
     return [`${metadata.id}: missing workflow contract`];
   }
 
+  if (metadata.workflow.sequenceRecordInput !== undefined && (typeof metadata.workflow.sequenceRecordInput !== "boolean" || !Array.isArray(metadata.workflow.inputs) || !metadata.workflow.inputs.some(input => input.kind === "sequence-records"))) {
+    errors.push(`${metadata.id}: workflow.sequenceRecordInput requires a boolean and a sequence-records input`);
+  }
+
   for (const key of ["inputs", "outputs"]) {
     const streams = metadata.workflow[key];
     if (!Array.isArray(streams)) {

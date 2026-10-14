@@ -1,3 +1,5 @@
+import { workflowInputDisplayText } from "../core/workflow-input-state.js";
+import { updateDesignFeatureOptions } from "./design-feature-options-ui.js";
 import { appendHandoffActions } from './external-handoff-ui.js';
 import { createExternalResourcesController } from './external-resources-ui.js';
 import {updateResultOptionChoices} from "./result-option-choices.js";
@@ -98,6 +100,7 @@ import {
   saveMarkdownNotebookDraft
 } from "./markdown-notebook-model.js";
 import { createMarkdownWorkspaceController } from "./markdown-notebook-workspace-ui.js";
+import { createPrimerInputGuidance, updatePrimerInputCounts } from "./primer-input-ui.js";
 import { parseFlatfileRecords } from "../core/flatfile-records.js";
 import { runWorkflow, validateWorkflowDefinition } from "../core/workflow-engine.js";
 import { shouldShowPointMarkersForSeries } from "../core/plot-renderer.js";
@@ -377,7 +380,8 @@ const workspaceInputSources = createWorkspaceInputSourceController({
   syncToolOptionsForWorkspaceSequences,
   clearToolOutput,
   clearWorkflowOutput,
-  retireWorkflowRun
+  retireWorkflowRun,
+  onWorkflowInputChange: () => workflowBuilder.refreshWorkflowFeatureOptions()
 });
 
 const workspaceView = createWorkspaceViewController({
@@ -608,6 +612,7 @@ const toolInputShell = createToolInputShellController({
     updateAlignmentViewerInputUi,
     updateMarkdownInputUi,
     updateProteinStructureViewerUi,
+    updatePrimerInputUi,
     updateSamBamInputModeUi,
     updateToolOptionSuggestions,
     updateVcfInputModeUi
@@ -1124,6 +1129,9 @@ function renderSelectedTool() {
     metadata.layout?.options === "wide" || metadata.optionsLayout === "wide"
   );
   elements.optionsPanel.classList.toggle("pcr-primer-design-options", metadata.id === PCR_PRIMER_DESIGN_TOOL_ID);
+  elements.toolView.classList.toggle("pcr-template-workflow", [PCR_PRIMER_DESIGN_TOOL_ID, IN_SILICO_PCR_TOOL_ID].includes(metadata.id));
+  elements.toolView.classList.toggle("sequence-source-workflow", isFastaSourceTabbedTool());
+  elements.toolView.classList.toggle("primer-oligo-workflow", metadata.id === "primer-oligo-properties");
   renderSplitInputPanel(state.selectedTool);
   updateInputFileUi(state.selectedTool);
   renderToolOptions(isExternal ? [] : metadata.options ?? []);
@@ -1251,8 +1259,8 @@ function renderSplitInputPanel(tool) {
     renderReadMappingCoverageInput(tool);
     return;
   }
-  if (isInSilicoPcrTool(tool)) {
-    renderInSilicoPcrInput(tool);
+  if (isInSilicoPcrTool(tool) || isPcrPrimerDesignTool(tool)) {
+    renderPcrInput(tool);
     return;
   }
   const exampleParts = splitInputExampleParts(tool);
@@ -2768,9 +2776,9 @@ const PSEUDOMOLECULE_SOURCE_MODES = {
   }
 };
 
-const IN_SILICO_PCR_TEMPLATE_SOURCE_MODES = {
+const PCR_TEMPLATE_SOURCE_MODES = {
   sequence: {
-    tabText: "Plain sequence or FASTA",
+    tabText: "Sequence / FASTA",
     annotationLabel: "Template sequence",
     annotationDropLabel: "Drop one plain-text template DNA sequence or FASTA records here",
     annotationPlaceholder: "Paste one plain-text template DNA sequence or FASTA records here.",
@@ -2778,11 +2786,11 @@ const IN_SILICO_PCR_TEMPLATE_SOURCE_MODES = {
     showFasta: false
   },
   flatfile: {
-    tabText: "Single annotated record",
-    annotationLabel: "Annotated flatfile record",
-    annotationDropLabel: "Drop GenBank, DDBJ, or EMBL nucleotide record here",
+    tabText: "Annotated records",
+    annotationLabel: "Annotated records",
+    annotationDropLabel: "Drop GenBank, DDBJ, or EMBL nucleotide records here",
     annotationPlaceholder:
-      "Paste a GenBank, DDBJ, or EMBL nucleotide record here. The sequence in the flatfile is used as the PCR template.",
+      "Paste GenBank, DDBJ, or EMBL nucleotide records here. Each record supplies a PCR template.",
     annotationAccept: ".gb,.gbk,.genbank,.embl,.ddbj,.gz,.txt,.seq",
     showFasta: false
   },
@@ -3359,6 +3367,9 @@ function createBiologicalRecordInputSection({ key, panel, index, value }) {
     updateToolOptionSuggestions();
   });
   section.append(heading, dropZone, textarea);
+  if (key === "primers") textarea.before(createPrimerInputGuidance(textarea, {
+    id: "sequenceExtractorPrimerHelp", help: panel?.description ?? "", countAttribute: "data-extractor-primer-count"
+  }));
   return section;
 }
 
@@ -3417,6 +3428,15 @@ function setBiologicalRecordSourceMode(mode, { syncOption = true, maybeLoadExamp
 }
 
 function applyWorkspaceSequenceToToolInput(tool, sequence, inputText) {
+  if (sequence && isPcrPrimerDesignTool(tool)) {
+    setPcrTemplateSourceMode("sequence", { clearOutput: false });
+    const input = elements.splitInputPanel.querySelector('[data-pcr-input="template-primary"]');
+    if (!input) return false;
+    input.value = inputText;
+    updateInputActionButtons();
+    updateToolOptionSuggestions();
+    return true;
+  }
   if (!tool || !sequence || !isBiologicalRecordTabbedInputTool(tool)) {
     return false;
   }
@@ -3500,7 +3520,7 @@ function loadBiologicalRecordModeExampleIfSafe(panel, sourceMode) {
   }
 }
 
-function createInSilicoPcrTextPane({
+function createPcrTextPane({
   key,
   label,
   accept = ".txt,.fa,.fasta,.fna,.ffn,.gb,.gbk,.genbank,.embl,.ddbj,.gz,.seq",
@@ -3582,20 +3602,24 @@ function createInSilicoPcrTextPane({
 }
 
 function createInSilicoPcrPrimerSection(panel, index, value) {
-  const section = createInSilicoPcrTextPane({
+  const section = createPcrTextPane({
     key: "primers",
     label: panel?.label ?? "Primer sequences",
     accept: panel?.accept ?? ".fa,.fasta,.fa.gz,.fasta.gz,.gz,.txt,.seq",
-    dropLabel: panel?.dropLabel ?? "Drop primer sequences or FASTA records here",
+    dropLabel: panel?.dropLabel ?? "Drop primer FASTA or text file here",
     value,
     splitInputIndex: index,
     inputRole: "primers"
   });
   section.dataset.pcrInputSection = "primers";
+  const textarea = section.querySelector("textarea");
+  textarea.before(createPrimerInputGuidance(textarea, {
+    id: "pcrPrimerInputHelp", help: panel?.description ?? "", countAttribute: "data-pcr-primer-count"
+  }));
   return section;
 }
 
-function renderInSilicoPcrInput(tool) {
+function renderPcrInput(tool) {
   const splitInput = tool?.metadata?.splitInput;
   const panels = splitInput?.panels ?? [];
   const exampleParts = splitInputExampleParts(tool);
@@ -3609,43 +3633,43 @@ function renderInSilicoPcrInput(tool) {
   elements.splitInputPanel.hidden = false;
   elements.splitInputPanel.textContent = "";
   elements.splitInputPanel.append(
-    createInSilicoPcrPrimerSection(primerPanel, resolvedPrimerIndex, exampleParts[resolvedPrimerIndex] ?? ""),
-    createInSilicoPcrTemplateSection(templatePanel, resolvedTemplateIndex, exampleParts[resolvedTemplateIndex] ?? "")
+    ...(isInSilicoPcrTool(tool) ? [createInSilicoPcrPrimerSection(primerPanel, resolvedPrimerIndex, exampleParts[resolvedPrimerIndex] ?? "")] : []),
+    createPcrTemplateSection(templatePanel, resolvedTemplateIndex, exampleParts[resolvedTemplateIndex] ?? "")
   );
-  setInSilicoPcrTemplateSourceMode("sequence", { clearOutput: false });
+  setPcrTemplateSourceMode("sequence", { clearOutput: false });
 }
 
-function createInSilicoPcrTemplateSection(panel, index, value) {
+function createPcrTemplateSection(panel, index, value) {
   const wrapper = document.createElement("section");
   wrapper.className = "bio-record-input pcr-template-input-section";
-  wrapper.id = "inSilicoPcrTemplateInputPanel";
+  wrapper.id = "pcrTemplateInputPanel";
   wrapper.dataset.sourceMode = "sequence";
   wrapper.dataset.pcrInputSection = "template";
   wrapper.dataset.sequenceExample = value ?? "";
 
   const tabs = createTabbedInputWorkflowTabs({
     document,
-    modes: IN_SILICO_PCR_TEMPLATE_SOURCE_MODES,
+    modes: PCR_TEMPLATE_SOURCE_MODES,
     selectedMode: "sequence",
     ariaLabel: "Template input type",
     className: "bio-record-source-tabs pcr-template-source-tabs",
     tabClassName: "bio-record-source-tab",
-    onSelect: (mode) => setInSilicoPcrTemplateSourceMode(mode, { maybeLoadExample: true })
+    onSelect: (mode) => setPcrTemplateSourceMode(mode, { maybeLoadExample: true })
   });
 
   const sourceCard = document.createElement("section");
   sourceCard.className = "bio-record-source-card";
-  const annotationPane = createInSilicoPcrTextPane({
+  const annotationPane = createPcrTextPane({
     key: "annotation",
-    label: IN_SILICO_PCR_TEMPLATE_SOURCE_MODES.sequence.annotationLabel,
-    accept: panel?.accept ?? IN_SILICO_PCR_TEMPLATE_SOURCE_MODES.sequence.annotationAccept,
-    dropLabel: panel?.dropLabel ?? IN_SILICO_PCR_TEMPLATE_SOURCE_MODES.sequence.annotationDropLabel,
-    placeholder: IN_SILICO_PCR_TEMPLATE_SOURCE_MODES.sequence.annotationPlaceholder,
+    label: PCR_TEMPLATE_SOURCE_MODES.sequence.annotationLabel,
+    accept: panel?.accept ?? PCR_TEMPLATE_SOURCE_MODES.sequence.annotationAccept,
+    dropLabel: panel?.dropLabel ?? PCR_TEMPLATE_SOURCE_MODES.sequence.annotationDropLabel,
+    placeholder: PCR_TEMPLATE_SOURCE_MODES.sequence.annotationPlaceholder,
     value,
     splitInputIndex: index,
     inputRole: "template-primary"
   });
-  const fastaPane = createInSilicoPcrTextPane({
+  const fastaPane = createPcrTextPane({
     key: "fasta",
     label: "Template FASTA sequence",
     accept: ".fa,.fasta,.fna,.ffn,.fa.gz,.fasta.gz,.fna.gz,.ffn.gz,.gz,.txt,.seq",
@@ -3661,13 +3685,13 @@ function createInSilicoPcrTemplateSection(panel, index, value) {
   return wrapper;
 }
 
-function setInSilicoPcrTemplateSourceMode(mode, { clearOutput = true, maybeLoadExample = false } = {}) {
-  const panel = document.querySelector("#inSilicoPcrTemplateInputPanel");
+function setPcrTemplateSourceMode(mode, { clearOutput = true, maybeLoadExample = false } = {}) {
+  const panel = document.querySelector("#pcrTemplateInputPanel");
   if (!panel) {
     return;
   }
-  const sourceMode = IN_SILICO_PCR_TEMPLATE_SOURCE_MODES[mode] ? mode : "sequence";
-  const config = IN_SILICO_PCR_TEMPLATE_SOURCE_MODES[sourceMode];
+  const sourceMode = PCR_TEMPLATE_SOURCE_MODES[mode] ? mode : "sequence";
+  const config = PCR_TEMPLATE_SOURCE_MODES[sourceMode];
   panel.dataset.sourceMode = sourceMode;
   updateTabbedInputWorkflowTabs(panel, sourceMode, { tabSelector: ".bio-record-source-tab" });
 
@@ -3711,7 +3735,7 @@ function setInSilicoPcrTemplateSourceMode(mode, { clearOutput = true, maybeLoadE
     fastaFileInput.setAttribute("aria-label", config.fastaLabel ?? "Template FASTA sequence");
   }
   if (maybeLoadExample) {
-    loadInSilicoPcrTemplateModeExampleIfSafe(panel, sourceMode);
+    loadPcrTemplateModeExampleIfSafe(panel, sourceMode);
   }
   if (clearOutput) {
     clearToolOutput();
@@ -3720,7 +3744,29 @@ function setInSilicoPcrTemplateSourceMode(mode, { clearOutput = true, maybeLoadE
   }
 }
 
-function loadInSilicoPcrTemplateModeExampleIfSafe(panel, sourceMode) {
+function makePrimerDesignTemplateExamples(sequenceExample) {
+  const fasta = sequenceExample.split(/\n(?=>)/u)[0];
+  const name = referenceNameFromFastaText(fasta);
+  const flatfile = makeFlatfileReferenceExample(fasta, { definition: "PCR design example with illustrative target annotations." })
+    .replace("\nORIGIN", '\n     misc_feature    100..240\n                     /label="example_target"\n     misc_feature    complement(260..319)\n                     /label="reverse_feature"\nORIGIN');
+  return {
+    flatfile: { annotation: flatfile, fasta: "" },
+    gff3Fasta: {
+      annotation: `##gff-version 3\n${name}\tSMS3\tmisc_feature\t100\t240\t.\t+\t.\tID=example_target;Name=example_target\n${name}\tSMS3\tmisc_feature\t260\t319\t.\t-\t.\tID=reverse_feature;Name=reverse_feature`,
+      fasta
+    },
+    gtfFasta: {
+      annotation: `${name}\tSMS3\tmisc_feature\t100\t240\t.\t+\t.\tgene_id "example_target"; gene_name "example_target";\n${name}\tSMS3\tmisc_feature\t260\t319\t.\t-\t.\tgene_id "reverse_feature"; gene_name "reverse_feature";`,
+      fasta
+    },
+    bedFasta: {
+      annotation: `${name}\t99\t240\texample_target\t0\t+\n${name}\t259\t319\treverse_feature\t0\t-`,
+      fasta
+    }
+  };
+}
+
+function loadPcrTemplateModeExampleIfSafe(panel, sourceMode) {
   const annotationInput = panel.querySelector('[data-pcr-input="template-primary"]');
   const fastaInput = panel.querySelector('[data-pcr-input="template-fasta"]');
   if (!annotationInput || !fastaInput) {
@@ -3728,7 +3774,7 @@ function loadInSilicoPcrTemplateModeExampleIfSafe(panel, sourceMode) {
   }
   const sequenceExample = panel.dataset.sequenceExample ?? PCR_TEMPLATE_FASTA_EXAMPLE;
   const examples = {
-    ...PCR_TEMPLATE_MODE_EXAMPLES,
+    ...(isPcrPrimerDesignTool() ? makePrimerDesignTemplateExamples(sequenceExample) : PCR_TEMPLATE_MODE_EXAMPLES),
     sequence: {
       annotation: sequenceExample,
       fasta: ""
@@ -3752,15 +3798,20 @@ function loadInSilicoPcrTemplateModeExampleIfSafe(panel, sourceMode) {
   fastaInput.value = formatExampleInputForDisplay(nextExample.fasta);
 }
 
+function getPcrTemplateInputText() {
+  const panel = document.querySelector("#pcrTemplateInputPanel");
+  const mode = panel?.dataset.sourceMode ?? "sequence";
+  const annotation = panel?.querySelector('[data-pcr-input="template-primary"]')?.value ?? "";
+  if (!PCR_TEMPLATE_SOURCE_MODES[mode]?.showFasta) return annotation;
+  const fasta = panel?.querySelector('[data-pcr-input="template-fasta"]')?.value ?? "";
+  const prefix = mode === "gff3Fasta" && !/^##gff-version\s+3/m.test(annotation) ? "##gff-version 3\n" : "";
+  return `${prefix}${annotation}\n##FASTA\n${fasta}`;
+}
+
 function getInSilicoPcrInputText() {
   const separator = state.selectedTool?.metadata?.splitInput?.separator ?? "---";
-  const panel = document.querySelector("#inSilicoPcrTemplateInputPanel");
-  const mode = panel?.dataset.sourceMode ?? "sequence";
-  const template = IN_SILICO_PCR_TEMPLATE_SOURCE_MODES[mode]?.showFasta
-    ? (panel?.querySelector('[data-pcr-input="template-fasta"]')?.value ?? "")
-    : (panel?.querySelector('[data-pcr-input="template-primary"]')?.value ?? "");
   const primers = elements.splitInputPanel.querySelector('[data-pcr-input="primers"]')?.value ?? "";
-  return [template, primers].join(`\n${separator}\n`);
+  return [getPcrTemplateInputText(), primers].join(`\n${separator}\n`);
 }
 
 function updateBiologicalRecordFormatConverterInputUi() {
@@ -3887,6 +3938,7 @@ const indexedInputPanels = createIndexedInputPanelsController({
   loadInputFile,
   clearToolOutput,
   updateToolOptionSuggestions,
+  maybeLoadInputModeExampleIfSafe: () => toolInputShell.maybeLoadInputModeExampleIfSafe(),
   flattenOptions,
   pluralize
 });
@@ -4054,6 +4106,9 @@ function getSelectedToolInputText() {
   }
   if (isInSilicoPcrTool()) {
     return getInSilicoPcrInputText();
+  }
+  if (isPcrPrimerDesignTool()) {
+    return getPcrTemplateInputText();
   }
   const separator = splitInput.separator ?? "---";
   return [...elements.splitInputPanel.querySelectorAll(".split-input-textarea")]
@@ -4569,6 +4624,9 @@ function autofillSuggestedOptionValues(suggestionsBySource, { force = false } = 
 }
 
 function updateToolOptionSuggestions({ autofillColumns = false, forceAutofillColumns = false } = {}) {
+  if (elements.toolOptions.querySelector('select[name="targetFeature"]')) {
+    updateDesignFeatureOptions(elements.toolOptions, state.selectedTool.metadata, getSelectedToolInputText());
+  }
   const suggestionsBySource = new Map();
   const requestedSources = new Set(flattenOptions(state.selectedTool?.metadata?.options ?? []).map(option => option.suggestionsFrom));
   for (const source of ["table-columns", "table-numeric-columns", "table-left-columns", "table-right-columns"]) {
@@ -4780,6 +4838,7 @@ function restoreCurrentToolDefaults() {
   }
   updatePcrPrimerDesignUi();
   updateMarkdownInputUi();
+  updateToolOptionSuggestions();
   clearToolOutput();
 }
 
@@ -5086,6 +5145,26 @@ function formatExampleInputForDisplay(...args) {
 function loadSelectedToolExample(...args) {
   state.inputImport = null;
   return toolInputShell.loadSelectedToolExample(...args);
+}
+
+function updatePrimerInputUi() {
+  const helpId = "primerOligoInputHelp";
+  let guidance = document.getElementById(helpId);
+  if (state.selectedTool?.metadata.id === "primer-oligo-properties") {
+    if (!guidance) {
+      guidance = createPrimerInputGuidance(elements.sequenceInput, {
+        id: helpId, help: state.selectedTool.metadata.fileInput.help, noun: "oligo", countAttribute: "data-oligo-input-count"
+      });
+      elements.sequenceInput.before(guidance);
+    }
+    guidance.hidden = elements.sequenceInput.hidden;
+  } else {
+    guidance?.remove();
+    const ids = (elements.sequenceInput.getAttribute("aria-describedby") ?? "").split(/\s+/).filter(id => id && id !== helpId);
+    if (ids.length) elements.sequenceInput.setAttribute("aria-describedby", ids.join(" "));
+    else elements.sequenceInput.removeAttribute("aria-describedby");
+  }
+  updatePrimerInputCounts(elements.inputPanel);
 }
 
 function updateInputActionButtons(...args) {
@@ -5418,6 +5497,7 @@ async function loadWorkflowExample() {
   updateInputActionButtons();
   const activeWorkflow = getActiveWorkflowDefinition();
   workspaceInputSources.renderWorkflowSource(activeWorkflow, workflowUsesInput(activeWorkflow));
+  workflowBuilder.refreshWorkflowFeatureOptions();
   workflowDocumentSession?.changed("Load recipe input");
 }
 
@@ -5430,6 +5510,7 @@ function clearWorkflowInput() {
   updateInputActionButtons();
   const activeWorkflow = getActiveWorkflowDefinition();
   workspaceInputSources.renderWorkflowSource(activeWorkflow, workflowUsesInput(activeWorkflow));
+  workflowBuilder.refreshWorkflowFeatureOptions();
 }
 
 function copyWorkflowDefinitionToEditor() {
@@ -5437,6 +5518,7 @@ function copyWorkflowDefinitionToEditor() {
   const inputStep = workflow.steps.find((step) => step.type === "input");
   if (inputStep) {
     inputStep.text = "";
+    delete inputStep.stream;
     delete inputStep.workspaceSource;
     delete inputStep.workspaceSources;
   }
@@ -5500,9 +5582,7 @@ function importWorkflowJson() {
   workspaceInputSources.setWorkflowInputSourceMode("paste");
   elements.workflowSaveName.value = parsed.workflow?.name ?? "";
   const inputStep = parsed.workflow.steps.find(step => step.type === "input");
-  if (inputStep && Object.hasOwn(inputStep, "text")) {
-    elements.workflowInput.value = inputStep.text ?? "";
-  }
+  if (inputStep) elements.workflowInput.value = workflowInputDisplayText(inputStep);
   updateInputActionButtons();
   setWorkflowSavedStatus("");
   renderWorkflowView();
@@ -5966,6 +6046,7 @@ async function loadInputFile(file) {
     clearToolOutput();
     updateInputActionButtons({ previewTable: true });
     workspaceInputSources.renderToolSource();
+    updateToolOptionSuggestions({ autofillColumns: true });
     for (const args of importMessages) addMessage(...args);
     addMessage(`Loaded ${file.name} (${file.size.toLocaleString()} bytes).`);
   } catch (error) {
@@ -6076,6 +6157,7 @@ elements.workflowClearInput.addEventListener("click", clearWorkflowInput);
 elements.workflowInput.addEventListener("input", () => {
   retireWorkflowRun();
   updateInputActionButtons();
+  workflowBuilder.refreshWorkflowFeatureOptions();
 });
 elements.workflowSavedSelect.addEventListener("change", updateSavedWorkflowActionButtons);
 elements.workflowSaveCurrent.addEventListener("click", saveCurrentWorkflowToLibrary);

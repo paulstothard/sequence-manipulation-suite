@@ -312,6 +312,7 @@ export function createToolInputShellController({
     updateAlignmentViewerInputUi,
     updateMarkdownInputUi,
     updateProteinStructureViewerUi,
+    updatePrimerInputUi,
     updateSamBamInputModeUi,
     updateToolOptionSuggestions,
     updateVcfInputModeUi
@@ -764,6 +765,10 @@ export function createToolInputShellController({
       } else if (option.type === "text" || option.type === "textarea") {
         values[option.id] = optionRoot.querySelector(`#${option.id}`)?.value ?? option.defaultValue ?? "";
       } else if (option.type === "file") {
+        if (option.sourceModes && !option.sourceModes.includes(values.sourceMode)) {
+          values[option.id] = null;
+          continue;
+        }
         const input = optionRoot.querySelector(`#${option.id}`);
         const pasteArea = option.pasteArea === true
           ? optionRoot.querySelector(`#${option.id}Text`)
@@ -882,6 +887,7 @@ export function createToolInputShellController({
     updateInputActionButtons();
     updateMarkdownInputUi();
     workspaceInputSources.renderToolSource();
+    updateToolOptionSuggestions();
   }
 
   function formatExampleInputForDisplay(exampleText) {
@@ -973,7 +979,28 @@ export function createToolInputShellController({
   }
 
   function updateInputActionButtons({ previewTable = false } = {}) {
+    const helpId = "toolInputHelp";
+    const helpText = state.selectedTool?.metadata.inputHelp;
+    let help = document.getElementById(helpId);
+    const ids = new Set((elements.sequenceInput.getAttribute("aria-describedby") ?? "").split(/\s+/).filter(Boolean));
+    if (helpText) {
+      if (!help) {
+        help = document.createElement("p");
+        help.id = helpId;
+        help.className = "split-input-description";
+        elements.sequenceInput.before(help);
+      }
+      help.textContent = helpText;
+      help.hidden = elements.sequenceInput.hidden;
+      ids.add(helpId);
+    } else {
+      help?.remove();
+      ids.delete(helpId);
+    }
+    if (ids.size) elements.sequenceInput.setAttribute("aria-describedby", [...ids].join(" "));
+    else elements.sequenceInput.removeAttribute("aria-describedby");
     updateMetadataInputSource();
+    updatePrimerInputUi?.();
     inputPreview.refresh({ preferPreview: previewTable });
     refreshSplitTableInputPreviews?.({ preferPreview: previewTable });
     elements.clearInput.hidden = false;
@@ -988,6 +1015,7 @@ export function createToolInputShellController({
   }
 
   return {
+    maybeLoadInputModeExampleIfSafe,
     getRunButtonLabel,
     toolRequiresInput,
     getToolInputFileUi,

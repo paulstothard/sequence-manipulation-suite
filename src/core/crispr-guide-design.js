@@ -1,3 +1,5 @@
+import { parseDnaRnaSequenceOrFlatfile } from "./dna-input-records.js";
+import { resolveDesignFeatureTarget, designFeatureTargetLabel, featureContainsInterval } from "./design-feature-targets.js";
 import { formatFastaRecord, parseSequenceInput } from "./fasta.js";
 import { parseFlatfileRecords } from "./flatfile-records.js";
 import {
@@ -38,7 +40,8 @@ export const crisprGuideDesignColumns = [
   { id: "left_context", label: "Left context", type: "string" },
   { id: "matched_text", label: "Matched guide region", type: "string" },
   { id: "right_context", label: "Right context", type: "string" },
-  { id: "context_sequence", label: "Context sequence", type: "string" }
+  { id: "context_sequence", label: "Context sequence", type: "string" },
+  { id: "target_feature", label: "Target feature", type: "string" }
 ];
 
 export const crisprReferenceMatchColumns = [
@@ -198,6 +201,7 @@ export function normalizeCrisprGuideDesignOptions(options = {}) {
         ? "indexed"
         : "pasted";
   return {
+    targetFeature: String(options.targetFeature ?? ""),
     pamModel: getPamModel(options),
     minGcPercent,
     maxGcPercent,
@@ -412,7 +416,12 @@ function splitCrisprInput(input, separator = CRISPR_REFERENCE_SEPARATOR) {
   };
 }
 
-function normalizeRecords(input, warnings, label = "Input") {
+function normalizeRecords(input, warnings, label = "Input", options = {}) {
+  if (options.workflowSequenceRecords) {
+    const parsed = parseDnaRnaSequenceOrFlatfile(input, { ...options, label, convertUtoT: true });
+    warnings.push(...parsed.warnings);
+    return { ...parsed, records: parsed.records.map(record => ({ ...record, sourceFeatures: record.features ?? [], features: normalizeCrisprFeatureContext({ ...record, features: record.features ?? [] }) })) };
+  }
   if (/^(LOCUS|ID)\s/m.test(String(input ?? "")) || /\nFEATURES\s+Location\/Qualifiers\n/.test(String(input ?? ""))) {
     const flatfile = parseFlatfileRecords(input);
     const flatfileRecords = flatfile.records
@@ -427,6 +436,7 @@ function normalizeRecords(input, warnings, label = "Input") {
           sequence: cleaned.sequence.replaceAll("U", "T"),
           topology: record.topology || "",
           sourceFormat: record.format,
+          sourceFeatures: record.features,
           features: normalizeCrisprFeatureContext(record)
         };
       })
@@ -1024,7 +1034,9 @@ export async function designCrisprGuides(input, options = {}, context = {}) {
   await context.yieldIfNeeded?.();
 
   const split = splitCrisprInput(input);
-  const { records, charactersRemoved } = normalizeRecords(split.targetText, warnings, "Target");
+  const { records, charactersRemoved } = normalizeRecords(split.targetText, warnings, "Target", options);
+  const featureTarget = resolveDesignFeatureTarget(records, normalized.targetFeature);
+  if (featureTarget && !Number.isFinite(normalized.pamModel.cutOffsetFromPamStart)) throw new Error("Feature targeting requires a PAM model with a cut-position estimate. Choose a SpCas9 PAM model.");
   const useIndexedReference = normalized.referenceInputMode === "indexed" && hasIndexedReferenceOptions(options);
   const referenceWarnings = [];
   let { records: referenceRecords, charactersRemoved: referenceCharactersRemoved } = normalized.referenceInputMode === "pasted" && !useIndexedReference && split.referenceText
@@ -1057,6 +1069,7 @@ export async function designCrisprGuides(input, options = {}, context = {}) {
   const rows = [];
   let basesProcessed = 0;
   for (const [recordIndex, record] of records.entries()) {
+    if (featureTarget && featureTarget.recordIndex !== recordIndex) continue;
     context.reportProgress?.({ phase: "scanning-guides", detail: record.title, progress: 0.1 + (recordIndex / records.length) * 0.75 });
     context.throwIfCancelled?.();
     await context.yieldIfNeeded?.();
@@ -1076,7 +1089,9 @@ export async function designCrisprGuides(input, options = {}, context = {}) {
           await context.yieldIfNeeded?.();
         }
         const candidate = makeRawCandidate(record, workingSequence, strand, workingStart, normalized, skipped);
-        if (candidate) {
+        if (candidate && (!featureTarget || featureContainsInterval(featureTarget, candidate.cut_position))) {
+          candidate.target_feature = featureTarget?.label ?? "";
+          candidate.recordIndex = recordIndex;
           annotateGuideFeatureContext(candidate, record);
           recordRows.push(candidate);
         }
@@ -1226,7 +1241,8 @@ export function makeCrisprGuideDesignReport(result) {
       : "not run";
   const lines = [
     "CRISPR guide design / review",
-    `Records scanned: ${result.records.length}`,
+    `Records scanned: ${result.options.targetFeature ? 1 : result.records.length}`,
+    `Feature target: ${designFeatureTargetLabel(result.options.targetFeature)}${result.options.targetFeature ? "; estimated cut position within a feature part" : ""}`,
     `Bases scanned: ${result.basesProcessed ?? 0}`,
     `PAM model: ${model.label} (${model.pamPattern}; ${model.pamSide === "5prime" ? "5' PAM" : "3' PAM"})`,
     `Guide length: ${model.guideLength} nt`,

@@ -28,7 +28,7 @@ export const sequenceStatsDnaRnaMetadata = {
   workerModule: "../tools/sequence-stats/run.js",
   workerExport: "runSequenceStatsDnaRnaWorker",
   options: [
-    ...makeFastaSourceInputOptions({ includeStreamedFile: true }),
+    ...makeFastaSourceInputOptions({ includeStreamedFile: true, alphabet: "dna-rna", allowPlainSequence: true }),
     {
       type: "group",
       label: "Output",

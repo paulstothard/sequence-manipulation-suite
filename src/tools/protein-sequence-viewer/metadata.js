@@ -1,3 +1,4 @@
+import { makeFastaSourceInputOptions } from "../fasta-source-options.js";
 export const proteinSequenceViewerMetadata = {
   id: "protein-sequence-viewer",
   name: "Protein Sequence Viewer",
@@ -27,6 +28,7 @@ export const proteinSequenceViewerMetadata = {
     ]
   },
   options: [
+    ...makeFastaSourceInputOptions({ includeIndexed: false, alphabet: "protein", allowPlainSequence: true, annotatedRecords: true, featurePolicy: "viewer" }),
     {
       id: "outputFormat",
       type: "radio",

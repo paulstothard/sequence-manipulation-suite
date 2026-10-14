@@ -1,3 +1,5 @@
+import { makeDesignFeatureOptions, designFeaturePreviewLimit } from "../design-feature-options.js";
+import { makeFastaSourceInputOptions } from "../fasta-source-options.js";
 import { talenRvdColumns, talenTargetColumns } from "../../core/talen-design.js";
 import { makeOptionalReferenceGenomeOptionGroup } from "../reference-genome-options.js";
 
@@ -17,6 +19,7 @@ export const talenTargetFinderMetadata = {
   workerModule: "../tools/talen-target-finder/run.js",
   workerExport: "runTalenTargetFinder",
   workflow: {
+    sequenceRecordInput: true,
     inputs: [
       { id: "input", kind: "text", mediaType: "text/plain" },
       { id: "sequenceRecords", kind: "sequence-records", alphabet: "dna-rna" }
@@ -34,6 +37,8 @@ export const talenTargetFinderMetadata = {
     ]
   },
   options: [
+    ...makeFastaSourceInputOptions({ includeIndexed: false, alphabet: "dna-rna", allowPlainSequence: true, annotatedRecords: true, featurePolicy: "viewer" }),
+    makeDesignFeatureOptions("talen"),
     {
       type: "group",
       label: "Target-pair settings",
@@ -159,7 +164,8 @@ export const talenTargetFinderMetadata = {
           step: 100000,
           visibleWhen: { option: "referenceGenomeMode", value: ["indexed", "bgzf"] },
           help: "Total indexed reference bases scanned for TALEN target hits."
-        }
+        },
+        designFeaturePreviewLimit
       ]
     },
     {

@@ -18,7 +18,7 @@ function normalizeOptions(options = {}) {
 
 export function runGenomeFigure(input, options = {}, context = {}) {
   const normalized = normalizeOptions(options);
-  const prepared = makeGenomeFigureData(input, normalized, context);
+  const prepared = makeGenomeFigureData(input, { ...normalized, workflowSequenceRecords: options.workflowSequenceRecords }, context);
   const { figure, rows, warnings } = prepared;
 
   if (figure.records.length === 0) {

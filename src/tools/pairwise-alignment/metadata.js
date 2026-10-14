@@ -1,3 +1,5 @@
+const TWO_SEQUENCE_INPUT_HELP = "Use two FASTA records, or separate two plain-text sequences with a blank line. Sequence lines may wrap.";
+
 import { geneticCodes } from "../../core/genetic-code.js";
 import {
   codonAlignmentTableColumns,
@@ -143,6 +145,7 @@ export const pairwiseAlignDnaRnaMetadata = {
   summary:
     "Align two DNA/RNA sequences with global or local dynamic programming and affine gap penalties.",
   inputType: "Two DNA/RNA sequences",
+  inputHelp: TWO_SEQUENCE_INPUT_HELP,
   outputType: "Alignment report, text, FASTA, CLUSTAL-format text, table, colored alignment",
   workflow: makeWorkflow("dna-rna"),
   runInWorker: true,
@@ -194,6 +197,7 @@ export const pairwiseAlignProteinMetadata = {
   summary:
     "Align two protein sequences with global or local dynamic programming, BLOSUM62 scores, and affine gap penalties.",
   inputType: "Two protein sequences",
+  inputHelp: TWO_SEQUENCE_INPUT_HELP,
   outputType: "Alignment report, text, FASTA, CLUSTAL-format text, table, colored alignment",
   workflow: makeWorkflow("protein"),
   runInWorker: true,
@@ -223,6 +227,7 @@ export const pairwiseAlignCodingDnaMetadata = {
   summary:
     "Align two coding DNA/RNA sequences by translating complete codons, aligning amino acids with BLOSUM62 and affine gap penalties, and projecting the alignment back to codons.",
   inputType: "Two coding DNA/RNA sequences",
+  inputHelp: TWO_SEQUENCE_INPUT_HELP,
   outputType: "Codon alignment report, text, aligned codon FASTA, aligned translated protein FASTA, table, colored alignment",
   workflow: makeCodonWorkflow(),
   runInWorker: true,

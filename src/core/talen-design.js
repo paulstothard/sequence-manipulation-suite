@@ -1,3 +1,5 @@
+import { parseDnaRnaSequenceOrFlatfile } from "./dna-input-records.js";
+import { resolveDesignFeatureTarget, designFeatureTargetLabel, featureContainsInterval } from "./design-feature-targets.js";
 import { formatFastaRecord, parseSequenceInput } from "./fasta.js";
 import { parseFlatfileRecords } from "./flatfile-records.js";
 import { cleanDnaRnaSequence, complementDnaRnaSequence, makeSequenceContext } from "./sequence.js";
@@ -33,7 +35,8 @@ export const talenTargetColumns = [
   { id: "left_context", label: "Left context", type: "string" },
   { id: "matched_text", label: "Target context", type: "string" },
   { id: "right_context", label: "Right context", type: "string" },
-  { id: "context_sequence", label: "Context sequence", type: "string" }
+  { id: "context_sequence", label: "Context sequence", type: "string" },
+  { id: "target_feature", label: "Target feature", type: "string" }
 ];
 
 export const talenRvdColumns = [
@@ -201,6 +204,7 @@ function normalizeOptions(options = {}) {
   const maxSpacerLength = Math.max(minSpacerLength, clampInteger(options.maxSpacerLength, 20, 5, 40));
   const guanineRvd = options.guanineRvd === "NH" ? "NH" : "NN";
   return {
+    targetFeature: String(options.targetFeature ?? ""),
     minHalfSiteLength,
     maxHalfSiteLength,
     minSpacerLength,
@@ -216,7 +220,13 @@ function normalizeOptions(options = {}) {
   };
 }
 
-function parseDnaRecords(input, warnings) {
+function parseDnaRecords(input, warnings, options) {
+  if (options.workflowSequenceRecords) {
+    const parsed = parseDnaRnaSequenceOrFlatfile(input, { ...options, convertUtoT: true });
+    warnings.push(...parsed.warnings);
+    parsed.records.removedTotal = parsed.charactersRemoved;
+    return parsed.records;
+  }
   const text = String(input ?? "");
   if (/^(LOCUS|ID)\s/m.test(text) || /\nFEATURES\s+Location\/Qualifiers\n/.test(text)) {
     const flatfile = parseFlatfileRecords(text);
@@ -232,7 +242,8 @@ function parseDnaRecords(input, warnings) {
         return {
           title: record.accession || record.title || `Record ${index + 1}`,
           sequence: cleaned.sequence.replaceAll("U", "T"),
-          sourceFormat: record.format
+          sourceFormat: record.format,
+          features: record.features
         };
       })
       .filter((record) => record.sequence.length > 0);
@@ -335,7 +346,7 @@ function makeCandidate(record, recordIndex, oriented, strand, leftStart, leftLen
   };
 }
 
-async function scanRecord(record, recordIndex, options, context, warnings) {
+async function scanRecord(record, recordIndex, options, context, warnings, featureTarget) {
   const candidates = [];
   let evaluated = 0;
   let stoppedByLimit = false;
@@ -351,6 +362,10 @@ async function scanRecord(record, recordIndex, options, context, warnings) {
       }
       for (let leftLength = options.minHalfSiteLength; leftLength <= options.maxHalfSiteLength; leftLength += 1) {
         for (let spacerLength = options.minSpacerLength; spacerLength <= options.maxSpacerLength; spacerLength += 1) {
+          if (featureTarget) {
+            const spacer = projectInterval(leftStart + leftLength, leftStart + leftLength + spacerLength - 1, record.sequence.length, orientation.strand);
+            if (!featureContainsInterval(featureTarget, spacer.start, spacer.end)) continue;
+          }
           for (let rightLength = options.minHalfSiteLength; rightLength <= options.maxHalfSiteLength; rightLength += 1) {
             evaluated += 1;
             if (evaluated > options.maxCandidateWindows) {
@@ -358,7 +373,8 @@ async function scanRecord(record, recordIndex, options, context, warnings) {
               break;
             }
             const candidate = makeCandidate(record, recordIndex, orientation.sequence, orientation.strand, leftStart, leftLength, spacerLength, rightLength, options);
-            if (candidate) {
+            if (candidate && (!featureTarget || featureContainsInterval(featureTarget, candidate.spacer_start, candidate.spacer_end))) {
+              candidate.target_feature = featureTarget?.label ?? "";
               candidates.push(candidate);
             }
           }
@@ -401,7 +417,8 @@ export async function designTalenTargets(input, options = {}, context = {}) {
   const referenceRecords = Array.isArray(options.referenceRecords)
     ? options.referenceRecords.filter((record) => String(record?.sequence ?? "").length > 0)
     : [];
-  const records = parseDnaRecords(input, warnings);
+  const records = parseDnaRecords(input, warnings, options);
+  const featureTarget = resolveDesignFeatureTarget(records, normalized.targetFeature);
   const rows = [];
   const recordSummaries = [];
   const charactersRemoved = records.removedTotal ?? 0;
@@ -409,6 +426,7 @@ export async function designTalenTargets(input, options = {}, context = {}) {
   let globalRank = 1;
 
   for (const [recordIndex, record] of records.entries()) {
+    if (featureTarget && featureTarget.recordIndex !== recordIndex) continue;
     context.throwIfCancelled?.();
     if (record.sequence.length > normalized.maxRecordLength) {
       warnings.push(`${record.title}: sequence length ${record.sequence.length.toLocaleString()} exceeds the ${normalized.maxRecordLength.toLocaleString()} bp scan limit and was skipped.`);
@@ -416,7 +434,7 @@ export async function designTalenTargets(input, options = {}, context = {}) {
     }
     basesProcessed += record.sequence.length;
     context.reportProgress?.({ phase: "scanning", current: recordIndex + 1, total: records.length });
-    const scan = await scanRecord(record, recordIndex, normalized, context, warnings);
+    const scan = await scanRecord(record, recordIndex, normalized, context, warnings, featureTarget);
     for (const row of scan.candidates) {
       row.rank = globalRank;
       row.pair_id = `talen_${globalRank}`;
@@ -500,6 +518,7 @@ export function makeTalenReport(result) {
     "TALEN Design / Review report",
     "",
     "Scope: finds paired TALEN half-sites in local DNA/RNA input and proposes simple RVD strings for review. The score is an SMS3 review heuristic, not a validated activity model.",
+    `Feature target: ${designFeatureTargetLabel(result.options.targetFeature)}${result.options.targetFeature ? "; entire spacer within one feature part" : ""}`,
     `Half-site length range: ${result.options.minHalfSiteLength}-${result.options.maxHalfSiteLength} nt`,
     `Spacer length range: ${result.options.minSpacerLength}-${result.options.maxSpacerLength} nt`,
     `5-prime T rule: ${result.options.requireFivePrimeT ? "required" : "reported but not required"}`,

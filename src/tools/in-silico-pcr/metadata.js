@@ -1,3 +1,4 @@
+import { PRIMER_INPUT_HELP } from "../primer-input-options.js";
 import {
   pcrBindingSiteTableColumns,
   pcrProductTableColumns
@@ -7,16 +8,16 @@ export const inSilicoPcrMetadata = {
   id: "in-silico-pcr",
   name: "In Silico PCR",
   category: "Restriction, PCR & Primers",
-  tags: ["DNA", "raw", "FASTA", "GenBank", "EMBL", "DDBJ", "primer", "coordinates"],
+  tags: ["DNA", "raw", "FASTA", "BED", "GFF", "GTF", "GenBank", "EMBL", "DDBJ", "primer", "coordinates"],
   summary: "Find potential PCR products from one or more template sequences and multiple primer sequences.",
-  inputType: "Template DNA sequence, FASTA records, or GenBank/DDBJ/EMBL template records plus primer DNA",
+  inputType: "Template DNA sequence, FASTA records, GenBank/DDBJ/EMBL records, or GFF3/GTF/BED annotations with FASTA, plus primer DNA",
   outputType: "PCR product report, product table, binding-site table, product FASTA, primer text map, simulated gel, or linear DNA sequence viewer",
   splitInput: {
     separator: "---",
     displayOrder: ["primers", "template"],
     panels: [
       { id: "template", label: "Template sequence", dropLabel: "Drop one plain-text template DNA sequence, FASTA records, or GenBank/DDBJ/EMBL template records here", accept: ".fa,.fasta,.fna,.ffn,.fa.gz,.fasta.gz,.fna.gz,.ffn.gz,.gb,.gbk,.genbank,.embl,.ddbj,.gz,.txt,.seq" },
-      { id: "primers", label: "Primer sequences", dropLabel: "Drop primer sequences or FASTA records here", accept: ".fa,.fasta,.fa.gz,.fasta.gz,.gz,.txt,.seq" }
+      { id: "primers", label: "Primer sequences", description: PRIMER_INPUT_HELP, dropLabel: "Drop primer FASTA or text file here", accept: ".fa,.fasta,.fa.gz,.fasta.gz,.gz,.txt,.seq" }
     ]
   },
   workflow: {

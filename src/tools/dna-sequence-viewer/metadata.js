@@ -86,6 +86,7 @@ function makeViewerMetadata({
     workerModule: "../tools/dna-sequence-viewer/run.js",
     workerExport,
     workflow: {
+      sequenceRecordInput: true,
       inputs: [
         { id: "input", kind: "text", mediaType: "text/plain" },
         { id: "sequenceRecords", kind: "sequence-records", alphabet: "dna-rna" }

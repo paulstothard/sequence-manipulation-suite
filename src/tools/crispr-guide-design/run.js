@@ -1,3 +1,4 @@
+import { makeSequenceFeatureTracks } from "../../core/sequence-feature-tracks.js";
 import {
   makeDnaViewerData,
   makeDnaViewerStream
@@ -43,10 +44,10 @@ function inputWithOptionalReference(input, options = {}) {
 }
 
 function rowsByRecord(result) {
-  return result.records.map((record) => ({
+  return result.records.map((record, recordIndex) => ({
     title: record.title,
     sequence: record.sequence,
-    rows: result.rows.filter((row) => row.record === record.title)
+    rows: result.rows.filter((row) => row.recordIndex === recordIndex)
   }));
 }
 
@@ -102,14 +103,14 @@ function makeSvgMap(result) {
 }
 
 function makeCrisprViewerData(result) {
-  return makeDnaViewerData(result.records.map((record) => {
-    const rows = result.rows.filter((row) => row.record === record.title);
+  return makeDnaViewerData(result.records.map((record, recordIndex) => {
+    const rows = result.rows.filter((row) => row.recordIndex === recordIndex);
     return {
       title: record.title,
       sequence: record.sequence,
       length: record.sequence.length,
       topology: "linear",
-      tracks: rows.length > 0
+      tracks: [...makeSequenceFeatureTracks({ ...record, features: record.sourceFeatures }), ...(rows.length > 0
         ? [
             {
               id: "crispr-guide-candidates",
@@ -142,7 +143,7 @@ function makeCrisprViewerData(result) {
               }))
             }
           ]
-        : []
+        : [])]
     };
   }), {
     title: "CRISPR guide candidate viewer",

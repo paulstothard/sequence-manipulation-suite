@@ -1,3 +1,4 @@
+import { designFeatureTargetLabel } from "../core/design-feature-targets.js";
 import { readToolInputFileText } from "./input-file-readers.js";
 import { STANDARD_BROWSER_FILE_BYTES } from "../core/tool-limit-options.js";
 import { prepareToolOptionsForDisplay } from "./tool-option-layout.js";
@@ -1049,7 +1050,10 @@ export function createToolOptionsController({
   }
 
   function populateDependentSelect(select, option, optionValues, preferredValue) {
-    const choices = getFilteredChoices(option, optionValues);
+    const choices = [...getFilteredChoices(option, optionValues)];
+    if (option.choicesFrom === "input-features" && preferredValue && !choices.some(choice => choice.value === preferredValue)) {
+      choices.push({ value: preferredValue, label: designFeatureTargetLabel(preferredValue) });
+    }
     select.textContent = "";
     for (const choice of choices) {
       const choiceOption = document.createElement("option");

@@ -1,3 +1,5 @@
+import { parsePcrTemplateInput } from "./pcr-template-input.js";
+import { workflowSequenceRecordsToFasta, identifyWorkflowSequenceRecords } from "./workflow-sequence-input.js";
 import { labWorkflowOperations, validateLabOperation, runLabOperation } from "./workflow-lab-operations.js";
 import { readTreeDocumentStream } from "./tree-document-stream.js";
 import { exportDelimitedTable } from "./table.js";
@@ -118,6 +120,11 @@ function makeToolOptionsForSelectedStream(tool, step) {
 
 function makeToolOptionsForInput(tool, step, inputValue) {
   const options = makeToolOptionsForSelectedStream(tool, step);
+  // Never reuse a serialized sidecar from saved options against new input.
+  delete options.workflowSequenceRecords;
+  if (tool.metadata.workflow?.sequenceRecordInput && inputValue?.kind === "sequence-records") {
+    options.workflowSequenceRecords = inputValue;
+  }
   return options;
 }
 
@@ -157,12 +164,6 @@ function resolveStepReference(reference, context, requesterId = "step") {
   }
 
   return stream;
-}
-
-function sequenceRecordsToFasta(stream) {
-  return stream.records
-    .map((record) => formatFastaRecord(record.title ?? "sequence", record.sequence ?? "", 60))
-    .join("\n");
 }
 
 function makeGff3AttributeValue(value) {
@@ -410,7 +411,7 @@ function streamToToolInput(value) {
   }
 
   if (value.kind === "sequence-records") {
-    return sequenceRecordsToFasta(value);
+    return workflowSequenceRecordsToFasta(value);
   }
 
   if (value.kind === "orf-records") {
@@ -431,21 +432,24 @@ function streamToToolInput(value) {
 }
 
 function makeSequenceRecordsFromText(text, alphabet = "dna-rna") {
+  // Plain sequence splitting keeps its existing alphabet/case semantics.
+  // Annotated input must use its real parser, never sequence-text cleanup.
+  const annotated = alphabet !== "protein" && /^\s*(LOCUS\s|ID\s|##FASTA\s*$)/m.test(text);
+  const parsed = annotated ? parsePcrTemplateInput(text) : { records: parseSequenceInput(text, "sequence"), warnings: [] };
   return {
-    kind: "sequence-records",
-    schema: "workflow-sequence-records",
-    alphabet,
-    records: parseSequenceInput(text, "sequence").map((record) => ({
-      title: record.title,
-      sequence: record.sequence,
-      sourceTitle: record.title
-    }))
+    warnings: parsed.warnings,
+    value: {
+      kind: "sequence-records",
+      schema: "workflow-sequence-records",
+      alphabet,
+      records: parsed.records.map(record => ({ ...record, sourceTitle: record.sourceTitle ?? record.title }))
+    }
   };
 }
 
 function splitSequenceRecords(stream) {
   return makeCollectionStream(
-    stream.records.map((record) => ({
+    identifyWorkflowSequenceRecords(stream).records.map((record) => ({
       ...stream,
       records: [record]
     })),
@@ -718,7 +722,7 @@ function gatherCollection(collection, as = "auto") {
 
 function runInputStep(step) {
   if (step.stream?.kind) {
-    return step.stream;
+    return identifyWorkflowSequenceRecords(step.stream);
   }
 
   return makeTextStream(step.text ?? "", step.mediaType ?? "text/plain");
@@ -747,15 +751,16 @@ function selectToolResultStream(step, result) {
   if (!selected) {
     throw new Error(`Step "${step.id}" could not select missing output stream "${streamName}".`);
   }
-  return selected;
+  return identifyWorkflowSequenceRecords(selected);
 }
 
 function runSplitStep(step, value) {
   if (value?.kind === "sequence-records") {
-    return splitSequenceRecords(value);
+    return { value: splitSequenceRecords(value), warnings: [] };
   }
 
-  return splitSequenceRecords(makeSequenceRecordsFromText(streamToToolInput(value), step.alphabet ?? "dna-rna"));
+  const parsed = makeSequenceRecordsFromText(streamToToolInput(value), step.alphabet ?? "dna-rna");
+  return { value: splitSequenceRecords(parsed.value), warnings: parsed.warnings };
 }
 
 function runFilterStep(step, value) {
@@ -779,12 +784,13 @@ function runFilterStep(step, value) {
 
 async function runWorkflowTool(tool, input, options, context) {
   throwIfAborted(context.signal);
-  return context.runTool(tool, input, options, {
+  const result = await context.runTool(tool, input, options, {
     signal: context.signal,
     step: context.currentStep,
     stepIndex: context.currentStepIndex,
     totalSteps: context.totalSteps
   });
+  return { ...result, streams: Object.fromEntries(Object.entries(result.streams ?? {}).map(([name, stream]) => [name, identifyWorkflowSequenceRecords(stream)])) };
 }
 
 async function runToolStep(step, value, context) {
@@ -814,14 +820,14 @@ async function runMapToolStep(step, value, context) {
   const items = [];
   for (const [index, item] of inputValue.items.entries()) {
     throwIfAborted(context.signal);
-    const result = await runWorkflowTool(tool, streamToToolInput(item), makeToolOptionsForSelectedStream(tool, step), context);
+    const result = await runWorkflowTool(tool, streamToToolInput(item), makeToolOptionsForInput(tool, step, item), context);
     toolResults.push(result);
     const streamName = step.selectStream ?? "primary";
     const selected = getStream(result, streamName);
     if (!selected) {
       throw new Error(`Step "${step.id}" item ${index + 1} could not select missing stream "${streamName}".`);
     }
-    items.push(selected);
+    items.push(identifyWorkflowSequenceRecords(selected));
   }
 
   const warnings = toolResults.flatMap((result) => result.warnings ?? []);
@@ -889,7 +895,7 @@ async function runStep(step, value, context) {
     return { value: runSelectStreamStep(step, context), result: undefined, warnings: [] };
   }
   if (step.type === "split") {
-    return { value: runSplitStep(step, value), result: undefined, warnings: [] };
+    return runSplitStep(step, value);
   }
   if (step.type === "filter") {
     return {
