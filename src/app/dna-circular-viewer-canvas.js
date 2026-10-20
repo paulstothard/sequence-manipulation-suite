@@ -31,6 +31,7 @@ import {
   hasHiddenViewerItemTypes,
   hitTestRegions,
   makeTooltipText,
+  makeTooltipDetailRows,
   makeRangeAnchor,
   makeViewerRangeState,
   makeViewerItemTargetDetails,
@@ -1009,6 +1010,22 @@ function strokeAnnularArc(ctx, cx, cy, outerRadius, innerRadius, startAngle, end
   ctx.restore();
 }
 
+function drawCircularFeatureFocus(ctx, cx, cy, outline, theme) {
+  const padding = 3;
+  const radius = Math.max(1, (outline.outerRadius + outline.innerRadius) / 2);
+  const anglePadding = Math.min(padding / radius, Math.max(0, (TWO_PI - (outline.endAngle - outline.startAngle)) / 2));
+  const bounds = [
+    outline.outerRadius + padding, Math.max(0.5, outline.innerRadius - padding),
+    outline.startAngle - anglePadding, outline.endAngle + anglePadding
+  ];
+  // Follow the feature's arc while leaving its category-coloured border intact.
+  ctx.save();
+  strokeAnnularArc(ctx, cx, cy, ...bounds, theme.background, 2.5);
+  ctx.setLineDash([3, 2]);
+  strokeAnnularArc(ctx, cx, cy, ...bounds, theme.text, 1.5);
+  ctx.restore();
+}
+
 function drawCircularSearchMarkers(ctx, cx, cy, innerRadius, outerRadius, state, record, arc, theme) {
   const results = state.selectedTarget?.coordinateSelection
     ? [...(state.searchResults || []), state.selectedTarget]
@@ -1528,10 +1545,14 @@ function drawPointTrack(ctx, track, cx, cy, radius, state, record, arc, pxPerBp,
         radius - ringHalfWidth,
         angle - markerHalfAngle,
         angle + markerHalfAngle,
-        selected ? theme.selectedFill : theme.restrictionFill,
-        selected ? theme.selectedStroke : color,
-        selected ? 2.4 : 1.2
+        theme.restrictionFill,
+        color,
+        1.2
       );
+      if (selected) drawCircularFeatureFocus(ctx, cx, cy, {
+        outerRadius: radius + ringHalfWidth, innerRadius: radius - ringHalfWidth,
+        startAngle: angle - markerHalfAngle, endAngle: angle + markerHalfAngle
+      }, theme);
     }
   }
 }
@@ -1934,7 +1955,7 @@ function drawIntervalTrack(ctx, track, cx, cy, outerRadius, innerRadius, state, 
       ink: item.geneModel?.role === 'CDS' || theme.dark ? '#ffffff' : '#7c2d12'
     });
     if (viewerTargetMatches(state, target)) {
-      selectedArcOutlines.push({ outerRadius: slotOuterRadius + 2, innerRadius: slotInnerRadius - 2, startAngle, endAngle });
+      selectedArcOutlines.push({ outerRadius: slotOuterRadius, innerRadius: slotInnerRadius, startAngle, endAngle });
     }
     if (cdsDrawn || item.geneModel?.role === 'transcript') continue;
     const labelText = item.label || item.name || item.type || "";
@@ -2052,11 +2073,7 @@ function drawIntervalTrack(ctx, track, cx, cy, outerRadius, innerRadius, state, 
     }
   }
   for (const outline of selectedArcOutlines) {
-    ctx.save();
-    ctx.shadowColor = theme.selectedStroke;
-    ctx.shadowBlur = theme.dark ? 4 : 3;
-    strokeAnnularArc(ctx, cx, cy, outline.outerRadius, outline.innerRadius, outline.startAngle, outline.endAngle, theme.selectedStroke, 1.5);
-    ctx.restore();
+    drawCircularFeatureFocus(ctx, cx, cy, outline, theme);
   }
   const drawnLabelBounds = [];
   const labelCanvasRect = ctx.canvas?.getBoundingClientRect?.();
@@ -2475,11 +2492,10 @@ function updateStatus(status, state, record, pxPerBp) {
   status.append(rangeLine, scaleLine);
 }
 
-function drawCircularViewer(ctx, canvas, status, record, state) {
+function drawCircularViewer(ctx, canvas, status, record, state, theme = getViewerCanvasTheme(canvas)) {
   const rect = canvas.getBoundingClientRect();
   const width = rect.width;
   const height = rect.height;
-  const theme = getViewerCanvasTheme(canvas);
   const layout = computeRenderedCircularLayout(width, height, state, record);
   const { cx, cy, baseRadius, pxPerBp, arc, offsets, digestFragmentTracks, restrictionTracks, otherTrackLayouts } = layout;
   state.hitRegions = [];
@@ -3316,7 +3332,8 @@ function installCircularViewer(panel, record, options = {}) {
     const safeTitle = makeSafeFileStem(record.title, "dna-circular-viewer");
     downloadCanvasPng(canvas, `${safeTitle}-circular-viewer.png`, {
       drawSnapshot: (exportContext, exportCanvas) => {
-        drawCircularViewer(exportContext, exportCanvas, document.createElement("div"), record, cloneViewerStateForExport(state));
+        // The detached export canvas does not inherit the viewer's CSS colours.
+        drawCircularViewer(exportContext, exportCanvas, document.createElement("div"), record, cloneViewerStateForExport(state), getViewerCanvasTheme(canvas));
       }
     });
   });
@@ -3365,6 +3382,7 @@ function installCircularViewer(panel, record, options = {}) {
     getTargets: () => getViewerHitTargets(state),
     hitTest: (event) => hitTestRegions(state, event.clientX, event.clientY, canvas),
     getText: makeTooltipText,
+    getDetails: makeTooltipDetailRows,
     getKey: (target) => `${target.key || makeTargetKey(target)}${target.modelRegion ? `|${target.modelRegion}` : ""}`,
     getPosition: (target) => getViewerTargetClientPosition(state, target, canvas),
     onActivate: (target) => selectTarget(target, { keepIfSame: true, autoRangeAnchor: true }),

@@ -36,8 +36,9 @@ function normalizedText(value) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
 }
 
-function renderInspectionTooltip(tooltip, text) {
-  if (tooltip._sms3InspectionText === text) return;
+function renderInspectionTooltip(tooltip, text, details = []) {
+  const signature = JSON.stringify([text, details]);
+  if (tooltip._sms3InspectionText === signature) return;
   const { sections } = parseInspectionTooltipText(text);
   const content = document.createElement("div");
   content.className = "visual-inspection-tooltip-content";
@@ -73,8 +74,22 @@ function renderInspectionTooltip(tooltip, text) {
     }
     content.append(row);
   }
+  for (const [key, value] of details) {
+    const row = document.createElement("div");
+    const description = /^(product|note|description|function)$/i.test(key);
+    row.className = `visual-inspection-tooltip-fact${description ? " is-description" : ""}`;
+    const label = document.createElement("strong");
+    label.className = "visual-inspection-tooltip-label";
+    label.textContent = key.replaceAll("_", " ") + ": ";
+    const detail = document.createElement("span");
+    detail.className = "visual-inspection-tooltip-value";
+    detail.textContent = String(value);
+    row.append(label, detail);
+    content.append(row);
+  }
   tooltip.replaceChildren(content);
-  tooltip._sms3InspectionText = text;
+  tooltip.scrollTop = 0;
+  tooltip._sms3InspectionText = signature;
 }
 
 function evenlyLimitedTargets(targets, limit = MAX_KEYBOARD_TARGETS) {
@@ -1021,6 +1036,7 @@ export function installCanvasVisualInspection(container, {
   getTargets = () => [],
   hitTest = () => null,
   getText = (target) => target?.label,
+  getDetails = () => [],
   getKey = (target, index) => target?.key ?? index,
   getPosition = () => null,
   onActivate = () => {},
@@ -1078,6 +1094,17 @@ export function installCanvasVisualInspection(container, {
   let pendingPointer = null;
   let lastPointer = null;
   let dismissedPointer = null;
+  let hideTimer = 0;
+
+  function cancelHide() {
+    window.clearTimeout(hideTimer);
+    hideTimer = 0;
+  }
+
+  function scheduleHide() {
+    if (hideTimer) return;
+    hideTimer = window.setTimeout(hide, 300);
+  }
 
   function keyFor(target, index = -1) {
     return normalizedText(getKey(target, index));
@@ -1125,7 +1152,13 @@ export function installCanvasVisualInspection(container, {
     const minTop = scrollTop + inset;
     const maxTop = scrollTop + container.clientHeight - tooltipRect.height - inset;
     tooltip.style.left = `${Math.max(minLeft, Math.min(preferredLeft, Math.max(minLeft, maxLeft)))}px`;
-    tooltip.style.top = `${Math.max(minTop, Math.min(preferredTop, Math.max(minTop, maxTop)))}px`;
+    const containerTop = Math.max(minTop, Math.min(preferredTop, Math.max(minTop, maxTop)));
+    const viewportTop = scrollTop - containerRect.top + inset;
+    const viewportBottom = scrollTop - containerRect.top + window.innerHeight - tooltipRect.height - inset;
+    const featureTop = scrollTop + position.clientY - containerRect.top +
+      (position.clientY + tooltipRect.height + 14 <= window.innerHeight - inset ? 14 : -tooltipRect.height - 14);
+    const top = tooltip.classList.contains("has-feature-details") ? featureTop : containerTop;
+    tooltip.style.top = `${Math.max(viewportTop, Math.min(top, Math.max(viewportTop, viewportBottom)))}px`;
   }
 
   function setActive(target) {
@@ -1145,16 +1178,21 @@ export function installCanvasVisualInspection(container, {
   }
 
   function show(target, position, { shouldAnnounce = false } = {}) {
+    cancelHide();
     const text = normalizedText(getText(target));
     if (!target || !text) return hide();
     setActive(target);
-    renderInspectionTooltip(tooltip, text);
+    const details = getDetails(target);
+    tooltip.classList.toggle("has-feature-details", details.length > 0);
+    tooltip.tabIndex = details.length ? 0 : -1;
+    renderInspectionTooltip(tooltip, text, details);
     tooltip.hidden = false;
     placeTooltip(position ?? targetPosition(target));
     if (shouldAnnounce) announce(text);
   }
 
   function hide() {
+    cancelHide();
     setActive(null);
     tooltip.hidden = true;
   }
@@ -1197,20 +1235,44 @@ export function installCanvasVisualInspection(container, {
       const target = hitTest(pointer);
       canvas.style.cursor = target ? targetCursor : emptyCursor;
       if (target) show(target, pointer);
+      else if (!tooltip.hidden && tooltip.classList.contains("has-feature-details")) scheduleHide();
       else hide();
     });
   }, listenerOptions);
-  canvas.addEventListener("pointerleave", () => {
+  canvas.addEventListener("pointerleave", (event) => {
     if (pointerFrame) window.cancelAnimationFrame(pointerFrame);
     pointerFrame = 0;
     pendingPointer = null;
     lastPointer = null;
     dismissedPointer = null;
     canvas.style.cursor = "";
-    hide();
+    if (tooltip.contains(event.relatedTarget)) cancelHide();
+    else if (tooltip.classList.contains("has-feature-details")) scheduleHide();
+    else hide();
   }, listenerOptions);
-  canvas.addEventListener("blur", () => hide(), listenerOptions);
+  canvas.addEventListener("blur", event => {
+    if (!tooltip.contains(event.relatedTarget)) hide();
+  }, listenerOptions);
+  tooltip.addEventListener("pointerenter", cancelHide, listenerOptions);
+  tooltip.addEventListener("pointerleave", () => {
+    if (!tooltip.contains(document.activeElement)) scheduleHide();
+  }, listenerOptions);
+  tooltip.addEventListener("focus", cancelHide, listenerOptions);
+  tooltip.addEventListener("blur", hide, listenerOptions);
+  tooltip.addEventListener("keydown", event => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      dismissedPointer = lastPointer;
+      hide();
+      canvas.focus({ preventScroll: true });
+    }
+  }, listenerOptions);
   canvas.addEventListener("keydown", (event) => {
+    if (event.key === "Tab" && !event.shiftKey && !tooltip.hidden && tooltip.classList.contains("has-feature-details")) {
+      event.preventDefault();
+      tooltip.focus({ preventScroll: true });
+      return;
+    }
     if (event.key === "Escape") {
       if (!tooltip.hidden) event.preventDefault();
       dismissedPointer = lastPointer;
@@ -1241,6 +1303,7 @@ export function installCanvasVisualInspection(container, {
 
   const cleanup = () => {
     controller.abort();
+    cancelHide();
     if (pointerFrame) window.cancelAnimationFrame(pointerFrame);
     pointerFrame = 0;
     pendingPointer = null;

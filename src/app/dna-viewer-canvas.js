@@ -37,6 +37,7 @@ import {
   hasHiddenViewerItemTypes,
   hitTestRegions,
   makeTooltipText,
+  makeTooltipDetailRows,
   makeRangeAnchor,
   makeViewerRangeState,
   makeViewerItemTargetDetails,
@@ -158,6 +159,19 @@ export function getLinearRulerTicks(state) {
     ticks.push({ centerBp: label - 0.5, label });
   }
   return ticks;
+}
+
+export function layoutLinearRulerLabels(state, plotLeft, plotRight, measureText) {
+  let lastLabelRight = -Infinity;
+  return getLinearRulerTicks(state).map(tick => {
+    const x = bpToX(tick.centerBp, plotLeft, plotRight, state.viewStart, state.viewEnd);
+    const text = tick.label.toLocaleString();
+    const width = measureText(text);
+    const labelX = Math.max(plotLeft + width / 2, Math.min(plotRight - width / 2, x));
+    const showLabel = width <= plotRight - plotLeft && labelX - width / 2 >= lastLabelRight + 8;
+    if (showLabel) lastLabelRight = labelX + width / 2;
+    return { ...tick, x, text, labelX, showLabel };
+  });
 }
 
 function clampLinearViewRange(viewStart, viewEnd, length) {
@@ -487,46 +501,33 @@ function drawLinearCodonAnchorOutline(ctx, { x1, x2, y, strand, theme, height = 
   ctx.restore();
 }
 
-function drawLinearSelectedIntervalOutline(ctx, { x1, x2, y, height, strand, headLength = 0, matchFeatureBounds = false, plotLeft, plotRight, theme }) {
-  const padding = matchFeatureBounds ? 0 : 1.5;
+function drawLinearSelectedIntervalOutline(ctx, { x1, x2, y, height, plotLeft, plotRight, theme }) {
+  const padding = 3;
   const strokeWidth = 1.5;
-  // Inset ends at the viewport edge so a cropped interval still has a complete,
-  // visible outline without losing its side stroke to the plot clip.
-  const edgeInset = matchFeatureBounds ? strokeWidth / 2 : 2;
+  // Keep focus marks inside the plot; omit side marks at cropped ends instead
+  // of drawing over the feature's original border there.
+  const edgeInset = 2;
   const left = Math.max(plotLeft + edgeInset, x1 - padding);
   const right = Math.min(plotRight - edgeInset, x2 + padding);
   const top = y - height / 2 - padding;
   const outlineHeight = height + padding * 2;
   if (right - left < strokeWidth * 2 || outlineHeight <= 0) return;
-  const radius = Math.min(3, (right - left) / 2, outlineHeight / 2);
   ctx.save();
-  ctx.strokeStyle = theme.selectedStroke;
-  ctx.lineWidth = strokeWidth;
-  ctx.shadowColor = theme.selectedStroke;
-  ctx.shadowBlur = theme.dark ? 2.5 : 2;
+  // A neutral, detached focus box preserves the category colour of even a
+  // narrow feature. Its dashed shape cannot be mistaken for a legend swatch.
+  ctx.strokeStyle = theme.background;
+  ctx.lineWidth = 2.5;
   ctx.beginPath();
-  if (headLength > 0) {
-    const outlineHead = Math.min(headLength + padding, (right - left) / 2.5);
-    const points = linearFeaturePolygon(left, top, right - left, outlineHeight, strand, outlineHead);
-    ctx.moveTo(...points[0]);
-    for (const point of points.slice(1)) ctx.lineTo(...point);
-    ctx.closePath();
-  } else if (matchFeatureBounds) {
-    ctx.rect(left, top, right - left, outlineHeight);
-  } else if (typeof ctx.roundRect === "function") {
-    ctx.roundRect(left, top, right - left, outlineHeight, radius);
-  } else {
-    ctx.moveTo(left + radius, top);
-    ctx.lineTo(right - radius, top);
-    ctx.quadraticCurveTo(right, top, right, top + radius);
-    ctx.lineTo(right, top + outlineHeight - radius);
-    ctx.quadraticCurveTo(right, top + outlineHeight, right - radius, top + outlineHeight);
-    ctx.lineTo(left + radius, top + outlineHeight);
-    ctx.quadraticCurveTo(left, top + outlineHeight, left, top + outlineHeight - radius);
-    ctx.lineTo(left, top + radius);
-    ctx.quadraticCurveTo(left, top, left + radius, top);
-    ctx.closePath();
-  }
+  ctx.moveTo(left, top);
+  ctx.lineTo(right, top);
+  if (x2 + padding <= plotRight - edgeInset) ctx.lineTo(right, top + outlineHeight);
+  else ctx.moveTo(right, top + outlineHeight);
+  ctx.lineTo(left, top + outlineHeight);
+  if (x1 - padding >= plotLeft + edgeInset) ctx.lineTo(left, top);
+  ctx.stroke();
+  ctx.strokeStyle = theme.text;
+  ctx.lineWidth = strokeWidth;
+  ctx.setLineDash([3, 2]);
   ctx.stroke();
   ctx.restore();
 }
@@ -903,20 +904,14 @@ function drawLinearRuler(ctx, state, layout, options = {}) {
   ctx.strokeStyle = theme?.tick || "#94a3b8";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  let lastLabelRight = -Infinity;
-  for (const tick of getLinearRulerTicks(state)) {
-    const x = bpToX(tick.centerBp, plotLeft, plotRight, state.viewStart, state.viewEnd);
+  for (const tick of layoutLinearRulerLabels(state, plotLeft, plotRight, text => ctx.measureText(text).width)) {
+    const { x } = tick;
     addLinearCoordinateHit(state, x, y, tick.label);
     ctx.beginPath();
     ctx.moveTo(x, y - 7);
     ctx.lineTo(x, y + 7);
     ctx.stroke();
-    const label = tick.label.toLocaleString();
-    const halfWidth = ctx.measureText(label).width / 2;
-    if (x - halfWidth >= lastLabelRight + 8) {
-      ctx.fillText(label, x, y + (labelsAbove ? -22 : 22));
-      lastLabelRight = x + halfWidth;
-    }
+    if (tick.showLabel) ctx.fillText(tick.text, tick.labelX, y + (labelsAbove ? -22 : 22));
   }
 }
 
@@ -962,6 +957,10 @@ function drawTranslationRow(ctx, record, state, y, frameLabel, frameOffset, stra
   for (let index = start; index + 2 < record.length && index <= state.viewEnd; index += 3) {
     if (index + 2 >= state.viewStart) visibleCodons.push(index);
   }
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(plotLeft, y - hitHalfHeight - 2, plotRight - plotLeft, hitHalfHeight * 2 + 4);
+  ctx.clip();
   for (const index of visibleCodons) {
     const genomicCodon = sequence.slice(index, index + 3);
     const codon = strand === "+" ? genomicCodon : reverseComplement(genomicCodon);
@@ -970,6 +969,9 @@ function drawTranslationRow(ctx, record, state, y, frameLabel, frameOffset, stra
     const isStart = startCodons.has(normalizedCodon);
     const x1 = bpToX(index, plotLeft, plotRight, state.viewStart, state.viewEnd);
     const x2 = bpToX(index + 3, plotLeft, plotRight, state.viewStart, state.viewEnd);
+    const visibleX1 = Math.max(plotLeft, x1);
+    const visibleX2 = Math.min(plotRight, x2);
+    if (visibleX2 <= visibleX1) continue;
     const target = {
       kind: "codon",
       type: "Codon",
@@ -980,7 +982,7 @@ function drawTranslationRow(ctx, record, state, y, frameLabel, frameOffset, stra
       codon,
       aminoAcid: aa
     };
-    addRectHit(state, { x1, y1: y - hitHalfHeight, x2, y2: y + hitHalfHeight }, target);
+    addRectHit(state, { x1: visibleX1, y1: y - hitHalfHeight, x2: visibleX2, y2: y + hitHalfHeight }, target);
     const selected = viewerTargetMatches(state, target);
     const anchored = viewerTargetIsRangeAnchor(state, target);
     const searchActive = searchTargetMatches(state, target);
@@ -997,18 +999,21 @@ function drawTranslationRow(ctx, record, state, y, frameLabel, frameOffset, stra
     ctx.font = `${record.compactLayout ? 10 : 13}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
     ctx.fillStyle = aa === "*" ? theme.stopText : isStart ? theme.startText : theme.aminoAcidText;
     ctx.textAlign = "center";
-    ctx.fillText(aa, (x1 + x2) / 2, y);
+    const letterX = (x1 + x2) / 2;
+    if (shouldDrawLinearSequenceLetter(letterX, plotLeft, plotRight, ctx.measureText(aa).width / 2)) {
+      ctx.fillText(aa, letterX, y);
+    }
     if (anchored) {
       drawLinearCodonAnchorOutline(ctx, { x1, x2, y, strand, theme, height: codonHeight });
     }
   }
+  ctx.restore();
 }
 
-function drawViewer(ctx, canvas, status, record, state) {
+function drawViewer(ctx, canvas, status, record, state, theme = getViewerCanvasTheme(canvas)) {
   const rect = canvas.getBoundingClientRect();
   const width = rect.width;
   const height = rect.height;
-  const theme = getViewerCanvasTheme(canvas);
   const { plotLeft, plotRight } = getLinearPlotBounds(width);
   const span = state.viewEnd - state.viewStart;
   const pxPerBp = (plotRight - plotLeft) / span;
@@ -1093,7 +1098,7 @@ function drawViewer(ctx, canvas, status, record, state) {
           ctx.strokeStyle = color;
           ctx.lineWidth = 1.4;
           ctx.fillRect(x - markerWidth / 2, trackY - markerHeight / 2, markerWidth, markerHeight);
-          if (!highlighted) ctx.strokeRect(x - markerWidth / 2, trackY - markerHeight / 2, markerWidth, markerHeight);
+          ctx.strokeRect(x - markerWidth / 2, trackY - markerHeight / 2, markerWidth, markerHeight);
           if (highlighted) {
             selectedIntervalOutlines.push({ x1: x - markerWidth / 2, x2: x + markerWidth / 2, y: trackY, height: markerHeight });
           }
@@ -1205,12 +1210,11 @@ function drawViewer(ctx, canvas, status, record, state) {
         const headLength = chevrons || track.type === "digest-fragments" || item.type === "source"
           ? 0
           : alignedReadArrowHeadLength(widthPx, rectHeight, item, item.strand, terminalVisible, pxPerBp, compactTrack);
-        drawLinearIntervalShape(ctx, x1, laneY - rectHeight / 2, widthPx, rectHeight, item.strand, headLength, !highlighted);
+        drawLinearIntervalShape(ctx, x1, laneY - rectHeight / 2, widthPx, rectHeight, item.strand, headLength);
         ctx.globalAlpha = previousAlpha;
         if (highlighted) {
           selectedIntervalOutlines.push({
-            x1, x2, y: laneY, height: rectHeight, strand: item.strand, headLength,
-            matchFeatureBounds: true
+            x1, x2, y: laneY, height: rectHeight
           });
         }
         const readBasesDrawn = !compactTrack && drawAlignedReadBases(ctx, item, state, layout, {
@@ -1312,11 +1316,10 @@ function drawViewer(ctx, canvas, status, record, state) {
           const headLength = chevrons || track.type === "digest-fragments" || item.type === "source"
             ? 0
             : alignedReadArrowHeadLength(widthPx, rectHeight, item, item.strand, terminalVisible, pxPerBp, compactTrack);
-          drawLinearIntervalShape(ctx, x1, trackY - rectHeight / 2, widthPx, rectHeight, item.strand, headLength, !highlighted);
+          drawLinearIntervalShape(ctx, x1, trackY - rectHeight / 2, widthPx, rectHeight, item.strand, headLength);
           if (highlighted) {
             selectedIntervalOutlines.push({
-              x1, x2, y: trackY, height: rectHeight, strand: item.strand, headLength,
-              matchFeatureBounds: true
+              x1, x2, y: trackY, height: rectHeight
             });
           }
           const readBasesDrawn = !compactTrack && drawAlignedReadBases(ctx, item, state, layout, {
@@ -1910,6 +1913,13 @@ function installViewer(panel, record, options = {}) {
   canvas.dataset.sms3InspectionReady = "false";
   canvas.setAttribute("aria-busy", "true");
   const ctx = canvas.getContext("2d");
+  // Keep space for the tallest plot visited during navigation. The canvas
+  // itself retains its natural height, so exports have no reserved whitespace.
+  const stage = document.createElement("div");
+  stage.className = "dna-viewer-stage";
+  stage.style.minWidth = "0";
+  stage.append(canvas);
+  let reservedHeight = 0;
   const selectionEmptyText = proteinViewer
     ? "Click a feature, residue, or coordinate to inspect it."
     : "Click a feature, site, base, codon, amino acid, or coordinate to inspect it.";
@@ -1949,10 +1959,12 @@ function installViewer(panel, record, options = {}) {
   clampView(state, record.length);
   initializeViewerCompositionTracks(record, state, preserved?.composition);
   const compositionControls = createViewerCompositionControls(record, state, () => {
+    reservedHeight = 0;
     state.trackLayoutCache = new WeakMap();
     scheduleResize();
   });
   function updateTrackVisibility() {
+    reservedHeight = 0;
     cancelInertia();
     trackControls?.syncVisibility();
     featureGroupControls?.sync();
@@ -1993,6 +2005,8 @@ function installViewer(panel, record, options = {}) {
       canvas.style.height = `${desiredHeight}px`;
       rect = canvas.getBoundingClientRect();
     }
+    reservedHeight = Math.max(reservedHeight, rect.height);
+    stage.style.minHeight = `${reservedHeight}px`;
     const { width: nextWidth, height: nextHeight, pixelRatio: dpr } = linearViewerCanvasSize(
       rect.width, rect.height, window.devicePixelRatio || 1
     );
@@ -2043,7 +2057,7 @@ function installViewer(panel, record, options = {}) {
     state.viewStart += span * fraction;
     state.viewEnd += span * fraction;
     clampView(state, record.length);
-    drawViewer(ctx, canvas, status, record, state);
+    resize();
   }
   function updateSearchControls(searchControls) {
     updateViewerSearchControls(searchControls, state.searchResults, state.activeSearchIndex);
@@ -2115,7 +2129,7 @@ function installViewer(panel, record, options = {}) {
       state.viewStart = fromStart + (nextStart - fromStart) * eased;
       state.viewEnd = fromEnd + (nextEnd - fromEnd) * eased;
       clampView(state, record.length);
-      drawViewer(ctx, canvas, status, record, state);
+      resize();
       navigationFrame = t < 1 ? requestAnimationFrame(step) : 0;
     }
     navigationFrame = requestAnimationFrame(step);
@@ -2151,14 +2165,14 @@ function installViewer(panel, record, options = {}) {
           if (currentRange.wraps) {
             state.viewStart = 0;
             state.viewEnd = record.length;
-            drawViewer(ctx, canvas, status, record, state);
+            resize();
             return;
           }
           const padding = Math.max(MIN_LINEAR_VIEW_SPAN / 2, currentRange.length * 0.5);
           state.viewStart = currentRange.start - 1 - padding;
           state.viewEnd = currentRange.end + padding;
           clampView(state, record.length);
-          drawViewer(ctx, canvas, status, record, state);
+          resize();
         },
         swapRange: () => {
           if (!currentRange?.canSwap) return;
@@ -2301,14 +2315,14 @@ function installViewer(panel, record, options = {}) {
         if (range.wraps) {
           state.viewStart = 0;
           state.viewEnd = record.length;
-          drawViewer(ctx, canvas, status, record, state);
+          resize();
           return;
         }
         const padding = Math.max(MIN_LINEAR_VIEW_SPAN / 2, range.length * 0.5);
         state.viewStart = range.start - 1 - padding;
         state.viewEnd = range.end + padding;
         clampView(state, record.length);
-        drawViewer(ctx, canvas, status, record, state);
+        resize();
       },
       swapRange: () => {
         if (!range.canSwap) return;
@@ -2369,13 +2383,14 @@ function installViewer(panel, record, options = {}) {
     featureZoom.release();
     state.viewStart = 0;
     state.viewEnd = record.length;
-    drawViewer(ctx, canvas, status, record, state);
+    resize();
   });
   camera.addEventListener("click", () => {
     const safeTitle = makeSafeFileStem(record.title, proteinViewer ? "protein-viewer" : "dna-viewer");
     downloadCanvasPng(canvas, `${safeTitle}-viewer.png`, {
       drawSnapshot: (exportContext, exportCanvas) => {
-        drawViewer(exportContext, exportCanvas, document.createElement("div"), record, cloneViewerStateForExport(state));
+        // The detached export canvas does not inherit the viewer's CSS colours.
+        drawViewer(exportContext, exportCanvas, document.createElement("div"), record, cloneViewerStateForExport(state), getViewerCanvasTheme(canvas));
       }
     });
   });
@@ -2395,16 +2410,19 @@ function installViewer(panel, record, options = {}) {
   });
   secondStrandToggle.input.addEventListener("change", () => {
     cancelInertia();
+    reservedHeight = 0;
     state.showSecondStrand = secondStrandToggle.input.checked;
     resize();
   });
   forwardTranslationToggle.input.addEventListener("change", () => {
     cancelInertia();
+    reservedHeight = 0;
     state.showForwardTranslations = forwardTranslationToggle.input.checked;
     resize();
   });
   reverseTranslationToggle.input.addEventListener("change", () => {
     cancelInertia();
+    reservedHeight = 0;
     state.showReverseTranslations = reverseTranslationToggle.input.checked;
     resize();
   });
@@ -2424,6 +2442,7 @@ function installViewer(panel, record, options = {}) {
     getTargets: () => getViewerHitTargets(state),
     hitTest: (event) => hitTestRegions(state, event.clientX, event.clientY, canvas),
     getText: makeTooltipText,
+    getDetails: makeTooltipDetailRows,
     getKey: (target) => `${target.key || makeTargetKey(target)}${target.modelRegion ? `|${target.modelRegion}` : ""}`,
     getPosition: (target) => getViewerTargetClientPosition(state, target, canvas),
     onActivate: (target) => selectTarget(target, { keepIfSame: true, autoRangeAnchor: true }),
@@ -2483,7 +2502,7 @@ function installViewer(panel, record, options = {}) {
       state.viewStart = next.viewStart - shift;
       state.viewEnd = next.viewEnd - shift;
       clampView(state, record.length);
-      drawViewer(ctx, canvas, status, record, state);
+      resize();
     },
     onEnd: () => { pinchOrigin = null; }
   });
@@ -2531,7 +2550,7 @@ function installViewer(panel, record, options = {}) {
     state.viewEnd = state.dragStartViewEnd + bpDelta;
     clampView(state, record.length);
     inertiaTracker.add(event.clientX, performance.now());
-    drawViewer(ctx, canvas, status, record, state);
+    resize();
   };
   const onWindowMouseUp = (event) => {
     if (!state.dragging) return;
@@ -2554,7 +2573,7 @@ function installViewer(panel, record, options = {}) {
         state.viewStart += deltaBp;
         state.viewEnd += deltaBp;
         clampView(state, record.length);
-        drawViewer(ctx, canvas, status, record, state);
+        resize();
         return Math.abs(state.viewStart - beforeStart) > 1e-6 || Math.abs(state.viewEnd - beforeEnd) > 1e-6;
       }
     });
@@ -2567,10 +2586,10 @@ function installViewer(panel, record, options = {}) {
   resizeObserver?.observe(canvas);
 
   if (showInspectorPanels) {
-    const workspace = createViewerInspectorWorkspace(canvas, selectionPanel, rangePanel);
+    const workspace = createViewerInspectorWorkspace(stage, selectionPanel, rangePanel);
     panel.append(toolbar, searchControls.element, workspace);
   } else {
-    panel.append(toolbar, searchControls.element, canvas);
+    panel.append(toolbar, searchControls.element, stage);
   }
   options.onCoordinateSelectionReady?.((start, end) => {
     if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start || end > record.length) return false;

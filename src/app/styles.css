@@ -7417,6 +7417,23 @@ select[name="featureTargetMode"] {
   gap: 0.2rem;
 }
 
+.visual-inspection-canvas-tooltip.has-feature-details {
+  max-height: min(24rem, 55vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  pointer-events: auto;
+  scrollbar-gutter: stable;
+}
+
+.visual-inspection-tooltip-fact.is-description {
+  display: block;
+  padding-top: 0.25rem;
+}
+
+.visual-inspection-tooltip-fact.is-description .visual-inspection-tooltip-label {
+  display: block;
+}
+
 .visual-inspection-tooltip:has(.visual-inspection-tooltip-fact) {
   min-width: min(18rem, calc(100% - 1rem));
 }

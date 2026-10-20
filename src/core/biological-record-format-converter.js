@@ -640,6 +640,12 @@ function normalizedQualifierEntries(feature) {
   return entries;
 }
 
+export function makeBiologicalFeatureViewerDetails(feature) {
+  // Protein sequences have a dedicated field; keep hover annotations compact
+  // without discarding descriptive or repeated source qualifiers.
+  return normalizedQualifierEntries(feature).filter(([name]) => name !== "translation");
+}
+
 function formatGenbankFeature(feature) {
   const lines = [`     ${String(feature.feature || "misc_feature").padEnd(15, " ")} ${feature.location || `${feature.parsedLocation?.start || 1}..${feature.parsedLocation?.end || 1}`}`];
   for (const [name, value] of normalizedQualifierEntries(feature)) {
@@ -780,6 +786,7 @@ export function makeBiologicalRecordViewerRecords(records, options = {}) {
               geneQualifier: feature.gene,
               locus_tag: feature.locus_tag,
               product: feature.product,
+              details: makeBiologicalFeatureViewerDetails(feature),
               proteinId: feature.protein_id,
               standardName,
               boundMoiety: firstQualifier(feature, "bound_moiety"),

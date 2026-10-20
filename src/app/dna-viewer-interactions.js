@@ -301,7 +301,7 @@ export function makeViewerItemTargetDetails(item = {}) {
 export function normalizeViewerDetailRows(details) {
   if (!details) return [];
   const entries = Array.isArray(details) ? details : Object.entries(details);
-  return entries.slice(0, 64).map((entry) => {
+  return entries.map((entry) => {
     if (Array.isArray(entry)) return [entry[0], entry[1]];
     if (entry && typeof entry === "object") return [entry.label, entry.value];
     return [undefined, undefined];
@@ -1051,7 +1051,7 @@ export function makeTooltipText(target) {
         target.codon, `bases ${target.cdsPositions.join(', ')}`, target.cdsSplitCodon ? 'split codon across CDS segments' : ''].filter(Boolean).join(' | ');
       return [
         target.label || target.type || "Feature",
-        target.modelRegion || target.featureType,
+        target.modelRegion || (target.featureType && target.featureType !== target.label ? `Type: ${target.featureType}` : ""),
         target.genomicCoordinates || `coordinates ${formatCoordinates(target)}`,
         target.strand ? `${target.strand} strand` : "",
         formatLength(target)
@@ -1063,6 +1063,23 @@ export function makeTooltipText(target) {
     default:
       return target.label || target.type || "Viewer item";
   }
+}
+
+export function makeTooltipDetailRows(target) {
+  if (!["interval", "search-result"].includes(target?.kind)) return [];
+  // Descriptions explain generic annotations such as misc_feature. Keep the
+  // original values intact, including repeated qualifiers and punctuation.
+  const rows = normalizeViewerDetailRows(target.details);
+  if (target.note && !rows.some(([key]) => key.toLowerCase() === "note")) rows.push(["Note", target.note]);
+  const priority = ["product", "note", "description", "function", "gene", "locus_tag", "db_xref"];
+  const redundant = new Set(["genome", "feature type", "location", "translation"]);
+  return rows.filter(([key]) => !redundant.has(key.toLowerCase())).sort(([a], [b]) => {
+    const rank = key => {
+      const index = priority.indexOf(key.toLowerCase());
+      return index < 0 ? priority.length : index;
+    };
+    return rank(a) - rank(b);
+  });
 }
 
 function makeTitle(target) {
