@@ -51,11 +51,14 @@ function glyphMetrics(ctx, letter) {
   return { halfWidth: metrics.width / 2, offset: Number.isFinite(offset) ? offset : 0 };
 }
 
-export function drawLinearCdsTranslation(ctx, record, item, state, placement, target, { toX, y, height, pxPerBase, ink }) {
+export function drawLinearCdsTranslation(ctx, record, item, state, placement, target, { toX, y, height, pxPerBase, ink, clipShape }) {
   const pieces = piecesFor(record, item, state, placement, pxPerBase, height, target);
   if (!pieces.length) return false;
   ctx.save();
-  ctx.beginPath(); ctx.rect(toX(placement.start), y - height / 2, toX(placement.end) - toX(placement.start), height); ctx.clip();
+  ctx.beginPath();
+  if (clipShape) clipShape(ctx);
+  else ctx.rect(toX(placement.start), y - height / 2, toX(placement.end) - toX(placement.start), height);
+  ctx.clip();
   ctx.font = 'bold 10px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   for (const piece of pieces) {
     const x1 = toX(piece.start), x2 = toX(piece.end), x = toX(piece.labelPosition);

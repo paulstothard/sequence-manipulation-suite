@@ -1,3 +1,4 @@
+import { drawFeatureFocusGlow, traceCircularFeatureShape } from "./feature-focus-glow.js";
 import { hasCdsTranslations, CDS_TRANSLATION_HELP, drawCircularCdsTranslation } from './viewer-cds-translation.js';
 import { createViewerGeneModelKey } from './viewer-gene-model-key.js';
 import { viewerAlignmentPosition, drawViewerAlignmentGuide } from './viewer-alignment-guide.js';
@@ -1010,20 +1011,11 @@ function strokeAnnularArc(ctx, cx, cy, outerRadius, innerRadius, startAngle, end
   ctx.restore();
 }
 
-function drawCircularFeatureFocus(ctx, cx, cy, outline, theme) {
-  const padding = 3;
-  const radius = Math.max(1, (outline.outerRadius + outline.innerRadius) / 2);
-  const anglePadding = Math.min(padding / radius, Math.max(0, (TWO_PI - (outline.endAngle - outline.startAngle)) / 2));
-  const bounds = [
-    outline.outerRadius + padding, Math.max(0.5, outline.innerRadius - padding),
-    outline.startAngle - anglePadding, outline.endAngle + anglePadding
-  ];
-  // Follow the feature's arc while leaving its category-coloured border intact.
-  ctx.save();
-  strokeAnnularArc(ctx, cx, cy, ...bounds, theme.background, 2.5);
-  ctx.setLineDash([3, 2]);
-  strokeAnnularArc(ctx, cx, cy, ...bounds, theme.text, 1.5);
-  ctx.restore();
+function drawCircularFeatureFocus(ctx, cx, cy, feature, theme) {
+  drawFeatureFocusGlow(ctx, context => traceCircularFeatureShape(
+    context, cx, cy, feature.outerRadius, feature.innerRadius,
+    feature.startAngle, feature.endAngle, feature.strand, feature.headLength
+  ), theme);
 }
 
 function drawCircularSearchMarkers(ctx, cx, cy, innerRadius, outerRadius, state, record, arc, theme) {
@@ -1955,7 +1947,7 @@ function drawIntervalTrack(ctx, track, cx, cy, outerRadius, innerRadius, state, 
       ink: item.geneModel?.role === 'CDS' || theme.dark ? '#ffffff' : '#7c2d12'
     });
     if (viewerTargetMatches(state, target)) {
-      selectedArcOutlines.push({ outerRadius: slotOuterRadius, innerRadius: slotInnerRadius, startAngle, endAngle });
+      selectedArcOutlines.push({ outerRadius: slotOuterRadius, innerRadius: slotInnerRadius, startAngle, endAngle, strand: item.strand, headLength });
     }
     if (cdsDrawn || item.geneModel?.role === 'transcript') continue;
     const labelText = item.label || item.name || item.type || "";

@@ -1,3 +1,4 @@
+import { drawFeatureFocusGlow, traceLinearFeatureShape } from "./feature-focus-glow.js";
 import { hasCdsTranslations, CDS_TRANSLATION_HELP, drawLinearCdsTranslation } from './viewer-cds-translation.js';
 import { continuousFeatureChevronRows, drawLinearFeatureChevrons, usesFeatureChevrons } from './viewer-feature-chevrons.js';
 import { createViewerGeneModelKey } from './viewer-gene-model-key.js';
@@ -501,34 +502,15 @@ function drawLinearCodonAnchorOutline(ctx, { x1, x2, y, strand, theme, height = 
   ctx.restore();
 }
 
-function drawLinearSelectedIntervalOutline(ctx, { x1, x2, y, height, plotLeft, plotRight, theme }) {
-  const padding = 3;
-  const strokeWidth = 1.5;
-  // Keep focus marks inside the plot; omit side marks at cropped ends instead
-  // of drawing over the feature's original border there.
-  const edgeInset = 2;
-  const left = Math.max(plotLeft + edgeInset, x1 - padding);
-  const right = Math.min(plotRight - edgeInset, x2 + padding);
-  const top = y - height / 2 - padding;
-  const outlineHeight = height + padding * 2;
-  if (right - left < strokeWidth * 2 || outlineHeight <= 0) return;
+function drawLinearSelectedIntervalGlow(ctx, { x1, x2, y, height, strand, headLength = 0, plotLeft, plotRight, theme }) {
   ctx.save();
-  // A neutral, detached focus box preserves the category colour of even a
-  // narrow feature. Its dashed shape cannot be mistaken for a legend swatch.
-  ctx.strokeStyle = theme.background;
-  ctx.lineWidth = 2.5;
+  // Crop at the viewport without inventing highlighted ends on clipped genes.
   ctx.beginPath();
-  ctx.moveTo(left, top);
-  ctx.lineTo(right, top);
-  if (x2 + padding <= plotRight - edgeInset) ctx.lineTo(right, top + outlineHeight);
-  else ctx.moveTo(right, top + outlineHeight);
-  ctx.lineTo(left, top + outlineHeight);
-  if (x1 - padding >= plotLeft + edgeInset) ctx.lineTo(left, top);
-  ctx.stroke();
-  ctx.strokeStyle = theme.text;
-  ctx.lineWidth = strokeWidth;
-  ctx.setLineDash([3, 2]);
-  ctx.stroke();
+  ctx.rect(plotLeft, y - height / 2 - 12, plotRight - plotLeft, height + 24);
+  ctx.clip();
+  drawFeatureFocusGlow(ctx, context => traceLinearFeatureShape(
+    context, x1, y - height / 2, x2 - x1, height, strand, headLength
+  ), theme);
   ctx.restore();
 }
 
@@ -1024,7 +1006,7 @@ function drawViewer(ctx, canvas, status, record, state, theme = getViewerCanvasT
   const rows = computeLinearRows(record, state, pxPerBp);
   const layout = { plotLeft, plotRight, pxPerBp, markerTop: rows.markerTop, markerBottom: rows.markerBottom };
   state.hitRegions = [];
-  const selectedIntervalOutlines = [];
+  const selectedIntervalGlows = [];
 
   ctx.clearRect(0, 0, width, height);
   ctx.fillStyle = theme.background;
@@ -1100,7 +1082,7 @@ function drawViewer(ctx, canvas, status, record, state, theme = getViewerCanvasT
           ctx.fillRect(x - markerWidth / 2, trackY - markerHeight / 2, markerWidth, markerHeight);
           ctx.strokeRect(x - markerWidth / 2, trackY - markerHeight / 2, markerWidth, markerHeight);
           if (highlighted) {
-            selectedIntervalOutlines.push({ x1: x - markerWidth / 2, x2: x + markerWidth / 2, y: trackY, height: markerHeight });
+            selectedIntervalGlows.push({ x1: x - markerWidth / 2, x2: x + markerWidth / 2, y: trackY, height: markerHeight });
           }
           if (showLabels) {
             const label = site.label || site.enzyme || "";
@@ -1213,8 +1195,8 @@ function drawViewer(ctx, canvas, status, record, state, theme = getViewerCanvasT
         drawLinearIntervalShape(ctx, x1, laneY - rectHeight / 2, widthPx, rectHeight, item.strand, headLength);
         ctx.globalAlpha = previousAlpha;
         if (highlighted) {
-          selectedIntervalOutlines.push({
-            x1, x2, y: laneY, height: rectHeight
+          selectedIntervalGlows.push({
+            x1, x2: x1 + widthPx, y: laneY, height: rectHeight, strand: item.strand, headLength
           });
         }
         const readBasesDrawn = !compactTrack && drawAlignedReadBases(ctx, item, state, layout, {
@@ -1226,6 +1208,7 @@ function drawViewer(ctx, canvas, status, record, state, theme = getViewerCanvasT
         const cdsDrawn = drawLinearCdsTranslation(ctx, record, item, state, placement, target, {
           toX: bp => bpToX(bp, plotLeft, plotRight, state.viewStart, state.viewEnd),
           y: laneY, height: rectHeight, pxPerBase: pxPerBp,
+          clipShape: context => traceLinearFeatureShape(context, x1, laneY - rectHeight / 2, widthPx, rectHeight, item.strand, headLength),
           ink: item.geneModel?.role === 'CDS' || theme.dark ? '#ffffff' : '#7c2d12'
         });
         if (cdsDrawn) {
@@ -1318,8 +1301,8 @@ function drawViewer(ctx, canvas, status, record, state, theme = getViewerCanvasT
             : alignedReadArrowHeadLength(widthPx, rectHeight, item, item.strand, terminalVisible, pxPerBp, compactTrack);
           drawLinearIntervalShape(ctx, x1, trackY - rectHeight / 2, widthPx, rectHeight, item.strand, headLength);
           if (highlighted) {
-            selectedIntervalOutlines.push({
-              x1, x2, y: trackY, height: rectHeight
+            selectedIntervalGlows.push({
+              x1, x2: x1 + widthPx, y: trackY, height: rectHeight, strand: item.strand, headLength
             });
           }
           const readBasesDrawn = !compactTrack && drawAlignedReadBases(ctx, item, state, layout, {
@@ -1484,8 +1467,8 @@ function drawViewer(ctx, canvas, status, record, state, theme = getViewerCanvasT
 
   if (!record.hideRulers && !record.compactLayout) drawLinearRuler(ctx, state, layout, { y: bottomRulerY, labelsAbove: false, theme });
 
-  for (const outline of selectedIntervalOutlines) {
-    drawLinearSelectedIntervalOutline(ctx, { ...outline, plotLeft, plotRight, theme });
+  for (const outline of selectedIntervalGlows) {
+    drawLinearSelectedIntervalGlow(ctx, { ...outline, plotLeft, plotRight, theme });
   }
 
   if (hasVisibleGeneModels(record, state)) {
