@@ -7393,6 +7393,7 @@ select[name="featureTargetMode"] {
 }
 
 .visual-inspection-tooltip {
+  box-sizing: border-box;
   background: #111827;
   border: 1px solid rgb(255 255 255 / 0.24);
   border-radius: 9px;
@@ -7400,7 +7401,9 @@ select[name="featureTargetMode"] {
   color: #ffffff;
   font-size: 0.78rem;
   line-height: 1.35;
-  max-width: min(31rem, calc(100% - 1rem));
+  max-width: min(31rem, calc(100% - 1rem), var(--inspection-available-width, 100vw));
+  max-height: var(--inspection-available-height, 100vh);
+  overflow: auto;
   overflow-wrap: anywhere;
   padding: 0.56rem 0.68rem;
   pointer-events: none;
@@ -7418,7 +7421,7 @@ select[name="featureTargetMode"] {
 }
 
 .visual-inspection-canvas-tooltip.has-feature-details {
-  max-height: min(24rem, 55vh);
+  max-height: min(24rem, 55vh, var(--inspection-available-height, 100vh));
   overflow-y: auto;
   overscroll-behavior: contain;
   pointer-events: auto;
@@ -7435,7 +7438,7 @@ select[name="featureTargetMode"] {
 }
 
 .visual-inspection-tooltip:has(.visual-inspection-tooltip-fact) {
-  min-width: min(18rem, calc(100% - 1rem));
+  min-width: min(18rem, calc(100% - 1rem), var(--inspection-available-width, 100vw));
 }
 
 .visual-inspection-tooltip-heading {

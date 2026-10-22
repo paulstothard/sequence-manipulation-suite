@@ -1,4 +1,5 @@
 import { parseInspectionTooltipText } from "../core/inspection-tooltip-layout.js";
+import { placeInspectionTooltip } from "./inspection-tooltip-position.js";
 
 const TITLE_MARK_ATTRIBUTE = "data-sms3-title-mark";
 const ACTIVE_ATTRIBUTE = "data-sms3-inspection-active";
@@ -835,29 +836,10 @@ export function installVisualInspection(container, {
   }
 
   function placeTooltip(position, mark) {
-    const containerRect = container.getBoundingClientRect();
-    const tooltipRect = tooltip.getBoundingClientRect();
-    const scrollLeft = container.scrollLeft;
-    const scrollTop = container.scrollTop;
-    const inset = 8;
-    const preferredLeft = scrollLeft + position.clientX - containerRect.left + 12;
-    let preferredTop = scrollTop + position.clientY - containerRect.top + 14;
-    const minLeft = scrollLeft + inset;
-    const maxLeft = scrollLeft + container.clientWidth - tooltipRect.width - inset;
-    const minTop = scrollTop + inset;
-    const maxTop = scrollTop + container.clientHeight - tooltipRect.height - inset;
     const shortPlotRect = mark?.tagName?.toLowerCase() === "rect" &&
       (mark.getAttribute(HIGHLIGHT_POLICY_ATTRIBUTE) === "fill" || Boolean(mark.closest(PLOT_SVG_SELECTOR))) &&
       mark.getBoundingClientRect().height <= 80;
-    if (shortPlotRect) {
-      const markRect = mark.getBoundingClientRect();
-      const below = scrollTop + markRect.bottom - containerRect.top + inset;
-      const above = scrollTop + markRect.top - containerRect.top - tooltipRect.height - inset;
-      if (below <= maxTop) preferredTop = Math.max(preferredTop, below);
-      else if (above >= minTop) preferredTop = above;
-    }
-    tooltip.style.left = `${Math.max(minLeft, Math.min(preferredLeft, Math.max(minLeft, maxLeft)))}px`;
-    tooltip.style.top = `${Math.max(minTop, Math.min(preferredTop, Math.max(minTop, maxTop)))}px`;
+    placeInspectionTooltip(container, tooltip, position, shortPlotRect ? mark.getBoundingClientRect() : null);
   }
 
   function show(mark, position, { announce = false, source = "pointer" } = {}) {
@@ -1140,25 +1122,7 @@ export function installCanvasVisualInspection(container, {
   }
 
   function placeTooltip(position) {
-    const containerRect = container.getBoundingClientRect();
-    const tooltipRect = tooltip.getBoundingClientRect();
-    const scrollLeft = container.scrollLeft;
-    const scrollTop = container.scrollTop;
-    const inset = 8;
-    const preferredLeft = scrollLeft + position.clientX - containerRect.left + 12;
-    const preferredTop = scrollTop + position.clientY - containerRect.top + 14;
-    const minLeft = scrollLeft + inset;
-    const maxLeft = scrollLeft + container.clientWidth - tooltipRect.width - inset;
-    const minTop = scrollTop + inset;
-    const maxTop = scrollTop + container.clientHeight - tooltipRect.height - inset;
-    tooltip.style.left = `${Math.max(minLeft, Math.min(preferredLeft, Math.max(minLeft, maxLeft)))}px`;
-    const containerTop = Math.max(minTop, Math.min(preferredTop, Math.max(minTop, maxTop)));
-    const viewportTop = scrollTop - containerRect.top + inset;
-    const viewportBottom = scrollTop - containerRect.top + window.innerHeight - tooltipRect.height - inset;
-    const featureTop = scrollTop + position.clientY - containerRect.top +
-      (position.clientY + tooltipRect.height + 14 <= window.innerHeight - inset ? 14 : -tooltipRect.height - 14);
-    const top = tooltip.classList.contains("has-feature-details") ? featureTop : containerTop;
-    tooltip.style.top = `${Math.max(viewportTop, Math.min(top, Math.max(viewportTop, viewportBottom)))}px`;
+    placeInspectionTooltip(container, tooltip, position);
   }
 
   function setActive(target) {
