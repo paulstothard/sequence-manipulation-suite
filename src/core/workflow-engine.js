@@ -1,3 +1,4 @@
+import { hasPairedAnnotation } from "./paired-annotation-input.js";
 import { parsePcrTemplateInput } from "./pcr-template-input.js";
 import { workflowSequenceRecordsToFasta, identifyWorkflowSequenceRecords } from "./workflow-sequence-input.js";
 import { labWorkflowOperations, validateLabOperation, runLabOperation } from "./workflow-lab-operations.js";
@@ -434,7 +435,7 @@ function streamToToolInput(value) {
 function makeSequenceRecordsFromText(text, alphabet = "dna-rna") {
   // Plain sequence splitting keeps its existing alphabet/case semantics.
   // Annotated input must use its real parser, never sequence-text cleanup.
-  const annotated = alphabet !== "protein" && /^\s*(LOCUS\s|ID\s|##FASTA\s*$)/m.test(text);
+  const annotated = alphabet !== "protein" && (/^\s*(LOCUS\s|ID\s)/m.test(text) || hasPairedAnnotation(text));
   const parsed = annotated ? parsePcrTemplateInput(text) : { records: parseSequenceInput(text, "sequence"), warnings: [] };
   return {
     warnings: parsed.warnings,

@@ -1,3 +1,5 @@
+import { splitPairedAnnotationAndFasta } from "./paired-annotation-input.js";
+import { parseGff3Attributes, encodeGff3Seqid } from "./gff3-fields.js";
 import { parseUnsignedIntegerToken } from "./integer-token.js";
 import { createBioWasmCli, requireBioWasmRuntime } from "./biowasm-runner.js";
 import { parseSequenceInput } from "./fasta.js";
@@ -74,30 +76,8 @@ function checkCancelled(context, counter = 0, interval = 1024) {
 }
 
 export function splitGffGtfInput(input) {
-  const text = String(input ?? "").replace(/\r\n?/g, "\n");
-  const marker = text.match(/^##FASTA\s*$/m);
-  if (marker) {
-    return {
-      annotationText: text.slice(0, marker.index).trim(),
-      fastaText: text.slice(marker.index + marker[0].length).trim(),
-      hasMarker: true
-    };
-  }
-
-  const fastaStart = text.search(/^>/m);
-  if (fastaStart > 0) {
-    return {
-      annotationText: text.slice(0, fastaStart).trim(),
-      fastaText: text.slice(fastaStart).trim(),
-      hasMarker: false
-    };
-  }
-
-  return {
-    annotationText: text.trim(),
-    fastaText: "",
-    hasMarker: false
-  };
+  const parts = splitPairedAnnotationAndFasta(input);
+  return { annotationText: parts.annotationPart.trim(), fastaText: parts.fastaPart.trim(), hasMarker: parts.hasMarker };
 }
 
 function normalizeRecordId(title) {
@@ -118,26 +98,6 @@ function detectAnnotationFormat(annotationText, requested = "auto") {
   return "gff3";
 }
 
-function parseGff3Attributes(value) {
-  const attributes = {};
-  for (const part of String(value ?? "").split(";")) {
-    const trimmed = part.trim();
-    if (!trimmed) continue;
-    const equalsIndex = trimmed.indexOf("=");
-    if (equalsIndex === -1) {
-      attributes[trimmed] = "true";
-      continue;
-    }
-    const key = trimmed.slice(0, equalsIndex).trim();
-    const rawValue = trimmed.slice(equalsIndex + 1).trim();
-    if (key) {
-      // Commas delimit raw IDs; an escaped comma belongs to one ID.
-      attributes[key] = key === "Parent" ? rawValue.split(",").map(decodeURIComponent) : decodeURIComponent(rawValue);
-    }
-  }
-  return attributes;
-}
-
 function parseGtfAttributes(value) {
   const attributes = {};
   const source = String(value ?? "");
@@ -148,13 +108,13 @@ function parseGtfAttributes(value) {
     match = pattern.exec(source);
   }
   if (Object.keys(attributes).length === 0) {
-    return parseGff3Attributes(value);
+    return parseGff3Attributes(value, { parentLists: true });
   }
   return attributes;
 }
 
 function parseAttributes(value, format) {
-  return format === "gtf" ? parseGtfAttributes(value) : parseGff3Attributes(value);
+  return format === "gtf" ? parseGtfAttributes(value) : parseGff3Attributes(value, { parentLists: true });
 }
 
 function parentList(attributes, format) {
@@ -188,6 +148,7 @@ function featureNameFromAttributes(attributes, fallback = "") {
 
 export function parseGffGtfAnnotation(annotationText, rawOptions = {}, context = {}) {
   const options = normalizeGffGtfFeatureExtractorOptions(rawOptions);
+  annotationText = splitPairedAnnotationAndFasta(annotationText).annotationPart;
   const format = detectAnnotationFormat(annotationText, options.inputFormat);
   const warnings = [];
   const features = [];
@@ -203,11 +164,11 @@ export function parseGffGtfAnnotation(annotationText, rawOptions = {}, context =
       break;
     }
     const fields = line.split("\t");
-    if (fields.length < 9) {
-      warnings.push(`Line ${lineNumber} was skipped because it has fewer than 9 GFF/GTF fields.`);
+    if (fields.length !== 9) {
+      warnings.push(`Line ${lineNumber} was skipped because GFF/GTF requires exactly 9 tab-separated fields.`);
       continue;
     }
-    const [seqid, source, type, rawStart, rawEnd, score, strand, phase, rawAttributes] = fields;
+    const [rawSeqid, source, type, rawStart, rawEnd, score, strand, phase, rawAttributes] = fields;
     if (typeFilter.size && !typeFilter.has(type.toLowerCase())) {
       continue;
     }
@@ -217,7 +178,14 @@ export function parseGffGtfAnnotation(annotationText, rawOptions = {}, context =
       warnings.push(`Line ${lineNumber} was skipped because coordinates are not valid 1-based inclusive values.`);
       continue;
     }
-    const attributes = parseAttributes(rawAttributes, format);
+    let seqid, attributes;
+    try {
+      seqid = format === "gff3" ? decodeURIComponent(rawSeqid) : rawSeqid;
+      attributes = parseAttributes(rawAttributes, format);
+    } catch (error) {
+      warnings.push(`Line ${lineNumber} was skipped because its ${format.toUpperCase()} ID or attributes are invalid: ${error.message}`);
+      continue;
+    }
     const parents = parentList(attributes, format);
     const id = featureId(attributes, format, seqid, type, features.length);
     const name = featureNameFromAttributes(attributes, id);
@@ -296,7 +264,7 @@ function attributesToGff3(feature) {
 
 function makeNormalizedGff3(features) {
   const body = features.map((feature) => [
-    feature.seqid,
+    encodeGff3Seqid(feature.seqid),
     feature.source || "SMS3",
     feature.type,
     feature.start,
@@ -420,7 +388,7 @@ async function runGffread(annotationText, fastaText, format, options, context = 
   const result = await cli.exec("gffread", args);
   context.throwIfCancelled?.();
   const stderr = String(result?.stderr ?? "").trim();
-  if (result?.code && result.code !== 0) {
+  if ((result?.code && result.code !== 0) || /^Error:/im.test(stderr)) {
     throw new Error(stderr || `gffread exited with code ${result.code}.`);
   }
 
@@ -531,7 +499,20 @@ export async function extractGffGtfFeatures(input, rawOptions = {}, context = {}
   }
   const transcripts = groupTranscriptParts(parsed.features);
   const normalizedGff3 = makeNormalizedGff3(tableFeatures);
-  const biowasm = await runGffread(annotationText, fastaText, parsed.format, options, context);
+  // gffread matches literal seqids; it does not decode GFF3 percent escapes.
+  // Use canonical escaped IDs in both backend inputs, leaving user records and
+  // all bases/coordinates untouched. Stage only rows accepted by our parser so
+  // a warned/skipped malformed row cannot reappear in the extraction output.
+  const annotationLines = annotationText.replace(/\r\n?/g, "\n").split("\n");
+  const backendAnnotation = parsed.features.map(feature => {
+    const fields = annotationLines[feature.lineNumber - 1].split("\t");
+    fields[0] = parsed.format === "gff3" ? encodeGff3Seqid(feature.seqid) : feature.seqid;
+    return fields.join("\t");
+  }).join("\n");
+  const backendFasta = parsed.format === "gff3"
+    ? fastaText.replace(/^(>[ \t]*)(\S+)/gm, (_, prefix, id) => prefix + encodeGff3Seqid(id))
+    : fastaText;
+  const biowasm = await runGffread(backendAnnotation, backendFasta, parsed.format, options, context);
   enforceGffOutputRecordLimit(biowasm, options.maxOutputRecords);
   const engine = biowasm.engine;
   const engineLabel = biowasm.engineLabel;

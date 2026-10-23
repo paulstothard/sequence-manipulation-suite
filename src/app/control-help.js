@@ -67,7 +67,11 @@ export function installControlHelp(root, { signal } = {}) {
     if (!tooltip.contains(event.relatedTarget)) timer = setTimeout(() => focused ? show(focused) : hide(), 100);
   }, options);
   tooltip.addEventListener("pointerenter", () => clearTimeout(timer), options);
-  tooltip.addEventListener("pointerleave", () => focused ? show(focused) : hide(), options);
+  tooltip.addEventListener("pointerleave", () => {
+    // Hiding a hovered popover can queue pointerleave. That event must not
+    // reopen help after Escape or another explicit dismissal.
+    if (active) focused ? show(focused) : hide();
+  }, options);
   root.addEventListener("focusin", event => {
     focused = controlFor(event.target);
     if (focused) show(focused);

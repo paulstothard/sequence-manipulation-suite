@@ -1,3 +1,4 @@
+import { hasPairedAnnotation } from "./paired-annotation-input.js";
 import { parseSequenceInput, formatFastaRecord } from "./fasta.js";
 import {
   makeBiologicalRecordViewerRecords,
@@ -154,7 +155,7 @@ function makeAnnotatedFeatureTrack(record) {
 function parseEditorInputRecords(input, fallbackTitle, warnings = [], options = {}) {
   const requestedInputFormat = String(options.inputFormat ?? "").toLowerCase();
   const pairedFormat = ["gff3-fasta", "gtf-fasta", "bed-fasta"].includes(requestedInputFormat) ||
-    /^##FASTA\s*$/m.test(String(input ?? ""));
+    hasPairedAnnotation(input);
   if (pairedFormat || options.workflowSequenceRecords) {
     const parsed = parseBiologicalRecordInput(input, { inputFormat: requestedInputFormat || "auto", workflowSequenceRecords: options.workflowSequenceRecords });
     const nucleotideRecords = parsed.records.filter((record) => record.sequence && record.molecule !== "protein");

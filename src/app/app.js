@@ -3805,7 +3805,7 @@ function getPcrTemplateInputText() {
   if (!PCR_TEMPLATE_SOURCE_MODES[mode]?.showFasta) return annotation;
   const fasta = panel?.querySelector('[data-pcr-input="template-fasta"]')?.value ?? "";
   const prefix = mode === "gff3Fasta" && !/^##gff-version\s+3/m.test(annotation) ? "##gff-version 3\n" : "";
-  return `${prefix}${annotation}\n##FASTA\n${fasta}`;
+  return fasta.trim() ? `${prefix}${annotation}\n##FASTA\n${fasta}` : `${prefix}${annotation}`;
 }
 
 function getInSilicoPcrInputText() {
@@ -4111,15 +4111,16 @@ function getSelectedToolInputText() {
     return getPcrTemplateInputText();
   }
   const separator = splitInput.separator ?? "---";
-  return [...elements.splitInputPanel.querySelectorAll(".split-input-textarea")]
+  const parts = [...elements.splitInputPanel.querySelectorAll(".split-input-textarea")]
     .sort((left, right) => Number(left.dataset.splitInputIndex) - Number(right.dataset.splitInputIndex))
     .map((textarea) => {
       const amount = textarea.closest('.split-input-section')?.querySelector('[data-relative-amount]');
       return amount && textarea.value.trim()
         ? JSON.stringify({ format: 'sms3-weighted-sequence-v1', input: textarea.value, weight: amount.value })
         : textarea.value;
-    })
-    .join(`\n${separator}\n`);
+    });
+  if (separator === "##FASTA" && parts.length === 2 && !parts[1].trim()) return parts[0];
+  return parts.join(`\n${separator}\n`);
 }
 
 function getReadMappingCoverageInputText() {

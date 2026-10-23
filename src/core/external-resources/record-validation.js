@@ -2,7 +2,7 @@
 // source text, including feature locations/qualifiers this app does not parse.
 export async function validateAnnotatedDownload(text, format, signal) {
   const fail = detail => { throw new Error(`The service did not return a complete annotated record: ${detail}`); };
-  const records = text.split(/^\/\/[ \t]*\r?$/m);
+  const records = text.replace(/\r\n?/g, '\n').split(/^\/\/[ \t]*\r?$/m);
   if (records.pop().trim() || !records.length) fail('missing record terminator.');
   let count = 0;
   for (const raw of records) {
@@ -10,10 +10,10 @@ export async function validateAnnotatedDownload(text, format, signal) {
     const record = raw.trim();
     let declared, sequence, sequenceHeader;
     if (format === 'gb' || format === 'gp') {
-      const locus = record.match(/^LOCUS\s+\S+\s+(\d+)\s+(bp|aa)\b/i);
+      const locus = record.match(/^LOCUS[ \t]+\S+[ \t]+(\d+)[ \t]+(bp|aa)\b/i);
       if (!locus || locus[2].toLowerCase() !== (format === 'gp' ? 'aa' : 'bp')) fail('the record does not match the selected nucleotide/protein format.');
       declared = Number(locus[1]);
-      if (!/^FEATURES\s+Location\/Qualifiers\s*$/m.test(record)) fail('the feature table is missing.');
+      if (!/^FEATURES[ \t]+Location\/Qualifiers[ \t]*$/m.test(record)) fail('the feature table is missing.');
       sequence = record.match(/^ORIGIN[^\r\n]*\r?\n([\s\S]*)$/m)?.[1];
     } else {
       const id = record.match(/^ID\s+[^\r\n]*\b(\d+)\s+(BP|AA)\./i);

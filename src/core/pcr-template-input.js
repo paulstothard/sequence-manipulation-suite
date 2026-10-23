@@ -1,3 +1,4 @@
+import { splitPairedAnnotationAndFasta } from "./paired-annotation-input.js";
 import { makeSequenceFeatureTracks } from "./sequence-feature-tracks.js";
 import { parseDnaRnaSequenceOrFlatfile } from "./dna-input-records.js";
 import { formatFastaRecord } from "./fasta.js";
@@ -5,11 +6,11 @@ import { parseBiologicalRecordInput } from "./biological-record-format-converter
 
 export function parsePcrTemplateInput(input, options = {}) {
   const text = String(input ?? "").replace(/\r\n?/g, "\n");
-  const marker = /^##FASTA\s*$/m.exec(text);
-  if (!marker) return parseDnaRnaSequenceOrFlatfile(text, options);
+  const parts = splitPairedAnnotationAndFasta(text);
+  if (!parts.paired) return parseDnaRnaSequenceOrFlatfile(text, options);
 
-  const annotation = text.slice(0, marker.index).trim();
-  const fasta = text.slice(marker.index + marker[0].length).trim();
+  const annotation = parts.annotationPart.trim();
+  const fasta = parts.fastaPart.trim();
   if (!fasta.startsWith(">")) throw new Error("Provide matching template FASTA records with the annotation input.");
   const sequences = parseDnaRnaSequenceOrFlatfile(fasta, options);
   if (!annotation) return sequences;

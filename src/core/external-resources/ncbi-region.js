@@ -1,7 +1,7 @@
 import { DATASETS, EUTILS, encodeUrl, requireData, accession, checkSpan, overlap, checkTranscriptCount, selectTranscripts, parseExactFasta, regionResult, MAX_REGION_GENES } from './region-common.js';
 import { parseSequenceInput } from '../fasta.js';
 import { validateAnnotatedDownload } from './record-validation.js';
-import { parseFlatfileRecords, parseGenbankRegion } from '../flatfile-records.js';
+import { parseFlatfileRecords, parseGenbankRegion, genbankHeaderIdentifier, genbankHeaderValue } from '../flatfile-records.js';
 
 async function pagedReports(target, session, maximum, filtered = false) {
   const reports = [], tokens = new Set();
@@ -152,7 +152,7 @@ export async function retrieveNcbiGenomic(plan, session, { chromosome, assembly,
     requireData(await validateAnnotatedDownload(text, 'gb', session.signal) === 1);
     const returnedRegion = parseGenbankRegion(text);
     // EFetch omits REGION only for a complete chromosome on its forward strand.
-    const wholeChromosome = plan.strand === '1' && plan.region.start === 1 && plan.region.end === chromosome.length && !/^ACCESSION[^\r\n]*\bREGION:/m.test(text) && text.match(/^VERSION\s+(\S+)/m)?.[1] === chromosome.refseq_accession;
+    const wholeChromosome = plan.strand === '1' && plan.region.start === 1 && plan.region.end === chromosome.length && !/\bREGION:/.test(genbankHeaderValue(text, "ACCESSION")) && genbankHeaderIdentifier(text, "VERSION") === chromosome.refseq_accession;
     requireData(wholeChromosome || (returnedRegion?.accession === chromosome.refseq_accession && returnedRegion.start === plan.region.start && returnedRegion.end === plan.region.end && returnedRegion.strand === (plan.strand === '-1' ? '-' : '+')), 'NCBI did not return the exact chromosome version, interval and strand requested. No region was substituted.');
     const sequence = text.match(/^ORIGIN[^\r\n]*\r?\n([\s\S]*?)^\/\//m)?.[1]?.replace(/[\s\d]/g, '') ?? '';
     requireData(sequence.length === plan.region.length && /^[ACGTURYSWKMBDHVN]+$/i.test(sequence));

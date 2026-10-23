@@ -1,3 +1,5 @@
+import { splitPairedAnnotationAndFasta } from "./paired-annotation-input.js";
+import { parseGff3Attributes, encodeGff3Seqid } from "./gff3-fields.js";
 import { readWorkflowSequenceRecords } from "./workflow-sequence-input.js";
 import { parseUnsignedIntegerToken } from "./integer-token.js";
 import { formatFastaRecord, parseSequenceInput } from "./fasta.js";
@@ -76,17 +78,6 @@ function featureName(feature) {
     firstQualifier(feature, "label") ||
     firstQualifier(feature, "note") ||
     feature.feature;
-}
-
-function parseGff3Attributes(text) {
-  const attributes = {};
-  for (const part of String(text ?? "").split(";")) {
-    const [rawKey, ...rawValue] = part.split("=");
-    const key = rawKey?.trim();
-    if (!key) continue;
-    attributes[key] = decodeURIComponent(rawValue.join("=").trim() || "true");
-  }
-  return attributes;
 }
 
 function parseGtfAttributes(text) {
@@ -173,19 +164,6 @@ function makeInsdcLocation(ranges, strand = "+") {
   return strand === "-" ? `complement(${body})` : body;
 }
 
-function splitPairedAnnotationAndFasta(input) {
-  const text = String(input ?? "");
-  const marker = text.match(/^##FASTA\s*$/m) ?? text.match(/^---\s*FASTA\s*---\s*$/im);
-  if (!marker) {
-    return { annotationPart: text, fastaPart: "", hasMarker: false };
-  }
-  return {
-    annotationPart: text.slice(0, marker.index),
-    fastaPart: text.slice(marker.index + marker[0].length),
-    hasMarker: true
-  };
-}
-
 function flatfileInputPart(input) {
   const parts = splitPairedAnnotationAndFasta(input);
   return parts.hasMarker && !parts.fastaPart.trim() ? parts.annotationPart : String(input ?? "");
@@ -233,11 +211,24 @@ function recordsFromGff3Fasta(input, warnings) {
   let featureIndex = 0;
   const groupedParts = new Map();
   const featureOrder = [];
-  for (const line of gffPart.split(/\r?\n/)) {
-    if (!line || line.startsWith("#")) continue;
+  let lineNumber = 0;
+  for (const line of gffPart.split("\n")) {
+    lineNumber += 1;
+    if (!line.trim() || line.startsWith("#")) continue;
     const fields = line.split("\t");
-    if (fields.length < 9) continue;
-    const [seqid, source, type, rawStart, rawEnd, , strand, , rawAttributes] = fields;
+    if (fields.length !== 9) {
+      warnings.push(`Line ${lineNumber} was skipped because GFF3 requires exactly 9 tab-separated fields.`);
+      continue;
+    }
+    const [rawSeqid, source, type, rawStart, rawEnd, , strand, , rawAttributes] = fields;
+    let seqid, attributes;
+    try {
+      seqid = decodeURIComponent(rawSeqid);
+      attributes = parseAttributes(rawAttributes, "gff3");
+    } catch (error) {
+      warnings.push(`Line ${lineNumber} was skipped because its GFF3 ID or attributes are invalid: ${error.message}`);
+      continue;
+    }
     const record = recordsById.get(seqid);
     if (!record) {
       warnings.push(`${seqid}: skipped GFF3 feature because no matching FASTA record was found.`);
@@ -249,7 +240,6 @@ function recordsFromGff3Fasta(input, warnings) {
       warnings.push(`${seqid}: skipped GFF3 feature with coordinates outside the paired sequence (${rawStart}, ${rawEnd}); positive integer positions within 1–${record.sequence.length} are required.`);
       continue;
     }
-    const attributes = parseAttributes(rawAttributes, "gff3");
     const id = pairedFeatureId(attributes, `${seqid}:gff3:${featureIndex + 1}`);
     const partNumber = Number(attributes.part);
     if (attributes.part && Number.isInteger(partNumber) && partNumber > 0 && id) {
@@ -563,7 +553,7 @@ export function makeGff3Rows(records) {
           feature.protein_id ? `protein_id=${encodeGffAttribute(feature.protein_id)}` : ""
         ].filter(Boolean).join(";");
         return parts.map((part, index) => ({
-          seqid: record.accession,
+          seqid: encodeGff3Seqid(record.accession),
           source: "SMS3",
           type: feature.feature,
           start: part.start,
@@ -830,7 +820,7 @@ export function parseBiologicalRecordInput(input, options = {}) {
   const gtfRecords = parsed.records.length > 0 || gffRecords.length > 0 || !allowGtf ? [] : recordsFromGtfFasta(input, gtfWarnings);
   const bedRecords = parsed.records.length > 0 || gffRecords.length > 0 || gtfRecords.length > 0 || !allowBed ? [] : recordsFromBedFasta(input, bedWarnings);
   const records = parsed.records.length > 0 ? parsed.records : gffRecords.length > 0 ? gffRecords : gtfRecords.length > 0 ? gtfRecords : bedRecords;
-  const sourceWarnings = parsed.records.length > 0 ? parsed.warnings : gffRecords.length > 0 ? gffWarnings : gtfRecords.length > 0 ? gtfWarnings : bedWarnings;
+  const sourceWarnings = parsed.records.length > 0 ? parsed.warnings : gffRecords.length > 0 ? gffWarnings : gtfRecords.length > 0 ? gtfWarnings : [...gffWarnings, ...gtfWarnings, ...bedWarnings];
   const sourceFormat = parsed.records.length > 0
     ? parsed.records.map((record) => record.format).filter(Boolean).join(", ") || "annotated flatfile"
     : gffRecords.length > 0

@@ -1,3 +1,4 @@
+import { genbankHeaderValue, genbankHeaderIdentifier } from '../flatfile-records.js';
 import { url } from './catalog.js';
 import { MAX_ASSEMBLY_SEQUENCES } from './limits.js';
 import { parseSequenceInput } from '../fasta.js';
@@ -47,7 +48,10 @@ export async function readAssemblySequences(plan, firstPage, client, signal) {
 export function verifyAssemblyRecords(text, format, expected) {
   const actual = format === 'fasta'
     ? parseSequenceInput(text).map(record => ({ id: record.title.split(/\s+/)[0], length: record.sequence.length }))
-    : [...text.matchAll(/^LOCUS[ \t]+\S+[ \t]+(\d+)[ \t]+bp\b[\s\S]*?^VERSION[ \t]+(\S+)/gm)].map(match => ({ id: match[2], length: Number(match[1]) }));
+    : text.replace(/\r\n?/g, '\n').split(/^\/\/[ \t]*$/m).filter(record => record.trim()).map(record => ({
+      id: genbankHeaderIdentifier(record.trim(), 'VERSION'),
+      length: Number(genbankHeaderValue(record.trim(), 'LOCUS').match(/^\S+[ \t]+(\d+)[ \t]+bp\b/)?.[1])
+    }));
   const remaining = new Map(expected.map(record => [record.id, record.length]));
   if (actual.length !== expected.length || actual.some(record => {
     if (remaining.get(record.id) !== record.length) return true;

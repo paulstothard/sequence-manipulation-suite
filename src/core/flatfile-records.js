@@ -25,7 +25,7 @@ function normalizeHeaderValue(text) {
 }
 
 function splitRecords(text) {
-  return String(text ?? "")
+  return String(text ?? "").replace(/\r\n?/g, "\n")
     .split(/\n\/\/\s*(?=\n|$)/)
     .map((record) => record.trim())
     .filter(Boolean);
@@ -225,12 +225,29 @@ function parseGenbankFeatures(recordText) {
   return features;
 }
 
+// Identifier fields are single-line headers, never continuation or feature text.
+export function genbankHeaderValue(recordText, key) {
+  const text = String(recordText ?? '');
+  const end = text.search(/^(?:FEATURES|ORIGIN|CONTIG|BASE COUNT)\b|^\/\/[ \t]*$/m);
+  // Split only the header, not a genome's entire sequence, for each lookup.
+  const header = end < 0 ? text : text.slice(0, end);
+  for (const line of header.split(/\r\n?|\n/)) {
+    const match = /^([A-Z][A-Z0-9_]*)(?:[ \t]+(.*))?$/.exec(line);
+    if (match?.[1] === key) return (match[2] ?? '').trim();
+  }
+  return '';
+}
+
+export function genbankHeaderIdentifier(recordText, key) {
+  return genbankHeaderValue(recordText, key).split(/[ \t]+/)[0];
+}
+
 // NCBI EFetch interval records keep the chromosome accession, but their
 // sequence and features use local coordinates. Retain the original interval
 // separately so an imported fragment is not labelled as the whole chromosome.
 export function parseGenbankRegion(recordText) {
-  const accession = recordText.match(/^VERSION\s+(\S+)/m)?.[1];
-  const match = recordText.match(/^ACCESSION\s+\S+\s+REGION:\s*(?:(complement)\((\d+)(?:\.\.(\d+))?\)|(\d+)(?:\.\.(\d+))?)[ \t\r]*$/m);
+  const accession = genbankHeaderIdentifier(recordText, "VERSION");
+  const match = genbankHeaderValue(recordText, "ACCESSION").match(/^\S+[ \t]+REGION:[ \t]*(?:(complement)\((\d+)(?:\.\.(\d+))?\)|(\d+)(?:\.\.(\d+))?)[ \t\r]*$/m);
   if (!accession || !match) return null;
   const start = Number(match[2] ?? match[4]), end = Number(match[3] ?? match[5] ?? start);
   if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 1 || end < start) return null;
@@ -244,11 +261,11 @@ export function flatfileRecordDisplayId(record) {
 
 function parseGenbankRecord(recordText) {
   const fields = parseHeaderLines(recordText);
-  const locusLine = recordText.match(/^LOCUS\s+(.+)$/m)?.[1] ?? "";
+  const locusLine = genbankHeaderValue(recordText, "LOCUS");
   const locusParts = locusLine.trim().split(/\s+/);
   const sequence = cleanSequence(recordText.match(/\nORIGIN\s*\n([\s\S]*?)(?:\n\/\/|$)/)?.[1] ?? "");
   const features = parseGenbankFeatures(recordText);
-  const accession = fields.get("VERSION") || fields.get("ACCESSION") || locusParts[0] || "GenBank record";
+  const accession = genbankHeaderIdentifier(recordText, "VERSION") || genbankHeaderIdentifier(recordText, "ACCESSION") || locusParts[0] || "GenBank record";
   const isProtein = locusParts.some((part) => part.toLowerCase() === "aa");
   const sourceRegion = parseGenbankRegion(recordText);
   return makeParsedRecord({
