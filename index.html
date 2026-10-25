@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light dark" />
-    <meta name="sms3-tool-worker" content="./src/workers/tool-worker.bundle-CBCCCDV2.js" />
+    <meta name="sms3-tool-worker" content="./src/workers/tool-worker.bundle-YGMXGDTP.js" />
     <title>SMS3</title>
     <style>
       html,
@@ -35,7 +35,7 @@
         }
       })();
     </script>
-    <link rel="stylesheet" href="./src/app/styles.bundle-WIQH2LOP.css" />
+    <link rel="stylesheet" href="./src/app/styles.bundle-AMDR76J5.css" />
     <script>
       window.plausible = window.plausible || function () {
         (window.plausible.q = window.plausible.q || []).push(arguments);
@@ -616,11 +616,33 @@
       </form>
     </dialog>
 
+    <script>
+      // Run before external scripts, so even a stalled script request leaves
+      // a usable recovery action instead of an indefinite loading message.
+      const startupStatus = document.querySelector("#appStartupStatus");
+      const startupRetry = document.querySelector("#appStartupRetry");
+      startupRetry?.addEventListener("click", () => {
+        const modulePath = document.querySelector("#sms3AppLoader")?.dataset.appModule;
+        try {
+          if (modulePath) sessionStorage.removeItem(`sms3-startup-retry:${new URL(modulePath, document.baseURI).pathname}`);
+        } catch { /* Recovery also works without browser storage. */ }
+        const url = new URL(location.href);
+        url.searchParams.set("startup-retry", Date.now().toString(36));
+        location.replace(url);
+      });
+      setTimeout(() => {
+        if (document.documentElement.dataset.sms3Ready === "true" || !startupStatus || startupStatus.dataset.state === "error") return;
+        startupStatus.dataset.state = "slow";
+        startupStatus.querySelector("strong").textContent = "SMS3 is taking longer to load";
+        startupStatus.querySelector("span").textContent = "You can wait a little longer or reload to try again.";
+        startupRetry.hidden = false;
+      }, 15000);
+    </script>
     <script src="./src/vendor/d3/d3.min.js"></script>
     <script src="./src/vendor/observablehq-plot/plot.umd.min.js"></script>
     <script async src="./src/vendor/exceljs/exceljs.min.js"></script>
     <script async src="./src/vendor/3dmol/3Dmol-min.js"></script>
-    <script id="sms3AppLoader" type="module" data-app-module="./src/app/app.bundle-ZD5FAW6P.js">
+    <script id="sms3AppLoader" type="module" data-app-module="./src/app/app.bundle-ENIN6YLW.js">
       const loader = document.querySelector("#sms3AppLoader");
       const status = document.querySelector("#appStartupStatus");
       const retryButton = document.querySelector("#appStartupRetry");
@@ -645,15 +667,6 @@
           // The visible recovery control still works when session storage is unavailable.
         }
       }
-
-      function reloadForRetry() {
-        setRetryCount(0);
-        const retryUrl = new URL(globalThis.location.href);
-        retryUrl.searchParams.set("startup-retry", Date.now().toString(36));
-        globalThis.location.replace(retryUrl);
-      }
-
-      retryButton?.addEventListener("click", reloadForRetry);
 
       try {
         await import(appUrl);

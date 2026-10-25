@@ -1,3 +1,5 @@
+import {renderGraphicEditor} from './graphic-editor-ui.js';
+import { renderTextTableImage } from './text-table-image-ui.js';
 import { renderFilePreview } from './file-preview-ui.js';
 import { ToolWorkerClient } from './worker-client.js';
 import { getRetrievedWorkspaceValues } from '../core/retrieved-workspace-records.js';
@@ -109,6 +111,10 @@ export function createOutputShellController({
 function renderMessages(result) {
   elements.messages.textContent = "";
 
+  if (result.visual?.graphicEditor) {
+    appendWarningSummary(elements.messages,result.warnings);
+    return;
+  }
   const processedUnitLabel = result.processedUnitLabel ?? "base";
   const summary = document.createElement("div");
   summary.className = "message info";
@@ -1754,7 +1760,7 @@ function renderVisualOutput(scope, svg, options = {}) {
     textRegions._sms3TextCleanup = renderFilePreview(textRegions, options.filePreview);
     return "";
   }
-  if (!svg && !options.filePreview && !options.viewer && !options.figure && !options.proteinFigure && !options.sequenceLogo && !options.proteinStructure && !options.notebook && !options.sangerTrace && !options.sequenceEditor && !options.sequenceExtractor && !options.treeViewer && !options.plateLayout) {
+  if (!svg && !options.filePreview && !options.viewer && !options.figure && !options.proteinFigure && !options.sequenceLogo && !options.proteinStructure && !options.notebook && !options.sangerTrace && !options.sequenceEditor && !options.sequenceExtractor && !options.treeViewer && !options.plateLayout && !options.textTableImage && !options.graphicEditor) {
     visualOutput.hidden = true;
     visualOutput.textContent = "";
     return;
@@ -1763,7 +1769,7 @@ function renderVisualOutput(scope, svg, options = {}) {
   visualOutput.textContent = "";
   const heading = document.createElement("h4");
   heading.className = "visual-output-heading";
-  heading.textContent = options.plateLayout ? "Plate Layout Planner" : options.treeViewer ? "Tree Viewer" : options.sequenceLogo
+  heading.textContent = options.graphicEditor ? (options.graphicEditor.kind === "svg" ? "SVG Editor" : "Image Annotator") : options.textTableImage ? "Text & Table to Image" : options.plateLayout ? "Plate Layout Planner" : options.treeViewer ? "Tree Viewer" : options.sequenceLogo
     ? "Sequence Logo"
     : options.proteinFigure
     ? "Protein Sequence Figure"
@@ -1785,6 +1791,13 @@ function renderVisualOutput(scope, svg, options = {}) {
             ? "Markdown Notebook"
             : "Plot";
   appendPortableViewerHeading(visualOutput, heading, options);
+  if (options.graphicEditor) {
+    return renderGraphicEditor(visualOutput, options.graphicEditor, options.editorDocument);
+  }
+  if (options.textTableImage) {
+    renderTextTableImage(visualOutput, options.textTableImage, options.editorDocument);
+    return "";
+  }
   if (options.plateLayout) {
     renderPlateLayout(visualOutput, options.plateLayout, options.editorDocument);
     attachVisualInspection(visualOutput, { allowPin: false });
@@ -1897,7 +1910,7 @@ function renderVisualOutput(scope, svg, options = {}) {
 }
 
 async function applyToolOutputChoice(choice, options = {}) {
-  const hasVisualOutput = Boolean(choice.filePreview || choice.svg || choice.viewer || choice.figure || choice.proteinFigure || choice.sequenceLogo || choice.proteinStructure || choice.notebook || choice.sangerTrace || choice.sequenceEditor || choice.sequenceExtractor || choice.treeViewer || choice.plateLayout);
+  const hasVisualOutput = Boolean(choice.filePreview || choice.svg || choice.viewer || choice.figure || choice.proteinFigure || choice.sequenceLogo || choice.proteinStructure || choice.notebook || choice.sangerTrace || choice.sequenceEditor || choice.sequenceExtractor || choice.treeViewer || choice.graphicEditor || choice.textTableImage || choice.plateLayout);
   const hasPrimaryOutput = Boolean(choice.text || choice.tableStream || hasVisualOutput);
   elements.toolOutput.dataset.rawOutput = choice.text;
   elements.toolOutput.value = choice.tableStream
@@ -1927,6 +1940,8 @@ async function applyToolOutputChoice(choice, options = {}) {
     sequenceEditor: choice.sequenceEditor,
     sequenceExtractor: choice.sequenceExtractor,
     treeViewer: choice.treeViewer,
+    graphicEditor: choice.graphicEditor,
+    textTableImage: choice.textTableImage,
     plateLayout: choice.plateLayout,
     signal: options.signal
   }));
@@ -1949,7 +1964,7 @@ async function applyToolOutputChoice(choice, options = {}) {
   elements.toolOutput.hidden = Boolean(choice.tableStream || hasVisualOutput || !choice.text);
   setOutputSearchRowVisible("tool", Boolean(choice.tableStream || (!hasVisualOutput && choice.text)));
   updateOutputActions("tool", {
-    hidden: Boolean(choice.filePreview || choice.tableStream || choice.viewer || choice.figure || choice.proteinFigure || choice.sequenceLogo || choice.proteinStructure || choice.notebook || choice.sangerTrace || choice.sequenceEditor || choice.sequenceExtractor || choice.treeViewer || choice.plateLayout || (!choice.text && !choice.svg)),
+    hidden: Boolean(choice.filePreview || choice.tableStream || choice.viewer || choice.figure || choice.proteinFigure || choice.sequenceLogo || choice.proteinStructure || choice.notebook || choice.sangerTrace || choice.sequenceEditor || choice.sequenceExtractor || choice.treeViewer || choice.graphicEditor || choice.textTableImage || choice.plateLayout || (!choice.text && !choice.svg)),
     mimeType: choice.download.mimeType,
     label: choice.label
   });
@@ -2047,6 +2062,8 @@ async function renderGeneratedToolOutputChoice(result, options = {}) {
     sequenceEditor,
     sequenceExtractor,
     treeViewer: result.visual?.treeViewer ?? null,
+    graphicEditor: result.visual?.graphicEditor ?? null,
+    textTableImage: result.visual?.textTableImage ?? null,
     plateLayout: result.visual?.plateLayout ?? null,
     sequenceSearch: null
   };

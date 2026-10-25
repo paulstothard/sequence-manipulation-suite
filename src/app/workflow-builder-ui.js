@@ -176,6 +176,16 @@ export function createWorkflowBuilderController({
       if (value.mediaType?.includes("json")) {
         let candidate;
         try { candidate = JSON.parse(value.text); } catch { /* Ordinary JSON text keeps its existing display. */ }
+        if (candidate?.format === "sms3-editor-document" && ["svg-editor","image-annotator"].includes(candidate.tool)) {
+          const doc = parseEditorDocument(value.text);
+          return { text: "", rawText: value.text, summary: "Workflow output: editable image", outputLabel: "Editable image", isTsv: false,
+            graphicEditor: doc.source, editorDocument: doc, filename: `${doc.tool}.sms3.json`, mimeType: "application/json" };
+        }
+        if (candidate?.format === "sms3-editor-document" && candidate.tool === "text-table-to-image") {
+          const doc = parseEditorDocument(value.text);
+          return { text: "", rawText: value.text, summary: "Workflow output: editable text or table image", outputLabel: "Editable image", isTsv: false,
+            textTableImage: doc.source, editorDocument: doc, filename: "text-table-to-image.sms3.json", mimeType: "application/json" };
+        }
         if (candidate?.format === "sms3-editor-document" && candidate.tool === "plate-layout-planner") {
           const doc = parseEditorDocument(value.text);
           return { text: "", rawText: value.text, summary: "Workflow output: editable plate layout", outputLabel: "Plate layout", isTsv: false,

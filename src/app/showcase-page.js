@@ -1,3 +1,6 @@
+import {renderGraphicEditor} from './graphic-editor-ui.js';
+import { renderTextTableImage } from './text-table-image-ui.js';
+import { makeShowcaseGraphicDocument, makeShowcaseTextImageDocument } from './showcase-image-editors.js';
 import { renderSangerPlotControls } from './sanger-plot-ui.js';
 import { renderPlateSvg } from "../core/plate-layout-svg.js";
 import { renderObservablePlotPreview } from "./plot-preview-ui.js";
@@ -586,7 +589,13 @@ async function renderShowcaseCard(card, item, token, context) {
       : null;
     const svg = result.visual?.svg ?? (String(result.output ?? "").trimStart().startsWith("<svg") ? result.output : "");
     let sharedInspection = false;
-    if (result.visual?.plateLayout) {
+    if (result.visual?.graphicEditor) {
+      preview.classList.add("showcase-preview-viewer");
+      await renderGraphicEditor(preview,result.visual.graphicEditor,makeShowcaseGraphicDocument(result.visual.graphicEditor),{preview:true});
+    } else if (result.visual?.textTableImage) {
+      preview.classList.add("showcase-preview-viewer");
+      await renderTextTableImage(preview, result.visual.textTableImage, makeShowcaseTextImageDocument(result.visual.textTableImage), { preview: true });
+    } else if (result.visual?.plateLayout) {
       preview.insertAdjacentHTML("beforeend", renderPlateSvg(result.visual.plateLayout.layout));
       preview.querySelectorAll("svg").forEach(normalizeShowcaseSvg);
       sharedInspection = true;
@@ -811,7 +820,11 @@ export function appendShowcase(topic, context) {
   context.container.append(grid);
   context.appendTopicNotesAndCitations(topic);
   void (async () => {
-    for (const entry of renderQueue) {
+    const pending = [...renderQueue];
+    while (pending.length) {
+      // A filtered-to preview should be next, even in a large catalog.
+      const visible = pending.findIndex(entry => !entry.card.hidden);
+      const [entry] = pending.splice(Math.max(0, visible), 1);
       if (context.state.showcaseRenderToken !== token) {
         return;
       }

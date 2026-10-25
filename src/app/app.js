@@ -1,3 +1,6 @@
+import {readGraphicFile} from './graphic-input-ui.js';
+import { measureImageText } from './text-table-image-ui.js';
+import { layoutImage } from '../core/text-table-image.js';
 import { workflowInputDisplayText } from "../core/workflow-input-state.js";
 import { updateDesignFeatureOptions } from "./design-feature-options-ui.js";
 import { appendHandoffActions } from './external-handoff-ui.js';
@@ -6,6 +9,7 @@ import {updateResultOptionChoices} from "./result-option-choices.js";
 import { renderVariantConsensusInput } from './variant-consensus-input-ui.js';
 import { EDITOR_TOOLS, parseEditorDocument, readEditorDocumentFile, readEditorRecovery, createEditorSession } from './editor-session.js';
 import { tools } from "../tools/registry.js";
+import { createFeaturedToolCard, createFeaturedToolRotation } from "./featured-tool.js";
 import { sequenceExtractorExamples } from "../examples/sequence-extractor-examples.js";
 import { compareToolCategories } from "../tools/categories.js";
 import { ToolWorkerClient } from "./worker-client.js";
@@ -166,6 +170,7 @@ const sortedTools = [...tools].sort((left, right) =>
   left.metadata.name.localeCompare(right.metadata.name)
 );
 const visibleSortedTools = sortedTools.filter((tool) => tool.metadata.hiddenFromToolList !== true);
+const rotateFeaturedTool = createFeaturedToolRotation();
 
 const PCR_PRIMER_DESIGN_TOOL_ID = "pcr-primer-design";
 const IN_SILICO_PCR_TOOL_ID = "in-silico-pcr";
@@ -812,7 +817,10 @@ function renderHomeView() {
   citation.textContent = "citation page";
   citationNote.append("For information on citing SMS3, see the ", citation, ".");
 
-  elements.homeBody.append(summary, start, note, analyticsNote, citationNote);
+  elements.homeBody.append(summary, start);
+  const featuredTool = createFeaturedToolCard(visibleSortedTools, rotateFeaturedTool);
+  if (featuredTool) elements.homeBody.append(featuredTool);
+  elements.homeBody.append(note, analyticsNote, citationNote);
 }
 
 function renderActiveView() {
@@ -5828,7 +5836,7 @@ async function runSelectedWorkflow() {
       stepCount: result.steps.length
     };
     renderWorkflowView();
-    const hasWorkflowVisual = Boolean(formatted.handoff || formatted.filePreview || formatted.svg || formatted.viewer || formatted.figure || formatted.proteinFigure || formatted.sequenceLogo || formatted.sequenceExtractor || formatted.treeViewer || formatted.plateLayout);
+    const hasWorkflowVisual = Boolean(formatted.handoff || formatted.filePreview || formatted.svg || formatted.viewer || formatted.figure || formatted.proteinFigure || formatted.sequenceLogo || formatted.sequenceExtractor || formatted.treeViewer || formatted.graphicEditor || formatted.textTableImage || formatted.plateLayout);
     elements.workflowOutput.value = formatted.text;
     elements.workflowOutput.dataset.rawOutput = formatted.rawText;
     elements.workflowOutput.dataset.filename = formatted.filename ?? "sms3-workflow-output.txt";
@@ -5846,6 +5854,8 @@ async function runSelectedWorkflow() {
       sequenceLogo: formatted.sequenceLogo,
       sequenceExtractor: formatted.sequenceExtractor,
       treeViewer: formatted.treeViewer,
+      graphicEditor: formatted.graphicEditor,
+      textTableImage: formatted.textTableImage,
       plateLayout: formatted.plateLayout,
       editorDocument: formatted.editorDocument,
       signal: abortController.signal
@@ -5854,7 +5864,7 @@ async function runSelectedWorkflow() {
     elements.workflowOutput.hidden = Boolean(formatted.tableStream || hasWorkflowVisual);
     setOutputSearchRowVisible("workflow", Boolean(formatted.tableStream || (!hasWorkflowVisual && formatted.text)));
     updateOutputActions("workflow", {
-      hidden: Boolean(formatted.handoff || formatted.filePreview || formatted.tableStream || formatted.plateLayout || formatted.proteinFigure || formatted.sequenceLogo),
+      hidden: Boolean(formatted.handoff || formatted.filePreview || formatted.tableStream || formatted.graphicEditor || formatted.textTableImage || formatted.plateLayout || formatted.proteinFigure || formatted.sequenceLogo),
       mimeType: formatted.mimeType,
       label: formatted.outputLabel
     });
@@ -6011,7 +6021,7 @@ async function loadInputFile(file) {
   try {
     workspaceInputSources.setToolSourceMode(state.selectedTool?.metadata?.id, "paste");
     const importMessages = [];
-    elements.sequenceInput.value = await readToolInputFileText(
+    elements.sequenceInput.value = state.selectedTool.metadata.graphicInput ? await readGraphicFile(file, state.selectedTool.metadata.graphicInput) : await readToolInputFileText(
       file,
       selectedToolTextReadOptions((...args) => importMessages.push(args))
     );
@@ -6394,6 +6404,7 @@ async function openEditorDocument(doc, {recovered = false} = {}) {
     doc = {format: "sms3-editor-document", version: 1, tool: "tree-viewer", source: {document: doc}, state: {document: doc}};
   }
   doc = parseEditorDocument(JSON.stringify(doc));
+  if (doc.tool === "text-table-to-image") layoutImage(doc.state.image, measureImageText);
   if (doc.tool === "tree-viewer") {
     const {validateTreeDocument} = await import("../../packages/tree-viewer/src/core/schema.js");
     validateTreeDocument(doc.state.document);
@@ -6421,14 +6432,18 @@ async function openEditorDocument(doc, {recovered = false} = {}) {
     setToolRunning(false);
   }
   clearToolOutput();
+  if (doc.tool === 'text-table-to-image') {
+    for (const [id, value] of Object.entries({ inputMode: doc.source.image.mode, delimiter: doc.source.image.delimiter, hasHeader: doc.source.image.hasHeader })) setToolOptionValue(id, value);
+    dispatchToolOptionChange('inputMode');
+  }
   if (doc.tool === 'markdown-notebook') {
     elements.sequenceInput.value = doc.state.markdown || '';
     markdownWorkspace.render({...doc.state,__documentLoaded:true,__documentSource:doc.source});
   } else {
-    const key = doc.tool === 'plate-layout-planner' ? 'plateLayout' : doc.tool === 'tree-viewer' ? 'treeViewer' : doc.tool === 'sequence-editor' ? 'sequenceEditor' : doc.tool === 'sequence-extractor' ? 'sequenceExtractor' : doc.tool.includes('genome-figure') ? 'figure' : 'sangerTrace';
+    const key = ['svg-editor','image-annotator'].includes(doc.tool) ? 'graphicEditor' : doc.tool === 'text-table-to-image' ? 'textTableImage' : doc.tool === 'plate-layout-planner' ? 'plateLayout' : doc.tool === 'tree-viewer' ? 'treeViewer' : doc.tool === 'sequence-editor' ? 'sequenceEditor' : doc.tool === 'sequence-extractor' ? 'sequenceExtractor' : doc.tool.includes('genome-figure') ? 'figure' : 'sangerTrace';
     if (doc.tool === 'tree-viewer') elements.sequenceInput.value=JSON.stringify(doc.state.document,null,2);
     if (doc.tool === 'sequence-editor') elements.sequenceInput.value=String(doc.source.input||'');
-    if (doc.tool === 'plate-layout-planner') elements.sequenceInput.value=doc.source.input;
+    if (['plate-layout-planner', 'text-table-to-image', 'svg-editor', 'image-annotator'].includes(doc.tool)) elements.sequenceInput.value=doc.source.input;
     await Promise.resolve(renderVisualOutput('tool', null, {[key]:doc.source, editorDocument:doc}));
     elements.toolOutputEmpty.hidden = true;
   }

@@ -8,7 +8,7 @@ Treated: 2 samples
 Reference: GRCh38
 `;
 export const fileChecksumMetadata = {
-  id: "file-checksum", name: "File Checksum", category: "Text & Notes",
+  id: "file-checksum", name: "File Checksum", category: "Text, Notes & Images",
   tags: ["text", "validation"],
   summary: "Calculate checksums for files or pasted text, or verify them against an expected checksum or manifest.",
   whenToUse: "Check whether downloaded or transferred files match their expected checksums, or record checksums for your own files.",

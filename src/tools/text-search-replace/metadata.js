@@ -3,7 +3,7 @@ import { textSearchMatchColumns } from "../../core/text-search-replace.js";
 export const textSearchReplaceMetadata = {
   id: "text-search-replace",
   name: "Text Search / Replace",
-  category: "Text & Notes",
+  category: "Text, Notes & Images",
   tags: ["table", "text", "regex", "search"],
   summary: "Search plain text or regular expressions, replace matches, extract matches, or remove matching lines.",
   inputType: "Plain text",

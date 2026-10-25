@@ -1,6 +1,73 @@
 import externalResourceCatalogue from './external-resources/catalogue.js';
 
 export const softwareLicenseAttributions = [
+  {category:"Runtime library",name:"CSSTree",version:"3.1.0",license:"MIT",sourceUrl:"https://github.com/csstree/csstree",bundledPath:"src/vendor/svg-parser/; src/vendor/svg-parser/css-tree-LICENSE.txt",notes:"Parses and validates SVG styles locally.",packageNames:["css-tree"]},
+  {category:"Runtime data",name:"mdn-data",version:"2.12.2",license:"CC0-1.0",sourceUrl:"https://github.com/mdn/data",bundledPath:"src/vendor/svg-parser/; src/vendor/svg-parser/mdn-data-LICENSE.txt",notes:"Provides CSS syntax definitions used to validate SVG styles.",packageNames:["mdn-data"]},
+  {category:"Runtime library",name:"source-map-js",version:"1.2.2",license:"BSD-3-Clause",sourceUrl:"https://github.com/7rulnik/source-map-js",bundledPath:"src/vendor/svg-parser/; src/vendor/svg-parser/source-map-js-LICENSE.txt",notes:"Supports source-position mapping in the bundled CSS parser.",packageNames:["source-map-js"]},
+  {
+    "category": "Runtime library",
+    "name": "vanilla-colorful",
+    "version": "0.7.2",
+    "license": "MIT",
+    "sourceUrl": "https://github.com/web-padawan/vanilla-colorful",
+    "bundledPath": "src/vendor/color-picker/; src/vendor/color-picker/LICENSE",
+    "notes": "Compact hue and saturation picker for Text & Table to Image. Bundled locally; no CDN requests.",
+    "packageNames": ["vanilla-colorful"]
+  },
+  {
+    "category": "Font",
+    "name": "JetBrains Mono",
+    "version": "Version 2.211",
+    "license": "SIL OFL-1.1",
+    "sourceUrl": "https://github.com/google/fonts/tree/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/jetbrainsmono",
+    "bundledPath": "src/vendor/image-fonts/jetbrainsmono/; src/vendor/image-fonts/jetbrainsmono/OFL.txt",
+    "notes": "Complete bundled font for Text & Table to Image; embedded with its license in SVG and PNG rendering."
+  },
+  {
+    "category": "Font",
+    "name": "Source Code Pro",
+    "version": "Version 1.026;hotconv 1.1.0;makeotfexe 2.6.0",
+    "license": "SIL OFL-1.1",
+    "sourceUrl": "https://github.com/google/fonts/tree/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/sourcecodepro",
+    "bundledPath": "src/vendor/image-fonts/sourcecodepro/; src/vendor/image-fonts/sourcecodepro/OFL.txt",
+    "notes": "Complete bundled font for Text & Table to Image; embedded with its license in SVG and PNG rendering."
+  },
+  {
+    "category": "Font",
+    "name": "IBM Plex Mono",
+    "version": "Version 2.3",
+    "license": "SIL OFL-1.1",
+    "sourceUrl": "https://github.com/google/fonts/tree/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/ibmplexmono",
+    "bundledPath": "src/vendor/image-fonts/ibmplexmono/; src/vendor/image-fonts/ibmplexmono/OFL.txt",
+    "notes": "Complete bundled font for Text & Table to Image; embedded with its license in SVG and PNG rendering."
+  },
+  {
+    "category": "Font",
+    "name": "Inconsolata",
+    "version": "Version 3.001",
+    "license": "SIL OFL-1.1",
+    "sourceUrl": "https://github.com/google/fonts/tree/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/inconsolata",
+    "bundledPath": "src/vendor/image-fonts/inconsolata/; src/vendor/image-fonts/inconsolata/OFL.txt",
+    "notes": "Complete bundled font for Text & Table to Image; embedded with its license in SVG and PNG rendering."
+  },
+  {
+    "category": "Font",
+    "name": "Inter",
+    "version": "Version 4.001;git-66647c0bb",
+    "license": "SIL OFL-1.1",
+    "sourceUrl": "https://github.com/google/fonts/tree/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/inter",
+    "bundledPath": "src/vendor/image-fonts/inter/; src/vendor/image-fonts/inter/OFL.txt",
+    "notes": "Complete bundled font for Text & Table to Image; embedded with its license in SVG and PNG rendering."
+  },
+  {
+    "category": "Font",
+    "name": "Source Serif 4",
+    "version": "Version 4.004;hotconv 1.0.116;makeotfexe 2.5.65601",
+    "license": "SIL OFL-1.1",
+    "sourceUrl": "https://github.com/google/fonts/tree/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/sourceserif4",
+    "bundledPath": "src/vendor/image-fonts/sourceserif4/; src/vendor/image-fonts/sourceserif4/OFL.txt",
+    "notes": "Complete bundled font for Text & Table to Image; embedded with its license in SVG and PNG rendering."
+  },
   {
     "category": "Runtime library",
     "name": "@borewit/text-codec",
@@ -163,8 +230,8 @@ export const softwareLicenseAttributions = [
     version: "6.0.0",
     license: "ISC",
     sourceUrl: "https://github.com/lddubeau/saxes",
-    bundledPath: "packages/tree-viewer/src/vendor/saxes.js",
-    notes: "Parses XML tree files in Tree Viewer.",
+    bundledPath: "packages/tree-viewer/src/vendor/saxes.js; src/vendor/svg-parser/",
+    notes: "Parses XML tree files and bounded SVG input locally. The SVG parser includes xmlchars (MIT) and its license notice.",
     packageNames: ["saxes"]
   },
   {

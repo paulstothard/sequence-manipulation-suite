@@ -1,3 +1,4 @@
+import {refreshGraphicInput} from './graphic-input-ui.js';
 import {updateResultOptionChoices} from "./result-option-choices.js";
 import { wrapFastaText } from "../core/fasta.js";
 import { applyFixedToolLimits } from "../core/tool-limit-options.js";
@@ -1000,6 +1001,7 @@ export function createToolInputShellController({
     if (ids.size) elements.sequenceInput.setAttribute("aria-describedby", [...ids].join(" "));
     else elements.sequenceInput.removeAttribute("aria-describedby");
     updateMetadataInputSource();
+    refreshGraphicInput(elements,state.selectedTool);
     updatePrimerInputUi?.();
     inputPreview.refresh({ preferPreview: previewTable });
     refreshSplitTableInputPreviews?.({ preferPreview: previewTable });

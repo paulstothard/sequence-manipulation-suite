@@ -843,6 +843,78 @@ textarea,
   text-underline-offset: 0.15em;
 }
 
+.home-featured-tool {
+  display: grid;
+  gap: 1rem;
+  width: 100%;
+  max-width: 52rem;
+  min-width: 0;
+  padding: 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+
+.home-featured-label {
+  margin: 0;
+  color: var(--accent);
+  font-size: 0.875rem;
+  font-weight: 650;
+}
+
+.home-featured-content {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.home-featured-category {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.home-featured-content h3 {
+  margin: 0;
+  font-size: 1.25rem;
+  line-height: 1.3;
+}
+
+.home-featured-description {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.home-featured-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.home-featured-open {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.25rem;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--accent);
+  color: var(--surface);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.home-featured-open:hover {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+}
+
+.home-featured-actions :is(a, button):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
 .tool-panel {
   padding: 1rem;
 }
@@ -15401,3 +15473,141 @@ details[open] > .sequence-extractor-section-header .sequence-extractor-section-h
   .external-query-tabs { flex-wrap: wrap; }
   .external-query-tabs .file-source-tab { flex: 1 1 7rem; }
 }
+
+/* Text & Table to Image uses the same compact hierarchy as the figure viewers. */
+.text-table-image-editor {
+  min-width: 0;
+  container-type: inline-size;
+  margin: .75rem;
+  border: 1px solid var(--app-output-border);
+  border-radius: 8px;
+  background: var(--app-output-surface);
+  color: var(--app-output-text);
+  font-size: .75rem;
+}
+.tti-header { background: var(--app-output-surface-strong); border-radius: 7px 7px 0 0; padding: .55rem .7rem; border-bottom: 1px solid var(--app-output-border); }
+.tti-titlebar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; }
+.tti-title { font-size: .9rem; font-weight: 800; line-height: 1.3; }
+.tti-exports { display: flex; gap: .3rem; }
+.tti-history { margin-top: .55rem; }
+.text-table-image-editor button:not(.editor-recovery-help) { font: inherit; font-weight: 700; min-width: 0; line-height: 1.2; padding: .4rem .55rem; border: 1px solid var(--app-output-border); border-radius: 6px; color: var(--app-output-text); background: var(--app-output-button-gradient); }
+.text-table-image-editor button:not(:disabled):hover { background: var(--app-output-hover-bg); border-color: var(--app-output-hover-border); }
+.text-table-image-editor button:disabled { opacity: .5; cursor: not-allowed; }
+.text-table-image-editor :is(button, input, select, textarea, summary):focus-visible { outline: 2px solid var(--app-output-focus); outline-offset: 2px; }
+.text-table-image-editor .tti-icon-button { display: inline-flex; align-items: center; justify-content: center; gap: .3rem; min-height: 2rem; font-size: .7rem; white-space: nowrap; }
+.text-table-image-editor .tti-icon-button > svg { flex: 0 0 1rem; width: 1rem; height: 1rem; margin: 0; max-width: none; background: transparent; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.text-table-image-editor .tti-exports button { background: var(--app-output-accent-soft); border-color: var(--app-output-hover-border); color: var(--app-output-accent-strong); padding: .5rem .6rem; flex-direction: row-reverse; }
+.tti-message:empty { display: none; }
+.tti-message { color: var(--app-output-warning); padding: .5rem .7rem; border-bottom: 1px solid var(--app-output-border); }
+.tti-workspace { display: grid; grid-template-columns: minmax(0, 1fr) 16rem; min-width: 0; }
+.tti-stage { min-width: 0; display: flex; flex-direction: column; }
+.tti-tools { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem; padding: .45rem .6rem; border-bottom: 1px solid var(--app-output-border); }
+.tti-tools-label { font-size: .68rem; color: var(--app-output-muted); margin-right: .15rem; }
+.tti-annotation-actions { display: flex; gap: .25rem; border-left: 1px solid var(--app-output-border); padding-left: .35rem; margin-left: auto; }
+.tti-viewport { position: relative; flex: 1 1 auto; display: grid; align-content: center; min-width: 0; min-height: 16rem; max-height: 70vh; overflow: auto; padding: 1rem; background: var(--app-output-surface-soft); }
+.text-table-image-editor .tti-viewport { touch-action: none; align-content: safe center; }
+.text-table-image-editor .canvas-label-input { position: absolute; z-index: 1; box-sizing: border-box; min-width: 0; margin: 0; padding: 4px; border: 1px solid var(--app-output-focus); border-radius: 3px; color: var(--app-output-text); background: var(--app-output-surface); line-height: 1.35; box-shadow: 0 1px 5px rgb(0 0 0 / .12); }
+.text-table-image-editor .canvas-label-input:focus { outline: 2px solid var(--app-output-focus); outline-offset: 1px; }
+.tti-viewport.is-transparent { background: repeating-conic-gradient(var(--app-output-surface) 0% 25%, var(--app-output-surface-strong) 0% 50%) 0 / 20px 20px; }
+.tti-artwork { min-width: 0; }
+.tti-viewbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; padding: .4rem .6rem; border-top: 1px solid var(--app-output-border); }
+.tti-dimensions { color: var(--app-output-muted); font-size: .68rem; }
+.tti-controls { min-width: 0; border-left: 1px solid var(--app-output-border); padding: .6rem; }
+.tti-tabs { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.25fr) minmax(0, .85fr); gap: .2rem; padding: .18rem; margin-bottom: .65rem; background: var(--app-output-surface-soft); border: 1px solid var(--app-output-border-strong); border-radius: 8px; }
+.text-table-image-editor .tti-tabs button { padding: .35rem .15rem; min-height: 1.85rem; font-size: .68rem; border-color: transparent; background: transparent; color: var(--app-output-muted); overflow-wrap: anywhere; }
+.text-table-image-editor .tti-tabs [aria-selected="true"] { color: var(--app-output-accent-strong); background: var(--app-output-accent-soft); border-color: var(--app-output-accent); }
+.tti-pane, .tti-group-body, .tti-annotation-fields { display: grid; gap: .5rem; min-width: 0; }
+.text-table-image-editor [hidden] { display: none !important; }
+/* All settings panels contribute to one bounded row, so switching tabs cannot
+   resize the canvas or pull the page upward. Each panel keeps its own scroll. */
+.tti-panels { display: grid; min-width: 0; }
+.tti-panels > .tti-pane { grid-area: 1 / 1; align-content: start; max-height: min(65vh, 36rem); overflow-y: auto; scrollbar-gutter: stable; padding: 4px; }
+.text-table-image-editor .tti-panels > .tti-pane[hidden] { display: grid !important; visibility: hidden; pointer-events: none; }
+.tti-group { min-width: 0; border-top: 1px solid var(--app-output-border); padding-top: .65rem; }
+.tti-group:first-child { border-top: 0; padding-top: 0; }
+.text-table-image-editor .tti-group h5 { font-size: .72rem; line-height: 1.2; margin: 0 0 .45rem; font-weight: 800; color: var(--app-output-text); }
+.tti-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; min-width: 0; }
+.tti-field { display: grid; min-width: 0; gap: .25rem; margin: 0; font-size: .72rem; line-height: 1.4; color: var(--app-output-muted); }
+.text-table-image-editor .tti-field :is(input, select, textarea) { box-sizing: border-box; min-width: 0; width: 100%; max-width: 100%; min-height: 1.9rem; margin: 0; font: inherit; font-size: .75rem; line-height: 1.3; color: var(--app-output-text); background: var(--app-output-surface); border: 1px solid var(--app-output-border); border-radius: 6px; padding: .35rem .45rem; }
+.sms3-color-field { display: flex; align-items: center; justify-content: space-between; gap: .5rem; min-width: 0; font-size: .72rem; color: var(--app-output-muted); }
+.text-table-image-editor button.sms3-color-trigger, .text-table-image-editor button.sms3-color-trigger:hover { position: relative; flex-shrink: 0; width: 1.9rem; height: 1.9rem; min-height: 1.9rem; padding: 0; background: repeating-conic-gradient(#fff 0% 25%, #b8b8b8 0% 50%) 0 / 8px 8px; border: 1px solid var(--app-output-border-strong); border-radius: 4px; cursor: pointer; }
+.sms3-color-trigger::before { content: ''; position: absolute; inset: 0; border-radius: inherit; background: var(--swatch-color); box-shadow: inset 0 0 0 1px rgb(127 127 127 / .3); pointer-events: none; }
+.sms3-color-popover { position: fixed; inset: auto; margin: 0; width: 15rem; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); overflow: auto; box-sizing: border-box; padding: .7rem; border: 1px solid var(--app-output-border-strong); border-radius: 8px; color: var(--app-output-text); background: var(--app-output-surface); box-shadow: 0 6px 24px rgb(0 0 0 / .25); font-size: .75rem; }
+.sms3-color-popover:popover-open { display: grid; gap: .65rem; }
+.sms3-color-heading { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.sms3-color-heading-actions { display: flex; align-items: center; gap: .3rem; }
+.text-table-image-editor .sms3-color-eyedropper { display: grid; place-items: center; width: 1.65rem; height: 1.65rem; padding: .2rem; }
+.sms3-color-eyedropper svg { display: block; width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; background: transparent; }
+.sms3-color-recent { display: grid; gap: .3rem; }
+.text-table-image-editor .sms3-color-close { padding: .1rem .35rem; font-size: 1rem; min-height: 1.5rem; cursor: pointer; }
+.sms3-color-palette { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .35rem; }
+.text-table-image-editor .sms3-color-palette button.sms3-color-swatch { position: relative; background: repeating-conic-gradient(#fff 0% 25%, #b8b8b8 0% 50%) 0 / 8px 8px; height: 1.65rem; padding: 0; min-height: 0; border: 1px solid rgb(127 127 127 / .6); border-radius: 4px; cursor: pointer; }
+.sms3-color-swatch::before { content: ''; position: absolute; inset: 0; border-radius: inherit; background: var(--swatch-color); }
+.sms3-color-swatch::after { position: relative; }
+.sms3-color-swatch[aria-pressed="true"]::after { content: '✓'; color: white; text-shadow: 0 1px 2px black, 0 -1px 2px black; }
+.sms3-color-custom { height: 11.5rem; padding-inline: .35rem; box-sizing: border-box; }
+.sms3-color-custom hex-alpha-color-picker { width: 100%; height: 100%; }
+.sms3-color-custom hex-alpha-color-picker::part(hue), .sms3-color-custom hex-alpha-color-picker::part(alpha) { height: 1.2rem; flex-basis: 1.2rem; }
+.sms3-color-opacity { color: var(--app-output-muted); font-size: .72rem; }
+.sms3-color-help { margin: 0; color: var(--app-output-muted); font-size: .68rem; line-height: 1.4; }
+.image-color-sampler { position: absolute; z-index: 3; cursor: crosshair; touch-action: none; outline: 2px solid var(--app-output-focus); outline-offset: -2px; }
+.image-color-instruction { position: absolute; top: .35rem; left: .35rem; max-width: calc(100% - 3rem); padding: .3rem .45rem; font-size: .7rem; line-height: 1.4; color: var(--app-output-text); background: var(--app-output-surface); border: 1px solid var(--app-output-border); border-radius: 4px; pointer-events: none; }
+.image-color-lens { position: absolute; width: 99px; height: 99px; border: 1px solid #111; box-shadow: 0 2px 8px rgb(0 0 0 / .25); background: repeating-conic-gradient(#fff 0% 25%, #b8b8b8 0% 50%) 0 / 18px 18px; pointer-events: none; }
+.image-color-sample { position: absolute; right: .35rem; top: .35rem; width: 1.5rem; height: 1.5rem; border: 1px solid #777; border-radius: 3px; background: repeating-conic-gradient(#fff 0% 25%, #b8b8b8 0% 50%) 0 / 8px 8px; pointer-events: none; }
+.image-color-sample::before { content: ''; position: absolute; inset: 0; background: var(--swatch-color); }
+.tti-field:has(input[type="checkbox"]) { display: flex; align-items: center; gap: .4rem; }
+.text-table-image-editor .tti-field input[type="checkbox"] { flex: 0 0 auto; width: .9rem; height: .9rem; min-height: 0; accent-color: var(--app-output-accent); }
+.text-table-image-editor .tti-field textarea { font-family: monospace; white-space: pre; min-height: 12rem; resize: vertical; }
+.tti-viewbar .tti-field { display: flex; align-items: center; gap: .35rem; }
+.tti-viewbar .tti-field select { width: auto; font-size: .68rem; min-height: 1.6rem; padding: .2rem .35rem; }
+.tti-help { margin: 0; color: var(--app-output-muted); font-size: .68rem; line-height: 1.5; }
+.tti-empty { padding: .4rem 0; }
+.tti-precision { border: 0; border-top: 1px solid var(--app-output-border); border-radius: 0; padding: .5rem 0 0; margin: .2rem 0 0; background: transparent; min-width: 0; }
+.tti-precision > summary { cursor: pointer; color: var(--app-output-text); font-size: .72rem; font-weight: 700; }
+.tti-precision > .tti-group-body { margin-top: .6rem; }
+.tti-source-actions { display: flex; flex-wrap: wrap; gap: .3rem; }
+@container (max-width: 760px) {
+  .tti-workspace { grid-template-columns: minmax(0, 1fr); }
+  .tti-controls { border-left: 0; border-top: 1px solid var(--app-output-border); }
+  .tti-tabs { max-width: 24rem; }
+  .tti-pane[aria-label="Style"] { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+  .tti-pane[aria-label="Style"] .tti-group { border-top: 0; padding-top: 0; }
+  .tti-viewport { min-height: 10rem; }
+}
+@container (max-width: 400px) {
+  .tti-pane[aria-label="Style"] { grid-template-columns: minmax(0, 1fr); }
+  .tti-pane[aria-label="Style"] .tti-group + .tti-group { border-top: 1px solid var(--app-output-border); padding-top: .65rem; }
+  .tti-annotation-actions { margin-left: 0; }
+}
+
+/* Image editing shares the established viewer toolbar and inspector. */
+.graphic-editor .graphic-viewport { min-height: 24rem; padding: 1rem; background: var(--app-output-surface-soft); align-items: safe center; }
+.graphic-picture { flex: 0 0 auto; min-width: 0; background: repeating-conic-gradient(#e2e8f0 0% 25%, #f8fafc 0% 50%) 50% / 16px 16px; }
+.graphic-editor .tti-tools { flex-wrap: wrap; }
+.graphic-editor .tti-tools button[aria-pressed="true"] { border-color: var(--app-output-accent); color: var(--app-output-accent); background: var(--app-output-accent-soft); }
+.graphic-editor select[size] { min-height: 13rem; }
+.graphic-editor .tti-panels { min-height: 24rem; }
+.graphic-editor .tti-precision .tti-pair { padding-top: .6rem; }
+.graphic-input-preview { display: grid; gap: .6rem; margin-top: .75rem; min-height: 8rem; }
+.graphic-input-preview img { display: block; max-width: 100%; width: auto; max-height: 16rem; object-fit: contain; object-position: left center; border: 1px solid var(--border); background: #fff; }
+.graphic-input-preview button { justify-self: start; }
+.graphic-input-preview .tti-help { font-size: .85rem; color: var(--muted-text); }
+@container (max-width: 760px) { .graphic-editor .graphic-viewport { min-height: 12rem; } }
+.graphic-editor .tti-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.graphic-picture { font: 16px 'Times New Roman', serif; color: #000; }
+
+/* Compact object appearance controls shared by the three image editors. */
+.annotation-style-controls { display: grid; gap: .6rem; min-width: 0; }
+.annotation-style-row { display: grid; gap: .25rem; min-width: 0; }
+.annotation-style-label { font-size: .72rem; color: var(--app-output-muted); }
+.annotation-style-choices { display: flex; gap: .2rem; padding: .15rem; border: 1px solid var(--app-output-border); border-radius: 7px; background: var(--app-output-surface-soft); }
+.text-table-image-editor .annotation-style-choices button { flex: 1 1 0; min-height: 1.9rem; display: grid; place-items: center; padding: .15rem .35rem; border-color: transparent; background: transparent; }
+.text-table-image-editor .annotation-style-choices button[aria-pressed="true"] { color: var(--app-output-accent-strong); border-color: var(--app-output-accent); background: var(--app-output-accent-soft); }
+.text-table-image-editor .annotation-style-choices svg { display: block; margin: 0; max-width: none; background: transparent; box-shadow: none; width: 2rem; height: 1.5rem; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.annotation-style-slider { display: grid; grid-template-columns: minmax(0, 1fr) 3.6rem; align-items: center; gap: .5rem; }
+.text-table-image-editor .annotation-style-slider input[type="range"] { width: 100%; min-width: 0; height: 1.6rem; padding: 0; margin: 0; accent-color: var(--app-output-accent); cursor: pointer; }
+.text-table-image-editor .annotation-style-slider input[type="number"] { box-sizing: border-box; width: 100%; min-width: 0; padding: .25rem .3rem; border: 1px solid var(--app-output-border); border-radius: 5px; color: var(--app-output-text); background: var(--app-output-surface); font: inherit; }
+.annotation-style-slider output { color: var(--app-output-muted); text-align: center; font-variant-numeric: tabular-nums; }
+/* Selecting a shape must not move the image under the pointer as its controls appear. */
+.graphic-editor .tti-panels { height: min(65vh, 36rem); }
+.graphic-editor .tti-panels > .tti-pane { height: 100%; max-height: 100%; box-sizing: border-box; }

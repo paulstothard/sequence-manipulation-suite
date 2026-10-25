@@ -3,7 +3,7 @@ import { lineListCountColumns } from "../../core/line-list.js";
 export const lineListCleanerMetadata = {
   id: "line-list-cleaner",
   name: "Line / List Cleaner",
-  category: "Text & Notes",
+  category: "Text, Notes & Images",
   tags: ["table", "text", "cleaning", "statistics"],
   summary: "Clean, split, sort, deduplicate, count, and rejoin simple text lists.",
   inputType: "Text list",

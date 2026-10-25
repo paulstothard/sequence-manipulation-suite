@@ -1,0 +1,110 @@
+{
+  "revision": "e7db6ca603fd4862010383ff17ffd6cc4ffac1c0",
+  "conversion": "fonttools 4.61.1 WOFF2; complete glyph sets, no subsetting",
+  "files": [
+    {
+      "path": "jetbrainsmono/OFL.txt",
+      "source": "https://raw.githubusercontent.com/google/fonts/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/jetbrainsmono/OFL.txt",
+      "sourceSha256": "b2fe5e8987594e9ffd1d2ca52a2f5d73eb8335243893c5d6254b5ad69269591d",
+      "sha256": "b2fe5e8987594e9ffd1d2ca52a2f5d73eb8335243893c5d6254b5ad69269591d",
+      "bytes": 4399,
+      "version": null
+    },
+    {
+      "path": "jetbrainsmono/JetBrainsMono.woff2",
+      "source": "https://raw.githubusercontent.com/google/fonts/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/jetbrainsmono/JetBrainsMono%5Bwght%5D.ttf",
+      "sourceSha256": "48715a42ec242c21e9f02692891e147d022299a52e48d5e413e1a942193ffeda",
+      "sha256": "7b7f3419196f675a973d30cb70078749120caddea86c8547ebf54a8db2ca13af",
+      "bytes": 71736,
+      "version": "Version 2.211"
+    },
+    {
+      "path": "sourcecodepro/OFL.txt",
+      "source": "https://raw.githubusercontent.com/google/fonts/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/sourcecodepro/OFL.txt",
+      "sourceSha256": "cb30d3086a8b3ce0b9e3690bf48d6620402b61160bc658076f95180ccd9e9dae",
+      "sha256": "cb30d3086a8b3ce0b9e3690bf48d6620402b61160bc658076f95180ccd9e9dae",
+      "bytes": 4622,
+      "version": null
+    },
+    {
+      "path": "sourcecodepro/SourceCodePro.woff2",
+      "source": "https://raw.githubusercontent.com/google/fonts/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/sourcecodepro/SourceCodePro%5Bwght%5D.ttf",
+      "sourceSha256": "b400fc584e10aff25d0e775ce181b4fc1c5ea1b5dc37b81aeb2084375b945790",
+      "sha256": "d5354036d08c4a7cea27a1e02bd3c1bc2fbfdd8c85818a35ee890068eb4a4217",
+      "bytes": 89484,
+      "version": "Version 1.026;hotconv 1.1.0;makeotfexe 2.6.0"
+    },
+    {
+      "path": "ibmplexmono/OFL.txt",
+      "source": "https://raw.githubusercontent.com/google/fonts/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/ibmplexmono/OFL.txt",
+      "sourceSha256": "7e6b2818edbd8f6a01ae80641cc8f16a51080d08fb4e532be3a0b6f74adb07da",
+      "sha256": "7e6b2818edbd8f6a01ae80641cc8f16a51080d08fb4e532be3a0b6f74adb07da",
+      "bytes": 4456,
+      "version": null
+    },
+    {
+      "path": "ibmplexmono/IBMPlexMono-Regular.woff2",
+      "source": "https://raw.githubusercontent.com/google/fonts/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/ibmplexmono/IBMPlexMono-Regular.ttf",
+      "sourceSha256": "6a3412f058c7d8dfd9170c41e85ade48e5156ecb89356110ca57a0a27734af46",
+      "sha256": "13b16cd770a73f60304510221c3e7186d396ba6ca5d64c52b5c6fb983d0e900a",
+      "bytes": 39176,
+      "version": "Version 2.3"
+    },
+    {
+      "path": "ibmplexmono/IBMPlexMono-Bold.woff2",
+      "source": "https://raw.githubusercontent.com/google/fonts/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/ibmplexmono/IBMPlexMono-Bold.ttf",
+      "sourceSha256": "ac27abd6450a64dd94467580a02fe6235156d5b92f2926ebbc8e7489df64e0be",
+      "sha256": "9f9e5597981645d576b209a25021c5221e8644a4580581f44e8b4ef954d95d03",
+      "bytes": 40348,
+      "version": "Version 2.3"
+    },
+    {
+      "path": "inconsolata/OFL.txt",
+      "source": "https://raw.githubusercontent.com/google/fonts/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/inconsolata/OFL.txt",
+      "sourceSha256": "29bd0cfd0fb2a45f9b057c834a057724bae1f63b525a8ac83d3e7525706d9f80",
+      "sha256": "29bd0cfd0fb2a45f9b057c834a057724bae1f63b525a8ac83d3e7525706d9f80",
+      "bytes": 4350,
+      "version": null
+    },
+    {
+      "path": "inconsolata/Inconsolata.woff2",
+      "source": "https://raw.githubusercontent.com/google/fonts/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/inconsolata/Inconsolata%5Bwdth%2Cwght%5D.ttf",
+      "sourceSha256": "23ded25b447074d00659392bf9b1123d89df55cb07b0ad9bfef3366d199b5fcb",
+      "sha256": "cd7799cfc96d08e3d16b3670abe125e0df4c7c4ea9f2ad67eafd515f9ae458cc",
+      "bytes": 151792,
+      "version": "Version 3.001"
+    },
+    {
+      "path": "inter/OFL.txt",
+      "source": "https://raw.githubusercontent.com/google/fonts/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/inter/OFL.txt",
+      "sourceSha256": "5b9321a4298cfeb6b34354164a1c3afc3db114569984c502b9b35d988fd58c57",
+      "sha256": "5b9321a4298cfeb6b34354164a1c3afc3db114569984c502b9b35d988fd58c57",
+      "bytes": 4377,
+      "version": null
+    },
+    {
+      "path": "inter/Inter.woff2",
+      "source": "https://raw.githubusercontent.com/google/fonts/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/inter/Inter%5Bopsz%2Cwght%5D.ttf",
+      "sourceSha256": "29160a80ff49ddcab2c97711247e08b1fab27a484a329ce8b813d820dc559031",
+      "sha256": "13b4cddc57045d40b411008e61588c8f81aa0bd72fe884624831a0ff9c4d159a",
+      "bytes": 350460,
+      "version": "Version 4.001;git-66647c0bb"
+    },
+    {
+      "path": "sourceserif4/OFL.txt",
+      "source": "https://raw.githubusercontent.com/google/fonts/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/sourceserif4/OFL.txt",
+      "sourceSha256": "5f94c3fd3a23131a417ab5a0c8452de57e70c3cfb9f604d88241f7065ebf9fd9",
+      "sha256": "5f94c3fd3a23131a417ab5a0c8452de57e70c3cfb9f604d88241f7065ebf9fd9",
+      "bytes": 4400,
+      "version": null
+    },
+    {
+      "path": "sourceserif4/SourceSerif4.woff2",
+      "source": "https://raw.githubusercontent.com/google/fonts/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/sourceserif4/SourceSerif4%5Bopsz%2Cwght%5D.ttf",
+      "sourceSha256": "97b2d4da6e3cb494b5a1e66ae176914d852ccabef49e0c02c0df25f3e39aca0b",
+      "sha256": "4453d73855919eb67a8291bf2bad07782ecaf8af0e4e363d58948ff993209d51",
+      "bytes": 427556,
+      "version": "Version 4.004;hotconv 1.0.116;makeotfexe 2.5.65601"
+    }
+  ]
+}

@@ -1,8 +1,10 @@
+import {validateGraphicDocument} from '../core/graphic-editor.js';
+import { validateImageState } from '../core/text-table-image.js';
 import { downloadText } from "./file-download.js";
 import { validatePlateLayout } from "../core/plate-layout.js";
 import { STANDARD_BROWSER_FILE_BYTES } from "../core/tool-limit-options.js";
 const EDITOR_DOCUMENT_FORMAT = "sms3-editor-document";
-const EDITOR_TOOLS = ["workflow", "tree-viewer", "plate-layout-planner", "sequence-editor", "markdown-notebook", "linear-genome-figure", "circular-genome-figure", "sequence-extractor", "sanger-trace-viewer", "sanger-trace-assembly", "sanger-trace-reference-comparison"];
+const EDITOR_TOOLS = ["svg-editor", "image-annotator", "text-table-to-image", "workflow", "tree-viewer", "plate-layout-planner", "sequence-editor", "markdown-notebook", "linear-genome-figure", "circular-genome-figure", "sequence-extractor", "sanger-trace-viewer", "sanger-trace-assembly", "sanger-trace-reference-comparison"];
 const MAX_BYTES = STANDARD_BROWSER_FILE_BYTES;
 const copy = (value) => structuredClone(value);
 const recoveryWrites = new Map();
@@ -16,6 +18,12 @@ function parseEditorDocument(text) {
     throw new Error("The document contains invalid source data or editable state.");
   };
   const object = (value) => value && typeof value === "object" && !Array.isArray(value);
+  if (doc.tool === "text-table-to-image") {
+    if (typeof doc.source.input !== "string" || doc.source.image?.text !== doc.source.input) fail();
+    validateImageState(doc.source.image);
+    validateImageState(doc.state.image);
+  }
+  if (["svg-editor","image-annotator"].includes(doc.tool)) validateGraphicDocument(doc);
   const records = doc.source.records;
   if (doc.tool === "plate-layout-planner") {
     if (typeof doc.source.input !== "string" || doc.source.input.length > 1_000_000) fail();
@@ -102,7 +110,7 @@ async function readEditorRecovery(tool) {
 }
 // One current recovery document per editor; shared history stays bounded in memory.
 // Call changed after asynchronous edits, and dispose before replacing the editor.
-function createEditorSession({ host, toolbar, downloadHost, tool, source, read, apply, initial, nativeHistory = false, download = true, saveInitial = true }) {
+function createEditorSession({ host, toolbar, downloadHost, tool, source, read, apply, initial, nativeHistory = false, download = true, saveInitial = true, persist = true }) {
   const sourceDocument = copy(source);
   let current, past = [], future = [], restoring = false, disposed = false, dirty = false, timer, groupAt = 0;
   let pendingWrite = Promise.resolve();
@@ -237,7 +245,9 @@ function createEditorSession({ host, toolbar, downloadHost, tool, source, read, 
   window.addEventListener("resize", scheduleHelpPosition, {signal:controller.signal});
   window.visualViewport?.addEventListener("resize", scheduleHelpPosition, {signal:controller.signal});
   window.addEventListener("scroll", positionHelp, {capture:true, passive:true, signal:controller.signal});
-  recovery.append(status, help);
+  recovery.append(status);
+  if (persist) recovery.append(help);
+  else status.textContent = "Preview changes are temporary";
   ui.append(recovery, popover);
   toolbar.append(ui);
   function getDocument() {
@@ -260,6 +270,7 @@ function createEditorSession({ host, toolbar, downloadHost, tool, source, read, 
   }
   function flush() {
     clearTimeout(timer);
+    if (!persist) { dirty = false; return pendingWrite; }
     if (!dirty) return pendingWrite;
     dirty = false;
     let doc;
@@ -291,7 +302,7 @@ function createEditorSession({ host, toolbar, downloadHost, tool, source, read, 
     current = next;
     future = [];
     dirty = true;
-    status.textContent = "Saving in this browser…";
+    status.textContent = persist ? "Saving in this browser…" : "Preview changes are temporary";
     update();
     clearTimeout(timer);
     timer = setTimeout(flush, 350);
@@ -312,7 +323,7 @@ function createEditorSession({ host, toolbar, downloadHost, tool, source, read, 
     }
     groupAt = 0;
     dirty = true;
-    status.textContent = "Saving in this browser…";
+    status.textContent = persist ? "Saving in this browser…" : "Preview changes are temporary";
     update();
     flush();
   }

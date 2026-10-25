@@ -60,7 +60,7 @@ export function getSvgPngExportSize(width, height, requestedScale = getPngExport
   return {scale, width: Math.max(1, Math.floor(width * scale)), height: Math.max(1, Math.floor(height * scale))};
 }
 
-export async function downloadSvgAsPng(svg, filename = "sms3-plot.png") {
+export async function downloadSvgAsPng(svg, filename = "sms3-plot.png", { background = "#ffffff" } = {}) {
   const svgBlob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
   const url = URL.createObjectURL(svgBlob);
   try {
@@ -83,8 +83,10 @@ export async function downloadSvgAsPng(svg, filename = "sms3-plot.png") {
     canvas.height = size.height;
     const context = canvas.getContext("2d");
     context.setTransform(exportScale, 0, 0, exportScale, 0, 0);
-    context.fillStyle = "#ffffff";
-    context.fillRect(0, 0, width, height);
+    if (background !== null) {
+      context.fillStyle = background;
+      context.fillRect(0, 0, width, height);
+    }
     context.drawImage(image, 0, 0, width, height);
     const pngBlob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
     if (!pngBlob) {

@@ -1,7 +1,7 @@
 export const markdownNotebookMetadata = {
   id: "markdown-notebook",
   name: "Markdown Notebook",
-  category: "Text & Notes",
+  category: "Text, Notes & Images",
   tags: ["text"],
   summary: "Open a standalone Markdown workspace from a blank note, an uploaded Markdown file, or a saved browser draft.",
   inputType: "Standalone Markdown workspace",

@@ -11,7 +11,7 @@ export const toolCategoryOrder = [
   "Tables",
   "Statistics",
   "Plots",
-  "Text & Notes",
+  "Text, Notes & Images",
   "Random & Mutagenesis",
   "External Resources"
 ];

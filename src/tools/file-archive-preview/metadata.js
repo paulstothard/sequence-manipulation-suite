@@ -13,7 +13,7 @@ export const fileArchivePreviewExample=[
   ''
 ].join('\n');
 export const fileArchivePreviewMetadata={
-  id:'file-archive-preview',name:'File And Archive Preview',category:'Text & Notes',tags:['table','text'],
+  id:'file-archive-preview',name:'File And Archive Preview',category:'Text, Notes & Images',tags:['table','text'],
   summary:'Preview beginning or end excerpts of text and binary files, and inspect .gz, .zip, .tar, or .tar.gz files.',
   whenToUse:'Inspect source lines or bytes from a large local file, or list an archive and preview the beginning of a selected member.',
   inputType:'Pasted text or one local file',outputType:'Source-line or hexadecimal excerpts, archive listing, or summary report',
