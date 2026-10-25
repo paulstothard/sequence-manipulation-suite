@@ -585,12 +585,12 @@ export function annotationSvg(a, interactive = false) {
     h = Math.abs(a.h);
   let shape;
   if (a.type === "label")
-    shape = `<text x="${a.x}" y="${a.y + a.fontSize}" font-family="${xml(IMAGE_FONTS[a.font].family)}" font-size="${a.fontSize}" fill="${a.color}" opacity="${a.opacity}" xml:space="preserve">${xml(a.text || "Label")}</text>`;
+    shape = `<text x="${a.x}" y="${a.y + a.fontSize}" font-family="${xml(IMAGE_FONTS[a.font].family)}" font-size="${a.fontSize}" fill="${a.color}" opacity="${a.opacity}" xml:space="preserve">${xml(a.text)}</text>`;
   else if (a.type === "draw")
     shape = `<polyline points="${a.points.map((p) => p.join(",")).join(" ")}" ${common}/>`;
   else if (a.type === "box" || a.type === "ellipse") shape = annotationShapeSvg(a);
   else if (a.type === "highlight")
-    shape = `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${a.color}" opacity="${a.opacity * 0.3}" stroke="none"/>`;
+    shape = `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${a.color}" opacity="${a.opacity * (a.fillOpacity ?? .3)}" stroke="none"/>`;
   else shape = connectorSvg(a);
   return `<g${interactive ? ` data-object="${a.id}"` : ""}>${shape}</g>`;
 }

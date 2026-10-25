@@ -1,4 +1,4 @@
-// Geometry shared by the image editors and Text & Table to Image. Coordinates
+// Geometry shared by the image editors and Text to Image and Table to Image. Coordinates
 // here are image units, so non-square images and preview zoom do not distort snaps.
 export const isConnector = type => ['line', 'arrow', 'pointer'].includes(type);
 
@@ -18,6 +18,7 @@ export const strokeDash = (pattern, width) => pattern === 'dashed' ? `${width * 
 export const annotationFillStyle = a => a.fillStyle ?? (a.filled ? 'solid' : 'none');
 
 export function validateAnnotationAppearance(a) {
+  if (a.fillOpacity !== undefined && (typeof a.fillOpacity !== 'number' || !Number.isFinite(a.fillOpacity) || a.fillOpacity < 0 || a.fillOpacity > 1)) throw new Error('Invalid fill opacity.');
   for (const [key, choices] of Object.entries({ strokePattern: ['solid', 'dashed', 'dotted'], headStyle: ['open', 'filled', 'outline'], endPlacement: ['end', 'both'], fillStyle: ['none', 'soft', 'hatched', 'solid'] })) {
     if (a[key] !== undefined && !choices.includes(a[key])) throw new Error(`Invalid annotation ${key}.`);
   }
@@ -30,7 +31,7 @@ export function annotationShapeSvg(a) {
   const shape = type === 'ellipse' ? 'ellipse' : 'rect';
   const geometry = shape === 'ellipse' ? `cx="${x + w / 2}" cy="${y + h / 2}" rx="${w / 2}" ry="${h / 2}"` : `x="${x}" y="${y}" width="${w}" height="${h}" rx="${Math.min(a.cornerRadius ?? 0, w / 2, h / 2)}"`;
   const patternId = `sms3-hatch-${a.id}`;
-  const defs = mode === 'hatched' ? `<defs><pattern id="${patternId}" patternUnits="userSpaceOnUse" width="8" height="8"><path d="M-2,2 L2,-2 M0,8 L8,0 M6,10 L10,6" fill="none" stroke="${color}" stroke-width="1.5" stroke-dasharray="none" opacity="0.55"/></pattern></defs>` : '';
+  const defs = mode === 'hatched' ? `<defs><pattern id="${patternId}" patternUnits="userSpaceOnUse" width="8" height="8"><path d="M-2,2 L2,-2 M0,8 L8,0 M6,10 L10,6" fill="none" stroke="${color}" stroke-width="1.5" stroke-dasharray="none" opacity="${a.fillOpacity ?? .55}"/></pattern></defs>` : '';
   const fill = mode === 'none' ? 'none' : mode === 'hatched' ? `url(#${patternId})` : color;
   return `${defs}<${shape} ${geometry} fill="${fill}" fill-opacity="${mode === 'soft' ? .25 : 1}" stroke="${a.color}" stroke-width="${width}" stroke-dasharray="${strokeDash(a.strokePattern, width)}" stroke-linecap="round" stroke-linejoin="round" opacity="${a.opacity ?? 1}"/>`;
 }
@@ -97,6 +98,18 @@ export function snapSquare(origin, point, { scale = 1, force = false, disabled =
   return { point: result, guide: { kind: 'square', origin, point: result, label: type === 'ellipse' || type === 'circle' ? 'Circle' : 'Square' } };
 }
 
+// Project the resize corner onto the original diagonal so both dimensions
+// receive the same scale, even when the drawing's bounds are not square.
+export function snapProportions(box, point, { scale = 1, force = false, disabled = false, previous } = {}) {
+  if (disabled || !(box.w > 0 && box.h > 0)) return { point };
+  const dx = point.x - box.x, dy = point.y - box.y;
+  const factor = Math.max(.05, (dx * box.w + dy * box.h) / (box.w ** 2 + box.h ** 2));
+  const result = { x: box.x + box.w * factor, y: box.y + box.h * factor };
+  const distance = Math.hypot(result.x - point.x, result.y - point.y) * scale;
+  if (!force && (Math.max(box.w, box.h) * factor * scale < 12 || distance > (previous?.kind === 'proportional' ? 12 : 8))) return { point };
+  return { point: result, scaleFactor: factor, guide: { kind: 'proportional', origin: { x: box.x, y: box.y }, point: result } };
+}
+
 // Targets are measured once at pointerdown. Work in image units, but keep the
 // capture/release distance constant on screen at every preview zoom.
 const alignmentAnchors = [[0, 0], [0, 1], [.5, .5], [1, 0], [1, 1]];
@@ -104,9 +117,15 @@ export function snapTranslation(box, delta, targets, { scale = 1, disabled = fal
   const moved = { ...delta }, matches = [];
   if (disabled || !box) return { delta: moved };
   for (const [axis, size] of [['x', 'w'], ['y', 'h']]) {
+    const cross = axis === 'x' ? 'y' : 'x', crossSize = axis === 'x' ? 'h' : 'w';
+    const crossStart = box[cross] + delta[cross];
     const held = previous?.kind === 'alignment' ? previous.matches.find(m => m.axis === axis) : null;
     let best, retained;
     for (const target of targets) {
+      // Nearby objects should win over distant labels when their snap positions
+      // are almost identical. Keep this preference small and in screen pixels.
+      const gap = Math.max(0, target[cross] - crossStart - box[crossSize], crossStart - target[cross] - target[crossSize]);
+      const proximity = Math.min(2, gap * scale / 100);
       for (const [sourceAnchor, targetAnchor] of alignmentAnchors) {
         // Edge-to-edge and center-to-center avoid excessive snap stops.
         const value = target[axis] + target[size] * targetAnchor;
@@ -115,12 +134,17 @@ export function snapTranslation(box, delta, targets, { scale = 1, disabled = fal
         const distance = Math.abs(offset - delta[axis]) * scale;
         const same = held?.target.id === target.id && held.sourceAnchor === sourceAnchor && held.targetAnchor === targetAnchor;
         if (distance > (same ? 10 : 6)) continue;
-        const candidate = { axis, value, sourceAnchor, targetAnchor, target, offset, distance };
+        const candidate = { axis, value, sourceAnchor, targetAnchor, target, offset, distance, score:distance + proximity };
         if (same && distance <= 10) retained = candidate;
-        if (distance <= 6 && (!best || distance < best.distance)) best = candidate;
+        if (distance <= 6 && (!best || candidate.score < best.score)) best = candidate;
       }
     }
-    const match = retained ?? best;
+    // A wide release margin must not hide a nearby alignment. In particular,
+    // similarly sized shapes have left/center/right stops only a few pixels
+    // apart. Keep a small hysteresis around their midpoint, then let the closer
+    // stop take over. Scale that margin down for very tightly spaced stops.
+    const switchMargin = retained && best ? Math.min(2, Math.abs(retained.offset - best.offset) * scale / 4) : 0;
+    const match = retained && (!best || retained.score <= best.score + switchMargin) ? retained : best;
     if (match) { moved[axis] = match.offset; matches.push(match); }
   }
   return { delta: moved, guide: matches.length ? { kind: 'alignment', matches, box: { ...box, x: box.x + moved.x, y: box.y + moved.y } } : undefined };

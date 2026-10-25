@@ -1,5 +1,5 @@
 import { createAnnotationStyleControls } from "./annotation-style-controls.js";
-import { isConnector, annotationFillStyle, strokeDash, snapEndpoint, snapSquare, snapTranslation, moveConnectorHandle } from "../core/annotation-geometry.js";
+import { isConnector, annotationFillStyle, strokeDash, snapEndpoint, snapSquare, snapProportions, snapTranslation, moveConnectorHandle } from "../core/annotation-geometry.js";
 import { appendConnectorControls, appendSnapGuide, alignmentTargets } from "./annotation-controls.js";
 import {
   parseSvg,
@@ -11,8 +11,9 @@ import {
   editableTags,
 } from "../core/graphic-editor.js";
 import { IMAGE_FONTS } from "../core/image-fonts.js";
-import { isImageColor, colorOpacity, withColorOpacity, annotationColor, setAnnotationColor } from "../core/image-colors.js";
+import { isImageColor, colorOpacity, withColorOpacity, annotationColor, setAnnotationColor, normalizeAnnotationFill } from "../core/image-colors.js";
 import { createEditorSession } from "./editor-session.js";
+import { installControlHelp } from "./control-help.js";
 import { createColorPicker } from "./color-picker.js";
 import { createCanvasLabelEditor } from "./canvas-label-editor.js";
 import { createImageColorSampler } from "./image-color-sampler.js";
@@ -27,7 +28,6 @@ const icons = {
   draw: '<path d="m4 17 12-12 3 3-12 12H4zM3 23h18"/>',
   box: '<rect x="4" y="5" width="16" height="14" rx="3"/>',
   ellipse: '<ellipse cx="12" cy="12" rx="9" ry="7"/>',
-  highlight: '<path d="m9 15 7-9 4 3-7 9zM7 16l4 3-3 2H4z"/>',
   arrow: '<path d="M4 20 20 4M9 4h11v11"/>',
   line: '<path d="m5 19 14-14"/>',
   pointer: '<path d="m5 19 12-12"/><circle cx="18" cy="6" r="2" fill="currentColor"/>',
@@ -178,6 +178,7 @@ export async function renderGraphicEditor(
       editorDocument?.state ?? initialGraphicState(),
     );
     validateGraphicState(state, source, parsed);
+    state.annotations.forEach(a => normalizeAnnotationFill(a, { highlightOpacity: .3 }));
     if (source.kind === "png")
       await loadRaster(JSON.parse(source.input).dataUrl);
     if (disposed) return;
@@ -212,6 +213,7 @@ function mount(container, source, initial, parsed, { preview }) {
   let defaults = {
     color: "#c13b32",
     fill: "#f0bc36",
+    fillOpacity: 1,
     filled: false,
     font: "inter",
     fontSize: defaultSize,
@@ -274,6 +276,7 @@ function mount(container, source, initial, parsed, { preview }) {
   stage.append(toolbar, viewport, viewbar);
   controls.append(tabs, panels);
   container.append(root);
+  const disposeToolbarHelp = installControlHelp(toolbar, { compact:true });
   const colors = [];
   const button = (name, action, parent = toolbar, icon) => {
     const b = el("button", icon ? "" : name);
@@ -283,7 +286,10 @@ function mount(container, source, initial, parsed, { preview }) {
     if (icon) {
       b.className = "tti-icon-button";
       b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${icons[icon]}</svg>`;
-      b.append(el("span", name));
+      if (toolbar.contains(parent)) {
+        b.removeAttribute("title");
+        b.dataset.controlHelp = name;
+      } else b.append(el("span", name));
     }
     b.addEventListener("click", () =>
       Promise.resolve()
@@ -399,7 +405,6 @@ function mount(container, source, initial, parsed, { preview }) {
     ["line", "Line"],
     ["box", "Box"],
     ["ellipse", "Ellipse"],
-    ["highlight", "Highlight"],
     ["label", "Text"],
   ])
     modeButtons[key] = button(name, () => setMode(key), toolbar, key);
@@ -828,7 +833,7 @@ function mount(container, source, initial, parsed, { preview }) {
       has = !!element;
     const type = a?.type ?? node?.tag ?? mode;
     const text = type === "label" || type === "text";
-    ending.closest("label").hidden = !isConnector(type) || !!node;
+    ending.closest("label").hidden = !a || !isConnector(type);
     ending.value = isConnector(type) ? type : "line";
     straighten.hidden = !a || !isConnector(type);
     straighten.disabled = !(a?.bendX || a?.bendY);
@@ -842,6 +847,7 @@ function mount(container, source, initial, parsed, { preview }) {
         : "Drag on the image to draw. Text labels are placed with a click.";
     if (a && isConnector(type)) hint.textContent += " · Drag ends to aim, the middle to bend, or the line to move. Shift snaps; Alt releases.";
     else if (a?.type === 'label') hint.textContent += " · Double-click or Enter to edit text. Backspace/Delete removes the label.";
+    else if (a?.type === 'draw') hint.textContent += " · Resize snaps to original proportions. Shift constrains; Alt releases.";
     else if (["box", "ellipse"].includes(type)) hint.textContent += " · Snaps to square / circle. Shift constrains; Alt releases.";
     else if (node) hint.textContent += " · Drag to move; drag the corner handle to resize.";
     label.closest("label").hidden = !text;
@@ -893,7 +899,7 @@ function mount(container, source, initial, parsed, { preview }) {
         (computed ? parseFloat(computed.opacity) : defaults.opacity)) * 100,
     );
     duplicate.disabled = !a;
-    duplicate.title = a
+    duplicate.dataset.controlHelp = a
       ? "Duplicate annotation"
       : "Select an added annotation to duplicate it";
     remove.disabled = !has;
@@ -904,10 +910,12 @@ function mount(container, source, initial, parsed, { preview }) {
     if (b)
       for (const [key, input] of Object.entries(position))
         input.value = Number(b[key].toFixed(2));
+    for (const key of ['w', 'h']) position[key].closest('label').hidden = a?.type === 'label';
     const editing = has || mode !== "select";
     colors.find((c) => c.input === color).element.hidden = !editing;
     appearance.update({
       ...(a ?? defaults),
+      type,
       strokeWidth: a?.strokeWidth ?? (computed ? parseFloat(computed.strokeWidth) || 2 : defaults.strokeWidth),
       strokePattern: a?.strokePattern ?? (node ? nativePattern(computed) : defaults.strokePattern ?? "solid"),
       fillStyle: addedFill,
@@ -1056,8 +1064,12 @@ function mount(container, source, initial, parsed, { preview }) {
         drag.parent = domMatrix(svg.getScreenCTM())
           .inverse()
           .multiply(domMatrix(element.parentNode.getScreenCTM()));
-        drag.own =
-          element.transform.baseVal.consolidate()?.matrix ?? new DOMMatrix();
+        // SVGMatrix can be a live view of the element's transform in WebKit.
+        // Freeze the starting transform: preview updates must not feed back
+        // into the next move/resize calculation and compound its displacement.
+        drag.own = domMatrix(
+          element.transform.baseVal.consolidate()?.matrix ?? new DOMMatrix(),
+        );
       }
     } else {
       if (state.annotations.length >= GRAPHIC_LIMITS.annotations) {
@@ -1141,11 +1153,13 @@ function mount(container, source, initial, parsed, { preview }) {
       } else {
         const type = annotation()?.type ?? sourceNode()?.tag;
         const corner = { x: b.x + b.w + p.x - drag.start.x, y: b.y + b.h + p.y - drag.start.y };
-        const snap = ['box', 'ellipse', 'rect', 'circle'].includes(type)
-          ? snapSquare({ x: b.x, y: b.y }, corner, { ...options, type }) : { point: corner };
+        const snap = type === 'label' ? snapProportions(b, corner, { ...options, force:true, disabled:false })
+          : type === 'draw' ? snapProportions(b, corner, options)
+          : ['box', 'ellipse', 'rect', 'circle'].includes(type)
+            ? snapSquare({ x: b.x, y: b.y }, corner, { ...options, type }) : { point: corner };
         snapGuide = snap.guide;
-        const sx = Math.max(0.05, (snap.point.x - b.x) / Math.max(b.w, 0.1)),
-          sy = Math.max(0.05, (snap.point.y - b.y) / Math.max(b.h, 0.1));
+        const sx = snap.scaleFactor ?? Math.max(0.05, (snap.point.x - b.x) / Math.max(b.w, 0.1)),
+          sy = snap.scaleFactor ?? Math.max(0.05, (snap.point.y - b.y) / Math.max(b.h, 0.1));
         m = new DOMMatrix()
           .translate(b.x, b.y)
           .scale(sx, event.shiftKey && !snap.guide && !event.altKey ? sx : sy)
@@ -1305,6 +1319,7 @@ function mount(container, source, initial, parsed, { preview }) {
       labelEditor.close();
       validateGraphicState(value, source, parsed);
       state = structuredClone(value);
+      state.annotations.forEach(a => normalizeAnnotationFill(a, { highlightOpacity: .3 }));
       selected = "";
       draw();
     },
@@ -1314,6 +1329,7 @@ function mount(container, source, initial, parsed, { preview }) {
   const resizeObserver = new ResizeObserver(() => { drawSelection(); labelEditor.refresh(); });
   resizeObserver.observe(viewport);
   container._sms3VisualCleanup = () => {
+    disposeToolbarHelp();
     navigation.dispose();
     colorSampler.dispose();
     labelEditor.dispose();

@@ -1,10 +1,10 @@
 import {validateGraphicDocument} from '../core/graphic-editor.js';
-import { validateImageState } from '../core/text-table-image.js';
+import { validateImageState, IMAGE_EDITOR_TOOLS, imageToolId } from '../core/text-table-image.js';
 import { downloadText } from "./file-download.js";
 import { validatePlateLayout } from "../core/plate-layout.js";
 import { STANDARD_BROWSER_FILE_BYTES } from "../core/tool-limit-options.js";
 const EDITOR_DOCUMENT_FORMAT = "sms3-editor-document";
-const EDITOR_TOOLS = ["svg-editor", "image-annotator", "text-table-to-image", "workflow", "tree-viewer", "plate-layout-planner", "sequence-editor", "markdown-notebook", "linear-genome-figure", "circular-genome-figure", "sequence-extractor", "sanger-trace-viewer", "sanger-trace-assembly", "sanger-trace-reference-comparison"];
+const EDITOR_TOOLS = ["svg-editor", "image-annotator", ...IMAGE_EDITOR_TOOLS, "workflow", "tree-viewer", "plate-layout-planner", "sequence-editor", "markdown-notebook", "linear-genome-figure", "circular-genome-figure", "sequence-extractor", "sanger-trace-viewer", "sanger-trace-assembly", "sanger-trace-reference-comparison"];
 const MAX_BYTES = STANDARD_BROWSER_FILE_BYTES;
 const copy = (value) => structuredClone(value);
 const recoveryWrites = new Map();
@@ -18,10 +18,13 @@ function parseEditorDocument(text) {
     throw new Error("The document contains invalid source data or editable state.");
   };
   const object = (value) => value && typeof value === "object" && !Array.isArray(value);
-  if (doc.tool === "text-table-to-image") {
+  if (IMAGE_EDITOR_TOOLS.includes(doc.tool)) {
     if (typeof doc.source.input !== "string" || doc.source.image?.text !== doc.source.input) fail();
     validateImageState(doc.source.image);
     validateImageState(doc.state.image);
+    const tool = imageToolId(doc.state.image.mode);
+    if (doc.source.image.mode !== doc.state.image.mode || (doc.tool !== 'text-table-to-image' && doc.tool !== tool)) fail();
+    doc.tool = tool;
   }
   if (["svg-editor","image-annotator"].includes(doc.tool)) validateGraphicDocument(doc);
   const records = doc.source.records;
@@ -105,7 +108,11 @@ function store(tool, value) {
   });
 }
 async function readEditorRecovery(tool) {
-  const doc = await store(tool);
+  let doc = await store(tool);
+  if (!doc && ['text-to-image', 'table-to-image'].includes(tool)) {
+    const legacy = await store('text-table-to-image');
+    if (legacy && imageToolId(legacy.state?.image?.mode) === tool) doc = legacy;
+  }
   return doc ? parseEditorDocument(JSON.stringify(doc)) : null;
 }
 // One current recovery document per editor; shared history stays bounded in memory.

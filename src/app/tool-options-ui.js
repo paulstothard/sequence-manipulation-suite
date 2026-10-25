@@ -462,7 +462,8 @@ export function createToolOptionsController({
       const wrapper = document.createElement("div");
       wrapper.className = "radio-tab-row";
       wrapper.dataset.optionId = option.id;
-      if (option.label || option.help) {
+      const inputTabs = option.placement === "input";
+      if (!inputTabs && (option.label || option.help)) {
         const heading = document.createElement("div");
         heading.className = "radio-tab-heading";
         heading.append(createOptionLabelContentForContext(option, parentGroupLabel));
@@ -507,6 +508,10 @@ export function createToolOptionsController({
         tabs.append(tab, radio);
       }
       wrapper.append(tabs);
+      if (inputTabs && option.help) {
+        wrapper.classList.add("input-tab-row");
+        wrapper.append(createOptionLabelContent({ ...option, label: "" }));
+      }
       parent.append(wrapper);
       return;
     }

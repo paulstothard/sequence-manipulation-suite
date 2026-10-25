@@ -1,3 +1,4 @@
+import { resolveImageToolId } from './text-table-image.js';
 import { hasPairedAnnotation } from "./paired-annotation-input.js";
 import { parsePcrTemplateInput } from "./pcr-template-input.js";
 import { workflowSequenceRecordsToFasta, identifyWorkflowSequenceRecords } from "./workflow-sequence-input.js";
@@ -795,7 +796,7 @@ async function runWorkflowTool(tool, input, options, context) {
 }
 
 async function runToolStep(step, value, context) {
-  const tool = context.toolMap.get(step.toolId);
+  const tool = context.toolMap.get(resolveImageToolId(step.toolId, step.options));
   if (!tool) {
     throw new Error(`Step "${step.id}" references unknown tool "${step.toolId}".`);
   }
@@ -812,7 +813,7 @@ async function runMapToolStep(step, value, context) {
     throw new Error(`Step "${step.id}" expected a collection input for map.`);
   }
 
-  const tool = context.toolMap.get(step.toolId);
+  const tool = context.toolMap.get(resolveImageToolId(step.toolId, step.options));
   if (!tool) {
     throw new Error(`Step "${step.id}" references unknown tool "${step.toolId}".`);
   }
@@ -1010,7 +1011,7 @@ export function validateWorkflowDefinition(workflow, options = {}) {
     }
 
     if (step.type === "tool" || step.type === "map") {
-      const tool = toolMap.get(step.toolId);
+      const tool = toolMap.get(resolveImageToolId(step.toolId, step.options));
       if (!tool) {
         errors.push(`Step "${stepId}" references unknown tool "${step.toolId}".`);
         return;

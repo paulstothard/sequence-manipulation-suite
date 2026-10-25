@@ -59,9 +59,18 @@ export function appendSnapGuide(parent, guide, scale) {
     }
     parent.append(group); return;
   }
-  if (guide.kind === 'square') {
-    const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y), w = Math.abs(b.x - a.x), h = Math.abs(b.y - a.y), tick = 4 * unit;
-    group.append(annotationControl('path', { d: `M${x + w / 2},${y - tick}v${2 * tick} M${x + w - tick},${y + h / 2}h${2 * tick}` }, style));
+  if (guide.kind === 'square' || guide.kind === 'proportional') {
+    const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y), w = Math.abs(b.x - a.x), h = Math.abs(b.y - a.y);
+    const tick = 3 * unit, gap = 2.5 * unit;
+    // Matching double ticks mark square/circle dimensions or equal scaling
+    // of the two axes when resizing a freehand drawing proportionally.
+    // Keep them legible over the artwork and the selection glow at any zoom.
+    const d = [-gap, gap].map(offset => `M${x + w / 2 + offset},${y - tick}v${2 * tick} M${x + w - tick},${y + h / 2 + offset}h${2 * tick}`).join(' ');
+    group.append(
+      annotationControl('path', { d }, `${style};stroke:white!important;stroke-width:3.5!important;opacity:.85!important`),
+      annotationControl('path', { d }, `${style};stroke-width:1.5!important`),
+    );
+    parent.append(group); return;
   } else group.append(annotationControl('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y }, style));
   const x = Math.min(a.x, b.x) + 5 * unit, y = Math.max(a.y, b.y) - 10 * unit;
   const label = annotationControl('text', { x, y }, `font:600 ${11 * unit}px Arial,sans-serif!important;fill:#0066aa!important;stroke:white!important;stroke-width:${3 * unit}!important;paint-order:stroke!important`);

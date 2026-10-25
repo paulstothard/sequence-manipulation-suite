@@ -1,3 +1,4 @@
+import { imageToolId } from '../core/text-table-image.js';
 import { initialGraphicState } from '../core/graphic-editor.js';
 
 // Ordinary editor state, consumed by the production renderer and document
@@ -23,18 +24,19 @@ export function makeShowcaseGraphicDocument(source) {
 
 export function makeShowcaseTextImageDocument(source) {
   const image = structuredClone(source.image);
-  Object.assign(image.style, { font:'jetbrains', padding:48 });
+  const table = image.mode === 'table';
+  Object.assign(image.style, { font:table ? 'inter' : 'jetbrains', padding:48 });
+  if (table) { image.style.columnFonts[1] = 'jetbrains'; image.style.columnFontSizes[1] = 14; }
   const annotation = (id, type, extra) => ({
     id:`showcase-${id}`, type, x:0, y:0, w:0, h:0, text:'', font:'inter',
     fontSize:14, color:'#d38a00', strokeWidth:1.5, ...extra,
   });
-  // Anchor to the actual characters so changing typography retains alignment.
-  const anchor = { row:2, start:10, end:12 };
+  // Anchor to the source characters or cell so typography retains alignment.
+  const anchor = table ? { row:2, column:2 } : { row:2, start:10, end:12 };
   image.annotations = [
-    annotation('start-highlight', 'highlight', { anchor, color:'#e69f00' }),
-    annotation('start-outline', 'box', { anchor, cornerRadius:3 }),
+    annotation('start-outline', 'box', { anchor, cornerRadius:3, fillStyle:'solid', fill:'#e69f0040' }),
     annotation('legend-swatch', 'box', { x:.061, y:.885, w:.016, h:.052, fillStyle:'solid', filled:true, fill:'#e69f00', color:'#e69f00' }),
-    annotation('legend-label', 'label', { x:.088, y:.873, text:'Start codon (ATG)', color:'#875500' }),
+    annotation('legend-label', 'label', { x:.088, y:.873, text:table ? 'TP53 forward primer' : 'Start codon (ATG)', color:'#875500' }),
   ];
-  return { format:'sms3-editor-document', version:1, tool:'text-table-to-image', source, state:{ image } };
+  return { format:'sms3-editor-document', version:1, tool:imageToolId(image.mode), source, state:{ image } };
 }

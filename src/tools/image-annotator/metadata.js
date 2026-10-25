@@ -7,7 +7,7 @@ export const imageAnnotatorMetadata = {
   category: "Text, Notes & Images",
   tags: ["annotation", "plot"],
   summary:
-    "Draw on a PNG image and add editable labels, arrows, boxes and highlights.",
+    "Draw on a PNG image and add editable labels, arrows and shapes.",
   whenToUse:
     "Use this to annotate a plot, diagram or other PNG from SMS3 or another source.",
   inputType: "PNG or saved annotation document",

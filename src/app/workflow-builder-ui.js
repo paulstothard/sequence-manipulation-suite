@@ -1,3 +1,4 @@
+import { IMAGE_EDITOR_TOOLS, resolveImageToolId } from '../core/text-table-image.js';
 import { workflowInputDisplayText, findWorkflowFeatureInput } from "../core/workflow-input-state.js";
 import { previewDesignFeatures } from "../core/design-feature-input.js";
 import { labWorkflowOperations } from "../core/workflow-lab-operations.js";
@@ -181,10 +182,10 @@ export function createWorkflowBuilderController({
           return { text: "", rawText: value.text, summary: "Workflow output: editable image", outputLabel: "Editable image", isTsv: false,
             graphicEditor: doc.source, editorDocument: doc, filename: `${doc.tool}.sms3.json`, mimeType: "application/json" };
         }
-        if (candidate?.format === "sms3-editor-document" && candidate.tool === "text-table-to-image") {
+        if (candidate?.format === "sms3-editor-document" && IMAGE_EDITOR_TOOLS.includes(candidate.tool)) {
           const doc = parseEditorDocument(value.text);
           return { text: "", rawText: value.text, summary: "Workflow output: editable text or table image", outputLabel: "Editable image", isTsv: false,
-            textTableImage: doc.source, editorDocument: doc, filename: "text-table-to-image.sms3.json", mimeType: "application/json" };
+            textTableImage: doc.source, editorDocument: doc, filename: `${doc.tool}.sms3.json`, mimeType: "application/json" };
         }
         if (candidate?.format === "sms3-editor-document" && candidate.tool === "plate-layout-planner") {
           const doc = parseEditorDocument(value.text);
@@ -576,7 +577,8 @@ export function createWorkflowBuilderController({
     return workflow;
   }
 
-  function getToolById(toolId) {
+  function getToolById(toolId, options) {
+    toolId = resolveImageToolId(toolId, options);
     const resolvedToolId = toolIdAliases.get(toolId) ?? toolId;
     return tools.find((tool) => tool.metadata.id === resolvedToolId);
   }
@@ -632,7 +634,7 @@ export function createWorkflowBuilderController({
       }
 
       if (step.type === "tool") {
-        lastTool = getToolById(step.toolId);
+        lastTool = getToolById(step.toolId, step.options);
         lastOutput = getAvailableToolWorkflowOutputs(lastTool?.metadata, step.options).find((output) => output.id === (step.selectStream ?? "primary"));
         continue;
       }
@@ -671,7 +673,7 @@ export function createWorkflowBuilderController({
       }
 
       if (step.type === "map") {
-        const tool = getToolById(step.toolId);
+        const tool = getToolById(step.toolId, step.options);
         const stream = step.selectStream ?? "primary";
         const output = tool?.metadata.workflow?.outputs?.find((item) => item.id === stream);
         lastOutput = {
@@ -710,7 +712,7 @@ export function createWorkflowBuilderController({
         lastOutput = { id: "primary", kind: "text", mediaType: step.mediaType ?? "text/plain" };
         lastTool = undefined;
       } else if (step.type === "tool") {
-        lastTool = getToolById(step.toolId);
+        lastTool = getToolById(step.toolId, step.options);
         lastOutput = getAvailableToolWorkflowOutputs(lastTool?.metadata, step.options).find((output) => output.id === (step.selectStream ?? "primary"));
       } else if (step.type === "select-stream") {
         const output = lastTool?.metadata.workflow?.outputs?.find((item) => item.id === step.stream);
@@ -730,7 +732,7 @@ export function createWorkflowBuilderController({
       } else if (step.type === "feature-table-gff3-bundle") {
         lastOutput = makeGff3BundleOutput("Curated feature GFF3 + FASTA bundle");
       } else if (step.type === "map") {
-        const tool = getToolById(step.toolId);
+        const tool = getToolById(step.toolId, step.options);
         const stream = step.selectStream ?? "primary";
         const output = tool?.metadata.workflow?.outputs?.find((item) => item.id === stream);
         lastOutput = {
@@ -774,7 +776,7 @@ export function createWorkflowBuilderController({
     if (step.type !== "tool" || step.input) {
       return false;
     }
-    return getToolById(step.toolId)?.metadata.inputRequired === false;
+    return getToolById(step.toolId, step.options)?.metadata.inputRequired === false;
   }
 
   function isOnlyWorkflowSourceStep(workflow, step) {
@@ -880,7 +882,7 @@ export function createWorkflowBuilderController({
         stepOutputs.set(step.id, output);
         stepTools.delete(step.id);
       } else if (step.type === "tool") {
-        const tool = getToolById(step.toolId);
+        const tool = getToolById(step.toolId, step.options);
         output = getAvailableToolWorkflowOutputs(tool?.metadata, step.options).find((item) => item.id === (step.selectStream ?? "primary"));
         lastTool = tool;
         stepOutputs.set(step.id, output);
@@ -913,7 +915,7 @@ export function createWorkflowBuilderController({
         stepOutputs.set(step.id, output);
         stepTools.delete(step.id);
       } else if (step.type === "map") {
-        const tool = getToolById(step.toolId);
+        const tool = getToolById(step.toolId, step.options);
         const stream = step.selectStream ?? "primary";
         const selected = tool?.metadata.workflow?.outputs?.find((item) => item.id === stream);
         output = {
@@ -956,7 +958,7 @@ export function createWorkflowBuilderController({
       return "Workflow input";
     }
     if (step.type === "tool" || step.type === "map") {
-      return getToolById(step.toolId)?.metadata.name ?? step.toolId ?? "tool step";
+      return getToolById(step.toolId, step.options)?.metadata.name ?? step.toolId ?? "tool step";
     }
     if (step.type === "select-stream") {
       return "Choose a different result";
@@ -977,7 +979,7 @@ export function createWorkflowBuilderController({
       return "Source";
     }
     if (step.type === "tool") {
-      if (!step.input && (getToolById(step.toolId)?.metadata.workflow?.inputs ?? []).length === 0) {
+      if (!step.input && (getToolById(step.toolId, step.options)?.metadata.workflow?.inputs ?? []).length === 0) {
         return "Source tool";
       }
       return "Tool";
@@ -1026,7 +1028,7 @@ export function createWorkflowBuilderController({
       return "Start from pasted or loaded sequence text";
     }
     if (step.type === "tool") {
-      const tool = tools.find((item) => item.metadata.id === step.toolId);
+      const tool = tools.find((item) => item.metadata.id === resolveImageToolId(step.toolId, step.options));
       const input = step.input ? ` using ${getWorkflowStepInputDescription(workflow, step)}` : "";
       const flow = workflow ? getWorkflowStepFlow(workflow, (workflow.steps ?? []).findIndex((item) => item.id === step.id)) : {};
       const output = getWorkflowStepOutputDescription(step, flow);
@@ -1055,7 +1057,7 @@ export function createWorkflowBuilderController({
       return `Keep the first ${Number.isFinite(count) ? Math.max(0, count) : 10} rows or records`;
     }
     if (step.type === "map") {
-      const tool = tools.find((item) => item.metadata.id === step.toolId);
+      const tool = tools.find((item) => item.metadata.id === resolveImageToolId(step.toolId, step.options));
       const input = step.input ? ` from ${getWorkflowStepInputDescription(workflow, step)}` : "";
       const flow = workflow ? getWorkflowStepFlow(workflow, (workflow.steps ?? []).findIndex((item) => item.id === step.id)) : {};
       const output = getWorkflowStepOutputDescription(step, flow);
@@ -1509,7 +1511,7 @@ export function createWorkflowBuilderController({
     if (option.workflowHidden) return false;
     // These tools receive the workflow's typed input; local file pickers are
     // part of the single-tool input shell, not saved workflow options.
-    if (option.id === getToolById(step.toolId)?.metadata.inputSource?.option) return false;
+    if (option.id === getToolById(step.toolId, step.options)?.metadata.inputSource?.option) return false;
 
     if (!displayFormatWorkflowOptionIds.has(option.id)) {
       return true;
@@ -1533,7 +1535,7 @@ export function createWorkflowBuilderController({
     }
 
     mutator(step, workflow);
-    if (step.type === "tool" || step.type === "map") normalizeWorkflowOutputSelection(getToolById(step.toolId), step);
+    if (step.type === "tool" || step.type === "map") normalizeWorkflowOutputSelection(getToolById(step.toolId, step.options), step);
     setWorkflowDefinition(workflow);
     clearWorkflowOutput();
     renderWorkflowView();
@@ -1849,7 +1851,7 @@ export function createWorkflowBuilderController({
       return;
     }
 
-    const tool = getToolById(step.toolId);
+    const tool = getToolById(step.toolId, step.options);
     const fixedLimitIds = new Set(Object.keys(getFixedLimitOptionDefaults(tool?.metadata)));
     let editableOptions = flattenOptions(tool?.metadata.options ?? []).filter((option) =>
       (

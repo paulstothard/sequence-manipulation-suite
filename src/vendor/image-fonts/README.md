@@ -1,6 +1,6 @@
 # Image editor fonts
 
-Six OFL families are bundled for Text & Table to Image: JetBrains Mono, Source
+Six OFL families are bundled for Text to Image and Table to Image: JetBrains Mono, Source
 Code Pro, IBM Plex Mono, Inconsolata, Inter and Source Serif 4. Each family includes
 its upstream license. `manifest.json` pins the source revision, versions, URLs,
 checksums and file sizes. The complete bundle is approximately 1.2 MB.

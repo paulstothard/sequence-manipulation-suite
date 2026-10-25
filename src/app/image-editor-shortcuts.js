@@ -1,7 +1,7 @@
 // Keep deletion available throughout an editor, without stealing text-editing
 // keys or the native behavior of unrelated form controls.
 export function bindImageEditorDeletion(root, button, remove, selectionList) {
-  button.title = 'Delete selected item (Backspace or Delete)';
+  button.dataset.controlHelp = 'Delete selected item (Backspace or Delete)';
   button.setAttribute('aria-keyshortcuts', 'Backspace Delete');
   root.addEventListener('keydown', event => {
     if (event.defaultPrevented || event.isComposing || event.ctrlKey || event.metaKey || event.altKey ||

@@ -111,7 +111,7 @@ export function createOutputShellController({
 function renderMessages(result) {
   elements.messages.textContent = "";
 
-  if (result.visual?.graphicEditor) {
+  if (result.visual?.graphicEditor || result.visual?.textTableImage) {
     appendWarningSummary(elements.messages,result.warnings);
     return;
   }
@@ -1767,9 +1767,17 @@ function renderVisualOutput(scope, svg, options = {}) {
   }
   visualOutput.hidden = false;
   visualOutput.textContent = "";
+  // These editors already provide their own titled viewer header.
+  if (options.graphicEditor) {
+    return renderGraphicEditor(visualOutput, options.graphicEditor, options.editorDocument);
+  }
+  if (options.textTableImage) {
+    renderTextTableImage(visualOutput, options.textTableImage, options.editorDocument);
+    return "";
+  }
   const heading = document.createElement("h4");
   heading.className = "visual-output-heading";
-  heading.textContent = options.graphicEditor ? (options.graphicEditor.kind === "svg" ? "SVG Editor" : "Image Annotator") : options.textTableImage ? "Text & Table to Image" : options.plateLayout ? "Plate Layout Planner" : options.treeViewer ? "Tree Viewer" : options.sequenceLogo
+  heading.textContent = options.plateLayout ? "Plate Layout Planner" : options.treeViewer ? "Tree Viewer" : options.sequenceLogo
     ? "Sequence Logo"
     : options.proteinFigure
     ? "Protein Sequence Figure"
@@ -1791,13 +1799,6 @@ function renderVisualOutput(scope, svg, options = {}) {
             ? "Markdown Notebook"
             : "Plot";
   appendPortableViewerHeading(visualOutput, heading, options);
-  if (options.graphicEditor) {
-    return renderGraphicEditor(visualOutput, options.graphicEditor, options.editorDocument);
-  }
-  if (options.textTableImage) {
-    renderTextTableImage(visualOutput, options.textTableImage, options.editorDocument);
-    return "";
-  }
   if (options.plateLayout) {
     renderPlateLayout(visualOutput, options.plateLayout, options.editorDocument);
     attachVisualInspection(visualOutput, { allowPin: false });

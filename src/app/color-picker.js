@@ -37,9 +37,8 @@ export function createColorPicker(name, value, { sampleColor } = {}) {
   const recent = make('div', null, 'sms3-color-recent');
   const recentPalette = make('div', null, 'sms3-color-palette');
   recentPalette.setAttribute('role','group'); recentPalette.setAttribute('aria-label','Recent colors');
-  const recentEmpty = make('span', 'No recent colors yet.', 'sms3-color-help');
-  recent.append(make('span','Recent colors','sms3-color-help'), recentPalette, recentEmpty);
-  const help = make('p','Changes apply immediately.','sms3-color-help');
+  recent.append(make('span','Recent colors','sms3-color-help'), recentPalette);
+  const help = make('p',null,'sms3-color-help'); help.setAttribute('role', 'status');
   let picker, listeners, sampling, openedColor;
   const swatches = [];
   function refresh() {
@@ -60,7 +59,7 @@ export function createColorPicker(name, value, { sampleColor } = {}) {
   }
   function refreshRecent() {
     recentPalette.replaceChildren();
-    const values = recentImageColors(); recentEmpty.hidden = !!values.length;
+    const values = recentImageColors(); recent.hidden = !values.length;
     values.forEach((color, i) => {
       const swatch = make('button', null, 'sms3-color-swatch'); swatch.type = 'button';
       swatch.title = `Recent color ${i + 1}`; swatch.setAttribute('aria-label', swatch.title);
@@ -78,7 +77,7 @@ export function createColorPicker(name, value, { sampleColor } = {}) {
     swatches.push(swatch); palette.append(swatch);
   }
   const custom = make('div', 'Loading color picker…', 'sms3-color-custom');
-  panel.append(heading,palette,recent,custom,opacitySummary,help);
+  panel.append(heading,custom,opacitySummary,palette,recent,help);
   element.append(label,input,trigger,panel);
   const close = () => { if (panel.matches(':popover-open')) panel.hidePopover(); };
   dismiss.addEventListener('click', () => { close(); trigger.focus({preventScroll:true}); });
@@ -122,7 +121,7 @@ export function createColorPicker(name, value, { sampleColor } = {}) {
   dropper.addEventListener('click', async () => {
     close(); sampling?.abort(); sampling = new AbortController();
     const current = sampling;
-    help.textContent = 'Changes apply immediately.';
+    help.textContent = '';
     try {
       const color = await sampleColor({ signal:current.signal });
       if (current.signal.aborted || !element.isConnected) return;
@@ -137,6 +136,15 @@ export function createColorPicker(name, value, { sampleColor } = {}) {
     if (event.newState === 'closed') {
       listeners?.abort();
       if (openedColor !== input.value) rememberImageColor(input.value);
+    }
+  });
+  // Safari focuses the editor ancestor when a button is clicked. Keep focus on
+  // the swatch/action so focusout cannot dismiss the popover before its click.
+  panel.addEventListener('pointerdown', event => {
+    const button = event.target.closest('button');
+    if (button && event.button === 0) {
+      event.preventDefault();
+      button.focus({preventScroll:true});
     }
   });
   panel.addEventListener('focusout', event => {

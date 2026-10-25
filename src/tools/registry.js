@@ -2,8 +2,10 @@ import {svgEditorMetadata,svgEditorExample} from "./svg-editor/metadata.js";
 import {runSvgEditor} from "./svg-editor/run.js";
 import {imageAnnotatorMetadata,imageAnnotatorExample} from "./image-annotator/metadata.js";
 import {runImageAnnotator} from "./image-annotator/run.js";
-import { textTableImageMetadata, textTableImageExample } from "./text-table-to-image/metadata.js";
-import { runTextTableImage } from "./text-table-to-image/run.js";
+import { textImageMetadata, textImageExample } from "./text-to-image/metadata.js";
+import { runTextImage } from "./text-to-image/run.js";
+import { tableImageMetadata, tableImageExample } from "./table-to-image/metadata.js";
+import { runTableImage } from "./table-to-image/run.js";
 import { getDataMetadata } from "./get-data/metadata.js";
 import { geneViewerMetadata } from "./gene-viewer/metadata.js";
 import { geneViewerExample } from "../examples/gene-viewer-example.js";
@@ -492,7 +494,8 @@ function makeFastqQcExample() {
 export const tools = [
   {metadata:svgEditorMetadata,run:runSvgEditor,example:svgEditorExample},
   {metadata:imageAnnotatorMetadata,run:runImageAnnotator,example:imageAnnotatorExample},
-  { metadata: textTableImageMetadata, run: runTextTableImage, example: textTableImageExample },
+  { metadata: textImageMetadata, run: runTextImage, example: textImageExample },
+  { metadata: tableImageMetadata, run: runTableImage, example: tableImageExample },
   { metadata: fileArchivePreviewMetadata, run: runFileArchivePreview, example: fileArchivePreviewExample },
   { metadata: fileChecksumMetadata, run: runFileChecksum, example: fileChecksumExample },
   { metadata: plateLayoutMetadata, run: runPlateLayout, example: plateLayoutExample },

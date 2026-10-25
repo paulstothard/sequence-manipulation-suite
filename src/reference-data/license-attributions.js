@@ -11,7 +11,7 @@ export const softwareLicenseAttributions = [
     "license": "MIT",
     "sourceUrl": "https://github.com/web-padawan/vanilla-colorful",
     "bundledPath": "src/vendor/color-picker/; src/vendor/color-picker/LICENSE",
-    "notes": "Compact hue and saturation picker for Text & Table to Image. Bundled locally; no CDN requests.",
+    "notes": "Compact hue and saturation picker for Text to Image and Table to Image. Bundled locally; no CDN requests.",
     "packageNames": ["vanilla-colorful"]
   },
   {
@@ -21,7 +21,7 @@ export const softwareLicenseAttributions = [
     "license": "SIL OFL-1.1",
     "sourceUrl": "https://github.com/google/fonts/tree/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/jetbrainsmono",
     "bundledPath": "src/vendor/image-fonts/jetbrainsmono/; src/vendor/image-fonts/jetbrainsmono/OFL.txt",
-    "notes": "Complete bundled font for Text & Table to Image; embedded with its license in SVG and PNG rendering."
+    "notes": "Complete bundled font for Text to Image and Table to Image; embedded with its license in SVG and PNG rendering."
   },
   {
     "category": "Font",
@@ -30,7 +30,7 @@ export const softwareLicenseAttributions = [
     "license": "SIL OFL-1.1",
     "sourceUrl": "https://github.com/google/fonts/tree/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/sourcecodepro",
     "bundledPath": "src/vendor/image-fonts/sourcecodepro/; src/vendor/image-fonts/sourcecodepro/OFL.txt",
-    "notes": "Complete bundled font for Text & Table to Image; embedded with its license in SVG and PNG rendering."
+    "notes": "Complete bundled font for Text to Image and Table to Image; embedded with its license in SVG and PNG rendering."
   },
   {
     "category": "Font",
@@ -39,7 +39,7 @@ export const softwareLicenseAttributions = [
     "license": "SIL OFL-1.1",
     "sourceUrl": "https://github.com/google/fonts/tree/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/ibmplexmono",
     "bundledPath": "src/vendor/image-fonts/ibmplexmono/; src/vendor/image-fonts/ibmplexmono/OFL.txt",
-    "notes": "Complete bundled font for Text & Table to Image; embedded with its license in SVG and PNG rendering."
+    "notes": "Complete bundled font for Text to Image and Table to Image; embedded with its license in SVG and PNG rendering."
   },
   {
     "category": "Font",
@@ -48,7 +48,7 @@ export const softwareLicenseAttributions = [
     "license": "SIL OFL-1.1",
     "sourceUrl": "https://github.com/google/fonts/tree/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/inconsolata",
     "bundledPath": "src/vendor/image-fonts/inconsolata/; src/vendor/image-fonts/inconsolata/OFL.txt",
-    "notes": "Complete bundled font for Text & Table to Image; embedded with its license in SVG and PNG rendering."
+    "notes": "Complete bundled font for Text to Image and Table to Image; embedded with its license in SVG and PNG rendering."
   },
   {
     "category": "Font",
@@ -57,7 +57,7 @@ export const softwareLicenseAttributions = [
     "license": "SIL OFL-1.1",
     "sourceUrl": "https://github.com/google/fonts/tree/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/inter",
     "bundledPath": "src/vendor/image-fonts/inter/; src/vendor/image-fonts/inter/OFL.txt",
-    "notes": "Complete bundled font for Text & Table to Image; embedded with its license in SVG and PNG rendering."
+    "notes": "Complete bundled font for Text to Image and Table to Image; embedded with its license in SVG and PNG rendering."
   },
   {
     "category": "Font",
@@ -66,7 +66,7 @@ export const softwareLicenseAttributions = [
     "license": "SIL OFL-1.1",
     "sourceUrl": "https://github.com/google/fonts/tree/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/sourceserif4",
     "bundledPath": "src/vendor/image-fonts/sourceserif4/; src/vendor/image-fonts/sourceserif4/OFL.txt",
-    "notes": "Complete bundled font for Text & Table to Image; embedded with its license in SVG and PNG rendering."
+    "notes": "Complete bundled font for Text to Image and Table to Image; embedded with its license in SVG and PNG rendering."
   },
   {
     "category": "Runtime library",

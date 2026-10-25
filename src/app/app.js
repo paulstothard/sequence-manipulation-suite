@@ -1,6 +1,6 @@
 import {readGraphicFile} from './graphic-input-ui.js';
 import { measureImageText } from './text-table-image-ui.js';
-import { layoutImage } from '../core/text-table-image.js';
+import { layoutImage, IMAGE_EDITOR_TOOLS } from '../core/text-table-image.js';
 import { workflowInputDisplayText } from "../core/workflow-input-state.js";
 import { updateDesignFeatureOptions } from "./design-feature-options-ui.js";
 import { appendHandoffActions } from './external-handoff-ui.js';
@@ -163,7 +163,8 @@ const state = {
 let workflowExampleLoadRequest = 0;
 
 const toolIdAliases = new Map([
-  ["protein-stats", "sequence-stats-protein"]
+  ["protein-stats", "sequence-stats-protein"],
+  ["text-table-to-image", "text-to-image"]
 ]);
 
 const sortedTools = [...tools].sort((left, right) =>
@@ -6404,7 +6405,7 @@ async function openEditorDocument(doc, {recovered = false} = {}) {
     doc = {format: "sms3-editor-document", version: 1, tool: "tree-viewer", source: {document: doc}, state: {document: doc}};
   }
   doc = parseEditorDocument(JSON.stringify(doc));
-  if (doc.tool === "text-table-to-image") layoutImage(doc.state.image, measureImageText);
+  if (IMAGE_EDITOR_TOOLS.includes(doc.tool)) layoutImage(doc.state.image, measureImageText);
   if (doc.tool === "tree-viewer") {
     const {validateTreeDocument} = await import("../../packages/tree-viewer/src/core/schema.js");
     validateTreeDocument(doc.state.document);
@@ -6432,18 +6433,18 @@ async function openEditorDocument(doc, {recovered = false} = {}) {
     setToolRunning(false);
   }
   clearToolOutput();
-  if (doc.tool === 'text-table-to-image') {
-    for (const [id, value] of Object.entries({ inputMode: doc.source.image.mode, delimiter: doc.source.image.delimiter, hasHeader: doc.source.image.hasHeader })) setToolOptionValue(id, value);
-    dispatchToolOptionChange('inputMode');
+  if (IMAGE_EDITOR_TOOLS.includes(doc.tool)) {
+    for (const [id, value] of Object.entries({ delimiter: doc.source.image.delimiter, hasHeader: doc.source.image.hasHeader })) setToolOptionValue(id, value);
+    dispatchToolOptionChange('delimiter');
   }
   if (doc.tool === 'markdown-notebook') {
     elements.sequenceInput.value = doc.state.markdown || '';
     markdownWorkspace.render({...doc.state,__documentLoaded:true,__documentSource:doc.source});
   } else {
-    const key = ['svg-editor','image-annotator'].includes(doc.tool) ? 'graphicEditor' : doc.tool === 'text-table-to-image' ? 'textTableImage' : doc.tool === 'plate-layout-planner' ? 'plateLayout' : doc.tool === 'tree-viewer' ? 'treeViewer' : doc.tool === 'sequence-editor' ? 'sequenceEditor' : doc.tool === 'sequence-extractor' ? 'sequenceExtractor' : doc.tool.includes('genome-figure') ? 'figure' : 'sangerTrace';
+    const key = ['svg-editor','image-annotator'].includes(doc.tool) ? 'graphicEditor' : IMAGE_EDITOR_TOOLS.includes(doc.tool) ? 'textTableImage' : doc.tool === 'plate-layout-planner' ? 'plateLayout' : doc.tool === 'tree-viewer' ? 'treeViewer' : doc.tool === 'sequence-editor' ? 'sequenceEditor' : doc.tool === 'sequence-extractor' ? 'sequenceExtractor' : doc.tool.includes('genome-figure') ? 'figure' : 'sangerTrace';
     if (doc.tool === 'tree-viewer') elements.sequenceInput.value=JSON.stringify(doc.state.document,null,2);
     if (doc.tool === 'sequence-editor') elements.sequenceInput.value=String(doc.source.input||'');
-    if (['plate-layout-planner', 'text-table-to-image', 'svg-editor', 'image-annotator'].includes(doc.tool)) elements.sequenceInput.value=doc.source.input;
+    if (['plate-layout-planner', ...IMAGE_EDITOR_TOOLS, 'svg-editor', 'image-annotator'].includes(doc.tool)) elements.sequenceInput.value=doc.source.input;
     await Promise.resolve(renderVisualOutput('tool', null, {[key]:doc.source, editorDocument:doc}));
     elements.toolOutputEmpty.hidden = true;
   }

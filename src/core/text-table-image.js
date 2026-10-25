@@ -1,8 +1,12 @@
 import { connectorSvg, annotationShapeSvg, validateAnnotationAppearance } from "./annotation-geometry.js";
 import { detectDelimiter, parseDelimitedRows } from './table.js';
 import { IMAGE_FONTS } from './image-fonts.js';
-import { isImageColor, colorOpacity, withColorOpacity } from './image-colors.js';
+import { isImageColor, colorOpacity, withColorOpacity, annotationColor } from './image-colors.js';
 export { IMAGE_FONTS } from './image-fonts.js';
+
+export const IMAGE_EDITOR_TOOLS = ['text-to-image', 'table-to-image', 'text-table-to-image'];
+export const imageToolId = mode => mode === 'table' ? 'table-to-image' : 'text-to-image';
+export const resolveImageToolId = (id, options = {}) => id === 'text-table-to-image' ? imageToolId(options.inputMode) : id;
 
 export const IMAGE_LIMITS = Object.freeze({ characters: 100000, lines: 120, columns: 200, rows: 60, tableColumns: 12, cells: 600, cellCharacters: 1000, annotations: 100, dimension: 2400, area: 2000000 });
 const fail = message => { throw new Error(message); };
@@ -193,7 +197,7 @@ export function layoutImage(state, measure) {
       }
     }
     if (a.type === 'label') {
-      box.w = widthOf(a.text || 'Label', false, a.fontSize, a.font ?? s.font); box.h = a.fontSize * 1.3;
+      box.w = widthOf(a.text, false, a.fontSize, a.font ?? s.font); box.h = a.fontSize * 1.3;
       if (box.x + box.w > width || box.y + box.h > height) fail('A label extends beyond the image. Move it inward, shorten it, or reduce its font size.');
     }
     return { ...a, ...box, bendX: (a.bendX ?? 0) * width, bendY: (a.bendY ?? 0) * height };
@@ -206,9 +210,9 @@ export function renderImageSvg(state, layout = layoutImage(state)) {
   const text = (value, x, y, size, bold = false, anchor = 'start', fill = s.foreground, font = s.font) => `<text x="${x}" y="${y}" font-family="${xml(IMAGE_FONTS[font].family)}" font-size="${size}" font-weight="${bold ? 700 : 400}" text-anchor="${anchor}" fill="${fill}" xml:space="preserve" style="white-space:pre;font-variant-ligatures:none;font-kerning:none">${xml(value)}</text>`;
   const shape = a => {
     const { x, y, w, h } = a;
-    if (a.type === 'label') return text(a.text || 'Label', x, y + a.fontSize, a.fontSize, false, 'start', a.color, a.font ?? s.font);
+    if (a.type === 'label') return text(a.text, x, y + a.fontSize, a.fontSize, false, 'start', annotationColor(a, 'color'), a.font ?? s.font);
     if (a.type === 'box' || a.type === 'ellipse') return annotationShapeSvg(a);
-    if (a.type === 'highlight') return `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${a.color}" fill-opacity="0.25" opacity="${a.opacity ?? 1}" stroke="none"/>`;
+    if (a.type === 'highlight') return `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${a.color}" fill-opacity="${a.fillOpacity ?? .25}" opacity="${a.opacity ?? 1}" stroke="none"/>`;
     return connectorSvg(a);
   };
   return [`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${state.mode === 'table' ? 'Table' : 'Text'} image" data-text-table-image="true">`,

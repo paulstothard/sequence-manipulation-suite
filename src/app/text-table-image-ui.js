@@ -1,13 +1,14 @@
 import { createAnnotationStyleControls } from "./annotation-style-controls.js";
 import { isConnector, annotationFillStyle, connectorGeometry, snapSquare, snapTranslation, moveConnectorHandle } from "../core/annotation-geometry.js";
 import { appendConnectorControls, appendSnapGuide, annotationControl, alignmentTargets } from "./annotation-controls.js";
-import { IMAGE_FONTS, IMAGE_LIMITS, validateImageState, layoutImage, renderImageSvg, imageBackgroundColor } from '../core/text-table-image.js';
-import { colorOpacity, annotationColor, setAnnotationColor } from '../core/image-colors.js';
+import { IMAGE_FONTS, IMAGE_LIMITS, imageToolId, validateImageState, layoutImage, renderImageSvg, imageBackgroundColor } from '../core/text-table-image.js';
+import { colorOpacity, annotationColor, setAnnotationColor, normalizeAnnotationFill } from '../core/image-colors.js';
 import { createCanvasLabelEditor } from './canvas-label-editor.js';
 import { createImageColorSampler } from './image-color-sampler.js';
 import { createImageEditorNavigation, imageEditorHandleSize } from './image-editor-navigation.js';
 import { bindImageEditorDeletion } from './image-editor-shortcuts.js';
 import { createEditorSession } from './editor-session.js';
+import { installControlHelp } from './control-help.js';
 import { downloadText } from './file-download.js';
 import { downloadSvgAsPng } from './svg-export.js';
 import { copyTextWithFeedback } from './copy-feedback.js';
@@ -17,7 +18,6 @@ import { createColorPicker } from './color-picker.js';
 // Small, consistent drawing controls; keep source content out of icon markup.
 const ICONS = {
   box: '<rect x="4" y="5" width="16" height="14" rx="3"/>',
-  highlight: '<path d="m9 15 7-9 4 3-7 9zM7 16l4 3-3 2H4z"/><path d="M3 23h18"/>',
   arrow: '<path d="M4 20 20 4M9 4h11v11"/>',
   line: '<path d="m5 19 14-14"/>',
   pointer: '<path d="m5 19 12-12"/><circle cx="18" cy="6" r="2" fill="currentColor"/>',
@@ -66,17 +66,17 @@ export async function renderTextTableImage(container, source, editorDocument, op
 
 function renderReadyImage(container, source, editorDocument, { preview = false } = {}) {
   let state = structuredClone(validateImageState(editorDocument?.state?.image ?? source.image));
+  state.annotations.forEach(a => normalizeAnnotationFill(a));
   let selected = '', session, layout, exportedSvg, drag, snapGuide;
   const editorId = `tti-${crypto.randomUUID()}`;
   const make = (tag, text, className) => { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (className) el.className = className; return el; };
-  const root = make('section', undefined, 'text-table-image-editor'); root.setAttribute('aria-label', 'Text & Table to Image editor');
+  const root = make('section', undefined, 'text-table-image-editor'); root.setAttribute('aria-label', state.mode === 'table' ? 'Table to Image editor' : 'Text to Image editor');
   const header = make('header', undefined, 'tti-header');
   const titlebar = make('div', undefined, 'tti-titlebar');
   titlebar.append(make('div', state.mode === 'text' ? 'Text image' : 'Table image', 'tti-title'));
   const exports = make('div', undefined, 'tti-exports'); titlebar.append(exports);
   const history = make('div', undefined, 'tti-history'); header.append(titlebar, history);
   const toolbar = make('div', undefined, 'tti-tools'); toolbar.setAttribute('role', 'group'); toolbar.setAttribute('aria-label', 'Annotation tools');
-  toolbar.append(make('span', 'Annotate', 'tti-tools-label'));
   const message = make('div', '', 'tti-message'); message.setAttribute('role', 'status');
   const status = make('span', '', 'tti-dimensions');
   const body = make('div', undefined, 'tti-workspace');
@@ -107,11 +107,15 @@ function renderReadyImage(container, source, editorDocument, { preview = false }
   const panelStack = make('div', undefined, 'tti-panels');
   const panes = {};
   root.append(header, message, body); body.append(stage, controls); stage.append(toolbar, viewport, viewbar); controls.append(tabs, panelStack); container.append(root);
+  const disposeToolbarHelp = installControlHelp(toolbar, { compact:true });
   const button = (name, action, parent = toolbar) => { const b = make('button', name); b.type = 'button'; b.addEventListener('click', () => Promise.resolve().then(action).catch(e => { message.textContent = e.message; })); parent.append(b); return b; };
   const iconButton = (name, icon, text, action, parent = toolbar) => {
     const b = button('', action, parent); b.className = 'tti-icon-button'; b.title = name; b.setAttribute('aria-label', name);
     b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[icon]}</svg>`;
-    if (text) b.append(make('span', text));
+    if (toolbar.contains(parent)) {
+      b.removeAttribute('title');
+      b.dataset.controlHelp = name;
+    } else if (text) b.append(make('span', text));
     return b;
   };
   const group = (title, parent) => {
@@ -141,8 +145,8 @@ function renderReadyImage(container, source, editorDocument, { preview = false }
     catch (e) { message.textContent = e.message; syncFields(); return false; }
   }
   // The SVG already paints the background; a second fill would compound alpha.
-  const pngButton = iconButton('Download PNG', 'download', 'PNG', () => downloadSvgAsPng(embedImageFonts(exportedSvg, layout), 'text-table-image.png', { background: null }), exports);
-  const svgButton = iconButton('Download SVG', 'download', 'SVG', () => downloadText(embedImageFonts(exportedSvg, layout), 'text-table-image.svg', 'image/svg+xml'), exports);
+  const pngButton = iconButton('Download PNG', 'download', 'PNG', () => downloadSvgAsPng(embedImageFonts(exportedSvg, layout), `${imageToolId(state.mode)}.png`, { background: null }), exports);
+  const svgButton = iconButton('Download SVG', 'download', 'SVG', () => downloadText(embedImageFonts(exportedSvg, layout), `${imageToolId(state.mode)}.svg`, 'image/svg+xml'), exports);
   const zoom = field('Preview size', viewbar, 'fit', [['fit','Fit width'],['1','100%'],['1.5','150%'],['2','200%']]); zoom.addEventListener('change', draw);
   zoom.title = 'Pinch or Ctrl/Command-scroll to zoom. Drag empty canvas space to pan.';
   const navigation = createImageEditorNavigation(viewport, {
@@ -229,16 +233,27 @@ function renderReadyImage(container, source, editorDocument, { preview = false }
   }
   function addAnnotation(type) {
     const id = `a-${crypto.randomUUID()}`;
-    if (change('Add annotation', s => { s.annotations.push({ id, type, x: .15, y: .15, w: .2, h: .15, text: 'Label', fontSize: 16, color: type === 'highlight' ? '#f0bc36' : '#c13b32', cornerRadius: type === 'box' ? 8 : 0, anchor: null }); })) {
+    if (change('Add annotation', s => { s.annotations.push({ id, type, x: .15, y: .15, w: .2, h: .15, text: 'Label', fontSize: 16, color: '#c13b32', fillOpacity:1, cornerRadius: type === 'box' ? 8 : 0, anchor: null }); })) {
       selected = id; activateTab('Annotations'); render();
       if (type === 'label') labelEditor.start(id, true); else viewport.focus({preventScroll:true});
     }
   }
-  for (const [type, text] of [['box','Box'],['ellipse','Ellipse'],['highlight','Highlight'],['pointer','Pointer'],['arrow','Arrow'],['line','Line'],['label','Text']]) {
+  for (const [type, text] of [['box','Box'],['ellipse','Ellipse'],['pointer','Pointer'],['arrow','Arrow'],['line','Line'],['label','Text']]) {
     iconButton(`Add ${type === 'label' ? 'text label' : type}`, type, text, () => addAnnotation(type));
   }
   const annotationActions = make('div', undefined, 'tti-annotation-actions'); toolbar.append(annotationActions);
-  const duplicateButton = iconButton('Duplicate annotation', 'duplicate', '', () => { const a = selectedAnnotation(); if (!a) return; const id = `a-${crypto.randomUUID()}`; if (change('Duplicate annotation', s => s.annotations.push({ ...structuredClone(a), id }))) { selected = id; render(); } }, annotationActions);
+  const duplicateButton = iconButton('Duplicate annotation', 'duplicate', '', () => {
+    const a = selectedAnnotation(); if (!a) return;
+    labelEditor.close();
+    const copy = { ...structuredClone(a), id:`a-${crypto.randomUUID()}`, anchor:null };
+    const box = layout.annotations.find(item => item.id === a.id);
+    for (const [axis, size, extent] of [['x','w',layout.width], ['y','h',layout.height]]) {
+      if (a.anchor) { copy[axis] = box[axis] / extent; copy[size] = box[size] / extent; }
+      const step = 10 / extent, edge = Math.max(copy[size], box[size] / extent);
+      copy[axis] = Math.max(0, Math.min(1 - copy[size], copy[axis] + (copy[axis] + edge + step <= 1 ? step : -step)));
+    }
+    if (change('Duplicate annotation', s => s.annotations.push(copy))) { selected = copy.id; render(); }
+  }, annotationActions);
   function deleteSelection() {
     if (!selected) return;
     labelEditor.close();
@@ -306,7 +321,10 @@ function renderReadyImage(container, source, editorDocument, { preview = false }
   function syncFields() {
     for (const [key,f] of Object.entries(fields)) { if (f.type === 'checkbox') f.checked = state.style[key]; else f.value = state.style[key]; }
     fields.background.value = imageBackgroundColor(state.style);
-    if (sourceHeader) { sourceHeader.checked = state.hasHeader; sourceDelimiter.value = state.delimiter; }
+    if (sourceHeader) {
+      colorControls.get(fields.headerFill).element.hidden = !state.hasHeader;
+      colorControls.get(fields.ruleColor).element.hidden = state.style.rules === 'none';
+    }
     syncColumns(); syncAnnotation();
     for (const control of colorControls.values()) control.refresh();
   }
@@ -466,8 +484,14 @@ function renderReadyImage(container, source, editorDocument, { preview = false }
     if (!a.anchor && /^Arrow/.test(e.key)) { e.preventDefault(); const delta = e.shiftKey ? 10 : 1; editAnnotation('Nudge annotation', n => { if (e.key === 'ArrowLeft') n.x -= delta/layout.width; if (e.key === 'ArrowRight') n.x += delta/layout.width; if (e.key === 'ArrowUp') n.y -= delta/layout.height; if (e.key === 'ArrowDown') n.y += delta/layout.height; }); }
   });
   render();
-  session = createEditorSession({ host:root, toolbar:history, tool:'text-table-to-image', source, persist: !preview,
-    read:() => ({ image:structuredClone(state) }), apply:value => { labelEditor.close(); state = structuredClone(validateImageState(value.image)); sourceInput.value = state.text; selected = ''; render(); }, initial:editorDocument?.state });
+  session = createEditorSession({ host:root, toolbar:history, tool:imageToolId(state.mode), source, persist: !preview,
+    read:() => ({ image:structuredClone(state) }), apply:value => {
+      labelEditor.close(); state = structuredClone(validateImageState(value.image));
+      state.annotations.forEach(a => normalizeAnnotationFill(a));
+      sourceInput.value = state.text;
+      if (sourceHeader) { sourceHeader.checked = state.hasHeader; sourceDelimiter.value = state.delimiter; }
+      selected = ''; render();
+    }, initial:editorDocument?.state });
   const resizeObserver = new ResizeObserver(() => { if (!drag) draw(); }); resizeObserver.observe(viewport);
-  container._sms3VisualCleanup = () => { navigation.dispose(); colorSampler.dispose(); labelEditor.dispose(); resizeObserver.disconnect(); for (const control of colorControls.values()) control.dispose(); session.dispose(); };
+  container._sms3VisualCleanup = () => { disposeToolbarHelp(); navigation.dispose(); colorSampler.dispose(); labelEditor.dispose(); resizeObserver.disconnect(); for (const control of colorControls.values()) control.dispose(); session.dispose(); };
 }

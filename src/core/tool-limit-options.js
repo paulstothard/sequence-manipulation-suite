@@ -34,7 +34,7 @@ const SPECIAL_FILE_WORKSPACES = new Set([
   "variant-consensus-builder"
 ]);
 const EDITOR_DOCUMENT_TOOLS = new Set([
-  "svg-editor", "image-annotator", "text-table-to-image",
+  "svg-editor", "image-annotator", "text-to-image", "table-to-image", "text-table-to-image",
   "plate-layout-planner", "sequence-editor", "markdown-notebook",
   "linear-genome-figure", "circular-genome-figure", "sequence-extractor",
   "sanger-trace-viewer", "sanger-trace-assembly", "sanger-trace-reference-comparison"

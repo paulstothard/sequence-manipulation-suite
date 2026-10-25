@@ -2,12 +2,13 @@ let nextHelpId = 0;
 
 // Short help belongs on the control itself. Longer help can keep its explicit
 // disclosure button; both use the shared help-popover appearance in styles.css.
-export function installControlHelp(root, { signal } = {}) {
+export function installControlHelp(root, { signal, compact = false } = {}) {
   const controller = new AbortController();
   const options = { signal: controller.signal };
   const tooltip = document.createElement("div");
   tooltip.id = `control-help-${++nextHelpId}`;
   tooltip.className = "app-control-tooltip";
+  tooltip.classList.toggle("is-compact", compact);
   tooltip.setAttribute("role", "tooltip");
   tooltip.setAttribute("popover", "manual");
   tooltip.hidden = true;
