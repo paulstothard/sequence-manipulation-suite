@@ -6,7 +6,7 @@ export const fastqReadSamplerMetadata = {
   category: "Random & Mutagenesis",
   tags: ["DNA", "FASTQ", "statistics"],
   summary: "Randomly sample reads from single-end or paired-end FASTQ inputs while keeping paired mates together.",
-  whenToUse: "Use this when you need a smaller reproducible FASTQ subset for testing, teaching, QC spot checks, or browser-local workflow examples.",
+  whenToUse: "Create a reproducible subset of single-end or paired-end FASTQ reads for testing or QC, keeping paired reads together.",
   inputType: "Single-end FASTQ text/file or paired FASTQ files",
   outputType: "Sampled FASTQ, paired FASTQ, sample table, or report",
   fileInput: {

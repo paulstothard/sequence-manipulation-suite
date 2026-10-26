@@ -27,7 +27,7 @@ export const sequenceEditorMetadata = {
   category: "Viewers & Figures",
   tags: ["DNA", "RNA", "raw", "FASTA", "BED", "GFF", "GTF", "GenBank", "EMBL", "DDBJ", "annotation", "coordinates", "map", "translation"],
   summary: "Load DNA/RNA sequences or annotated nucleotide records into an interactive editor with synchronized coordinates, translations, feature tracks, restriction-site feedback, search, range tools, undo/redo, and FASTA export.",
-  whenToUse: "Use this when you want to inspect and edit one DNA/RNA sequence after loading it through the standard SMS3 input workflow.",
+  whenToUse: "Edit DNA/RNA sequences while reviewing translations, annotated features and restriction sites, with coordinate-based edits, undo/redo and FASTA export.",
   inputType: "Plain-text DNA/RNA sequence, FASTA records, GenBank/DDBJ or EMBL nucleotide flatfile records, GFF3+FASTA, GTF+FASTA, or BED+FASTA",
   outputType: "Live sequence editor or summary report",
   showcaseOutputs: [

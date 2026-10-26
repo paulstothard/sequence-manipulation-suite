@@ -89,13 +89,22 @@ export function snapEndpoint(origin, point, { scale = 1, force = false, disabled
   return { point: result, guide: { kind: 'angle', origin, point: result, angle, label: `${Math.round(angle * 180 / Math.PI + 360) % 360}°` } };
 }
 
+// Derive the cue from the final shape, including after resize bounds are applied.
+export function equalDimensionGuide(origin, point, type = 'box') {
+  if (!['box', 'rect', 'ellipse', 'circle'].includes(type)) return;
+  const w = Math.abs(point.x - origin.x), h = Math.abs(point.y - origin.y);
+  if (!(w > 0 && h > 0) || !Number.isFinite(w + h) || Math.abs(w - h) > Math.max(1, w, h) * 1e-6) return;
+  const shape = type === 'ellipse' || type === 'circle' ? 'circle' : 'square';
+  return { kind: 'square', shape, origin, point, label: shape === 'circle' ? 'Circle' : 'Square' };
+}
+
 export function snapSquare(origin, point, { scale = 1, force = false, disabled = false, previous, type = 'box' } = {}) {
   if (disabled) return { point };
   const dx = point.x - origin.x, dy = point.y - origin.y;
   const side = Math.max(Math.abs(dx), Math.abs(dy));
   if (!force && (side * scale < 12 || Math.abs(Math.abs(dx) - Math.abs(dy)) * scale > (previous?.kind === 'square' ? 12 : 8))) return { point };
   const result = { x: origin.x + (dx < 0 ? -side : side), y: origin.y + (dy < 0 ? -side : side) };
-  return { point: result, guide: { kind: 'square', origin, point: result, label: type === 'ellipse' || type === 'circle' ? 'Circle' : 'Square' } };
+  return { point: result, guide: equalDimensionGuide(origin, result, type) };
 }
 
 // Project the resize corner onto the original diagonal so both dimensions

@@ -1,7 +1,7 @@
 import { createAnnotationStyleControls } from "./annotation-style-controls.js";
-import { isConnector, annotationFillStyle, connectorGeometry, snapSquare, snapTranslation, moveConnectorHandle } from "../core/annotation-geometry.js";
+import { isConnector, annotationFillStyle, connectorGeometry, snapSquare, equalDimensionGuide, snapTranslation, moveConnectorHandle } from "../core/annotation-geometry.js";
 import { appendConnectorControls, appendSnapGuide, annotationControl, alignmentTargets } from "./annotation-controls.js";
-import { IMAGE_FONTS, IMAGE_LIMITS, imageToolId, validateImageState, layoutImage, renderImageSvg, imageBackgroundColor } from '../core/text-table-image.js';
+import { IMAGE_FONTS, IMAGE_LIMITS, imageToolId, validateImageState, layoutImage, renderImageSvg, imageBackgroundColor, columnFontAppliesToHeader } from '../core/text-table-image.js';
 import { colorOpacity, annotationColor, setAnnotationColor, normalizeAnnotationFill } from '../core/image-colors.js';
 import { createCanvasLabelEditor } from './canvas-label-editor.js';
 import { createImageColorSampler } from './image-color-sampler.js';
@@ -199,7 +199,7 @@ function renderReadyImage(container, source, editorDocument, { preview = false }
   styleParent = group('Canvas', panes.Style);
   styleField('padding','Outer padding',null,'number',8,120);
   styleField('background','Background color',null,'color');
-  let column, columnWidth, columnAlign, columnFont, columnFontSize;
+  let column, columnWidth, columnAlign, columnFont, columnFontSize, columnFontHeader;
   if (state.mode === 'table') {
     styleParent = group('Table', panes.Style);
     styleField('headerFill','Header color',null,'color');
@@ -223,7 +223,16 @@ function renderReadyImage(container, source, editorDocument, { preview = false }
       if (columnFontSize.value === '') delete s.style.columnFontSizes[column.value];
       else s.style.columnFontSizes[column.value] = Number(columnFontSize.value);
     }));
-    columns.append(make('p', 'Applies to this column’s header and cells. Leave size blank to use the table size.', 'tti-help'));
+    columnFontHeader = field('Apply column font to header', columns, false, null, 'checkbox');
+    columnFontHeader.addEventListener('change', () => change('Apply column font to header', s => {
+      // Preserve the other columns when editing a document saved before this setting.
+      s.style.columnFontHeaders ??= Object.fromEntries(layout.source.rows[0].map((_, i) => [i, true]));
+      s.style.columnFontHeaders[column.value] = columnFontHeader.checked;
+    }));
+    const columnFontHelp = make('p', 'Applies the column font and size to its header too. Leave size blank to use the table size.', 'tti-help');
+    columnFontHelp.id = `${editorId}-column-font-help`;
+    columnFontHeader.setAttribute('aria-describedby', columnFontHelp.id);
+    columns.append(columnFontHelp);
     columnWidth = numberField('Column width', columns, 100, 60, 600);
     columnAlign = field('Column alignment', columns, 'auto', [['auto','Automatic'],['left','Left'],['center','Center'],['right','Right']]);
     column.addEventListener('change', syncColumns);
@@ -338,6 +347,8 @@ function renderReadyImage(container, source, editorDocument, { preview = false }
     columnFont.value = state.style.columnFonts?.[column.value] ?? 'inherit';
     columnFontSize.value = state.style.columnFontSizes?.[column.value] ?? '';
     columnFontSize.placeholder = `Default: ${state.style.fontSize}`;
+    columnFontHeader.checked = columnFontAppliesToHeader(state.style, column.value);
+    columnFontHeader.disabled = !state.hasHeader;
   }
   function syncAnnotation() {
     selection.replaceChildren(); const empty = make('option', 'None'); empty.value = ''; selection.append(empty);
@@ -449,7 +460,7 @@ function renderReadyImage(container, source, editorDocument, { preview = false }
       const result = ['box','ellipse'].includes(d.type) ? snapSquare(origin, end, { ...options, type:d.type }) : { point:end };
       a.w = Math.max(.005, Math.min(1-d.x, (result.point.x-origin.x) / layout.width));
       a.h = Math.max(.005, Math.min(1-d.y, (result.point.y-origin.y) / layout.height));
-      if (result.guide && Math.abs(a.w * layout.width - a.h * layout.height) < .01) snapGuide = result.guide;
+      snapGuide = equalDimensionGuide(origin, { x:(a.x + a.w) * layout.width, y:(a.y + a.h) * layout.height }, a.type);
     } else {
       const delta = { x:dx * layout.width, y:dy * layout.height };
       drag.moved ||= Math.hypot(delta.x, delta.y) * options.scale >= 3;

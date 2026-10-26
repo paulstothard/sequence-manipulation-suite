@@ -591,10 +591,14 @@ async function renderShowcaseCard(card, item, token, context) {
     let sharedInspection = false;
     if (result.visual?.graphicEditor) {
       preview.classList.add("showcase-preview-viewer");
-      await renderGraphicEditor(preview,result.visual.graphicEditor,makeShowcaseGraphicDocument(result.visual.graphicEditor),{preview:true});
+      const document = await makeShowcaseGraphicDocument(result.visual.graphicEditor);
+      if (context.state.showcaseRenderToken !== token) return;
+      await renderGraphicEditor(preview,document.source,document,{preview:true});
     } else if (result.visual?.textTableImage) {
       preview.classList.add("showcase-preview-viewer");
-      await renderTextTableImage(preview, result.visual.textTableImage, makeShowcaseTextImageDocument(result.visual.textTableImage), { preview: true });
+      const document = await makeShowcaseTextImageDocument(result.visual.textTableImage);
+      if (context.state.showcaseRenderToken !== token) return;
+      await renderTextTableImage(preview, result.visual.textTableImage, document, { preview: true });
     } else if (result.visual?.plateLayout) {
       preview.insertAdjacentHTML("beforeend", renderPlateSvg(result.visual.plateLayout.layout));
       preview.querySelectorAll("svg").forEach(normalizeShowcaseSvg);

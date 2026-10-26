@@ -17,6 +17,8 @@ export const imageBackgroundColor = style => style.transparent ? withColorOpacit
 const xml = value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]));
 const clone = value => structuredClone(value);
 const numeric = value => /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(value.trim());
+// Older documents applied column typography to headers. New documents opt in.
+export const columnFontAppliesToHeader = (style, column) => style.columnFontHeaders === undefined || style.columnFontHeaders[column] === true;
 
 export function parseImageSource(text, mode = 'text', options = {}) {
   if (typeof text !== 'string' || text.length > IMAGE_LIMITS.characters) fail('Input exceeds 100,000 characters. Select a smaller passage or table.');
@@ -56,7 +58,7 @@ export function createImageState(text, options = {}) {
   const mode = options.inputMode ?? 'text';
   parseImageSource(text, mode, options);
   return { version: 1, mode, text, delimiter: options.delimiter ?? 'auto', hasHeader: options.hasHeader !== false,
-    style: { font: mode === 'text' ? 'mono' : 'sans', fontSize: 16, lineSpacing: 1.4, padding: 32, foreground: '#18232c', background: '#ffffff', headerFill: '#e8edf2', ruleColor: '#b8c2cc', rules: 'horizontal', cellPadding: 10, maxColumnWidth: 320, columnWidths: {}, columnAlignments: {}, columnFonts: {}, columnFontSizes: {} }, annotations: [] };
+    style: { font: mode === 'text' ? 'mono' : 'sans', fontSize: 16, lineSpacing: 1.4, padding: 32, foreground: '#18232c', background: '#ffffff', headerFill: '#e8edf2', ruleColor: '#b8c2cc', rules: 'horizontal', cellPadding: 10, maxColumnWidth: 320, columnWidths: {}, columnAlignments: {}, columnFonts: {}, columnFontSizes: {}, columnFontHeaders: {} }, annotations: [] };
 }
 
 export function validateImageState(state) {
@@ -75,12 +77,13 @@ export function validateImageState(state) {
     }
   }
   // Optional maps preserve compatibility with previously saved image documents.
-  for (const key of ['columnFonts', 'columnFontSizes']) {
+  for (const key of ['columnFonts', 'columnFontSizes', 'columnFontHeaders']) {
     if (s[key] === undefined) continue;
     if (!s[key] || typeof s[key] !== 'object' || Array.isArray(s[key]) || Object.keys(s[key]).length > IMAGE_LIMITS.tableColumns) fail('Invalid column typography.');
     for (const [index, value] of Object.entries(s[key])) {
       if (!/^\d+$/.test(index) || +index >= IMAGE_LIMITS.tableColumns) fail('Invalid column index.');
-      if (key === 'columnFontSizes') number(value, 10, 40, 'column font size');
+      if (key === 'columnFontHeaders') { if (typeof value !== 'boolean') fail('Invalid column header font setting.'); }
+      else if (key === 'columnFontSizes') number(value, 10, 40, 'column font size');
       else if (!Object.hasOwn(IMAGE_FONTS, value)) fail('Invalid column font.');
     }
   }
@@ -134,7 +137,11 @@ export function layoutImage(state, measure) {
       const font = s.columnFonts?.[col] ?? s.font, fontSize = s.columnFontSizes?.[col] ?? s.fontSize;
       return { font, fontSize, lineHeight: fontSize * s.lineSpacing };
     });
-    const cellWidth = (text, col, bold) => widthOf(text, bold, typography[col].fontSize, typography[col].font);
+    const headerTypography = typography.map((t, col) => columnFontAppliesToHeader(s, col) ? t : { font: s.font, fontSize: s.fontSize, lineHeight });
+    const cellWidth = (text, col, bold) => {
+      const { font, fontSize } = (bold ? headerTypography : typography)[col];
+      return widthOf(text, bold, fontSize, font);
+    };
     const widths = rows[0].map((_, col) => s.columnWidths[col] ?? Math.max(64, Math.min(s.maxColumnWidth, Math.max(...rows.map((row, i) => Math.max(...row[col].split('\n').map(line => cellWidth(line, col, state.hasHeader && i === 0))))) + 2 * pad)));
     for (let c = 0; c < widths.length; c++) {
       let widest = 0;
@@ -154,20 +161,21 @@ export function layoutImage(state, measure) {
       return lines;
     };
     let y = s.padding;
-    const baselineSize = Math.max(...typography.map(t => t.fontSize));
     rows.forEach((row, r) => {
       const bold = state.hasHeader && r === 0;
+      const rowTypography = bold ? headerTypography : typography;
+      const baselineSize = Math.max(...rowTypography.map(t => t.fontSize));
       const wrapped = row.map((cell, c) => wrap(cell, widths[c] - 2 * pad, bold, c));
       // Align the first baselines across columns, then leave enough height for
       // each column's own font size and wrapped lines.
-      const h = Math.max(...wrapped.map((lines, c) => baselineSize - typography[c].fontSize + lines.length * typography[c].lineHeight)) + 2 * pad;
+      const h = Math.max(...wrapped.map((lines, c) => baselineSize - rowTypography[c].fontSize + lines.length * rowTypography[c].lineHeight)) + 2 * pad;
       let x = s.padding;
       row.forEach((text, c) => {
         const setting = s.columnAlignments[c] ?? 'auto';
         const values = rows.slice(state.hasHeader ? 1 : 0).map(row => row[c]).filter(v => v.trim());
         const align = setting === 'auto' ? (values.length && values.every(numeric) ? 'right' : 'left') : setting;
         cells.push({ row: r + 1, column: c + 1, x, y, w: widths[c], h, header: bold, text });
-        const { font, fontSize, lineHeight: cellLineHeight } = typography[c];
+        const { font, fontSize, lineHeight: cellLineHeight } = rowTypography[c];
         wrapped[c].forEach((line, i) => items.push({ text: line, x: align === 'right' ? x + widths[c] - pad : align === 'center' ? x + widths[c] / 2 : x + pad, y: y + pad + baselineSize + i * cellLineHeight, font, fontSize, bold, anchor: align === 'right' ? 'end' : align === 'center' ? 'middle' : 'start' }));
         x += widths[c];
       });

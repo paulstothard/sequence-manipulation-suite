@@ -5,7 +5,7 @@ export const tableReshapeMetadata = {
   name: "Table Reshape",
   category: "Tables",
   tags: ["table", "CSV", "TSV", "Excel"],
-  summary: "Reshape CSV or TSV data between long and wide table layouts for sample, feature, and measurement tables.",
+  summary: "Reshape CSV, TSV, or Excel tables between long and wide layouts for sample, feature, and measurement data.",
   inputType: "CSV, TSV, or Excel table",
   outputType: "Reshaped table or report",
   workflow: {

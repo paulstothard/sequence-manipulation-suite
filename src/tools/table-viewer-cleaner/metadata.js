@@ -5,7 +5,7 @@ export const tableViewerCleanerMetadata = {
   name: "Table Viewer / Cleaner",
   category: "Tables",
   tags: ["table", "CSV", "TSV", "Excel", "cleaning"],
-  summary: "Parse CSV/TSV-style text, clean cells and headers, filter rows and columns, sort rows, and export a structured table.",
+  summary: "Clean CSV, TSV, or Excel tables, filter rows and columns, sort records, and export the resulting table.",
   inputType: "CSV, TSV, or Excel table",
   outputType: "Cleaned table, report",
   layout: {

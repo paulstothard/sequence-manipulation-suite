@@ -29,7 +29,7 @@ export function imageToolMetadata(mode) {
       { id: 'document', kind: 'text', mediaType: 'application/json', label: 'Editable image document' },
       { id: 'warnings', kind: 'warnings' }
     ] },
-    showcaseOutputs: [{ id: 'image-editor', label: table ? 'Editable table image' : 'Editable text image', summary: table ? 'A primer table with a fixed-width sequence column and an editable cell highlight.' : 'A TP53 sequence excerpt in bundled JetBrains Mono, with a start-codon highlight attached to its characters and an editable legend.' }],
+    showcaseOutputs: [{ id: 'image-editor', label: table ? 'Editable table image' : 'Editable text image', summary: table ? 'A primer table with Inter headers, fixed-width sequences and an editable highlight across the TP53_F row.' : 'A TP53 sequence excerpt in bundled JetBrains Mono, with a start-codon highlight attached to its characters and an editable legend.' }],
     options: [
       ...(table ? [{ id: 'tableInputOptions', type: 'group', label: 'Input', options: [
         { id: 'delimiter', type: 'select', label: 'Delimiter', defaultValue: 'auto', help: 'Auto detect checks common delimiters while respecting quoted fields.', choices: [{ value: 'auto', label: 'Auto detect' }, { value: 'tab', label: 'Tab' }, { value: 'comma', label: 'Comma' }, { value: 'semicolon', label: 'Semicolon' }, { value: 'pipe', label: 'Pipe' }] },

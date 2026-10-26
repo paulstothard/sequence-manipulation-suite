@@ -3,7 +3,7 @@ export const tableDataFormatConverterMetadata = {
   name: "Table/Data Format Converter",
   category: "Tables",
   tags: ["table", "CSV", "TSV", "Excel", "format conversion"],
-  summary: "Convert CSV, TSV, simple JSON object arrays, Markdown tables, and Excel workbook imports/exports while keeping a structured table stream.",
+  summary: "Convert CSV, TSV, Excel, or JSON tables to CSV, TSV, Excel, JSON, or Markdown.",
   inputType: "CSV, TSV, Excel, or JSON",
   outputType: "CSV, TSV, JSON, Markdown table, XLSX, report, or table",
   workflow: {

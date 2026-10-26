@@ -13,7 +13,7 @@ export const sequenceLogoMetadata = {
   category: "Sequence Alignment & Assembly",
   tags: ["DNA", "RNA", "protein", "table", "FASTA", "TSV", "composition", "alignment", "plot", "statistics"],
   summary: "Create an interactive information-content or frequency logo from an aligned DNA, RNA, or protein sequence set or a position table.",
-  whenToUse: "Use when you want a compact, column-by-column summary of residue frequencies and conservation in an existing alignment. The logo summarizes the supplied alignment; it does not establish homology or functional importance.",
+  whenToUse: "Summarize DNA, RNA, or protein residue frequencies and conservation as a logo from an alignment or position count/frequency table; the logo does not establish homology or function.",
   inputType: "Aligned DNA/RNA/protein FASTA or CLUSTAL text, or position-specific count/frequency table",
   outputType: "Interactive sequence logo and column statistics",
   fileInput: {

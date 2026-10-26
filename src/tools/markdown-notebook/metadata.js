@@ -3,7 +3,7 @@ export const markdownNotebookMetadata = {
   name: "Markdown Notebook",
   category: "Text, Notes & Images",
   tags: ["text"],
-  summary: "Open a standalone Markdown workspace from a blank note, an uploaded Markdown file, or a saved browser draft.",
+  summary: "Write and preview Markdown notes, save drafts in your browser, and download them as Markdown files.",
   inputType: "Standalone Markdown workspace",
   outputType: "Markdown editor, Markdown file, or workflow text output",
   workflow: {

@@ -1,5 +1,5 @@
 import { createAnnotationStyleControls } from "./annotation-style-controls.js";
-import { isConnector, annotationFillStyle, strokeDash, snapEndpoint, snapSquare, snapProportions, snapTranslation, moveConnectorHandle } from "../core/annotation-geometry.js";
+import { isConnector, annotationFillStyle, strokeDash, snapEndpoint, snapSquare, equalDimensionGuide, snapProportions, snapTranslation, moveConnectorHandle } from "../core/annotation-geometry.js";
 import { appendConnectorControls, appendSnapGuide, alignmentTargets } from "./annotation-controls.js";
 import {
   parseSvg,
@@ -1197,6 +1197,10 @@ function mount(container, source, initial, parsed, { preview }) {
         transform = state.edits[selected]?.transform;
       if (element && transform)
         element.setAttribute("transform", `matrix(${transform.join(" ")})`);
+    }
+    const a = annotation();
+    if (a && ['box', 'ellipse'].includes(a.type) && ['new', 'resize'].includes(drag.kind)) {
+      snapGuide = equalDimensionGuide({ x:a.x, y:a.y }, { x:a.x + a.w, y:a.y + a.h }, a.type);
     }
     drawSelection();
   }

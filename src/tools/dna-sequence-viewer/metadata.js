@@ -125,7 +125,7 @@ export const circularDnaSequenceViewerMetadata = makeViewerMetadata({
   id: "circular-dna-sequence-viewer",
   name: "Circular DNA Sequence Viewer",
   summary: "Open plain, FASTA, or annotated nucleotide records one at a time in a circular interactive viewer, with optional range focus, strands, reading frames, and parsed feature tracks.",
-  whenToUse: "Use this when you want to inspect an unannotated circular sequence, plasmid, viral genome, or other circular nucleotide record as a circular map.",
+  whenToUse: "Explore circular DNA sequences and annotated plasmids or genomes, with feature tracks, reading frames and base-level inspection.",
   outputType: "Circular DNA sequence viewer or summary report",
   viewerLabel: "Circular DNA sequence viewer",
   workerExport: "runCircularDnaSequenceViewer"

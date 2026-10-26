@@ -7,7 +7,7 @@ export const pcrPrimerDesignMetadata = {
   name: "PCR Primer Design",
   category: "Restriction, PCR & Primers",
   tags: ["DNA", "raw", "FASTA", "BED", "GFF", "GTF", "GenBank", "EMBL", "DDBJ", "primer", "coordinates", "statistics"],
-  summary: "Design ranked PCR primer pairs for local DNA templates with transparent browser scoring and Primer3-checked fixtures.",
+  summary: "Design and rank PCR primer pairs for selected sequences, regions, or annotated features, with adjustable primer constraints and optional reference checks.",
   inputType: "Template DNA sequence, FASTA records, GenBank/DDBJ/EMBL records, or GFF3/GTF/BED annotations with FASTA",
   outputType: "Primer design report, candidate table, primer FASTA, product FASTA, or linear DNA sequence viewer",
   splitInput: {
