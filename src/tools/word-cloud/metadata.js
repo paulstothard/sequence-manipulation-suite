@@ -6,7 +6,7 @@ export const wordCloudMetadata = {
   name: "Word Cloud",
   category: "Plots",
   tags: ["text", "plot"],
-  summary: "Count words in plain text and draw a deterministic word cloud plot with a machine-readable word-count table.",
+  summary: "Count words in plain text and display their frequencies as a word cloud and table.",
   inputType: "Plain text",
   outputType: "Word cloud plot or word-count table",
   runInWorker: true,

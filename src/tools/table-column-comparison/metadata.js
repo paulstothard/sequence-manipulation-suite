@@ -8,8 +8,8 @@ export const tableColumnComparisonMetadata = {
   name: "Table Column Comparison",
   category: "Tables",
   tags: ["table", "CSV", "TSV", "Excel", "plot", "statistics"],
-  summary: "Compare two table columns with type-aware summaries, missingness checks, and a suitable plot.",
-  whenToUse: "Use this when two columns need a quick relationship check before deciding whether they belong in a scatter plot, grouped distribution plot, or contingency table.",
+  summary: "Compare two numeric or categorical table columns using plots, summary statistics, and missing-value counts.",
+  whenToUse: "Examine relationships between two columns using scatter plots, grouped distributions or contingency tables.",
   inputType: "CSV, TSV, JSON array, or Excel table",
   outputType: "Comparison plot, compact heat map, type-aware comparison table, row comparison table, or report",
   fileInput: {

@@ -10,7 +10,7 @@ export const sirnaDesignMetadata = {
   name: "siRNA Design",
   category: "Restriction, PCR & Primers",
   tags: ["DNA", "RNA", "raw", "FASTA", "GenBank", "EMBL", "DDBJ", "coordinates", "search"],
-  summary: "Rank siRNA candidates from DNA/RNA transcript sequences using transparent Reynolds-style and Ui-Tei-style rules, with optional local reference hit counts.",
+  summary: "Rank siRNA candidates from DNA/RNA transcript sequences using Reynolds-style and Ui-Tei-style rules, with optional local reference hit counts.",
   inputType: "DNA/RNA transcript sequence, FASTA records, or GenBank/DDBJ/EMBL transcript records",
   outputType: "siRNA design report, candidate table, reference-match table, guide FASTA, or context text",
   fileInput: {

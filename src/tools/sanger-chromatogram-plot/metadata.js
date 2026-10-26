@@ -4,7 +4,7 @@ export const sangerChromatogramPlotMetadata = {
   id: 'sanger-chromatogram-plot', name: 'Sanger Chromatogram Plot', category: 'Sanger Traces',
   tags: ['DNA', 'FASTA', 'coordinates', 'plot'],
   summary: 'Plot Sanger chromatograms with base calls, quality scores, and optional translations.',
-  whenToUse: 'Create a readable chromatogram figure for inspecting or sharing one or more Sanger traces.',
+  whenToUse: 'Create a chromatogram figure for inspecting or sharing one or more Sanger traces.',
   inputType: 'Sanger chromatogram traces or base-call sequences', outputType: 'Chromatogram plot',
   sangerTraceTask: 'edit',
   splitInput: { separator: SANGER_SESSION_SEPARATOR, customRenderer: 'sanger-trace-workspace', panels: [

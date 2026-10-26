@@ -5,7 +5,7 @@ export const lineListCleanerMetadata = {
   name: "Line / List Cleaner",
   category: "Text, Notes & Images",
   tags: ["table", "text", "cleaning", "statistics"],
-  summary: "Clean, split, sort, deduplicate, count, and rejoin simple text lists.",
+  summary: "Split, sort, remove duplicates, count, and rejoin text lists.",
   inputType: "Text list",
   outputType: "Cleaned list, count table, report",
   workflow: {

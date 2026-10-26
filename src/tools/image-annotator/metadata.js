@@ -9,7 +9,7 @@ export const imageAnnotatorMetadata = {
   summary:
     "Draw on a PNG image and add editable labels, arrows and shapes.",
   whenToUse:
-    "Use this to annotate a plot, diagram or other PNG from SMS3 or another source.",
+    "Annotate a PNG plot, diagram or other image from SMS3 or another source.",
   inputType: "PNG or saved annotation document",
   outputType: "Annotated PNG or editable document",
   fileInput: {

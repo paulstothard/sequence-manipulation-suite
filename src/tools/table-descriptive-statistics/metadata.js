@@ -5,7 +5,7 @@ export const tableDescriptiveStatisticsMetadata = {
   name: "Statistical Summary",
   category: "Statistics",
   tags: ["table", "CSV", "TSV", "Excel", "statistics"],
-  summary: "Calculate descriptive, robust, shape, and mean-interval summary statistics for numeric columns in a CSV, TSV, or Excel table.",
+  summary: "Calculate means, medians, standard deviations, quantiles, confidence intervals, and other statistics for numeric table columns.",
   inputType: "CSV, TSV, or Excel table",
   outputType: "Descriptive statistics table or report",
   workflow: {

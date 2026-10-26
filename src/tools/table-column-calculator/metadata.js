@@ -5,7 +5,7 @@ export const tableColumnCalculatorMetadata = {
   name: "Table Column Calculator",
   category: "Tables",
   tags: ["table", "CSV", "TSV", "Excel", "statistics"],
-  summary: "Add a calculated numeric column using safe operations such as ratios, percentages, logs, and z-scores.",
+  summary: "Add a numeric column calculated from existing columns using ratios, percentages, logarithms, z-scores, or arithmetic.",
   inputType: "CSV, TSV, or Excel table",
   outputType: "Table with calculated column or report",
   workflow: {

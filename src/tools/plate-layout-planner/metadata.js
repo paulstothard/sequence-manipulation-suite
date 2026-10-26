@@ -3,7 +3,7 @@ export const plateLayoutMetadata = {
   id: "plate-layout-planner", name: "Plate Layout Planner", category: "Viewers & Figures",
   tags: ["table", "CSV", "TSV", "Excel", "map"],
   summary: "Assign samples, replicates, and controls to editable 96- or 384-well plate maps.",
-  whenToUse: "Use this to plan and review sample placement across plates, reserve wells, and export a map and assignment table for your assay.",
+  whenToUse: "Plan sample placement across plates, reserve wells, and export a plate map and well-assignment table.",
   inputType: "CSV, TSV, Excel sample table, or saved plate layout", outputType: "Editable plate map, well-assignment table",
   fileInput: { dropLabel: "Drop CSV, TSV, Excel, or saved plate layouts here", accept: ".csv,.tsv,.tab,.txt,.xlsx,.json", description: "CSV, TSV, Excel (.xlsx), or a saved SMS3 plate layout (.sms3.json)." },
   inputTable: {

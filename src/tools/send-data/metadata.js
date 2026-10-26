@@ -2,7 +2,7 @@ import { sendDataWorkflowOptions } from '../../core/external-resources/workflow-
 export const sendDataMetadata = {
   id: 'send-data', name: 'Send Data', category: 'External Resources', tags: ['DNA', 'RNA', 'protein', 'FASTA', 'alignment', 'primer', 'search'],
   summary: 'Prepare data for external sequence searches, genome browsers, protein analysis, alignment, and structure or variant lookup.',
-  whenToUse: 'Continue an analysis at an authoritative external service by explicitly sending data or opening a prepared handoff.',
+  whenToUse: 'Send selected data to an external analysis service, or open that service with a prepared query.',
   inputType: 'Sequence, FASTA, primers, annotated record, structure, identifier, or region',
   outputType: 'Prepared handoff; FASTA; GenBank; EMBL; PDB; mmCIF; CGView JSON',
   externalResource: true,

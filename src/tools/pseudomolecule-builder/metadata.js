@@ -5,8 +5,8 @@ export const pseudomoleculeBuilderMetadata = {
   name: "Pseudomolecule Builder",
   category: "Annotated Records & Features",
   tags: ["DNA", "FASTA", "BED", "GFF", "GTF", "GenBank", "EMBL", "DDBJ", "assembly", "annotation", "coordinates", "format conversion"],
-  summary: "Join DNA records with explicit N gaps while preserving a source-to-pseudomolecule coordinate map and remapping annotations.",
-  whenToUse: "Use this when downstream software needs one artificial chromosome assembled from ordered contigs, with auditable source coordinates and optional remapped annotation.",
+  summary: "Join DNA records with N gaps while preserving a source-to-pseudomolecule coordinate map and remapping annotations.",
+  whenToUse: "Combine ordered contigs into one artificial chromosome, with a coordinate map back to the source records and optional remapped annotations.",
   inputType: "DNA FASTA, GenBank/DDBJ or EMBL records, GFF3+FASTA, GTF+FASTA, or BED+FASTA",
   outputType: "Joined DNA FASTA, annotated GenBank/EMBL/DDBJ, remapped GFF3/BED bundles, record JSON, coordinate map, or report",
   splitInput: {

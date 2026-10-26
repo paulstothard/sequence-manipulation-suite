@@ -7,7 +7,7 @@ export const manhattanPlotMetadata = {
   category: "Plots",
   tags: ["table", "CSV", "TSV", "Excel", "coordinates", "plot", "statistics"],
   summary: "Create a Manhattan plot from genome-wide marker p values.",
-  whenToUse: "Use this when you want to inspect association p values across chromosomes and spot genome-wide signal peaks.",
+  whenToUse: "Inspect association p values across chromosomes and locate genome-wide signal peaks.",
   inputType: "CSV, TSV, or Excel table with chromosome, p-value, marker, and optional position columns",
   outputType: "Manhattan plot or plotted-marker table",
   workflow: {

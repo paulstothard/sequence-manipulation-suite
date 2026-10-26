@@ -6,7 +6,7 @@ export const vcfRandomSamplerMetadata = {
   category: "Random & Mutagenesis",
   tags: ["table", "VCF", "statistics"],
   summary: "Randomly sample variant records from a VCF with optional reproducible seeds and common variant filters.",
-  whenToUse: "Use this when you need a smaller random VCF subset for testing, QC spot checks, teaching, or reproducible downstream examples.",
+  whenToUse: "Create a random subset of VCF records for testing, QC or teaching, with an optional seed for reproducible sampling.",
   inputType: "VCF text or VCF.GZ",
   outputType: "Sampled VCF, variant table, or summary report",
   fileInput: {

@@ -46,7 +46,7 @@ export const plasmidCommonFeatureScannerMetadata = {
   name: "Plasmid Common Feature Scanner",
   category: "Sequence Analysis",
   tags: ["DNA", "raw", "FASTA", "primer", "annotation", "plasmid", "search", "reference data"],
-  summary: "Scan plasmid or vector DNA for provenance-bearing common promoter, primer, and operator signatures.",
+  summary: "Scan plasmid or vector DNA for common promoter, primer, and operator sequences from bundled references.",
   inputType: "DNA/RNA sequence or FASTA",
   outputType: "Report, table, text annotation map, linear feature map, or linear DNA sequence viewer",
   runInWorker: true,

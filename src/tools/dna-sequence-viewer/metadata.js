@@ -115,7 +115,7 @@ export const dnaSequenceViewerMetadata = makeViewerMetadata({
   id: "dna-sequence-viewer",
   name: "Linear DNA Sequence Viewer",
   summary: "Open plain, FASTA, or annotated nucleotide records one at a time in a linear interactive viewer, with optional range focus, strands, reading frames, and parsed feature tracks.",
-  whenToUse: "Use this when you want to inspect an unannotated sequence or annotated nucleotide record along a linear coordinate axis.",
+  whenToUse: "Inspect nucleotide sequences and their annotations along a linear coordinate axis.",
   outputType: "Linear DNA sequence viewer or summary report",
   viewerLabel: "Linear DNA sequence viewer",
   workerExport: "runLinearDnaSequenceViewer"

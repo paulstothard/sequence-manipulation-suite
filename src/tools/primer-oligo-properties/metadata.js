@@ -6,7 +6,7 @@ export const primerOligoPropertiesMetadata = {
   name: "Primer / Oligo Basic Properties",
   category: "Restriction, PCR & Primers",
   tags: ["DNA", "RNA", "raw", "FASTA", "GC", "primer", "statistics"],
-  summary: "Calculate basic DNA/RNA oligo length, base counts, GC percent, simple Tm estimate, and reverse complement.",
+  summary: "Calculate DNA/RNA oligo length, base counts, GC percent, approximate melting temperature, and reverse complement.",
   inputType: "DNA/RNA primer/oligo sequences, one per line, or FASTA records",
   outputType: "Oligo property report or table",
   fileInput: {

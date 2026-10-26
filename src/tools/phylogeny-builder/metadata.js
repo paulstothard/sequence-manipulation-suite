@@ -17,7 +17,7 @@ export const phylogenyBuilderMetadata = {
   name: "Phylogeny Builder",
   category: "Sequence Alignment & Assembly",
   tags: ["DNA", "RNA", "protein", "FASTA", "alignment", "phylogeny", "plot"],
-  summary: "Build a quick neighbor-joining phylogeny from multiple FASTA records, aligning unaligned input with MUSCLE by default.",
+  summary: "Build a neighbor-joining phylogeny from multiple FASTA records, aligning unaligned input with MUSCLE by default.",
   inputType: "DNA/RNA, protein, or coding DNA/RNA FASTA records",
   outputType: "Tree Viewer, phylogeny tree plot, tree report, distance table, aligned FASTA, or alignment report",
   fileInput: {

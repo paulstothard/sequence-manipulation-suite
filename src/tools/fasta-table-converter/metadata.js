@@ -17,7 +17,7 @@ export const fastaToTableMetadata = {
   category: "FASTA",
   tags: ["DNA", "RNA", "protein", "table", "FASTA", "CSV", "TSV", "format conversion"],
   summary: "Convert FASTA record titles, IDs, sequences, and lengths into a copyable table.",
-  whenToUse: "Use this when FASTA records need to become rows for review, filtering, spreadsheet work, or downstream table workflows.",
+  whenToUse: "Turn FASTA records into table rows for filtering, spreadsheet work or other table tools.",
   inputType: "FASTA records",
   outputType: "Table or summary report",
   fileInput: {
@@ -63,7 +63,7 @@ export const tableToFastaMetadata = {
   category: "FASTA",
   tags: ["DNA", "RNA", "protein", "table", "FASTA", "CSV", "TSV", "Excel", "format conversion"],
   summary: "Build FASTA records from title and sequence columns in a CSV, TSV, Excel, or plain-text table.",
-  whenToUse: "Use this when sequence data already lives in table columns and needs to be exported as FASTA records.",
+  whenToUse: "Export sequence data stored in table columns as FASTA records.",
   inputType: "CSV, TSV, Excel, or plain-text table",
   outputType: "FASTA, table, or summary report",
   fileInput: {

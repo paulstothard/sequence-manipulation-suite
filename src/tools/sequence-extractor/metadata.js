@@ -12,7 +12,7 @@ export const sequenceExtractorMetadata = {
   category: "Viewers & Figures",
   tags: ["DNA", "FASTA", "GenBank", "EMBL", "DDBJ", "primer", "restriction", "annotation", "coordinates", "translation"],
   summary: "Explore a scrollable base-level sequence document and extract DNA or protein by clicking bases, amino acids, features, restriction sites, and primers.",
-  whenToUse: "Use this when you want to inspect an annotated sequence and interactively isolate restriction fragments, PCR products, coordinate ranges, coding DNA, or protein.",
+  whenToUse: "Inspect an annotated sequence and select restriction fragments, PCR products, coordinate ranges, coding DNA or protein for extraction.",
   inputType: "Plain-text DNA sequence, FASTA records, GenBank/DDBJ or EMBL nucleotide records, GFF3/GTF/BED plus FASTA, and optional primer sequences",
   outputType: "Interactive scrollable sequence extractor",
   showcaseOutputs: [

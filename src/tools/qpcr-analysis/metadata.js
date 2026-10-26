@@ -4,7 +4,7 @@ export const qpcrAnalysisMetadata = {
   id: "qpcr-analysis", name: "qPCR Data Analysis", category: "Statistics",
   tags: ["table", "CSV", "TSV", "Excel", "plot", "statistics"],
   summary: "Normalize Cq measurements and compare relative expression across biological samples.",
-  whenToUse: "Use this to combine technical qPCR replicates, normalize against reference genes, and compare expression with a control condition using plots and auditable tables.",
+  whenToUse: "Combine technical qPCR replicates, normalize against reference genes, and compare expression with a control condition using plots and calculation tables.",
   inputType: "CSV, TSV, or Excel Cq table", outputType: "Expression plot, comparison and replicate tables, or report",
   fileInput: { accept: ".csv,.tsv,.tab,.txt,.xlsx", dropLabel: "Drop CSV, TSV, or Excel Cq tables here", description: "One reaction per row, with sample, target, condition and cq columns." },
   inputTable: {

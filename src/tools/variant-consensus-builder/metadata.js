@@ -4,8 +4,8 @@ const file=(id,label,accept)=>({id,type:'file',placement:'input',label,accept,dr
 export const variantConsensusMetadata={
   id:'variant-consensus-builder',name:'Variant Consensus Builder',category:'High-Throughput Sequencing',
   tags:['DNA','FASTA','VCF','coordinates','format conversion'],
-  summary:'Apply a sample’s variant calls to reference FASTA, with explicit consensus and phased haplotype outputs.',
-  whenToUse:'Use this to construct a sample sequence from an existing VCF and matching reference, and audit how substitutions and indels change its coordinates.',
+  summary:'Apply a sample’s variant calls to reference FASTA to produce a consensus sequence or phased haplotypes.',
+  whenToUse:'Construct a sample sequence from a VCF and matching reference, and track coordinate changes caused by substitutions and indels.',
   inputType:'Reference FASTA / FASTA.GZ plus VCF / VCF.GZ, or matching indexed bundles for a bounded region',
   outputType:'Consensus FASTA, linear DNA sequence viewer, variant audit table, coordinate map table, variant overview map, or report',
   splitInput:{separator:'##SMS3_VARIANTS##',panels:[{id:'reference',label:'Reference FASTA',dropLabel:'Drop reference FASTA records here',accept:'.fa,.fasta,.fna,.gz'},{id:'variants',label:'Variants (VCF)',dropLabel:'Drop VCF or VCF.GZ here',accept:'.vcf,.vcf.gz,.gz'}]},

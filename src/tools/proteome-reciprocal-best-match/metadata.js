@@ -160,7 +160,7 @@ export const dnaRnaSequenceSetReciprocalBestMatchMetadata = {
   category: "Sequence Alignment & Assembly",
   tags: ["DNA", "RNA", "FASTA", "alignment", "search"],
   summary: "Find candidate reciprocal best sequence matches between two DNA/RNA FASTA sets using k-mer screening followed by affine pairwise alignment.",
-  whenToUse: "Use when comparing two DNA/RNA sequence sets to find likely one-to-one reciprocal best matches and sequences without a reciprocal partner.",
+  whenToUse: "Compare two DNA/RNA sequence sets to identify candidate reciprocal best matches and sequences without a reciprocal partner.",
   inputType: "Two DNA/RNA FASTA sets",
   outputType: "Summary report, reciprocal best-match table, aligned candidate pair table, sequences without reciprocal matches, or identity heatmap",
   splitInput: {
@@ -210,7 +210,7 @@ export const proteomeReciprocalBestMatchMetadata = {
   category: "Sequence Alignment & Assembly",
   tags: ["protein", "FASTA", "alignment", "search"],
   summary: "Find candidate reciprocal best protein matches between two FASTA protein sets using k-mer screening followed by affine pairwise alignment.",
-  whenToUse: "Use when comparing two protein sequence sets to find likely one-to-one reciprocal best matches and proteins without a reciprocal partner.",
+  whenToUse: "Compare two protein sequence sets to identify candidate reciprocal best matches and proteins without a reciprocal partner.",
   inputType: "Two protein FASTA sets",
   outputType: "Summary report, reciprocal best-match table, aligned candidate pair table, proteins without reciprocal matches, or identity heatmap",
   splitInput: {

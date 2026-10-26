@@ -19,7 +19,7 @@ export function imageToolMetadata(mode) {
     id, name: table ? 'Table to Image' : 'Text to Image', category: 'Text, Notes & Images',
     tags: table ? ['table', 'CSV', 'TSV', 'Excel', 'annotation', 'format conversion'] : ['text', 'annotation', 'format conversion'],
     summary: table ? 'Create images from tables, with column formatting and annotations.' : 'Create images from formatted text, with labels, pointers, and shapes.',
-    whenToUse: table ? 'Use this to prepare a compact table for a slide or other document, with individual column fonts for sequences or identifiers.' : 'Use this to prepare a compact sequence display or report excerpt for a slide or other document.',
+    whenToUse: table ? 'Turn a table into an image for a slide or document, with annotations and separate column fonts for sequences or identifiers.' : 'Turn formatted text or a sequence excerpt into an image for a slide or document, preserving spacing and adding annotations.',
     inputType: table ? 'CSV, TSV, Excel workbook, plain-text table, or saved table image document' : 'Text or saved text image document',
     outputType: table ? 'Editable table image' : 'Editable text image',
     ...(table ? { inputTable: { maxCharacters: 100000 } } : { inputTable: false, fileInput: { accept: '.txt,.json', dropLabel: 'Drop text or a saved text image document here' } }),

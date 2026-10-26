@@ -78,7 +78,7 @@ export const svgEditorMetadata = {
   summary:
     "Edit labels, colors and shapes in an SVG, and add drawings and annotations.",
   whenToUse:
-    "Use this to adjust an SVG exported by SMS3 or another application before placing it in a document.",
+    "Adjust labels, colors and shapes in an SVG before placing it in a document.",
   inputType: "SVG or saved editor document",
   outputType: "Editable SVG, PNG or editor document",
   fileInput: {

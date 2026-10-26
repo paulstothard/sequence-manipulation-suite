@@ -10,7 +10,7 @@ export const treeViewerMetadata = {
   tags: ["phylogeny", "plot"],
   summary: "View and style Newick/NHX, NEXUS, phyloXML, NeXML, or Tree Viewer JSON trees, with branch support, sample metadata tracks, and figure export.",
   whenToUse:
-    "Prepare an existing phylogenetic tree for inspection or a figure, with reusable appearance settings and sample metadata.",
+    "Style an existing phylogenetic tree for a figure, add sample metadata and save appearance settings for reuse.",
   inputType: "Newick (including NHX), NEXUS TREES, phyloXML, NeXML, or Tree Viewer JSON",
   outputType:
     "Interactive tree, styled figures, metadata tables, and reusable tree document",

@@ -2,7 +2,7 @@ export const geneViewerMetadata = {
   id: 'gene-viewer', name: 'Gene Viewer', category: 'Viewers & Figures',
   tags: ['DNA', 'RNA', 'GenBank', 'annotation', 'coordinates', 'search'],
   summary: 'Find a gene and explore its genomic sequence, transcripts, coding regions, and available NCBI annotations.',
-  whenToUse: 'Quickly inspect a known gene, compare its annotated transcripts, or examine its surrounding sequence.',
+  whenToUse: 'Inspect a known gene, compare its annotated transcripts, or examine its surrounding sequence.',
   inputType: 'Organism and gene symbol, name, synonym, or NCBI Gene ID',
   outputType: 'Interactive gene viewer',
   externalResource: true,

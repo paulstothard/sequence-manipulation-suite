@@ -7,7 +7,7 @@ export const tsnePlotMetadata = {
   category: "Plots",
   tags: ["table", "CSV", "TSV", "Excel", "plot", "statistics"],
   summary: "Run Barnes-Hut t-SNE on numeric table columns and draw a two-dimensional embedding.",
-  whenToUse: "Use this when many numeric measurements per sample need a quick nonlinear two-dimensional view of clusters or outliers.",
+  whenToUse: "Reduce multiple numeric measurements per sample to two dimensions to explore patterns and outliers.",
   inputType: "CSV, TSV, or Excel table",
   outputType: "t-SNE plot, embedding table, or summary report",
   runtime: {

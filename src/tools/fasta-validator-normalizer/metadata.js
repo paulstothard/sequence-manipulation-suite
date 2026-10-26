@@ -7,7 +7,7 @@ export const fastaValidatorNormalizerMetadata = {
   name: "FASTA Summarizer",
   category: "FASTA",
   tags: ["DNA", "RNA", "protein", "FASTA", "validation", "format conversion", "statistics"],
-  summary: "Summarize FASTA records, unique titles, unique sequences, duplicate titles, duplicate sequences, and formatting issues.",
+  summary: "Count FASTA records, identify duplicate titles or sequences, and report formatting issues.",
   inputType: "FASTA records",
   outputType: "Summary report, normalized FASTA, table",
   workflow: {

@@ -6,7 +6,7 @@ export const vcfFilterMetadata = {
   category: "High-Throughput Sequencing",
   tags: ["table", "VCF", "validation", "coordinates"],
   summary: "Filter VCF records by region, FILTER status, QUAL, allele type, INFO values, predicted consequences, sample columns, and genotype fields.",
-  whenToUse: "Use this when you need to keep a biologically meaningful subset of variants from a VCF while preserving a valid filtered VCF or producing a compact review table.",
+  whenToUse: "Select variants by genomic region, quality, annotation or genotype, and export a filtered VCF or table.",
   inputType: "VCF text, VCF.GZ, or indexed VCF.GZ plus TBI/CSI",
   outputType: "Filtered VCF, variant table, or summary report",
   workflow: {

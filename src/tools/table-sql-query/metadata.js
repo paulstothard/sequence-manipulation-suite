@@ -6,7 +6,7 @@ export const tableSqlQueryMetadata = {
   category: "Tables",
   tags: ["table", "CSV", "TSV", "Excel"],
   summary: "Run SQL-like SELECT, WHERE, GROUP BY, ORDER BY, and LIMIT queries against browser-local tables.",
-  whenToUse: "Use this when a table needs a compact query step that would be awkward to express with separate filter, group, sort, or column-selection controls.",
+  whenToUse: "Filter, group, sort and select table columns with a SQL-like query.",
   inputType: "CSV, TSV, JSON array, or Excel table",
   outputType: "Query result table, CSV, JSON, or report",
   fileInput: {

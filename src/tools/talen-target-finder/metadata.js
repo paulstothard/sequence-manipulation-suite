@@ -8,7 +8,7 @@ export const talenTargetFinderMetadata = {
   name: "TALEN Design / Review",
   category: "Restriction, PCR & Primers",
   tags: ["DNA", "RNA", "raw", "FASTA", "GenBank", "EMBL", "DDBJ", "coordinates", "map", "search"],
-  summary: "Design and review paired TALEN half-site candidates in local DNA/RNA target sequences, with spacer geometry, 5' base checks, and simple RVD strings.",
+  summary: "Design and review paired TALEN half-site candidates in local DNA/RNA target sequences, with spacer geometry, 5' base checks, and RVD strings.",
   inputType: "Target DNA/RNA sequence, FASTA records, or GenBank/DDBJ/EMBL target records",
   outputType: "TALEN design report, target table, RVD table, context text, text map, linear target map, or linear DNA sequence viewer",
   fileInput: {

@@ -127,8 +127,8 @@ function makeGenomeFigureMetadata({
 export const circularGenomeFigureMetadata = makeGenomeFigureMetadata({
   id: "circular-genome-figure",
   name: "Circular Genome Figure",
-  summary: "Create editable publication-style circular genome figures, with explicit segmented arcs for multi-contig inputs.",
-  whenToUse: "Use this for a circular DNA map or for a draft assembly whose contigs should share one clearly segmented circular figure.",
+  summary: "Create editable circular genome figures, with a separate arc for each contig in multi-contig inputs.",
+  whenToUse: "Draw a circular DNA map or show the contigs of a draft assembly as separate arcs in one figure.",
   outputType: "Editable circular genome figure or summary report",
   defaultOutputFormat: "circular",
   outputLabel: "Circular genome figure"
@@ -137,8 +137,8 @@ export const circularGenomeFigureMetadata = makeGenomeFigureMetadata({
 export const linearGenomeFigureMetadata = makeGenomeFigureMetadata({
   id: "linear-genome-figure",
   name: "Linear Genome Figure",
-  summary: "Create editable publication-style linear genome figures, with one independently scaled line per contig in multi-record inputs.",
-  whenToUse: "Use this for a chromosome, selected sequence region, or contig set that should be compared as separate labeled lines.",
+  summary: "Create editable linear genome figures, with one independently scaled line per contig in multi-record inputs.",
+  whenToUse: "Draw a chromosome, selected sequence region or contig set as separate labeled lines.",
   outputType: "Editable wrapped linear genome figure or summary report",
   defaultOutputFormat: "linear",
   outputLabel: "Wrapped linear genome figure"
@@ -147,7 +147,7 @@ export const linearGenomeFigureMetadata = makeGenomeFigureMetadata({
 export const genomeFigureMetadata = makeGenomeFigureMetadata({
   id: "genome-figure",
   name: "Genome Figure",
-  summary: "Create editable publication-style circular or wrapped linear genome figures from annotated DNA records, paired annotation inputs, or FASTA sequences.",
+  summary: "Create editable circular or wrapped linear genome figures from annotated DNA records, paired annotation inputs, or FASTA sequences.",
   outputType: "Editable genome figure, feature table, or summary report",
   defaultOutputFormat: "circular",
   outputLabel: "Circular genome figure",

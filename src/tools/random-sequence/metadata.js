@@ -607,7 +607,7 @@ export const randomProteinMetadata = {
   category: "Random & Mutagenesis",
   tags: ["protein", "FASTA", "genetic code", "codon"],
   summary: "Generate random protein sequences with configurable residue frequencies, optional initiator methionine, and reproducible seeds.",
-  whenToUse: "Use this to create synthetic protein records with a sampled or methionine first residue for testing, teaching, or workflow development.",
+  whenToUse: "Generate synthetic protein sequences for testing or teaching, with adjustable residue frequencies and an optional initial methionine.",
   inputType: "No input required",
   inputRequired: false,
   outputType: "Random protein FASTA",

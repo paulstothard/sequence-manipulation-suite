@@ -7,7 +7,7 @@ export const proteinDigestMetadata = {
   category: "Sequence Analysis",
   tags: ["protein", "raw", "FASTA", "enzyme", "digest", "coordinates", "map", "reference data"],
   summary: "Predict protease cleavage and export peptides with positions, lengths, masses, and missed-cleavage counts.",
-  whenToUse: "Use this to predict peptides from a single-enzyme protein digest, inspect cleavage patterns, or prepare peptide FASTA for downstream analysis.",
+  whenToUse: "Predict peptides from a single-enzyme protein digest, inspect cleavage patterns or export peptide sequences in FASTA format.",
   inputType: "Protein sequence",
   outputType: "Peptide table, FASTA, map",
   runInWorker: true,

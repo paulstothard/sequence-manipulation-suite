@@ -5,7 +5,7 @@ export const proteinSequenceViewerMetadata = {
   category: "Viewers & Figures",
   tags: ["protein", "raw", "FASTA", "GenPept", "UniProt", "annotation", "coordinates", "map"],
   summary: "Explore protein sequences or annotated UniProt/GenPept records one at a time in an interactive viewer with optional range focus, residue coordinates, and feature tracks.",
-  whenToUse: "Use this when you want to inspect plain protein sequences, protein FASTA records, or UniProt/GenPept residue features in an interactive coordinate viewer.",
+  whenToUse: "Inspect protein sequences and UniProt/GenPept residue features in an interactive coordinate viewer.",
   inputType: "Protein sequence or annotated protein flatfile",
   outputType: "Protein sequence viewer or summary report",
   fileInput: {
