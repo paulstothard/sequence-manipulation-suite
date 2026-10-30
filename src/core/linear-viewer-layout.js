@@ -75,3 +75,10 @@ export function linearViewerCanvasSize(width, height, pixelRatio = 1) {
     pixelRatio: ratio
   };
 }
+
+export function linearTrackLabelY(row, options = {}) {
+  if (!row.stacked && !row.reservedSlots) return row.y;
+  // Keep the name beside the first feature lane at every zoom, including
+  // density summaries and empty windows. Visible overlaps never move it.
+  return row.topY + (options.compactLayout ? 9 : row.displayMode === 'squished' ? 10 : 13);
+}

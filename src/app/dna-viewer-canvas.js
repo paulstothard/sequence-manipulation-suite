@@ -1,3 +1,4 @@
+import { featureDensityBins } from "../core/feature-density.js";
 import { drawFeatureFocusGlow, traceLinearFeatureShape } from "./feature-focus-glow.js";
 import { hasCdsTranslations, CDS_TRANSLATION_HELP, drawLinearCdsTranslation } from './viewer-cds-translation.js';
 import { continuousFeatureChevronRows, drawLinearFeatureChevrons, usesFeatureChevrons } from './viewer-feature-chevrons.js';
@@ -5,7 +6,7 @@ import { createViewerGeneModelKey } from './viewer-gene-model-key.js';
 import { viewerAlignmentPosition, drawViewerAlignmentGuide } from './viewer-alignment-guide.js';
 import { createFeatureSequenceControls } from "./viewer-feature-sequence-ui.js";
 import { createViewerFeatureGroupControls } from "./viewer-feature-group-controls.js";
-import { calculateLinearViewerRows, linearViewerCanvasSize } from "../core/linear-viewer-layout.js";
+import { calculateLinearViewerRows, linearTrackLabelY, linearViewerCanvasSize } from "../core/linear-viewer-layout.js";
 import { geneticCodes, getStartCodons, makeCodonMap } from "../core/genetic-code.js";
 import { complementDnaRnaSequence } from "../core/sequence.js";
 import { DNA_VIEWER_SEARCH_RESULT_LIMIT } from "../core/viewer-limits.js";
@@ -13,7 +14,10 @@ import { featureArrowHeadLength, featureArrowTerminalVisible, linearFeaturePolyg
 import { traceTranslationArrow } from "../core/translation-arrow-geometry.js";
 import {
   clipStackedIntervalLayout,
-  createStackedIntervalLayout,
+  layoutVisibleIntervals,
+  reservedLinearSlots,
+  usesAutomaticLinearDensity,
+  hasSemanticLinearSlots,
   makeLinearPartConnectors,
   makeLinearIntervalCopies,
   isStackedIntervalTrack
@@ -86,8 +90,6 @@ const ZOOM_LIMIT_WHEEL_PAN_DEAD_ZONE = 0.18;
 const ZOOM_LIMIT_WHEEL_PAN_MAX_FRACTION = 0.24;
 const FEATURE_SLOT_HEIGHT = 18;
 const SQUISHED_FEATURE_SLOT_HEIGHT = 10;
-const FEATURE_SLOT_MAX = 16;
-const FEATURE_SLOT_MIN_GAP_UNITS = 12;
 const RESTRICTION_SITE_LABEL_PX_PER_BP = 10;
 const RESTRICTION_SITE_LABEL_GAP = 8;
 const ALIGNED_READ_BASE_PX_PER_BP = 9;
@@ -549,34 +551,49 @@ function addLinearCoordinateHit(state, x, y, position) {
 
 function drawDensityBins(ctx, items, options) {
   const { plotLeft, plotRight, viewStart, viewEnd, y, color } = options;
-  const binCount = Math.max(24, Math.floor((plotRight - plotLeft) / 16));
-  const bins = Array.from({ length: binCount }, () => 0);
-  for (const item of items) {
-    const position = Number(item.position ?? item.start);
-    if (!Number.isFinite(position) || position < viewStart || position > viewEnd) continue;
-    const index = Math.max(0, Math.min(binCount - 1, Math.floor(((position - viewStart) / (viewEnd - viewStart)) * binCount)));
-    bins[index] += 1;
-  }
-  const max = Math.max(1, ...bins);
+  const binCount = Math.max(24, Math.floor((plotRight - plotLeft) / 12));
+  const bins = featureDensityBins(items, { viewStart, viewEnd, binCount, color, length: options.length });
+  const max = Math.max(1, ...bins.map(bin => bin.count));
   const binWidth = (plotRight - plotLeft) / binCount;
-  bins.forEach((count, index) => {
-    if (!count) return;
-    ctx.fillStyle = color;
-    ctx.globalAlpha = 0.16 + 0.55 * Math.sqrt(count / max);
-    ctx.fillRect(plotLeft + index * binWidth, y - 10, Math.max(1, binWidth - 1), 20);
+  const previousAlpha = ctx.globalAlpha;
+  bins.forEach((bin, index) => {
+    let top = y - 10;
+    ctx.globalAlpha = 0.25 + 0.65 * Math.sqrt(bin.count / max);
+    for (const entry of bin.colors) {
+      const height = 20 * entry.count / bin.count;
+      ctx.fillStyle = entry.color;
+      ctx.fillRect(plotLeft + index * binWidth, top, Math.max(1, binWidth - 1), height);
+      top += height;
+    }
   });
-  ctx.globalAlpha = 1;
+  ctx.globalAlpha = previousAlpha;
+  ctx.font = "10px system-ui, sans-serif";
+  ctx.fillStyle = options.theme?.muted || "#64748b";
+  ctx.textAlign = "right";
+  ctx.fillText("feature density · zoom for detail", plotRight, options.captionY ?? y - 18);
 }
 
-export function shouldUseLinearTrackSummary(track, state, pxPerBp, visibleItemCount) {
+export function shouldUseLinearTrackSummary(track, state, pxPerBp, visibleItemCount, recordLength) {
   if (isQuantitativeTrack(track)) return false;
-  if (hasHiddenViewerItemTypes(track, state)) return false;
-  if (!track.summary?.bins?.length) return false;
+  if (hasSemanticLinearSlots(track) && track.autoDensity !== true) return false;
+  if (hasHiddenViewerItemTypes(track, state) && !usesAutomaticLinearDensity(track)) return false;
+  if (!track.summary?.bins?.length && !usesAutomaticLinearDensity(track)) return false;
   const mode = getViewerTrackDisplayMode(track, state);
   if (mode === "full" || mode === "squished") return false;
   const itemCount = track.summary?.itemCount ?? track.items?.length ?? 0;
   const visibleCount = Number.isFinite(Number(visibleItemCount)) ? Number(visibleItemCount) : itemCount;
-  return visibleCount > DENSITY_ITEM_THRESHOLD;
+  const plotWidth = (state.viewEnd - state.viewStart) * pxPerBp;
+  // Reserve roughly one marker width per feature before using an overview.
+  const threshold = usesAutomaticLinearDensity(track) && Number.isFinite(plotWidth)
+    ? Math.min(DENSITY_ITEM_THRESHOLD, Math.max(80, plotWidth / 12))
+    : DENSITY_ITEM_THRESHOLD;
+  // A reserved track's representation follows zoom, not which features happen
+  // to cross the viewport edge while panning. Local clusters use the overflow
+  // footer until zoom provides enough room for their individual features.
+  const densityCount = recordLength > 0
+    ? getViewerTrackItems(track, state).length * Math.min(1, (state.viewEnd - state.viewStart) / recordLength)
+    : visibleCount;
+  return densityCount > threshold;
 }
 
 function drawTrackSummaryBins(ctx, track, options) {
@@ -645,7 +662,7 @@ function drawTrackSummaryBins(ctx, track, options) {
     ctx.font = "10px system-ui, sans-serif";
     ctx.fillStyle = options.theme?.muted || "#64748b";
     ctx.textAlign = "right";
-    ctx.fillText("summary", plotRight, y - 18);
+    ctx.fillText("feature density · zoom for detail", plotRight, options.captionY ?? y - 18);
   }
   return drew;
 }
@@ -768,10 +785,17 @@ function hasVisibleGeneModels(record, state) {
   return getVisibleViewerTracks(record, state).some(track => getViewerTrackItems(track, state).some(item => item.geneModel || item.geneFeatureClass || record.geneFeatureLegend?.length));
 }
 
-function buildLinearTrackLayouts(record, state, pxPerBp) {
+export function buildLinearTrackLayouts(record, state, pxPerBp) {
   return getVisibleViewerTracks(record, state).map((track) => {
     const displayMode = getViewerTrackDisplayMode(track, state);
     const visibleCount = visibleTrackItemCount(track, state, state.viewStart, state.viewEnd);
+    const reservedSlots = isStackedIntervalTrack(track) ? reservedLinearSlots(track) : 0;
+    const slotHeight = displayMode === "squished" ? SQUISHED_FEATURE_SLOT_HEIGHT : record.compactLayout ? 14 : FEATURE_SLOT_HEIGHT;
+    // Reserve the same lanes and overflow footer in overview, detail and empty
+    // windows. Only explicit display settings may change a track's height.
+    const reservedHeight = reservedSlots
+      ? (record.compactLayout ? 10 : 18) + reservedSlots * slotHeight + 16
+      : 0;
     if (isQuantitativeTrack(track)) {
       return {
         track,
@@ -781,13 +805,14 @@ function buildLinearTrackLayouts(record, state, pxPerBp) {
         height: 70
       };
     }
-    if (shouldUseLinearTrackSummary(track, state, pxPerBp, visibleCount)) {
+    if (shouldUseLinearTrackSummary(track, state, pxPerBp, visibleCount, record.length)) {
       return {
         track,
         displayMode,
         stacked: false,
         summary: true,
-        height: 42
+        reservedSlots,
+        height: reservedHeight || 42
       };
     }
     if (!isStackedIntervalTrack(track)) {
@@ -797,65 +822,49 @@ function buildLinearTrackLayouts(record, state, pxPerBp) {
         stacked: false,
         height: displayMode === "squished"
           ? (track.type === "restriction-sites" ? 24 : 30)
-          : track.type === "restriction-sites" && !canShowRestrictionSiteLabels(pxPerBp, displayMode)
-            ? 28
-            : 42
+          : 42
       };
     }
-    const fullLayout = getCachedLinearSlotLayout(record, state, track);
-    const layout = clipStackedIntervalLayout(fullLayout, {
-      viewStart: state.viewStart,
-      viewEnd: state.viewEnd
-    });
-    const slotHeight = displayMode === "squished" ? SQUISHED_FEATURE_SLOT_HEIGHT : record.compactLayout ? 14 : FEATURE_SLOT_HEIGHT;
-    const height = (record.compactLayout ? 10 : 18) + layout.slotCount * slotHeight + (layout.hidden.length > 0 ? 16 : 0);
+    const layout = getCachedLinearSlotLayout(record, state, track, pxPerBp);
+    const height = reservedHeight || (record.compactLayout ? 10 : 18) + layout.slotCount * slotHeight + (layout.hidden.length > 0 ? 16 : 0);
     return {
       track,
       displayMode,
       stacked: true,
       layout,
       slotHeight,
+      reservedSlots,
       height
     };
   });
 }
 
-function getCachedLinearSlotLayout(record, state, track) {
-  if (!state.trackLayoutCache) {
-    state.trackLayoutCache = new WeakMap();
-  }
-  const cached = state.trackLayoutCache.get(track);
+function getCachedLinearSlotLayout(record, state, track, pxPerBp) {
+  if (!state.trackLayoutCache) state.trackLayoutCache = new WeakMap();
   const trackItems = getViewerTrackItems(track, state);
-  const itemCount = trackItems.length;
-  const slotConfigKey = JSON.stringify({
-    fixedSlotsByType: track.fixedSlotsByType || track.slotByType || null,
-    allowFixedSlotOverlaps: track.allowFixedSlotOverlaps === true,
-    hiddenItemTypes: Array.from(state.hiddenTrackItemTypes?.get(track.id || track.type || "track") || []).sort()
-  });
-  if (
-    cached &&
-    cached.length === record.length &&
-    cached.maxSlots === FEATURE_SLOT_MAX &&
-    cached.itemCount === itemCount &&
-    cached.slotConfigKey === slotConfigKey
-  ) {
-    return cached.layout;
-  }
-  const layout = createStackedIntervalLayout(trackItems, {
-    length: record.length,
-    maxSlots: FEATURE_SLOT_MAX,
-    minGapUnits: trackItems.length > DENSITY_ITEM_THRESHOLD ? FEATURE_SLOT_MIN_GAP_UNITS : 0,
+  const stableSlots = reservedLinearSlots(track);
+  const maxSlots = stableSlots || 16;
+  // Pack against original contig coordinates once per zoom scale. Clipping
+  // first can reorder left-edge overlaps and replace visible features on pan.
+  const viewStart = stableSlots ? 0 : state.viewStart;
+  const viewEnd = stableSlots ? record.length : state.viewEnd;
+  const visibleLayout = layout => stableSlots ? clipStackedIntervalLayout(layout, state) : layout;
+  const selected = state.selectedTarget?.trackId === (track.id || track.type) ? state.selectedTarget : null;
+  const selectedFeatureId = selected?.featureId;
+  const selectedItemIndex = selected?.itemIndex;
+  const key = JSON.stringify([record.length, trackItems.length, maxSlots, viewStart, viewEnd, pxPerBp,
+    selectedFeatureId, selectedItemIndex, track.fixedSlotsByType || track.slotByType, track.allowFixedSlotOverlaps,
+    Array.from(state.hiddenTrackItemTypes?.get(track.id || track.type || "track") || []).sort()]);
+  const cached = state.trackLayoutCache.get(track);
+  if (cached?.key === key) return visibleLayout(cached.layout);
+  const layout = layoutVisibleIntervals(trackItems, {
+    length: record.length, viewStart, viewEnd,
+    maxSlots, minGapPixels: hasSemanticLinearSlots(track) ? 0 : 4, pxPerBp, selectedFeatureId, selectedItemIndex,
     fixedSlotsByType: track.fixedSlotsByType || track.slotByType,
     allowFixedSlotOverlaps: track.allowFixedSlotOverlaps === true
   });
-  state.trackLayoutCache.set(track, {
-    length: record.length,
-    maxSlots: FEATURE_SLOT_MAX,
-    itemCount,
-    slotConfigKey,
-    layout
-  });
-  return layout;
+  state.trackLayoutCache.set(track, { key, layout });
+  return visibleLayout(layout);
 }
 
 function computeLinearRows(record, state, pxPerBp) {
@@ -1022,14 +1031,16 @@ function drawViewer(ctx, canvas, status, record, state, theme = getViewerCanvasT
   const rulerY = 46;
   if (!record.hideRulers) drawLinearRuler(ctx, state, layout, { y: rulerY, labelsAbove: true, theme });
 
-  for (const { track, y: trackY, topY, height, quantitative, stacked, summary, displayMode, slotHeight, layout: trackSlotLayout } of rows.trackYs) {
+  for (const row of rows.trackYs) {
+    const { track, y: trackY, topY, height, quantitative, stacked, summary, displayMode, slotHeight, reservedSlots, layout: trackSlotLayout } = row;
+    const labelY = linearTrackLabelY(row, record);
     const color = getViewerTrackColor(theme, track);
     const compactTrack = displayMode === "squished";
     ctx.font = "12px system-ui, sans-serif";
     ctx.fillStyle = theme.muted;
     ctx.textAlign = "right";
     const trackLabel = track.axisLabel || track.label || (stacked && track.type === "features" ? "Features" : track.type);
-    drawLinearTrackLabel(ctx, trackLabel, plotLeft, trackY);
+    drawLinearTrackLabel(ctx, trackLabel, plotLeft, labelY);
 
     if (quantitative) {
       drawLinearQuantitativeTrack(ctx, track, state, layout, { topY, height }, theme);
@@ -1037,8 +1048,10 @@ function drawViewer(ctx, canvas, status, record, state, theme = getViewerCanvasT
     }
 
     if (summary) {
-      drawTrackSummaryBins(ctx, track, { plotLeft, plotRight, viewStart: state.viewStart, viewEnd: state.viewEnd, y: trackY, color, theme }) ||
-        drawDensityBins(ctx, getViewerTrackItems(track, state), { plotLeft, plotRight, viewStart: state.viewStart, viewEnd: state.viewEnd, y: trackY, color });
+      const options = { plotLeft, plotRight, viewStart: state.viewStart, viewEnd: state.viewEnd,
+        y: labelY, captionY: topY + height - 15, color, theme, length: record.length };
+      if (usesAutomaticLinearDensity(track)) drawDensityBins(ctx, getViewerTrackItems(track, state), options);
+      else drawTrackSummaryBins(ctx, track, options) || drawDensityBins(ctx, getViewerTrackItems(track, state), options);
       continue;
     }
 
@@ -1047,7 +1060,7 @@ function drawViewer(ctx, canvas, status, record, state, theme = getViewerCanvasT
       const visible = allSites
         .map((site, itemIndex) => ({ site, itemIndex, cutPosition: restrictionSiteCutPosition(site) }))
         .filter((entry) => entry.cutPosition !== null && entry.cutPosition >= state.viewStart && entry.cutPosition <= state.viewEnd);
-      if (shouldUseLinearTrackSummary(track, state, pxPerBp, visible.length)) {
+      if (shouldUseLinearTrackSummary(track, state, pxPerBp, visible.length, record.length)) {
         drawTrackSummaryBins(ctx, track, { plotLeft, plotRight, viewStart: state.viewStart, viewEnd: state.viewEnd, y: trackY, color, theme }) ||
           drawDensityBins(ctx, visible.map((entry) => entry.site), { plotLeft, plotRight, viewStart: state.viewStart, viewEnd: state.viewEnd, y: trackY, color });
       } else {
@@ -1115,7 +1128,7 @@ function drawViewer(ctx, canvas, status, record, state, theme = getViewerCanvasT
     }
 
     const visible = visibleIntervalItems(track, state, state.viewStart, state.viewEnd);
-    if (shouldUseLinearTrackSummary(track, state, pxPerBp, visible.length)) {
+    if (shouldUseLinearTrackSummary(track, state, pxPerBp, visible.length, record.length)) {
       drawTrackSummaryBins(ctx, track, { plotLeft, plotRight, viewStart: state.viewStart, viewEnd: state.viewEnd, y: trackY, color, theme }) ||
         drawDensityBins(ctx, visible, { plotLeft, plotRight, viewStart: state.viewStart, viewEnd: state.viewEnd, y: trackY, color });
     } else if (stacked) {
@@ -1251,11 +1264,12 @@ function drawViewer(ctx, canvas, status, record, state, theme = getViewerCanvasT
         }
       }
       if ((trackSlotLayout?.hidden?.length ?? 0) > 0) {
-        const messageY = slotBaseY + trackSlotLayout.slotCount * rowSlotHeight + 2;
+        const messageY = slotBaseY + (reservedSlots || trackSlotLayout.slotCount) * rowSlotHeight + 2;
+        const hiddenCount = new Set(trackSlotLayout.hidden.map(placement => placement.itemIndex)).size;
         ctx.font = "11px system-ui, sans-serif";
         ctx.fillStyle = theme.warning;
         ctx.textAlign = "right";
-        ctx.fillText(`${trackSlotLayout.hidden.length.toLocaleString()} overlapping feature${trackSlotLayout.hidden.length === 1 ? "" : "s"} hidden; zoom in`, plotRight, messageY);
+        ctx.fillText(`${hiddenCount.toLocaleString()} more feature${hiddenCount === 1 ? "" : "s"} · zoom in or select via feature search`, plotRight, messageY);
       }
     } else {
       for (const item of visible) {

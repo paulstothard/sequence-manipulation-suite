@@ -135,6 +135,8 @@ function normalizeTrack(track, recordLength) {
     negativeColor: track.negativeColor,
     windowSize: track.windowSize,
     layout: track.layout,
+    reservedSlots: track.reservedSlots,
+    autoDensity: track.autoDensity,
     fixedSlotsByType: track.fixedSlotsByType || track.slotByType,
     allowFixedSlotOverlaps: track.allowFixedSlotOverlaps === true,
     featureOpacity: track.featureOpacity,

@@ -183,3 +183,50 @@ export function clipStackedIntervalLayout(fullLengthLayout, options = {}) {
 export function layoutStackedIntervals(items = [], options = {}) {
   return clipStackedIntervalLayout(createStackedIntervalLayout(items, options), options);
 }
+
+// Reserve ordinary annotation lanes independently of the current viewport.
+// Semantic lanes (frames, transcripts, primer roles and aligned reads) retain
+// their existing capacity rather than being reduced to three annotation rows.
+export function hasSemanticLinearSlots(track) {
+  return Boolean(track.fixedSlotsByType || track.slotByType || track.allowFixedSlotOverlaps ||
+    track.items?.some(item => [item.slot, item.slotIndex, item.fixedSlot].some(value => normalizeSlot(value) !== null) || item.alignedReadBases));
+}
+
+export function reservedLinearSlots(track) {
+  if (!isStackedIntervalTrack(track)) return 0;
+  const explicit = Math.trunc(Number(track.reservedSlots) || 0);
+  if (explicit > 0) return Math.min(16, explicit);
+  if (hasSemanticLinearSlots(track)) {
+    // Use the full record, including semantic lanes absent from this window.
+    const slots = (track.items ?? []).map(item => fixedSlotForInterval({ item }, track));
+    if (slots.length && slots.every(slot => slot !== null)) return Math.min(16, slots.reduce((max, slot) => Math.max(max, slot), 0) + 1);
+    return 16;
+  }
+  return Math.max(1, Math.min(3, track.items?.length || 1));
+}
+
+export function usesAutomaticLinearDensity(track) {
+  return track.autoDensity === true || (track.autoDensity !== false && isStackedIntervalTrack(track) && !hasSemanticLinearSlots(track));
+}
+
+export function layoutVisibleIntervals(items = [], options = {}) {
+  const intervals = makeLinearIntervalCopies(items, options);
+  const minGap = Math.max(0, Number(options.minGapPixels) || 0) / Math.max(0.000001, options.pxPerBp || 1);
+  const layout = assignIntervalSlots(intervals, {
+    ...options,
+    maxSlots: options.maxSlots || 16,
+    minGap
+  });
+  if ((options.selectedFeatureId || Number.isInteger(options.selectedItemIndex)) && !options.fixedSlotsByType && !options.slotByType && !options.allowFixedSlotOverlaps) {
+    const selected = layout.hidden.filter(({ item }) => (options.selectedFeatureId ? item.featureId === options.selectedFeatureId : items[options.selectedItemIndex] === item));
+    if (selected.length && selected.every(interval => fixedSlotForInterval(interval, options) === null)) {
+      const slot = layout.slotCount - 1;
+      const displaced = layout.placements.filter(placement => placement.slot === slot && selected.some(interval =>
+        interval.start < placement.end + minGap && placement.start < interval.end + minGap));
+      layout.placements = layout.placements.filter(placement => !displaced.includes(placement));
+      layout.placements.push(...selected.map(interval => ({ ...interval, slot })));
+      layout.hidden = [...layout.hidden.filter(interval => !selected.includes(interval)), ...displaced];
+    }
+  }
+  return layout;
+}
