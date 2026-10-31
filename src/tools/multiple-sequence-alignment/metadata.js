@@ -30,7 +30,7 @@ function buildMetadata(alphabet) {
     tags: [isProtein ? "protein" : "DNA", "FASTA", "alignment", ...(isCodingDna ? ["codon", "translation"] : [])],
     summary: isCodingDna
       ? "Translate coding DNA/RNA, align the proteins with MUSCLE or the SMS3 progressive aligner, and project the alignment back to codons."
-      : `Align multiple ${isProtein ? "protein" : "DNA/RNA"} FASTA records with MUSCLE or the SMS3 progressive aligner.`,
+      : `Align multiple ${isProtein ? "protein" : "DNA/RNA"} sequences supplied as FASTA or retrieved by ${isProtein ? "UniProt or NCBI protein" : "NCBI nucleotide"} accession, using MUSCLE or the SMS3 progressive aligner.`,
     inputType: `${isCodingDna ? "Coding DNA/RNA" : isProtein ? "Protein" : "DNA/RNA"} FASTA records`,
     outputType: isCodingDna
       ? "Multiple alignment report, aligned codon FASTA, aligned translated protein FASTA, CLUSTAL-format text, table, colored alignment, coding-DNA sequence logo, or neighbor-joining tree in Tree Viewer"

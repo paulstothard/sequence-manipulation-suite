@@ -1,3 +1,4 @@
+import { renderExternalError } from './external-error-ui.js';
 import { organismsFor, knownOrganism, findOrganisms, bundledAssemblies, bundledAssembly, assemblySource } from '../core/external-resources/organisms.js';
 const knownAssemblies = new Map();
 
@@ -104,7 +105,7 @@ export function installAssemblyPicker({ wrapper, assembly, species, source, clie
       const id = response.rows.some(row => row.id === assembly.value) ? assembly.value : response.rows[0].id;
       setMenu(response.rows, id); selected();
       message.textContent = 'Provider choices loaded. Enter coordinates for the selected assembly; old coordinates are not converted.';
-    } catch (error) { if (!signal.aborted && container.isConnected) message.textContent = `${error.message} Bundled choices remain available.`; }
+    } catch (error) { if (!signal.aborted && container.isConnected) { renderExternalError(message, error); message.append(' Bundled choices remain available.'); } }
     finally { if (container.isConnected) find.disabled = false; }
   }
   find.addEventListener('click', load);

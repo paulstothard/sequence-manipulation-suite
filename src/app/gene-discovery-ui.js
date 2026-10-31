@@ -1,3 +1,4 @@
+import { renderExternalError } from './external-error-ui.js';
 import { commonOrganisms, organismsFor, knownOrganism, findOrganisms } from '../core/external-resources/organisms.js';
 
 const el = (tag, text = '', cls = '') => { const n = document.createElement(tag); n.textContent = text; if (cls) n.className = cls; return n; };
@@ -48,7 +49,7 @@ export function createGeneDiscoveryController({ host, source, client, displayRes
       geneApi ??= await import('../core/external-resources/gene.js');
       if (current()) await work(signal, current);
     }
-    catch (error) { if (current()) { status.textContent = error.message; status.classList.add('external-error'); } }
+    catch (error) { if (current()) { renderExternalError(status, error); status.classList.add('external-error'); } }
     finally { if (current()) { form.disabled = false; products.querySelectorAll('fieldset').forEach(n => n.disabled = false); cancelButton.hidden = true; controller = null; } }
   }
   async function findSpecies() {

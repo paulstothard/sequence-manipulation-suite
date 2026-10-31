@@ -131,7 +131,7 @@ export const annotatedDnaRecordExtractorMetadata = {
   name: "Annotated DNA Record Extractor",
   category: "Annotated Records & Features",
   tags: ["DNA", "RNA", "FASTA", "BED", "GFF", "GTF", "GenBank", "EMBL", "DDBJ", "annotation", "coordinates", "format conversion", "map", "translation"],
-  summary: "Extract nucleotide feature tables, maps, whole sequences, CDS DNA/RNA, and CDS translations from GenBank/DDBJ, EMBL, GFF3+FASTA, GTF+FASTA, or BED+FASTA records.",
+  summary: "Extract nucleotide feature tables, maps, whole sequences, CDS DNA/RNA, and CDS translations from annotated records loaded from text, files, or NCBI nucleotide accessions.",
   inputType: "GenBank/DDBJ or EMBL nucleotide flatfile records, GFF3+FASTA, GTF+FASTA, or BED+FASTA",
   outputType: "Feature table, linear or circular nucleotide feature map, editable genome figure, linear DNA sequence viewer, extracted FASTA, report",
   splitInput: {
@@ -213,7 +213,7 @@ export const annotatedProteinRecordExtractorMetadata = {
   name: "Annotated Protein Record Extractor",
   category: "Annotated Records & Features",
   tags: ["protein", "FASTA", "GenPept", "UniProt", "annotation", "coordinates", "format conversion", "map"],
-  summary: "Extract residue-coordinate feature tables, protein sequence figures, maps, whole proteins, and feature sequences from UniProt or GenPept flatfile records.",
+  summary: "Extract residue-coordinate feature tables, protein sequence figures, maps, whole proteins, and feature sequences from UniProt or GenPept records loaded from text, files, or accessions.",
   inputType: "UniProt or GenPept protein flatfile records",
   outputType: "Protein feature table, protein sequence figure, linear protein map, protein sequence viewer, extracted FASTA, report",
   runInWorker: true,

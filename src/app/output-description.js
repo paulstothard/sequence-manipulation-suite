@@ -177,7 +177,7 @@ export function buildOutputDescriptionText({
   ]);
 
   appendSection(lines, "Environment", [
-    tool?.externalResource ? (tool.externalProcessingNote || config.externalProcessingNote) : config.localProcessingNote
+    tool?.externalProcessingNote || (tool?.externalResource ? config.externalProcessingNote : config.localProcessingNote)
   ]);
 
   return lines.join("\n");

@@ -25,10 +25,10 @@ const STRUCTURE_SELECTION_COLORS = [
   ["#84cc16", "Lime"]
 ];
 const STRUCTURE_ORIENTATIONS = [
-  ["front", "Front"],
-  ["side", "Side"],
-  ["top", "Top"],
-  ["iso", "Iso"]
+  ["front", "Front", "Front view along the structure file's Z axis (XY plane)."],
+  ["side", "Side", "Side view along the structure file's X axis (YZ plane)."],
+  ["top", "Top", "Top view along the structure file's Y axis (XZ plane)."],
+  ["angled", "Angled", "Angled perspective view relative to the structure file's coordinate axes."]
 ];
 const NUCLEIC_ACID_RESIDUES = ["A", "C", "G", "U", "I", "DA", "DC", "DG", "DT", "DU", "DI"];
 
@@ -296,7 +296,8 @@ function orientationQuaternion(orientation) {
   if (orientation === "top") {
     return quaternionFromAxisAngle({ x: 1, y: 0, z: 0 }, 90);
   }
-  if (orientation === "iso") {
+  // This is an angled perspective preset, not an isometric projection.
+  if (orientation === "angled") {
     return multiplyQuaternions(
       quaternionFromAxisAngle({ x: 0, y: 1, z: 0 }, 35),
       quaternionFromAxisAngle({ x: 1, y: 0, z: 0 }, 35)
@@ -1179,8 +1180,10 @@ export function renderProteinStructureViewer(container, payload = {}) {
   const buttons = document.createElement("div");
   buttons.className = "dna-viewer-buttons protein-structure-buttons";
   const fitButton = makeButton("Fit structure in view", BUTTON_ICONS.fit, "protein-structure-fit-button", "Fit");
-  const orientationButtons = STRUCTURE_ORIENTATIONS.map(([value, label]) => {
+  const orientationButtons = STRUCTURE_ORIENTATIONS.map(([value, label, help]) => {
     const button = makeButton(`${label} view`, null, "protein-structure-orientation-button", label);
+    button.title = help;
+    button.setAttribute("aria-description", help);
     button.dataset.orientation = value;
     return button;
   });
@@ -1627,10 +1630,15 @@ export function renderProteinStructureViewer(container, payload = {}) {
     }
   });
   let disposed = false;
+  let initialResize = true;
   const resizeObserver = new ResizeObserver(() => {
     if (disposed || !viewerHost.isConnected) return;
     structureInspection.hide();
     viewer.resize();
+    // The output shell can still be hidden or changing size during initial
+    // rendering. Fit once at its measured size, preserving exported cameras.
+    if (initialResize && !Array.isArray(payload.initialView)) fitStructure(viewer);
+    initialResize = false;
     viewer.render();
   });
   resizeObserver.observe(viewerHost);

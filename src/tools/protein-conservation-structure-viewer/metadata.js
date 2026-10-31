@@ -7,7 +7,7 @@ export const proteinConservationStructureViewerMetadata = {
   name: "Protein Conservation Structure Viewer",
   category: "Viewers & Figures",
   tags: ["protein", "alignment", "coordinates", "map"],
-  summary: "Color a PDB or mmCIF protein structure by residue conservation after anchoring the alignment to one structure chain and detecting equivalent chains.",
+  summary: "Color a protein structure from a PDB ID or PDB/mmCIF file by residue conservation, using protein sequences supplied as FASTA or retrieved by accession.",
   inputType: "Protein structure file plus protein FASTA records",
   outputType: "Conservation-colored protein structure viewer, mapping report, or conservation table",
   splitInput: {

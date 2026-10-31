@@ -737,6 +737,7 @@ export function makeReferenceTopics(sortedTools) {
       "Get Data sends the organism, accession, search terms, or region you enter to the selected public database when you search, choose a gene, retrieve records, or run a workflow containing Get Data. In workflows, the preceding output supplies the accession or region. Get Data and Send Data can also request public organism and assembly metadata when you choose Find; their bundled menus work locally.",
       "The Send Data tool shares the displayed data or identifiers with the selected service when you click Open or Send. For services that require manual submission, you paste or upload the data on their website. External services apply their own privacy policies.",
       "Gene Viewer sends organism and gene queries to NCBI when you choose Find genes, and gene identifiers and genomic coordinates when you choose View or View region. It downloads public sequences and annotations for local viewing; Workspace sequences are not uploaded.",
+      "Protein Structure Viewer's By identifier input sends a PDB ID to RCSB PDB when you click Run, then downloads coordinates for local viewing. Pasted or uploaded structures are processed locally.",
       "Opening these tools, loading an example, or editing their inputs does not contact external services.",
       "SMS3 does not use cookies.",
       "The public site uses self-hosted Plausible Analytics to count aggregate page visits, tool-page visits, successful tool runs, and basic device and approximate-location statistics.",

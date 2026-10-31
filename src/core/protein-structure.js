@@ -783,7 +783,9 @@ function serializeAtomsAsPdb(atoms, title, selectedModel) {
 function cifValue(value) {
   const text = String(value ?? "");
   if (!text) return ".";
-  if (/^[^\s'"#;$][^\s]*$/.test(text) && !/^(?:_|data_|loop_|save_|stop_|global_)/i.test(text) && ![".","?"].includes(text)) return text;
+  // Quote embedded apostrophes too: the viewer's CIF tokenizer treats them as
+  // delimiters, including the prime in nucleotide atom names such as O5'.
+  if (/^[^\s'"#;$][^\s'"]*$/.test(text) && !/^(?:_|data_|loop_|save_|stop_|global_)/i.test(text) && ![".","?"].includes(text)) return text;
   if (!text.includes("'") && !text.includes("\n")) return `'${text}'`;
   if (!text.includes('"') && !text.includes("\n")) return `"${text}"`;
   if (/^;/m.test(text)) throw new Error("Structure identifier cannot be represented as mmCIF text.");

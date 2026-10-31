@@ -1,3 +1,4 @@
+import { renderExternalError } from './external-error-ui.js';
 import { installAssemblyPicker } from './assembly-picker-ui.js';
 import { bundledAssemblies, knownOrganism } from '../core/external-resources/organisms.js';
 import { createGeneDiscoveryController } from './gene-discovery-ui.js';
@@ -67,7 +68,7 @@ export function createExternalResourcesController({ host, displayResult, resetOu
     if (fieldset) fieldset.disabled = false;
   }
   function invalidate() { cancel(); if (matches) matches.replaceChildren(); if (status) { status.textContent = ''; status.classList.remove('external-error'); } resetOutput(); }
-  function showError(error) { status.textContent = error.message || String(error); status.classList.add('external-error'); }
+  function showError(error) { renderExternalError(status, error); status.classList.add('external-error'); }
   function data() { return { ...snapshot(), source, type: operation, task: operation, format }; }
   function busy() { action.disabled = true; cancelButton.hidden = false; fieldset.disabled = true; status.classList.remove('external-error'); }
   function updateRetrievalAction() {

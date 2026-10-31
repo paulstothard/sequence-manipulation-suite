@@ -1,3 +1,4 @@
+import { identifierInputsFor } from './identifier-inputs.js';
 import {svgEditorMetadata,svgEditorExample} from "./svg-editor/metadata.js";
 import {runSvgEditor} from "./svg-editor/run.js";
 import {imageAnnotatorMetadata,imageAnnotatorExample} from "./image-annotator/metadata.js";
@@ -2297,3 +2298,14 @@ augcaunn`
   { metadata: getDataMetadata, run: runGetData, example: 'NC_001422.1' },
   { metadata: sendDataMetadata, run: runSendData, example: '>TP53_fragment\nMEEPQSDPSVEPPLSQETFSDLWKLLPENNVLSPLPSQAMDDLMLSPDDIEQWFTEDPGP' }
 ];
+
+// Optional input retrieval is shared by the app shell; tool runners remain local.
+for (const tool of tools) {
+  const inputs = identifierInputsFor(tool.metadata.id);
+  if (!inputs.length) continue;
+  tool.metadata = {
+    ...tool.metadata,
+    identifierInputs: inputs,
+    externalProcessingNote: 'By identifier checks record metadata and retrieves selected records from NCBI, UniProt or RCSB PDB. Only identifiers and optional coordinates are sent; analysis runs in your browser. Paste/upload works offline.',
+  };
+}

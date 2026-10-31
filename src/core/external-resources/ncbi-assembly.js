@@ -1,3 +1,4 @@
+import { parseExternalJson } from './errors.js';
 import { genbankHeaderValue, genbankHeaderIdentifier } from '../flatfile-records.js';
 import { url } from './catalog.js';
 import { MAX_ASSEMBLY_SEQUENCES } from './limits.js';
@@ -37,7 +38,7 @@ export async function readAssemblySequences(plan, firstPage, client, signal) {
     if (typeof token !== 'string' || tokens.has(token) || sequences.length >= total) throw new Error('NCBI returned an inconsistent assembly sequence page. No partial assembly was returned.');
     tokens.add(token);
     const text = await client.request(assemblyReportUrl(plan.query, token), signal);
-    try { page = JSON.parse(text); } catch { throw new Error('NCBI returned invalid assembly metadata. Please try again later.'); }
+    page = parseExternalJson(text, plan.url);
   }
   if (sequences.length !== total) throw new Error('NCBI returned an incomplete assembly sequence report. No partial assembly was returned.');
   return sequences;

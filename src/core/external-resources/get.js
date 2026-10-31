@@ -5,6 +5,7 @@ import { MAX_RESPONSE_BYTES } from './limits.js';
 import { assemblyReportUrl, readAssemblySequences, verifyAssemblyRecords } from './ncbi-assembly.js';
 import { knownOrganism } from './organisms.js';
 import { regionSession } from './region-common.js';
+import { ExternalServiceError, externalServiceError, externalHttpError, parseExternalJson } from './errors.js';
 
 const EUTILS = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/';
 export { MAX_RESPONSE_BYTES } from './limits.js';
@@ -160,6 +161,10 @@ export function createRetrievalClient({ fetchImpl = globalThis.fetch, intervalMs
       let saved = 0;
       try { saved = Number(storage?.getItem('sms3-external-next-request')) || 0; } catch { /* storage may be disabled */ }
       const start = Math.max(nextStart, saved, cooldown);
+      // Respect Retry-After without leaving a manual retry stuck in a long queue.
+      if (start - Date.now() > Math.max(intervalMs, 2000)) {
+        throw externalServiceError(target, 'cooldown', { retryAfter: (start - Date.now()) / 1000 });
+      }
       await wait(Math.max(0, start - Date.now()), signal);
       nextStart = Date.now() + intervalMs;
       try { storage?.setItem('sms3-external-next-request', String(nextStart)); } catch { /* optional coordination */ }
@@ -167,6 +172,7 @@ export function createRetrievalClient({ fetchImpl = globalThis.fetch, intervalMs
       const abort = () => controller.abort();
       signal?.addEventListener('abort', abort, { once: true });
       let timedOut = false;
+      const limitError = sizeError();
       const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
       try {
         const response = await fetchImpl(target, { ...post, signal: controller.signal, mode: 'cors', credentials: 'omit', referrerPolicy: 'no-referrer' });
@@ -178,11 +184,12 @@ export function createRetrievalClient({ fetchImpl = globalThis.fetch, intervalMs
             const delay = Math.max(60, Number.isFinite(seconds) ? seconds : 60);
             cooldown = Date.now() + delay * 1000;
             try { storage?.setItem('sms3-external-next-request', String(cooldown)); } catch { /* optional */ }
-            throw new Error(`The service is busy or rate-limited. Wait at least ${Math.ceil(delay)} seconds before retrying. Shared classroom networks may need longer. No automatic retry was sent.`);
+            throw externalHttpError(target, response.status, delay);
           }
-          throw new Error(response.status === 404 ? 'No public record was found for this identifier.' : `The service returned HTTP ${response.status}. Check the identifier or try again later.`);
+          throw externalHttpError(target, response.status);
         }
-        if (Number(response.headers.get('content-length')) > maxBytes) { await response.body?.cancel(); throw sizeError(); }
+        if (Number(response.headers.get('content-length')) > maxBytes) { await response.body?.cancel(); throw limitError; }
+        if (!response.body) throw externalServiceError(target, 'response');
         const reader = response.body.getReader(), decoder = new TextDecoder(), chunks = [];
         let size = 0;
         try {
@@ -190,19 +197,19 @@ export function createRetrievalClient({ fetchImpl = globalThis.fetch, intervalMs
             const { value, done } = await reader.read();
             if (done) break;
             size += value.byteLength;
-            if (size > maxBytes) throw sizeError();
+            if (size > maxBytes) throw limitError;
             chunks.push(decoder.decode(value, { stream: true }));
           }
           chunks.push(decoder.decode());
         } catch (error) { await reader.cancel().catch(() => {}); throw error; }
         const body = chunks.join('');
-        if (!body.trim() || /^\s*(?:<!doctype html|<html)/i.test(body)) throw new Error('The service returned an empty response or web page instead of biological data.');
+        if (!body.trim() || /\btext\/html\b/i.test(response.headers.get('content-type') ?? '') || /^\s*(?:<!doctype html|<html)/i.test(body)) throw externalServiceError(target, 'response');
         return body;
       } catch (error) {
-        if (timedOut) throw new Error('The service did not finish within 30 seconds. Try again later or request a smaller record.');
         if (signal?.aborted) throw abortError();
-        if (error instanceof TypeError) throw new Error('Could not reach the service. Check your connection; the service may be unavailable or may not allow browser access (CORS).');
-        throw error;
+        if (timedOut) throw externalServiceError(target, 'timeout');
+        if (error instanceof ExternalServiceError || error === limitError) throw error;
+        throw externalServiceError(target, 'network');
       } finally { clearTimeout(timer); signal?.removeEventListener('abort', abort); }
     };
     const run = () => locks?.request ? locks.request('sms3-external-retrieval', { signal }, requestOnce) : requestOnce();
@@ -212,19 +219,12 @@ export function createRetrievalClient({ fetchImpl = globalThis.fetch, intervalMs
   }
   return { request };
 }
-function json(text) {
-  let value;
-  try { value = JSON.parse(text); } catch { throw new Error('The service returned invalid JSON. Try again later.'); }
-  if (!value || typeof value !== 'object') throw new Error('The service returned invalid JSON data. Try again later.');
-  if (value.error || value.ERROR) throw new Error(`Service error: ${String(value.error || value.ERROR).slice(0, 500)}`);
-  return value;
-}
 function ncbiRows(value) {
   const root = value.result;
   if (!root?.uids?.length) throw new Error('No matching public record was found.');
   return root.uids.map(id => {
     const row = root[id];
-    if (!row || row.error) throw new Error(row?.error || 'The record summary is unavailable.');
+    if (!row || row.error) throw new Error('The record summary is unavailable from NCBI. Check the identifier or try again later.');
     return { id: row.accessionversion || row.caption || id, title: row.title || '', organism: row.organism || '', length: Number(row.slen ?? row.length) || null, molecule: row.moltype || '', topology: row.topology || '', updated: row.updatedate || '' };
   });
 }
@@ -253,6 +253,15 @@ function result(output, extension, plan, count = 1, warnings = []) {
   return value;
 }
 export async function retrieveData(plan, client, signal, onProgress) {
+  try { return await retrieveDataResponse(plan, client, signal, onProgress); }
+  catch (error) {
+    if (signal?.aborted) throw abortError();
+    if (error instanceof TypeError || error instanceof SyntaxError) throw externalServiceError(plan.url, 'response');
+    throw error;
+  }
+}
+
+async function retrieveDataResponse(plan, client, signal, onProgress) {
   if (plan.responseType === 'assembly-search') {
     const value = await (await import('./assembly-catalog.js')).findAssemblies(plan, client, signal);
     return { matches: value.rows.map(row => ({ ...row, title: `${row.label} — whole assembly${row.sequenceCount ? `, ${row.sequenceCount} contigs` : ''}` })), total: value.total, nextPageToken: value.nextPageToken };
@@ -278,7 +287,7 @@ export async function retrieveData(plan, client, signal, onProgress) {
   const text = await client.request(plan.url, signal);
   if (signal?.aborted) throw abortError();
   if (plan.responseType === 'ncbi-assembly') {
-    const sequences = await readAssemblySequences(plan, json(text), client, signal);
+    const sequences = await readAssemblySequences(plan, parseExternalJson(text, plan.url), client, signal);
     const bases = sequences.reduce((sum, record) => sum + record.length, 0);
     if (!Number.isSafeInteger(bases)) throw new Error('NCBI returned an invalid assembly length.');
     if (plan.format === 'summary') return result(summary(sequences, plan, `Assembly: ${plan.query}\nSequences: ${sequences.length}\nTotal length (bp): ${bases}\nDatabase metadata; the full sequences were not downloaded.`), 'txt', plan, sequences.length);
@@ -303,13 +312,13 @@ export async function retrieveData(plan, client, signal, onProgress) {
     return result(chunks.join(''), plan.format, plan, sequences.length);
   }
   if (plan.responseType === 'ncbi-search') {
-    const value = json(text).esearchresult;
+    const value = parseExternalJson(text, plan.url).esearchresult;
     if (value?.errorlist) throw new Error('NCBI could not interpret the search. Check the search expression.');
     if (!value?.idlist?.length) return { matches: [], total: 0 };
-    const rows = ncbiRows(json(await client.request(url(`${EUTILS}esummary.fcgi`, { db: plan.db, id: value.idlist.join(','), retmode: 'json' }), signal)));
+    const rows = ncbiRows(parseExternalJson(await client.request(url(`${EUTILS}esummary.fcgi`, { db: plan.db, id: value.idlist.join(','), retmode: 'json' }), signal), EUTILS));
     return { matches: rows, total: Number(value.count) };
   }
-  if (plan.responseType === 'ncbi-summary') return result(summary(ncbiRows(json(text)), plan, 'Database metadata; the full sequence was not downloaded.'), 'txt', plan);
+  if (plan.responseType === 'ncbi-summary') return result(summary(ncbiRows(parseExternalJson(text, plan.url)), plan, 'Database metadata; the full sequence was not downloaded.'), 'txt', plan);
   if (plan.responseType === 'uniprot-summary') {
     const rows = uniprotRows(text);
     if (plan.kind === 'search') return { matches: rows, total: rows.length === 20 ? null : rows.length };
@@ -317,13 +326,13 @@ export async function retrieveData(plan, client, signal, onProgress) {
     return result(summary(rows, plan, 'Database metadata; the full sequence was not downloaded.'), 'txt', plan, rows.length);
   }
   if (plan.responseType === 'rcsb-summary') {
-    const value = json(text), info = value.rcsb_entry_info ?? {};
+    const value = parseExternalJson(text, plan.url), info = value.rcsb_entry_info ?? {};
     if (!value.rcsb_id) throw new Error('No PDB entry summary was returned.');
     const row = { id: value.rcsb_id, title: value.struct?.title, method: value.exptl?.map(item => item.method).join(', '), resolution: info.resolution_combined?.join(', '), 'polymer entities': info.polymer_entity_count, 'deposited atoms': info.deposited_atom_count };
     return result(summary([row], plan, 'Resolution is in Å where reported. Structure coordinates were not downloaded.'), 'txt', plan);
   }
   if (plan.responseType === 'alphafold') {
-    const models = json(text);
+    const models = parseExternalJson(text, plan.url);
     if (!Array.isArray(models) || !models.length) throw new Error('No AlphaFold model was found for this UniProt accession.');
     if (plan.format === 'summary') return result(summary(models.map(m => ({ id: m.entryId, title: m.uniprotDescription, organism: m.organismScientificName, 'residue start': m.uniprotStart, 'residue end': m.uniprotEnd, 'mean pLDDT': m.globalMetricValue })), plan, 'Predicted models; pLDDT is a model confidence score. Coordinates were not downloaded.'), 'txt', plan, models.length);
     // Do not silently discard additional fragments/models.
@@ -336,7 +345,7 @@ export async function retrieveData(plan, client, signal, onProgress) {
     return validateRecord(structure, plan, signal);
   }
   if (plan.responseType === 'ucsc') {
-    const value = json(text);
+    const value = parseExternalJson(text, plan.url);
     if (typeof value.dna !== 'string' || value.dna.length !== plan.region.length) throw new Error('UCSC did not return the complete requested region. Check assembly and chromosome.');
     return validateRecord(formatFastaRecord(plan.title, value.dna), plan, signal);
   }
@@ -353,7 +362,7 @@ export async function validateRecord(text, plan, signal) {
     return result(text, plan.format === 'uniprot' ? 'txt' : plan.format, plan, count);
   }
   if (plan.format === 'json' && plan.source === 'uniprot') {
-    const value = json(text), sequence = value.sequence;
+    const value = parseExternalJson(text, plan.url), sequence = value.sequence;
     if (!value.primaryAccession || !sequence?.value || !/^[A-Za-z*]+$/.test(sequence.value) || sequence.value.length !== sequence.length) throw new Error('UniProt did not return a complete entry with its full sequence.');
     return result(text, 'json', plan);
   }

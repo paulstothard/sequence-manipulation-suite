@@ -114,7 +114,7 @@ function makeViewerMetadata({
 export const dnaSequenceViewerMetadata = makeViewerMetadata({
   id: "dna-sequence-viewer",
   name: "Linear DNA Sequence Viewer",
-  summary: "Open plain, FASTA, or annotated nucleotide records one at a time in a linear interactive viewer, with optional range focus, strands, reading frames, and parsed feature tracks.",
+  summary: "Explore nucleotide sequences from text, files, or NCBI nucleotide accessions in a linear interactive viewer with range focus, strands, reading frames, and feature tracks.",
   whenToUse: "Inspect nucleotide sequences and their annotations along a linear coordinate axis.",
   outputType: "Linear DNA sequence viewer or summary report",
   viewerLabel: "Linear DNA sequence viewer",
@@ -124,7 +124,7 @@ export const dnaSequenceViewerMetadata = makeViewerMetadata({
 export const circularDnaSequenceViewerMetadata = makeViewerMetadata({
   id: "circular-dna-sequence-viewer",
   name: "Circular DNA Sequence Viewer",
-  summary: "Open plain, FASTA, or annotated nucleotide records one at a time in a circular interactive viewer, with optional range focus, strands, reading frames, and parsed feature tracks.",
+  summary: "Explore nucleotide sequences from text, files, or NCBI nucleotide accessions in a circular interactive viewer with range focus, strands, reading frames, and feature tracks.",
   whenToUse: "Explore circular DNA sequences and annotated plasmids or genomes, with feature tracks, reading frames and base-level inspection.",
   outputType: "Circular DNA sequence viewer or summary report",
   viewerLabel: "Circular DNA sequence viewer",

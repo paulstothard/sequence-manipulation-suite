@@ -10,8 +10,10 @@ export const proteinStructureViewerMetadata = {
   name: "Protein Structure Viewer",
   category: "Viewers & Figures",
   tags: ["protein", "coordinates", "map"],
-  summary: "Open PDB or mmCIF protein structures in an interactive viewer with model, assembly, and chain selection.",
-  inputType: "Protein structure file (PDB or mmCIF)",
+  summary: "Open protein structures from a PDB ID or a PDB/mmCIF file, with model, assembly, and chain selection.",
+  inputType: "PDB identifier or protein structure file (PDB or mmCIF)",
+  fileInput: { dropLabel: "Drop PDB or mmCIF protein structure here", accept: ".pdb,.cif,.mmcif,.txt" },
+  externalProcessingNote: "By identifier sends the PDB ID to RCSB PDB to retrieve a public structure. Uploaded structures and structure viewing are processed locally in your browser.",
   outputType: "Protein structure viewer, summary report, residue table, or atom table",
   runInWorker: true,
   workerModule: "../tools/protein-structure-viewer/run.js",
@@ -115,6 +117,7 @@ export const proteinStructureViewerMetadata = {
       collapsible: true,
       collapsed: true,
       options: [
+        { type: "limit-value", label: "Structure retrieval", value: "25 MiB", detail: "Larger RCSB PDB responses are refused. The interactive atom limit applies after model, chain, and assembly selection." },
         {
           id: "maxViewerAtoms",
           type: "number",

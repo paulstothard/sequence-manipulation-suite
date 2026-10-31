@@ -5,6 +5,8 @@ import { workflowInputDisplayText } from "../core/workflow-input-state.js";
 import { updateDesignFeatureOptions } from "./design-feature-options-ui.js";
 import { appendHandoffActions } from './external-handoff-ui.js';
 import { createExternalResourcesController } from './external-resources-ui.js';
+import { createIdentifierInputController } from './identifier-input.js';
+import { identifierDownloads } from '../core/identifier-retrieval.js';
 import {updateResultOptionChoices} from "./result-option-choices.js";
 import { renderVariantConsensusInput } from './variant-consensus-input-ui.js';
 import { EDITOR_TOOLS, parseEditorDocument, readEditorDocumentFile, readEditorRecovery, createEditorSession } from './editor-session.js';
@@ -625,6 +627,28 @@ const toolInputShell = createToolInputShellController({
   }
 });
 
+const identifierInput = createIdentifierInputController({
+  elements,
+  getTool: () => state.selectedTool,
+  onChange() {
+    const run = state.toolRun;
+    if (run) {
+      state.toolRun = null;
+      run.abortController.abort();
+      run.cancelActiveTool?.();
+      setToolRunning(false);
+    }
+    clearToolOutput();
+    updateProteinStructureViewerUi();
+    updateToolOptionSuggestions();
+  },
+  onReady() {
+    updateProteinStructureViewerUi();
+    updatePcrPrimerDesignUi();
+    updateToolOptionSuggestions();
+  }
+});
+
 const appLayout = createAppLayoutController({ elements });
 
 const feedbackTemplates = [
@@ -1111,6 +1135,7 @@ function renderExternalResources(toolId) {
 }
 
 function renderSelectedTool() {
+  identifierInput.render();
   const { metadata } = state.selectedTool;
   const isMarkdownNotebook = metadata.id === "markdown-notebook";
   const isExternal = metadata.externalResource === true;
@@ -1140,6 +1165,7 @@ function renderSelectedTool() {
   elements.optionsPanel.classList.toggle("pcr-primer-design-options", metadata.id === PCR_PRIMER_DESIGN_TOOL_ID);
   elements.toolView.classList.toggle("pcr-template-workflow", [PCR_PRIMER_DESIGN_TOOL_ID, IN_SILICO_PCR_TOOL_ID].includes(metadata.id));
   elements.toolView.classList.toggle("sequence-source-workflow", isFastaSourceTabbedTool());
+  elements.toolView.classList.toggle("structure-identifier-workflow", metadata.id === "protein-structure-viewer");
   elements.toolView.classList.toggle("primer-oligo-workflow", metadata.id === "primer-oligo-properties");
   renderSplitInputPanel(state.selectedTool);
   updateInputFileUi(state.selectedTool);
@@ -3808,6 +3834,8 @@ function loadPcrTemplateModeExampleIfSafe(panel, sourceMode) {
 }
 
 function getPcrTemplateInputText() {
+  const remote = identifierInput.slotText(isInSilicoPcrTool() ? 'template' : 'input');
+  if (remote !== null) return remote;
   const panel = document.querySelector("#pcrTemplateInputPanel");
   const mode = panel?.dataset.sourceMode ?? "sequence";
   const annotation = panel?.querySelector('[data-pcr-input="template-primary"]')?.value ?? "";
@@ -4090,6 +4118,10 @@ function updatePcrPrimerDesignUi({ applyPreset = false } = {}) {
 }
 
 function getSelectedToolInputText() {
+  return identifierInput.inputText(getLocalSelectedToolInputText());
+}
+
+function getLocalSelectedToolInputText() {
   const splitInput = state.selectedTool?.metadata?.splitInput;
   if (!toolRequiresInput(state.selectedTool)) {
     return "";
@@ -4191,6 +4223,8 @@ function getSuggestionListId(...args) {
 }
 
 function getSplitInputTextAt(index) {
+  const remote = identifierInput.splitText(index);
+  if (remote !== null) return remote;
   const splitTextareas = [...elements.splitInputPanel.querySelectorAll(".split-input-textarea")]
     .filter((textarea) => !textarea.closest("[hidden]"));
   return splitTextareas[index]?.value ?? "";
@@ -4205,7 +4239,7 @@ function getProteinStructureSuggestionSummary({ useSelectedModel = false } = {})
   if (!text.trim() || text.length > PROTEIN_STRUCTURE_SUGGESTION_CHAR_LIMIT) {
     return null;
   }
-  const format = elements.toolOptions.querySelector("#format")?.value ?? "auto";
+  const format = identifierInput.overrideOptions({ format: elements.toolOptions.querySelector("#format")?.value ?? "auto" }).format;
   const altLocationPolicy = elements.toolOptions.querySelector("#altLocationPolicy")?.value ?? "preferred";
   const requestedModel = useSelectedModel
     ? (elements.toolOptions.querySelector("#modelSelection")?.value.trim() || "all")
@@ -4835,6 +4869,7 @@ function wireDependentToolOptions(...args) {
 function restoreCurrentToolDefaults() {
   renderToolOptions(state.selectedTool.metadata.options ?? []);
   renderInputPlacementOptions(state.selectedTool);
+  identifierInput.refresh();
   wireDependentToolOptions(state.selectedTool.metadata.options ?? []);
   updateSamBamInputModeUi();
   updateVcfInputModeUi();
@@ -4850,6 +4885,7 @@ function restoreCurrentToolDefaults() {
   updateMarkdownInputUi();
   updateToolOptionSuggestions();
   clearToolOutput();
+  identifierInput.refresh();
 }
 
 function makeFeedbackDraft(template) {
@@ -4952,7 +4988,7 @@ function renderSelectedReference() {
 
 function getOptions(...args) {
   const options = toolInputShell.getOptions(...args);
-  return isAlignmentViewerTool() ? getAlignmentViewerOptions(options) : options;
+  return identifierInput.overrideOptions(isAlignmentViewerTool() ? getAlignmentViewerOptions(options) : options);
 }
 
 function setAlignmentViewerRegionOptions({ reference, start, end }) {
@@ -5145,7 +5181,10 @@ function renderGeneratedToolOutputChoice(result, options = {}) {
 
 function clearToolInputOutput(...args) {
   state.inputImport = null;
-  return toolInputShell.clearToolInputOutput(...args);
+  if (identifierInput.clear()) return;
+  const result = toolInputShell.clearToolInputOutput(...args);
+  identifierInput.refresh();
+  return result;
 }
 
 function formatExampleInputForDisplay(...args) {
@@ -5154,7 +5193,10 @@ function formatExampleInputForDisplay(...args) {
 
 function loadSelectedToolExample(...args) {
   state.inputImport = null;
-  return toolInputShell.loadSelectedToolExample(...args);
+  if (identifierInput.loadExample()) return;
+  const result = toolInputShell.loadSelectedToolExample(...args);
+  identifierInput.refresh();
+  return result;
 }
 
 function updatePrimerInputUi() {
@@ -5178,7 +5220,8 @@ function updatePrimerInputUi() {
 }
 
 function updateInputActionButtons(...args) {
-  return toolInputShell.updateInputActionButtons(...args);
+  toolInputShell.updateInputActionButtons(...args);
+  identifierInput.refresh();
 }
 
 function pluralize(count, singular, plural = `${singular}s`) {
@@ -5957,13 +6000,14 @@ async function runSelectedTool() {
     elements.messages.textContent = "";
     addMessage(getToolRunStatus(tool));
     const workspaceValidation = workspaceInputSources.getToolWorkspaceSelectionValidation(tool);
-    if (!workspaceValidation.valid) {
+    if (!workspaceValidation.valid && !identifierInput.replacesWholeInput()) {
       throw new Error(workspaceValidation.message);
     }
+    const retrieved = await identifierInput.resolve(abortController.signal);
+    if (!isCurrent() || abortController.signal.aborted) return;
     const inputText = getSelectedToolInputText();
     const options = getOptions();
-    await displayToolResult(
-      await runAppTool(tool, inputText, options, {
+    const result = await runAppTool(tool, inputText, options, {
         signal: abortController.signal,
         onProgress: (message) => {
           if (!isCurrent()) return;
@@ -5974,7 +6018,10 @@ async function runSelectedTool() {
           elements.messages.textContent = "";
           addMessage(detail);
         }
-      }),
+      });
+    if (retrieved.length) result.downloads = [...(result.downloads ?? []), ...identifierDownloads(retrieved)];
+    await displayToolResult(
+      result,
       inputText,
       options,
       isCurrent,
@@ -6297,6 +6344,10 @@ elements.toolOptions.addEventListener("click", (event) => {
     return;
   }
 });
+// Local source controls refresh when analysis options change. Reapply the
+// selected identifier tab after those updates without changing local drafts.
+elements.toolOptions.addEventListener('input', identifierInput.refresh);
+elements.toolOptions.addEventListener('change', identifierInput.refresh);
 elements.markdownSaveDraft.addEventListener("click", async () => {
   try {
     await saveMarkdownNotebookDraft({

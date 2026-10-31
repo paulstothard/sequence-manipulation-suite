@@ -1,3 +1,4 @@
+import { parseExternalJson } from './errors.js';
 import { MAX_RESPONSE_BYTES } from './limits.js';
 import { formatFastaRecord, parseSequenceInput } from '../fasta.js';
 import { makeToolResult, makeTableStream } from '../workflow.js';
@@ -49,10 +50,7 @@ export function regionSession(client, signal, onProgress = () => {}) {
     },
     async json(target, options) {
       const text = await this.request(target, options);
-      let value;
-      try { value = JSON.parse(text); } catch { throw new Error('The service returned invalid region metadata. Please try again later.'); }
-      requireData(value && typeof value === 'object' && !value.error && !value.ERROR);
-      return value;
+      return parseExternalJson(text, target);
     }
   };
 }

@@ -1,5 +1,7 @@
 import { downloadText } from './file-download.js';
 import { copyTextWithFeedback } from './copy-feedback.js';
+import { ExternalServiceError, externalServiceError, externalHttpError, parseExternalJson } from '../core/external-resources/errors.js';
+import { renderExternalError } from './external-error-ui.js';
 
 export function openHandoff(plan) {
   if (plan.method === 'POST') {
@@ -21,19 +23,26 @@ export async function sendHandoff(plan, signal) {
   const controller = new AbortController();
   const abort = () => controller.abort();
   signal?.addEventListener('abort', abort, { once: true });
-  const timer = setTimeout(abort, 30000);
+  let timedOut = false;
+  const timer = setTimeout(() => { timedOut = true; abort(); }, 30000);
   try {
-    const response = await fetch(plan.url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(plan.body), signal: controller.signal, credentials: 'omit', referrerPolicy: 'no-referrer' });
-    if (!response.ok) throw new Error(`Proksee returned HTTP ${response.status}.`);
-    const result = await response.json();
-    if (result.status !== 'success' || !result.url) throw new Error(result.error || 'Proksee did not return a project link.');
-    const link = new URL(result.url);
-    if (link.origin !== 'https://proksee.ca' || !/^\/projects\/[A-Za-z0-9-]+$/.test(link.pathname)) throw new Error('Proksee returned an unexpected project address.');
+    let response;
+    try { response = await fetch(plan.url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(plan.body), signal: controller.signal, credentials: 'omit', referrerPolicy: 'no-referrer' }); }
+    catch { throw externalServiceError(plan.url, 'network'); }
+    if (!response.ok) throw externalHttpError(plan.url, response.status);
+    const result = parseExternalJson(await response.text(), plan.url);
+    if (result.status !== 'success' || typeof result.url !== 'string') throw externalServiceError(plan.url, 'response');
+    let link;
+    try { link = new URL(result.url); } catch { throw externalServiceError(plan.url, 'response'); }
+    if (link.origin !== 'https://proksee.ca' || !/^\/projects\/[A-Za-z0-9-]+$/.test(link.pathname)) throw externalServiceError(plan.url, 'response');
     if (popup && !popup.closed) popup.location.replace(link.href);
     return link.href;
   } catch (error) {
     if (popup && !popup.closed) popup.close();
-    throw new Error(`${error.name === 'AbortError' ? 'The Proksee request was cancelled or timed out.' : error.message} The request may have reached Proksee; it was not retried. You can download the map JSON and upload it on Proksee.`);
+    const failure = signal?.aborted ? new ExternalServiceError('cancelled', 'The Proksee request was cancelled', '')
+      : timedOut ? externalServiceError(plan.url, 'timeout')
+      : error instanceof ExternalServiceError ? error : externalServiceError(plan.url, 'network');
+    throw new ExternalServiceError(failure.kind, failure.title, `${failure.detail} The request may have reached Proksee; it was not retried. You can download the map JSON and upload it on Proksee.`.trim());
   } finally { clearTimeout(timer); signal?.removeEventListener('abort', abort); }
 }
 
@@ -60,7 +69,7 @@ export function appendHandoffActions(parent, plan, signal, title = '') {
       if (signal?.aborted || !panel.isConnected) return;
       status.textContent = link ? 'Proksee map created. ' : 'Opened the service in a new tab. If it did not open, allow pop-ups for SMS3.';
       if (link) { const anchor = document.createElement('a'); anchor.textContent = 'Open map'; anchor.href = link; anchor.target = '_blank'; anchor.rel = 'noopener noreferrer'; status.append(anchor); }
-    } catch (error) { if (!signal?.aborted) status.textContent = error.message; }
+    } catch (error) { if (!signal?.aborted) renderExternalError(status, error); }
     finally { send.disabled = Boolean(signal?.aborted); }
   });
   panel.append(note, actions, status); parent.append(panel);
