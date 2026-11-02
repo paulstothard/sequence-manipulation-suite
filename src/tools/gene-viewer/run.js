@@ -77,7 +77,8 @@ export async function runGeneViewer(input, options = {}, context = {}) {
     const cds = entry.row?.proteinId ? (cdsByProtein.get(entry.row.proteinId) ?? []).filter(candidate =>
       candidate.item.strand === entry.item.strand && (candidate.item.parts ?? []).every(part =>
         (entry.item.parts ?? []).some(exon => exon.start <= part.start && exon.end >= part.end))) : [];
-    entry.item.slot = 0;
+    entry.item.layoutGroup = `transcript-${index}`;
+    entry.item.modelLabel = `${entry.transcriptId || entry.item.label}${entry.row?.representative ? ` · ${entry.row.representative}` : ''}`;
     entry.item.connectParts = true;
     const utrs = cds.length === 1 ? transcriptUtrParts(entry.item, cds[0].item) : null;
     if (utrs) {
@@ -91,12 +92,23 @@ export async function runGeneViewer(input, options = {}, context = {}) {
       }
     }
     cds.forEach((candidate, index) => { candidate.item = {
-      ...candidate.item, transcriptId: entry.transcriptId, slot: utrs ? 0 : index + 1, connectParts: !utrs,
+      ...candidate.item, transcriptId: entry.transcriptId,
+      layoutGroup: utrs ? entry.item.layoutGroup : `${entry.item.layoutGroup}-cds-${index}`,
+      modelLabel: entry.item.modelLabel, connectParts: !utrs,
       geneModel: utrs ? { role: 'CDS' } : undefined
     }; });
     addTrack(`transcript-${index}`, `${entry.transcriptId || entry.item.label}${entry.row?.representative ? ` · ${entry.row.representative}` : ''}`, [entry, ...cds], { id: 'transcripts', label: 'Transcripts & CDS' });
     if (utrs) Object.assign(tracks.at(-1), { allowFixedSlotOverlaps: true, featureOpacity: 1 });
     if (index % 25 === 0) await context.yieldIfNeeded?.();
+  }
+  const modelTracks = tracks.filter(track => track.visibilityGroup.id === 'transcripts');
+  if (modelTracks.length) {
+    const firstIndex = tracks.indexOf(modelTracks[0]);
+    tracks.splice(firstIndex, modelTracks.length, {
+      id: 'transcripts', type: 'features', label: 'Transcripts & CDS',
+      visibilityGroup: { id: 'transcripts', label: 'Transcripts & CDS' },
+      layout: 'packed-models', featureOpacity: 1, items: modelTracks.flatMap(track => track.items)
+    });
   }
   const remaining = new Map();
   for (const entry of entries.filter(entry => !assigned.has(entry))) {
@@ -106,9 +118,6 @@ export async function runGeneViewer(input, options = {}, context = {}) {
   const labels = { CDS: 'Coding regions', regulatory: 'Regulatory regions', repeat_region: 'Repeats', variation: 'Annotated variation', misc_feature: 'Other annotated features', rep_origin: 'Replication origins', misc_recomb: 'Recombination regions', mat_peptide: 'Mature peptides' };
   for (const [type, group] of remaining) addTrack(`features-${type}`, labels[type] || type, group);
   viewerRecord.tracks = tracks;
-  viewerRecord.geneFeatureLegend = Object.entries(GENE_FEATURE_STYLES)
-    .filter(([kind]) => entries.some(entry => entry.item.geneFeatureClass === kind))
-    .map(([, style]) => ({ ...style }));
   viewerRecord.sequencePosition = 'top';
   viewerRecord.compactLayout = true;
   viewerRecord.hideRulers = true;

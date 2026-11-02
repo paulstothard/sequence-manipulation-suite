@@ -1,4 +1,4 @@
-import { DNA_VIEWER_SEARCH_RESULT_LIMIT } from "../../core/viewer-limits.js";
+import { DNA_VIEWER_SEARCH_RESULT_LIMIT, LINEAR_VIEWER_ROW_LIMIT, CIRCULAR_VIEWER_RING_LIMIT } from "../../core/viewer-limits.js";
 
 const viewerSplitInput = {
   separator: "##FASTA",
@@ -103,6 +103,8 @@ function makeViewerMetadata({
       makeOutputFormatOption(viewerLabel),
       {
         type: "group", label: "Limits", collapsible: true, collapsed: true, options: [
+          { type: "limit-value", label: "Maximum feature lanes per track", value: id === "circular-dna-sequence-viewer" ? CIRCULAR_VIEWER_RING_LIMIT : LINEAR_VIEWER_ROW_LIMIT,
+            help: "The fixed viewer shares its available space between tracks, up to this many rows or rings per track. View hidden features opens the annotations that do not fit; selecting one brings it into view." },
           { type: "limit-value", label: "Interactive sequence search results", value: DNA_VIEWER_SEARCH_RESULT_LIMIT,
             help: "Search stops collecting matches at this count and reports that further matches were omitted; the underlying sequence and feature tracks are unchanged." }
         ]

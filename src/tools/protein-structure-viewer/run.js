@@ -108,6 +108,7 @@ export async function runProteinStructureViewer(input, options = {}, context = {
     altLocationPolicy: normalized.altLocationPolicy
   });
   const warnings = [];
+  const notes = [];
   if (summary.atomCount > 75000) {
     warnings.push("This is a large structure. Interactive surface rendering may be slow; start without the surface if the browser feels sluggish.");
   }
@@ -115,14 +116,11 @@ export async function runProteinStructureViewer(input, options = {}, context = {
   if (normalized.outputFormat === "interactive-viewer" && !viewerWithinLimit) {
     warnings.push(`Protein structure viewer was not opened because the selected structure has ${summary.atomCount.toLocaleString()} atom(s), above the ${normalized.maxViewerAtoms.toLocaleString()}-atom limit. Select a model or chain subset, or avoid generated assemblies.`);
   }
-  if (summary.format === "mmcif") {
-    warnings.push("mmCIF atom-site parsing supports common PDBx/mmCIF coordinate loops; unusual multiline values may be summarized less completely.");
-  }
   if (summary.omittedAlternateLocationAtomCount > 0) {
     warnings.push(`${summary.omittedAlternateLocationAtomCount.toLocaleString()} alternate-location atom record(s) were omitted by the ${summary.altLocationPolicy} policy. Choose all locations if you need to inspect every conformer.`);
   }
   if (summary.biologicalAssemblyApplied) {
-    warnings.push(`Applied biological assembly ${summary.selectedBiologicalAssembly} using ${summary.assemblyTransformCount.toLocaleString()} transform(s). Residue and atom tables refer to the generated assembly coordinates.`);
+    notes.push(`Applied biological assembly ${summary.selectedBiologicalAssembly} using ${summary.assemblyTransformCount.toLocaleString()} transform(s). Residue and atom tables refer to the generated assembly coordinates.`);
   }
 
   context.reportProgress?.({ phase: "building-output", progress: 0.72 });
@@ -183,6 +181,7 @@ export async function runProteinStructureViewer(input, options = {}, context = {
     output,
     download,
     warnings,
+    notes,
     recordsProcessed: 1,
     basesProcessed: summary.atomCount,
     processedUnitLabel: "atom",

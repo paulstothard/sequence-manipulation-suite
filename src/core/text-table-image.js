@@ -38,7 +38,7 @@ export function parseImageSource(text, mode = 'text', options = {}) {
       }
       return expanded;
     });
-    return { mode, lines, warnings: text.includes('\t') ? ['Tabs are displayed at four-character tab stops; the source download preserves the original tabs.'] : [] };
+    return { mode, lines, warnings: [], notes: text.includes('\t') ? ['Tabs use four-character tab stops in the image; source downloads preserve the tabs.'] : [] };
   }
   if (mode !== 'table') fail('Choose Text or Table input.');
   const delimiter = options.delimiter ?? 'auto';

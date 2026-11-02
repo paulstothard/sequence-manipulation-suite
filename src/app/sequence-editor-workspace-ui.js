@@ -422,7 +422,10 @@ function renderSequenceEditorWorkspace(previousState = null) {
   sequenceExports.className = "sequence-editor-sequence-exports";
   const scopeField = createMarkdownWorkspaceField("Sequence export", exportScope);
   scopeField.classList.add("sequence-editor-export-scope");
-  sequenceExports.append(scopeField, exportOptions, exportActions);
+  const sequenceExportHelp = document.createElement("p");
+  sequenceExportHelp.className = "muted";
+  sequenceExportHelp.textContent = "FASTA exports contain sequence only. Save an SMS3 document to retain annotations and settings.";
+  sequenceExports.append(scopeField, exportOptions, sequenceExportHelp, exportActions);
   const figureExports = document.createElement("section");
   figureExports.className = "sequence-editor-figure-exports";
   const figureTitle = document.createElement("h4");
@@ -470,6 +473,7 @@ function renderSequenceEditorWorkspace(previousState = null) {
   let activeViewerSequence = null;
   let renderedViewerLayout = viewerLayoutSelect.value;
   const viewerStates = new Map();
+  const expandedViewerTracks = new Map(previousState?.expandedViewerTracks ?? []);
   let lastInspectorSelectionKey = "";
   let selectViewerCoordinates = null;
   let coordinateDraftInvalid = false;
@@ -492,6 +496,7 @@ function renderSequenceEditorWorkspace(previousState = null) {
     }
   }
   function snapshotEditorState(label) {
+    captureActiveViewerState();
     return {
       label,
       text: editor.value,
@@ -500,10 +505,11 @@ function renderSequenceEditorWorkspace(previousState = null) {
       viewerLayout: viewerLayoutSelect.value,
       filename: filenameInput.value,
       lineWidth: lineWidthInput.value,
-      featureTrackOverrides: cloneSequenceEditorFeatureOverrides(featureTrackOverrides)
+      featureTrackOverrides: cloneSequenceEditorFeatureOverrides(featureTrackOverrides),
+      expandedViewerTracks: Array.from(expandedViewerTracks)
     };
   }
-  function restoreEditorState(snapshot, statusMessage) {
+  function restoreEditorState(snapshot, statusMessage, { restoreExpansion = false } = {}) {
     if (!snapshot) return;
     editor.value = snapshot.text || "";
     baselineText = snapshot.baselineText ?? editor.value;
@@ -512,8 +518,14 @@ function renderSequenceEditorWorkspace(previousState = null) {
     viewerLayoutSelect.value = snapshot.viewerLayout === "circular" ? "circular" : "linear";
     filenameInput.value = normalizeSequenceEditorFilename(snapshot.filename || filenameInput.value);
     lineWidthInput.value = snapshot.lineWidth || lineWidthInput.value;
+    // View expansion survives ordinary sequence Undo/Redo; document recovery
+    // restores the explicitly saved preference.
+    if (restoreExpansion) {
+      expandedViewerTracks.clear();
+      for (const [key, tracks] of snapshot.expandedViewerTracks ?? []) expandedViewerTracks.set(key, tracks);
+    }
     clearTimeout(debounceTimer);
-    redrawViewer();
+    redrawViewer({ captureCurrent: !restoreExpansion });
     setEditorStatus(statusMessage);
   }
   function pushUndoState(label, snapshot = snapshotEditorState(label)) {
@@ -1124,7 +1136,12 @@ function renderSequenceEditorWorkspace(previousState = null) {
     const snapshot = renderedViewerLayout === "circular"
       ? snapshotRenderedCircularDnaViewer(viewerContainer)[0]
       : snapshotRenderedDnaViewer(viewerContainer)[0];
-    if (snapshot) viewerStates.set(viewerStateKey(activeViewerSequence), snapshot);
+    if (snapshot) {
+      const key = viewerStateKey(activeViewerSequence);
+      viewerStates.set(key, snapshot);
+      if (snapshot.expandedTrackIds?.length) expandedViewerTracks.set(activeViewerSequence.sequenceKey, snapshot.expandedTrackIds);
+      else expandedViewerTracks.delete(activeViewerSequence.sequenceKey);
+    }
   }
   function cleanupEditorViewer() {
     selectViewerCoordinates = null;
@@ -1170,6 +1187,7 @@ function renderSequenceEditorWorkspace(previousState = null) {
     const initialState = preserveExistingView && savedState
       ? savedState
       : makeViewerSequenceInitialState(prepared.viewer, selection, savedState);
+    initialState.expandedTrackIds = expandedViewerTracks.get(selection.sequenceKey) ?? [];
     const remapSelection = (payload) => remapViewerSelectionRecord(payload, selection.index);
     const selectionOptions = {
       initialState,
@@ -1200,9 +1218,9 @@ function renderSequenceEditorWorkspace(previousState = null) {
     }
     figureButtons.replaceChildren(...figureDownloads);
   }
-  function redrawViewer() {
+  function redrawViewer({ captureCurrent = true } = {}) {
     clearTimeout(debounceTimer);
-    captureActiveViewerState();
+    if (captureCurrent) captureActiveViewerState();
     prepared = prepareSequenceEditorData(editor.value, {
       geneticCode: geneticCodeSelect.value,
       viewerLayout: viewerLayoutSelect.value,
@@ -1211,7 +1229,6 @@ function renderSequenceEditorWorkspace(previousState = null) {
     });
     preparedIsDirty = false;
     manualEditGroup = false;
-    lastDocumentSnapshot = snapshotEditorState("manual edit");
     const changeSummary = summarizeSequenceEditorChanges(baselineText, editor.value, { geneticCode: geneticCodeSelect.value });
     renderSequenceEditorChangeSummary(changePanel, changeSummary);
     viewRegionSummary.textContent = prepared.records.length === 1
@@ -1244,6 +1261,7 @@ function renderSequenceEditorWorkspace(previousState = null) {
       summary.textContent = "No sequence loaded";
       setEditorStatus(prepared.warnings[0] || "Waiting for sequence text.");
     }
+    lastDocumentSnapshot = snapshotEditorState("manual edit");
   }
   function scheduleRedraw() {
     preparedIsDirty = true;
@@ -1379,7 +1397,7 @@ function renderSequenceEditorWorkspace(previousState = null) {
     updateHistoryButtons();
     const documentSession = createEditorSession({
       host:shell, toolbar:historyActions, downloadHost:documentExports, tool:'sequence-editor', source:previousState?.__documentSource ?? {input:initialText}, nativeHistory:true, initial:previousState?.__documentLoaded ? snapshotEditorState('Document') : undefined,
-      read:() => snapshotEditorState('Document'), apply:snapshot => restoreEditorState(snapshot, 'Document restored.')
+      read:() => snapshotEditorState('Document'), apply:snapshot => restoreEditorState(snapshot, 'Document restored.', { restoreExpansion: true })
     });
     elements.markdownWorkspace._sms3VisualCleanup = () => {
       documentSession.dispose();

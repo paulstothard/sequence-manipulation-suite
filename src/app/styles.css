@@ -1151,15 +1151,20 @@ textarea,
   color: var(--muted);
 }
 
+#toolView {
+  container: tool-editor / inline-size;
+}
+
 .editor-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 0.7rem minmax(16rem, var(--tool-options-width, 20rem));
+  /* Reserve 24rem for Input plus the 2rem divider/gaps when restoring a wide Options column. */
+  grid-template-columns: minmax(0, 1fr) 0.7rem minmax(16rem, min(var(--tool-options-width, 20rem), calc(100% - 26rem)));
   gap: 0.65rem;
   align-items: stretch;
 }
 
 .editor-grid.wide-options {
-  grid-template-columns: minmax(0, 1fr) 0.7rem minmax(24rem, var(--tool-options-width, 30rem));
+  grid-template-columns: minmax(0, 1fr) 0.7rem minmax(24rem, min(var(--tool-options-width, 30rem), calc(100% - 26rem)));
 }
 
 .editor-grid.no-input {
@@ -3395,19 +3400,13 @@ textarea,
   outline-offset: -2px;
 }
 
-.pcr-template-workflow,
-.sequence-source-workflow,
-.structure-identifier-workflow,
-.identifier-input-active,
-.primer-oligo-workflow {
-  container: pcr-tool / inline-size;
-}
-
-.pcr-template-workflow .split-input-heading {
+.pcr-template-workflow .split-input-heading,
+.named-input-workflow .split-input-heading {
   flex-wrap: wrap;
 }
 
 .sequence-source-workflow .input-panel,
+.named-input-workflow .input-panel,
 .structure-identifier-workflow .input-panel,
 .identifier-input-active .input-panel,
 .pcr-template-workflow .input-panel,
@@ -3426,6 +3425,15 @@ textarea,
   margin-top: 1rem;
 }
 
+.named-input-workflow .split-input-panel,
+.named-input-workflow .bio-record-input {
+  display: block;
+}
+
+.named-input-workflow .bio-record-input > * + * {
+  margin-top: 0.9rem;
+}
+
 .pcr-template-input-section .bio-record-source-card {
   display: block;
   margin-top: 0.9rem;
@@ -3435,8 +3443,8 @@ textarea,
   margin-top: 0.7rem;
 }
 
-@container pcr-tool (max-width: 48rem) {
-  .editor-grid {
+@container tool-editor (max-width: 48rem) {
+  .editor-grid:not(.no-input) {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -3892,6 +3900,21 @@ textarea,
   background: var(--surface-strong);
 }
 
+.input-source-heading {
+  margin: 0 0 0.7rem;
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.bio-record-source-card.named-input-source-card {
+  container: input-source / inline-size;
+  display: block;
+}
+
+.named-input-source-card > [role="tablist"] {
+  margin-bottom: 0.7rem;
+}
+
 .bio-record-primer-card {
   padding: 0.8rem;
   border: 1px solid var(--border);
@@ -3920,6 +3943,21 @@ textarea,
   grid-template-rows: subgrid;
   gap: 0.65rem;
   min-width: 0;
+}
+
+@container input-source (max-width: 36rem) {
+  #biologicalRecordInputPanel .bio-record-paired-input-grid {
+    display: block;
+  }
+
+  .bio-record-paired-input-grid .bio-record-input-section {
+    display: flex;
+    grid-row: auto;
+  }
+
+  .bio-record-paired-input-grid .bio-record-input-section + .bio-record-input-section:not([hidden]) {
+    margin-top: 0.7rem;
+  }
 }
 
 .indexed-fasta-file-bundle {
@@ -4270,8 +4308,10 @@ textarea,
   gap: 0.75rem;
 }
 
-.split-input-heading h4 {
+.split-input-heading h4,
+.split-input-heading .input-pane-title {
   margin: 0;
+  font-size: 1rem;
 }
 
 .split-input-heading-actions {
@@ -10034,15 +10074,20 @@ select[name="featureTargetMode"] {
   font-size: 0.75rem;
   gap: 0.4rem 0.7rem;
   margin-left: 0.4rem;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .dna-viewer-gene-model-key > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
   align-items: center;
   display: inline-flex;
   gap: 0.3rem;
 }
 
 .dna-viewer-gene-model-key i {
+  flex: 0 0 12px;
   display: inline-block;
   width: 12px;
 }
@@ -10541,6 +10586,7 @@ select[name="featureTargetMode"] {
 }
 
 .dna-viewer-canvas {
+  box-sizing: border-box;
   background: var(--viewer-canvas-bg, var(--viewer-surface, #ffffff));
   border: 1px solid var(--viewer-border, #e2e8f0);
   border-radius: 0 0 8px 8px;
@@ -10559,6 +10605,67 @@ select[name="featureTargetMode"] {
 .dna-circular-viewer-canvas {
   touch-action: none;
   height: 760px;
+}
+
+.dna-viewer-stage {
+  min-width: 0;
+}
+
+.dna-viewer-linear-drawing {
+  position: relative;
+}
+
+.dna-viewer-stage, .dna-viewer-circular-stage {
+  position: relative;
+  --viewer-height: 640px;
+}
+
+.dna-viewer-overflow-controls {
+  position: absolute;
+  top: 7px;
+  left: 8px;
+  right: 8px;
+  height: 30px;
+  display: flex;
+  justify-content: flex-start;
+  padding-left: 4px;
+  gap: 6px;
+  overflow-x: auto;
+  z-index: 2;
+  white-space: nowrap;
+}
+.dna-viewer-overflow-controls button { flex: 0 0 auto; }
+
+.dna-viewer-overflow-button {
+  background: var(--viewer-canvas-bg, var(--viewer-surface, #ffffff));
+  color: var(--viewer-text, #172026);
+  font-size: 0.75rem;
+  min-height: 24px;
+  padding: 2px 8px;
+}
+
+.dna-viewer-overflow-controls[hidden],
+.dna-viewer-overflow-button[hidden] {
+  display: none;
+}
+
+.dna-viewer-circular-stage {
+  min-width: 0;
+}
+
+.dna-viewer-linear-surface,
+.dna-viewer-circular-surface {
+  overflow: auto;
+  height: var(--viewer-height, 640px);
+  max-height: var(--viewer-height, 640px);
+}
+
+.dna-viewer-limit-notices {
+  padding: 0.5rem 0.75rem;
+  color: var(--viewer-text, var(--text));
+  background: var(--viewer-surface-soft, var(--surface));
+  font-size: 0.8rem;
+  white-space: pre-line;
 }
 
 .dna-viewer-canvas.dragging {
@@ -10598,7 +10705,7 @@ select[name="featureTargetMode"] {
 
 .interactive-sequence-viewer-main {
   min-width: 0;
-  overflow-x: auto;
+  overflow: hidden;
 }
 
 .interactive-sequence-viewer-main .dna-viewer-canvas {
@@ -10614,7 +10721,8 @@ select[name="featureTargetMode"] {
   display: flex;
   flex-direction: column;
   margin: 0 0.25rem 0 0;
-  max-height: min(760px, calc(100vh - 10rem));
+  height: var(--viewer-height, 640px);
+  max-height: var(--viewer-height, 640px);
   min-width: 0;
   overflow: hidden;
   position: sticky;
@@ -15703,3 +15811,41 @@ details[open] > .sequence-extractor-section-header .sequence-extractor-section-h
 /* Selecting a shape must not move the image under the pointer as its controls appear. */
 .graphic-editor .tti-panels { height: min(65vh, 36rem); }
 .graphic-editor .tti-panels > .tti-pane { height: 100%; max-height: 100%; box-sizing: border-box; }
+
+/* Overflow inspection occupies the existing viewport and never changes layout. */
+.dna-viewer-hidden-browser {
+  position: absolute; top: 42px; right: 8px; max-height: calc(100% - 82px);
+  width: min(380px, calc(100% - 16px)); z-index: 4;
+  display: flex; flex-direction: column; gap: 8px; padding: 12px;
+  box-sizing: border-box; border: 1px solid var(--viewer-border, #d8e1ea); border-radius: 8px;
+  background: var(--viewer-surface, #fff); color: var(--viewer-text, #172026);
+  font-family: inherit; font-size: .82rem; line-height: 1.4;
+  box-shadow: 0 4px 20px #0003;
+}
+.dna-viewer-hidden-browser[hidden] { display: none; }
+.dna-viewer-hidden-browser > :not(.dna-viewer-hidden-list) { flex-shrink: 0; }
+.dna-viewer-hidden-header { display: flex; justify-content: space-between; align-items: start; gap: 8px; }
+.dna-viewer-hidden-header strong { font-size: .9rem; }
+.dna-viewer-hidden-track, .dna-viewer-hidden-help, .dna-viewer-hidden-count { color: var(--viewer-muted, #526277); font-size: .76rem; }
+.dna-viewer-hidden-help { margin: 0; }
+.dna-viewer-hidden-browser input[type="search"] {
+  appearance: none; box-sizing: border-box; min-width: 0; width: 100%; margin: 0;
+  padding: .4rem .5rem; border: 1px solid var(--viewer-border-strong, #cbd5e1); border-radius: 7px;
+  background: var(--viewer-surface, #fff); color: var(--viewer-text, #172026); font: inherit;
+}
+.dna-viewer-hidden-browser input::placeholder { color: var(--viewer-placeholder, #64748b); opacity: 1; }
+.dna-viewer-hidden-browser button {
+  font: inherit; font-size: .78rem; line-height: 1.3; padding: .35rem .6rem;
+  border: 1px solid var(--viewer-border-strong, #cbd5e1); border-radius: 7px;
+  background: var(--viewer-surface, #fff); color: var(--viewer-text, #172026);
+}
+.dna-viewer-hidden-browser button:hover { background: var(--viewer-hover-bg, #edf2f7); border-color: var(--viewer-hover-border, #94a3b8); }
+.dna-viewer-hidden-browser button:focus-visible, .dna-viewer-hidden-browser input:focus-visible { outline: 2px solid var(--viewer-focus, #0891b2); outline-offset: 2px; }
+.dna-viewer-hidden-list { overflow: auto; min-height: 0; flex: 0 1 auto; margin: 0; padding: 0; list-style: none; }
+.dna-viewer-hidden-item { display: flex; gap: 10px; align-items: center; padding: 8px 0; border-top: 1px solid var(--viewer-border, #d8e1ea); }
+.dna-viewer-hidden-description { min-width: 0; flex: 1; overflow-wrap: anywhere; }
+.dna-viewer-hidden-description strong { display: block; font-weight: 600; }
+.dna-viewer-hidden-description span { display: block; color: var(--viewer-muted, #526277); font-size: .76rem; }
+.dna-viewer-hidden-browser .dna-viewer-hidden-show { flex: 0 0 32px; width: 32px; height: 32px; padding: 6px; display: grid; place-items: center; }
+.dna-viewer-hidden-show svg { display: block; width: 18px; height: 18px; margin: 0; max-width: none; border: 0; border-radius: 0; box-shadow: none; background: transparent; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; }
+.interactive-sequence-viewer-inspector-body { min-height: 0; align-content: start; }

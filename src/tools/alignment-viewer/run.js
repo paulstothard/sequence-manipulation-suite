@@ -138,7 +138,7 @@ async function readVcfOverlayRows(vcfText, options = {}, warnings = [], context 
 
 function makeAlignmentViewerReport(samResult, vcfRows, warnings) {
   return [
-    "Alignment Viewer",
+    "Mapped Read Alignment Viewer",
     "",
     samResult.report,
     "",
@@ -177,7 +177,7 @@ export async function runAlignmentViewer(input, options = {}, context = {}) {
         vcfRows,
         options,
         warnings: samResult.warnings,
-        title: "Alignment Viewer",
+        title: "Mapped Read Alignment Viewer",
         context
       })
     : null;

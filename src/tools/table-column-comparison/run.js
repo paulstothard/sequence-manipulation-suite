@@ -76,6 +76,7 @@ export async function runTableColumnComparison(input, options = {}, context = {}
     output,
     download: DOWNLOADS[outputFormat],
     warnings: result.warnings,
+    notes: result.notes,
     recordsProcessed: result.table.rows.length,
     streams,
     visual: outputFormat === "plot"

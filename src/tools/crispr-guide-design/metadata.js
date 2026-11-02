@@ -1,3 +1,4 @@
+import { applyCrisprGuideDesignOptionDefinitions } from "../../core/crispr-guide-design-options.js";
 import { makeDesignFeatureOptions, designFeaturePreviewLimit } from "../design-feature-options.js";
 import { makeFastaSourceInputOptions } from "../fasta-source-options.js";
 import {
@@ -30,6 +31,9 @@ export const crisprGuideDesignMetadata = {
     outputs: [
       { id: "primary", kind: "text", mediaType: "text/plain" },
       { id: "report", kind: "text", mediaType: "text/plain" },
+      { id: "analysis", kind: "text", mediaType: "application/json" },
+      { id: "bed", kind: "text", mediaType: "text/plain" },
+      { id: "gff3", kind: "text", mediaType: "text/plain" },
       { id: "table", kind: "table", schema: "crispr-guide-design", columns: crisprGuideDesignColumns },
       { id: "offTargetTable", kind: "table", schema: "crispr-guide-reference-matches", columns: crisprReferenceMatchColumns },
       { id: "viewer", kind: "viewer", viewerType: "dna-sequence-viewer" },
@@ -40,7 +44,7 @@ export const crisprGuideDesignMetadata = {
       { id: "warnings", kind: "warnings" }
     ]
   },
-  options: [
+  options: applyCrisprGuideDesignOptionDefinitions([
     ...makeFastaSourceInputOptions({ includeIndexed: false, alphabet: "dna-rna", allowPlainSequence: true, annotatedRecords: true, featurePolicy: "viewer" }),
     makeDesignFeatureOptions("crispr"),
     {
@@ -51,21 +55,19 @@ export const crisprGuideDesignMetadata = {
           id: "pamPreset",
           type: "select",
           label: "PAM model",
-          defaultValue: "spcas9-ngg",
           choices: [
             { value: "spcas9-ngg", label: "SpCas9 NGG" },
-            { value: "spcas9-ngn", label: "SpCas9 NGN relaxed" },
+            { value: "spcas9-ngn", label: "SpG NGN" },
             { value: "spcas9-nag", label: "SpCas9 NAG alternate" },
             { value: "custom-3prime", label: "Custom 3' PAM" },
             { value: "custom-5prime", label: "Custom 5' PAM" }
           ],
-          help: "SpCas9 NGG is the default. Relaxed, alternate, and custom PAMs are review modes and should be validated before ordering guides."
+          help: "SpCas9 NGG is the default. SpG is an engineered nuclease, distinct from wild-type SpCas9. Alternate and custom PAMs are review modes and should be validated before ordering guides."
         },
         {
           id: "customPamPattern",
           type: "text",
           label: "Custom PAM",
-          defaultValue: "NGG",
           visibleWhen: { option: "pamPreset", value: ["custom-3prime", "custom-5prime"] },
           help: "Use IUPAC DNA letters. For Custom 3' PAM, the guide is upstream of the PAM. For Custom 5' PAM, the guide is downstream of the PAM."
         },
@@ -73,10 +75,6 @@ export const crisprGuideDesignMetadata = {
           id: "guideLength",
           type: "number",
           label: "Guide length",
-          defaultValue: 20,
-          min: 16,
-          max: 30,
-          step: 1,
           visibleWhen: { option: "pamPreset", value: ["custom-3prime", "custom-5prime"] }
         }
       ]
@@ -85,13 +83,12 @@ export const crisprGuideDesignMetadata = {
       type: "group",
       label: "Guide filters",
       options: [
-        { id: "minGcPercent", type: "number", label: "Minimum guide GC %", defaultValue: 35, min: 0, max: 100, step: 1 },
-        { id: "maxGcPercent", type: "number", label: "Maximum guide GC %", defaultValue: 75, min: 0, max: 100, step: 1 },
+        { id: "minGcPercent", type: "number", label: "Minimum guide GC %" },
+        { id: "maxGcPercent", type: "number", label: "Maximum guide GC %" },
         {
           id: "fivePrimeGPolicy",
           type: "radio",
           label: "5' G handling",
-          defaultValue: "flag",
           choices: [
             { value: "flag", label: "Flag missing 5' G" },
             { value: "require", label: "Require 5' G" },
@@ -103,7 +100,6 @@ export const crisprGuideDesignMetadata = {
           id: "allowAmbiguousCandidates",
           type: "checkbox",
           label: "Allow ambiguous guide/PAM bases",
-          defaultValue: false,
           help: "When enabled, IUPAC ambiguity is treated as a possible overlap and flagged in the table."
         },
       ]
@@ -111,14 +107,11 @@ export const crisprGuideDesignMetadata = {
     makeOptionalReferenceGenomeOptionGroup({
       help: "Optional local reference genome used to count PAM-compatible guide matches for each candidate. Hits are reported for interpretation, not treated as automatic failures, because the intended target may also be present in the reference.",
       additionalOptions: [
+        { id: "referencePamPolicy", type: "radio", label: "Reference PAM scope", choices: [{ value: "expanded", label: "Include SpCas9 NGG and NAG" }, { value: "selected", label: "Selected target PAM only" }], help: "NGG/NAG target presets search both PAMs by default. SpG and custom models use their selected PAM. This remains a bounded ungapped search, not a comprehensive specificity model.", visibleWhen: { option: "referenceGenomeMode", value: ["loaded", "indexed", "bgzf"] } },
         {
           id: "maxOffTargetMismatches",
           type: "number",
           label: "Maximum mismatches",
-          defaultValue: 2,
-          min: 0,
-          max: 5,
-          step: 1,
           visibleWhen: { option: "referenceGenomeMode", value: ["loaded", "indexed", "bgzf"] },
           help: "Reference hits are ungapped guide-sequence comparisons at PAM-compatible sites."
         }
@@ -132,19 +125,21 @@ export const crisprGuideDesignMetadata = {
           id: "outputFormat",
           type: "radio",
           label: "Output format",
-          defaultValue: "tsv",
           choices: [
             { value: "report", label: "Summary report" },
             { value: "tsv", label: "Guide table" },
-            { value: "offtarget-tsv", label: "Reference-match table" },
-            { value: "guide-fasta", label: "Guide RNA FASTA" },
+            { value: "offtarget-tsv", label: "Reference-match table", resultView: { kind: "table", streamId: "offTargetTable" } },
+            { value: "guide-fasta", label: "Spacer RNA FASTA (no scaffold)" },
+            { value: "analysis-json", label: "Complete analysis JSON" },
+            { value: "bed", label: "Spacer coordinates BED" },
+            { value: "gff3", label: "Guide/PAM GFF3 with sequence" },
             { value: "context-text", label: "Context text" },
             { value: "text-map", label: "Text annotation map" },
             { value: "svg-map", label: "Linear guide map" },
             { value: "interactive-viewer", label: "Linear DNA sequence viewer" }
           ]
         },
-        { id: "contextBases", type: "number", label: "Context bases", defaultValue: 20, min: 0, max: 200, step: 1, visibleWhen: { option: "outputFormat", value: ["context-text"] } }
+        { id: "contextBases", type: "number", label: "Context bases", visibleWhen: { option: "outputFormat", value: ["context-text"] } }
       ]
     },
     {
@@ -154,9 +149,9 @@ export const crisprGuideDesignMetadata = {
       collapsible: true,
       collapsed: true,
       options: [
-        { id: "maxCandidatesPerRecord", type: "number", label: "Candidates per record", defaultValue: 50, min: 1, max: 2000, step: 1,
+        { id: "maxCandidatesPerRecord", type: "number", label: "Candidates per record",
           help: "Only the top-ranked candidates up to this count are returned for each record." },
-        { id: "mapMaxCandidatesPerRecord", type: "number", label: "Map candidates per record", defaultValue: 80, min: 1, max: 500, step: 1,
+        { id: "mapMaxCandidatesPerRecord", type: "number", label: "Map candidates per record",
           visibleWhen: { option: "outputFormat", value: ["text-map", "svg-map"] },
           help: "Limits how many returned candidates are drawn in the map." },
         designFeaturePreviewLimit
@@ -174,37 +169,22 @@ export const crisprGuideDesignMetadata = {
           id: "maxOffTargetMatchesPerGuide",
           type: "number",
           label: "Rows per guide",
-          defaultValue: 25,
-          min: 1,
-          max: 500,
-          step: 1
         },
         {
           id: "maxOffTargetRows",
           type: "number",
           label: "Maximum reference-match rows",
-          defaultValue: 1000,
-          min: 1,
-          max: 10000,
-          step: 100
         },
         {
           id: "maxReferenceRecordLength",
           type: "number",
           label: "Loaded reference record bp limit",
-          defaultValue: 500000,
-          min: 100,
-          step: 100,
           help: "Maximum loaded FASTA reference-record length scanned for local reference matches."
         },
         {
           id: "maxIndexedReferenceBases",
           type: "number",
           label: "Indexed reference bp cap",
-          defaultValue: 5000000,
-          min: 1000,
-          max: 50000000,
-          step: 100000,
           help: "Total indexed reference bases scanned by the current local mismatch model."
         }
       ]
@@ -213,12 +193,12 @@ export const crisprGuideDesignMetadata = {
       id: "referenceScopeNote",
       type: "note",
       visibleWhen: { option: "referenceGenomeMode", value: ["loaded", "indexed", "bgzf"] },
-      text: "Reference hit counting reports ungapped guide matches at PAM-compatible sites in the reference you provide."
+      text: "Reference hit counting reports ungapped guide matches at PAM-compatible sites under the stated PAM and mismatch limits. Bulges/indels and other PAMs can be missed. Review scores are uncalibrated sequence heuristics."
     },
     {
       id: "citationNote",
       type: "note",
-      text: "References:\n\nCas9 guide system: Jinek et al. 2012.\n\nMammalian CRISPR-Cas editing examples: Cong et al. 2013; Mali et al. 2013."
+      text: "References:\n\nCas9 guide system: Jinek et al. 2012.\n\nMammalian CRISPR-Cas editing examples: Cong et al. 2013; Mali et al. 2013.\n\nSpCas9 alternate PAM specificity: Hsu et al. 2013.\n\nEngineered SpG NGN recognition: Walton et al. 2020."
     }
-  ]
+  ])
 };

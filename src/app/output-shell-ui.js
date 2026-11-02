@@ -112,6 +112,7 @@ function renderMessages(result) {
   elements.messages.textContent = "";
 
   if (result.visual?.graphicEditor || result.visual?.textTableImage) {
+    appendOutputDetails(elements.messages, (result.notes ?? []).map(note => ["Run note", note]));
     appendWarningSummary(elements.messages,result.warnings);
     return;
   }
@@ -580,6 +581,7 @@ function getToolOutputDetails(result) {
 
   return [
     ["Processed", `${pluralize(result.recordsProcessed, "record")}, ${pluralize(result.basesProcessed, processedUnitLabel)}`],
+    ...(result.notes ?? []).map(note => ["Run note", note]),
     result.charactersRemoved > 0
       ? ["Cleaned", `${pluralize(result.charactersRemoved, "character")} removed`]
       : null,
@@ -595,6 +597,8 @@ function getToolOutputDetails(result) {
 function getWorkflowOutputDetails(result, formatted) {
   return [
     ["Workflow run", pluralize(result.steps?.length ?? 0, "step")],
+    ...(result.steps ?? []).flatMap((step, index) =>
+      (step.notes ?? []).map(note => [`Step ${index + 1} note`, note.message])),
     ["Final output", formatted.summary],
     ["Default export", `${formatted.filename ?? "sms3-workflow-output.txt"} (${formatted.mimeType ?? "text/plain"})`],
     formatted.tableStream

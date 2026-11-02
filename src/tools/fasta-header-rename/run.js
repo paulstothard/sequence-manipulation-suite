@@ -65,6 +65,7 @@ export async function runFastaHeaderRename(input, options = {}, context = {}) {
       mimeType: mimeTypes[outputFormat]
     },
     warnings: result.warnings,
+    notes: result.notes,
     recordsProcessed: result.records.length,
     basesProcessed: result.basesProcessed,
     charactersRemoved: 0,

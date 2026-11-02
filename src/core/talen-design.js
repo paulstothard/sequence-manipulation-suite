@@ -1,16 +1,22 @@
+import { screenTalenPairs, talenReferenceHitColumns } from "./talen-reference-screen.js";
+export { talenReferenceHitColumns };
+import { referenceCoverageColumns, referenceCoverageText, designSearchColumns, finalizeDesignSearch, designSearchText } from "./design-analysis.js";
 import { parseDnaRnaSequenceOrFlatfile } from "./dna-input-records.js";
 import { resolveDesignFeatureTarget, designFeatureTargetLabel, featureContainsInterval } from "./design-feature-targets.js";
 import { formatFastaRecord, parseSequenceInput } from "./fasta.js";
 import { parseFlatfileRecords } from "./flatfile-records.js";
 import { cleanDnaRnaSequence, complementDnaRnaSequence, makeSequenceContext } from "./sequence.js";
 import { exportDelimitedTable } from "./table.js";
-import { effectiveToolLimit } from "./tool-limit-policy.js";
+import { normalizeTalenDesignOptions, TALEN_DESIGN_DEFAULTS } from "./talen-design-options.js";
+export { normalizeTalenDesignOptions } from "./talen-design-options.js";
 
 export const talenTargetColumns = [
   { id: "rank", label: "Rank", type: "number" },
   { id: "pair_id", label: "Pair ID", type: "string" },
   { id: "record", label: "Record", type: "string" },
   { id: "strand", label: "Design strand", type: "string" },
+  { id: "left_strand", label: "Left binding strand", type: "string" },
+  { id: "right_strand", label: "Right binding strand", type: "string" },
   { id: "target_start", label: "Target start", type: "number" },
   { id: "target_end", label: "Target end", type: "number" },
   { id: "left_start", label: "Left half-site start", type: "number" },
@@ -36,7 +42,9 @@ export const talenTargetColumns = [
   { id: "matched_text", label: "Target context", type: "string" },
   { id: "right_context", label: "Right context", type: "string" },
   { id: "context_sequence", label: "Context sequence", type: "string" },
-  { id: "target_feature", label: "Target feature", type: "string" }
+  { id: "target_feature", label: "Target feature", type: "string" },
+  ...designSearchColumns,
+  ...referenceCoverageColumns
 ];
 
 export const talenRvdColumns = [
@@ -60,16 +68,6 @@ const EXACT_DNA = /^[ACGT]+$/;
 // from Miller et al., Nat Biotechnol 2011. The score here is an SMS3 review
 // heuristic, not an experimentally validated activity model.
 
-function clampNumber(value, fallback, min, max) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return fallback;
-  return Math.max(min, Math.min(max, numeric));
-}
-
-function clampInteger(value, fallback, min, max) {
-  return Math.round(clampNumber(value, fallback, min, max));
-}
-
 function round(value, digits = 2) {
   return Number.isFinite(value) ? Number(value.toFixed(digits)) : "";
 }
@@ -79,36 +77,6 @@ function reverseComplementDna(sequence) {
     .reverse()
     .join("")
     .replaceAll("U", "T");
-}
-
-function countExactOccurrences(sequence, query) {
-  if (!sequence || !query || query.length > sequence.length) {
-    return 0;
-  }
-  let count = 0;
-  for (let index = 0; index <= sequence.length - query.length; index += 1) {
-    if (sequence.slice(index, index + query.length) === query) {
-      count += 1;
-    }
-  }
-  return count;
-}
-
-function countReferenceTargetMatches(query, referenceRecords) {
-  if (!query || referenceRecords.length === 0) {
-    return 0;
-  }
-  const normalizedQuery = String(query).toUpperCase().replaceAll("U", "T");
-  const reverse = reverseComplementDna(normalizedQuery);
-  let count = 0;
-  for (const record of referenceRecords) {
-    const sequence = String(record.sequence ?? "").toUpperCase().replaceAll("U", "T");
-    count += countExactOccurrences(sequence, normalizedQuery);
-    if (reverse !== normalizedQuery) {
-      count += countExactOccurrences(sequence, reverse);
-    }
-  }
-  return count;
 }
 
 function gcPercent(sequence) {
@@ -194,29 +162,6 @@ function scoreCandidate(candidate, options) {
   return {
     score: round(Math.max(0, score), 2),
     flags
-  };
-}
-
-function normalizeOptions(options = {}) {
-  const minHalfSiteLength = clampInteger(options.minHalfSiteLength, 15, 10, 25);
-  const maxHalfSiteLength = Math.max(minHalfSiteLength, clampInteger(options.maxHalfSiteLength, 18, 10, 25));
-  const minSpacerLength = clampInteger(options.minSpacerLength, 14, 5, 40);
-  const maxSpacerLength = Math.max(minSpacerLength, clampInteger(options.maxSpacerLength, 20, 5, 40));
-  const guanineRvd = options.guanineRvd === "NH" ? "NH" : "NN";
-  return {
-    targetFeature: String(options.targetFeature ?? ""),
-    minHalfSiteLength,
-    maxHalfSiteLength,
-    minSpacerLength,
-    maxSpacerLength,
-    requireFivePrimeT: options.requireFivePrimeT !== false,
-    allowAmbiguousTargets: options.allowAmbiguousTargets === true,
-    guanineRvd,
-    maxPairsPerRecord: effectiveToolLimit(options, "maxPairsPerRecord", clampInteger(options.maxPairsPerRecord, 100, 1, 2000)),
-    maxRecordLength: effectiveToolLimit(options, "maxRecordLength", clampInteger(options.maxRecordLength, 200000, 100, 10000000)),
-    maxCandidateWindows: effectiveToolLimit(options, "maxCandidateWindows", clampInteger(options.maxCandidateWindows, 2000000, 1000, 50000000)),
-    contextBases: clampInteger(options.contextBases, 20, 0, 200),
-    mapMaxPairsPerRecord: clampInteger(options.mapMaxPairsPerRecord, 30, 1, 500)
   };
 }
 
@@ -321,6 +266,8 @@ function makeCandidate(record, recordIndex, oriented, strand, leftStart, leftLen
     recordIndex,
     record: record.title,
     strand,
+    left_strand: strand,
+    right_strand: strand === "+" ? "-" : "+",
     target_start: targetStart,
     target_end: targetEnd,
     left_start: Math.min(leftOriginal.start, leftOriginal.end),
@@ -351,8 +298,9 @@ async function scanRecord(record, recordIndex, options, context, warnings, featu
   let evaluated = 0;
   let stoppedByLimit = false;
   const orientations = [
-    { strand: "+", sequence: record.sequence },
-    { strand: "-", sequence: reverseComplementDna(record.sequence) }
+    // Both monomers use the same length range. Swapping them on the reverse
+    // strand repeats the same physical pair; report its canonical + orientation.
+    { strand: "+", sequence: record.sequence }
   ];
 
   for (const orientation of orientations) {
@@ -407,13 +355,16 @@ async function scanRecord(record, recordIndex, options, context, warnings, featu
   return {
     candidates: selected,
     candidateCount: candidates.length,
+    stoppedByLimit,
     evaluated
   };
 }
 
 export async function designTalenTargets(input, options = {}, context = {}) {
-  const normalized = normalizeOptions(options);
+  options = options && typeof options === "object" ? options : {};
+  const normalized = normalizeTalenDesignOptions(options);
   const warnings = [...(Array.isArray(options.referenceWarnings) ? options.referenceWarnings : [])];
+  const notes = [];
   const referenceRecords = Array.isArray(options.referenceRecords)
     ? options.referenceRecords.filter((record) => String(record?.sequence ?? "").length > 0)
     : [];
@@ -422,6 +373,7 @@ export async function designTalenTargets(input, options = {}, context = {}) {
   const rows = [];
   const recordSummaries = [];
   const charactersRemoved = records.removedTotal ?? 0;
+  const candidateSearch = { recordsScanned: 0, recordsSkipped: 0, candidatesMatched: 0, windowLimitReached: false };
   let basesProcessed = 0;
   let globalRank = 1;
 
@@ -429,12 +381,16 @@ export async function designTalenTargets(input, options = {}, context = {}) {
     if (featureTarget && featureTarget.recordIndex !== recordIndex) continue;
     context.throwIfCancelled?.();
     if (record.sequence.length > normalized.maxRecordLength) {
+      candidateSearch.recordsSkipped++;
       warnings.push(`${record.title}: sequence length ${record.sequence.length.toLocaleString()} exceeds the ${normalized.maxRecordLength.toLocaleString()} bp scan limit and was skipped.`);
       continue;
     }
     basesProcessed += record.sequence.length;
     context.reportProgress?.({ phase: "scanning", current: recordIndex + 1, total: records.length });
     const scan = await scanRecord(record, recordIndex, normalized, context, warnings, featureTarget);
+    candidateSearch.recordsScanned++;
+    candidateSearch.candidatesMatched += scan.candidateCount;
+    candidateSearch.windowLimitReached ||= scan.stoppedByLimit;
     for (const row of scan.candidates) {
       row.rank = globalRank;
       row.pair_id = `talen_${globalRank}`;
@@ -454,17 +410,10 @@ export async function designTalenTargets(input, options = {}, context = {}) {
     warnings.push("No records were scanned.");
   }
   if (rows.length === 0 && records.length > 0) {
-    warnings.push("No TALEN target pairs matched the selected half-site, spacer, 5-prime base, and ambiguity settings.");
+    notes.push("No TALEN target pairs matched the selected half-site, spacer, 5-prime base, and ambiguity settings.");
   }
-  if (referenceRecords.length > 0) {
-    for (const row of rows) {
-      row.reference_match_count = countReferenceTargetMatches(row.matched_text, referenceRecords);
-    }
-  } else {
-    for (const row of rows) {
-      row.reference_match_count = "";
-    }
-  }
+  finalizeDesignSearch(rows, candidateSearch);
+  const reference = await screenTalenPairs(rows, referenceRecords, { ...options, ...normalized }, context, warnings);
 
   const rvdRows = makeTalenRvdRows(rows);
   return {
@@ -472,16 +421,15 @@ export async function designTalenTargets(input, options = {}, context = {}) {
     records,
     rows,
     rvdRows,
+    referenceRecords,
+    referenceHits: reference.hitRows,
     recordSummaries,
+    candidateSearch,
     warnings,
+    notes,
     charactersRemoved: charactersRemoved + (options.referenceCharactersRemoved ?? 0),
     basesProcessed: basesProcessed + (options.referenceBasesProcessed ?? 0),
-    referenceScreen: {
-      status: referenceRecords.length > 0 ? "run" : "not run",
-      source: options.referenceSource ?? "",
-      records: referenceRecords.length,
-      basesProcessed: options.referenceBasesProcessed ?? referenceRecords.reduce((sum, record) => sum + String(record.sequence ?? "").length, 0)
-    }
+    referenceScreen: reference.screen
   };
 }
 
@@ -519,11 +467,14 @@ export function makeTalenReport(result) {
     "",
     "Scope: finds paired TALEN half-sites in local DNA/RNA input and proposes simple RVD strings for review. The score is an SMS3 review heuristic, not a validated activity model.",
     `Feature target: ${designFeatureTargetLabel(result.options.targetFeature)}${result.options.targetFeature ? "; entire spacer within one feature part" : ""}`,
+    designSearchText(result.candidateSearch),
     `Half-site length range: ${result.options.minHalfSiteLength}-${result.options.maxHalfSiteLength} nt`,
     `Spacer length range: ${result.options.minSpacerLength}-${result.options.maxSpacerLength} nt`,
     `5-prime T rule: ${result.options.requireFivePrimeT ? "required" : "reported but not required"}`,
     `Guanine RVD: ${result.options.guanineRvd}`,
-    `Reference genome hits: ${result.referenceScreen?.status === "run" ? `${result.referenceScreen.records} reference record(s) scanned; exact full target-pair hit counts are shown in the table` : "not run"}`,
+    `Reference search: ${referenceCoverageText(result.referenceScreen)}`,
+    `Reference search model: ${result.referenceScreen.searchModel}. Spacer sequence is unconstrained; counts include the intended site.`,
+    "Architecture: spacer bounds are user-selected and must match the TALEN backbone/linker. No universal optimum, calibrated activity, or comprehensive cleavage-specificity prediction is claimed.",
     "",
     "Coordinate policy: coordinates are 1-based inclusive on the original input record. The right TALEN RVD string is based on the reverse complement of the reported right half-site.",
     "",
@@ -569,12 +520,12 @@ export function makeTalenContextText(rows) {
   ].join("\n")).join("\n\n")}\n`;
 }
 
-export function makeTalenHalfSiteFasta(rows, lineWidth = 60) {
+export function makeTalenHalfSiteFasta(rows, lineWidth = TALEN_DESIGN_DEFAULTS.lineWidth) {
   if (rows.length === 0) return "";
   const records = [];
   for (const row of rows) {
     records.push(formatFastaRecord(`${row.pair_id}_left_${row.record}_${row.strand}_${row.left_start}_${row.left_end}`, row.left_site_dna, lineWidth));
-    records.push(formatFastaRecord(`${row.pair_id}_right_binding_${row.record}_${row.strand}_${row.right_start}_${row.right_end}`, row.right_binding_dna, lineWidth));
+    records.push(formatFastaRecord(`${row.pair_id}_right_binding_${row.record}_${row.right_strand}_${row.right_start}_${row.right_end}`, row.right_binding_dna, lineWidth));
   }
   return records.join("\n");
 }

@@ -59,6 +59,7 @@ export function renameFastaHeaders(input, options = {}) {
   const normalized = normalizeOptions(options);
   const records = parseSequenceInput(input, "sequence");
   const warnings = [];
+  const notes = [];
 
   if (records.length === 0) {
     return {
@@ -73,7 +74,7 @@ export function renameFastaHeaders(input, options = {}) {
     };
   }
   if (!String(input ?? "").trim().startsWith(">")) {
-    warnings.push("Input did not start with a FASTA header; treated it as one raw sequence record.");
+    notes.push("Input format: one unheadered sequence record, named sequence.");
   }
 
   const replaceTitle = makeReplacer(normalized, warnings);
@@ -136,6 +137,7 @@ export function renameFastaHeaders(input, options = {}) {
     fasta,
     report,
     warnings,
+    notes,
     basesProcessed,
     options: normalized
   };

@@ -57,6 +57,7 @@ export function runLineListCleaner(input, options = {}, context = {}) {
       mimeType: outputFormat === "tsv" ? "text/tab-separated-values;charset=utf-8" : "text/plain;charset=utf-8"
     },
     warnings: result.warnings,
+    notes: result.stats.blankItemsRemoved ? [`Removed ${result.stats.blankItemsRemoved} blank item(s) using the selected cleanup settings.`] : [],
     recordsProcessed: result.stats.normalizedItemCount,
     streams: {
       listText: makeTextStream(result.output, "text/plain"),

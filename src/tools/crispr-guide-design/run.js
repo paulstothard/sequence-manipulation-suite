@@ -1,3 +1,5 @@
+import { makeDesignAnalysisJson } from "../../core/design-analysis.js";
+import { makeGuideBed, makeGuideGff } from "../../core/design-coordinate-exports.js";
 import { makeSequenceFeatureTracks } from "../../core/sequence-feature-tracks.js";
 import {
   makeDnaViewerData,
@@ -18,12 +20,6 @@ import { renderSequenceMap } from "../../core/sequence-map-renderer.js";
 import { renderTextAnnotationMapFromItems } from "../../core/text-annotation-map.js";
 import { makeTableStream, makeTextStream, makeToolResult } from "../../core/workflow.js";
 import { makeLegacyReferenceScreenOptions } from "../reference-genome-runner.js";
-
-const OUTPUT_FORMATS = new Set(["report", "tsv", "offtarget-tsv", "guide-fasta", "context-text", "text-map", "svg-map", "interactive-viewer"]);
-
-function normalizeOutputFormat(value) {
-  return OUTPUT_FORMATS.has(value) ? value : "tsv";
-}
 
 function inputWithOptionalReference(input, options = {}) {
   const text = String(input ?? "");
@@ -156,9 +152,11 @@ export async function runCrisprGuideDesign(input, options = {}, context = {}) {
   context.throwIfCancelled?.();
   await context.yieldIfNeeded?.();
 
+  options = options && typeof options === 'object' ? options : {};
   const runOptions = await makeLegacyReferenceScreenOptions(options, context);
   const result = await designCrisprGuides(inputWithOptionalReference(input, runOptions), runOptions, context);
-  const outputFormat = normalizeOutputFormat(options.outputFormat);
+  const outputFormat = result.options.outputFormat;
+  result.analysisRevision = "2026-11-01";
 
   context.reportProgress?.({ phase: "building-output", progress: 0.9 });
   context.throwIfCancelled?.();
@@ -173,7 +171,8 @@ export async function runCrisprGuideDesign(input, options = {}, context = {}) {
   const svgMap = outputFormat === "svg-map" ? makeSvgMap(result) : "";
   const viewer = outputFormat === "interactive-viewer" ? makeCrisprViewerData(result) : null;
   const viewerJson = viewer ? JSON.stringify(viewer, null, 2) : "";
-  const output = outputFormat === "tsv"
+  const extra = outputFormat === "analysis-json" ? makeDesignAnalysisJson("crispr-guide-design", result, options) : outputFormat === "bed" ? makeGuideBed(result) : outputFormat === "gff3" ? makeGuideGff(result) : null;
+  const output = extra ?? (outputFormat === "tsv"
     ? tsv
     : outputFormat === "offtarget-tsv"
       ? offTargetTsv
@@ -187,10 +186,11 @@ export async function runCrisprGuideDesign(input, options = {}, context = {}) {
               ? svgMap
               : outputFormat === "interactive-viewer"
                 ? viewerJson
-              : report;
+              : report);
 
   context.reportProgress?.({ phase: "finished", progress: 1 });
   return makeToolResult({
+    optionsUsed: result.options,
     output,
     sequenceSearch: outputFormat === "guide-fasta"
       ? { format: "fasta", alphabet: "dna-rna" }
@@ -200,18 +200,18 @@ export async function runCrisprGuideDesign(input, options = {}, context = {}) {
           ? { format: "labelled-blocks", alphabet: "dna-rna" }
           : undefined,
     download: {
-      filename: outputFormat === "tsv"
+      filename: extra !== null ? `crispr-guide-analysis.${outputFormat === "analysis-json" ? "json" : outputFormat}` : outputFormat === "tsv"
         ? "crispr-guide-candidates.tsv"
         : outputFormat === "offtarget-tsv"
           ? "crispr-guide-reference-matches.tsv"
         : outputFormat === "guide-fasta"
-          ? "crispr-guide-rnas.fasta"
+          ? "crispr-spacer-rnas.fasta"
           : outputFormat === "svg-map"
             ? "crispr-guide-map.svg"
             : outputFormat === "interactive-viewer"
               ? "crispr-guide-viewer.json"
             : "crispr-guide-design.txt",
-      mimeType: outputFormat === "tsv" || outputFormat === "offtarget-tsv"
+      mimeType: extra !== null ? outputFormat === "analysis-json" ? "application/json;charset=utf-8" : "text/plain;charset=utf-8" : outputFormat === "tsv" || outputFormat === "offtarget-tsv"
         ? "text/tab-separated-values;charset=utf-8"
         : outputFormat === "guide-fasta"
           ? "text/x-fasta;charset=utf-8"
@@ -222,11 +222,13 @@ export async function runCrisprGuideDesign(input, options = {}, context = {}) {
             : "text/plain;charset=utf-8"
     },
     warnings: result.warnings,
+    notes: result.notes,
     recordsProcessed: result.records.length,
     basesProcessed: (result.basesProcessed ?? 0) + (result.referenceScreen?.basesProcessed ?? 0),
     charactersRemoved: (result.charactersRemoved ?? 0) + (result.referenceCharactersRemoved ?? 0),
     streams: {
       report: makeTextStream(report, "text/plain"),
+      ...(extra !== null ? { [outputFormat === "analysis-json" ? "analysis" : outputFormat]: makeTextStream(extra, outputFormat === "analysis-json" ? "application/json" : "text/plain") } : {}),
       table: makeTableStream(crisprGuideDesignColumns, result.rows, "crispr-guide-design"),
       ...(outputFormat === "offtarget-tsv"
         ? { offTargetTable: makeTableStream(crisprReferenceMatchColumns, result.referenceMatchRows ?? [], "crispr-guide-reference-matches") }

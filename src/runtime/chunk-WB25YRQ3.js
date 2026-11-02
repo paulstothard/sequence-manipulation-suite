@@ -1,0 +1,1 @@
+import{a,b,c}from"./chunk-RKX35C6R.js";import"./chunk-EJ44WEUR.js";import"./chunk-M3B3BFJK.js";import"./chunk-U6FLCOV6.js";import"./chunk-ZVVGTJIG.js";import"./chunk-4E7SMLMJ.js";import"./chunk-TP5UQ3YE.js";import"./chunk-B6JNHY6R.js";export{c as retrieveNcbiGenomic,b as retrieveNcbiProducts,a as retrieveNcbiRegion};

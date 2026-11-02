@@ -515,7 +515,8 @@ ACGTRYSWKMBDHVN`
     metadata: cleanFilterDnaRnaMetadata,
     run: runCleanFilterDnaRna,
     example: `>NM_007294.4_BRCA1_messy_fragment
-Atg gat tta tct gct ctt cgc gtt gaa gaa gta caa aat gtc attaatgctNNN123`
+Atg gat tta tct gct ctt cgc gtt gaa gaa gta caa
+aat gtc attaatgctNNN123`
   },
   {
     metadata: cleanFilterProteinMetadata,

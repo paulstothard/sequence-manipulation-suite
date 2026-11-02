@@ -115,7 +115,7 @@ export async function previewFile(input, options = {}, context = {}) {
     }
   }
   const isBinary = sections.some(section => section.binary);
-  if (isBinary) warnings.push(`Binary or undecodable content is shown as hexadecimal bytes with ASCII alongside (${signature}).`);
+  const notes = isBinary ? ["Display: hexadecimal bytes with ASCII alongside."] : [];
   if (identified && ['rar', '7z', 'bz2', 'xz', 'zst'].includes(identified.ext)) warnings.push(`Previewing .${identified.ext} archive contents is unsupported. The byte preview describes the original file.`);
   const partial = sections.some(section => section.partial);
   if (partial) warnings.unshift('Partial preview: showing sampled excerpts.');
@@ -125,5 +125,5 @@ export async function previewFile(input, options = {}, context = {}) {
     const gap = head.kind === 'text' && tail.kind === 'text' && tail.startLine != null ? tail.startLine - head.endLine - 1 : null;
     separation = gap > 0 ? `${gap} source lines omitted between excerpts.` : gap != null ? 'These excerpts overlap; they remain separate.' : 'Beginning and end are separate excerpts; intervening content may be omitted.';
   }
-  return { name, total, bytesRead, format: archive?.format ?? signature, encoding, warnings: [...new Set(warnings)], archive, sections, partial, isBinary, separation };
+  return { notes, name, total, bytesRead, format: archive?.format ?? signature, encoding, warnings: [...new Set(warnings)], archive, sections, partial, isBinary, separation };
 }

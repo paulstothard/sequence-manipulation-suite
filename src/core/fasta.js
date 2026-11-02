@@ -31,6 +31,43 @@ export function parseSequenceInput(input, fallbackTitle = "sequence") {
   return records;
 }
 
+// Filtering preserves sequence-body whitespace because presets may replace it.
+export function parseFilterSequenceInput(input, fallbackTitle = "sequence") {
+  const text = String(input ?? "").replace(/\r\n?/g, "\n");
+  assertPlainSequenceOrFasta(text);
+  if (!text.trim()) {
+    return [];
+  }
+
+  const normalized = text.trimStart();
+  if (/\n[ \t]+>/.test(normalized) || (!normalized.startsWith(">") && /\n>/.test(normalized))) {
+    throw new Error("FASTA headers must start at the beginning of a line, with no sequence text before the first header.");
+  }
+  if (!normalized.startsWith(">")) {
+    return [
+      {
+        title: fallbackTitle,
+        sequence: text,
+        hadHeader: false
+      }
+    ];
+  }
+
+  const records = [];
+  const entries = normalized.split(/\n(?=>)/);
+  for (const entry of entries) {
+    const lines = entry.split(/\r?\n/);
+    const header = lines.shift() ?? "";
+    const title = header.replace(/^>\s*/, "").trim() || fallbackTitle;
+    records.push({
+      title,
+      sequence: lines.join("\n"),
+      hadHeader: true
+    });
+  }
+  return records;
+}
+
 export function formatFastaRecord(title, sequence, lineWidth = 60) {
   if (/[\r\n]/.test(String(title))) throw new Error("FASTA titles must not contain line breaks.");
   const width = Math.max(1, Number.parseInt(lineWidth, 10) || 60);

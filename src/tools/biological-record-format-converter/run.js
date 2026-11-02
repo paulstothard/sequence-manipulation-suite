@@ -65,7 +65,7 @@ const EXTENSIONS = {
   report: "txt"
 };
 
-function warningsForSelectedFormat(outputFormat) {
+function warningsForSelectedFormat(outputFormat, records) {
   if (["gff3", "gff3-bundle", "gff3-fasta", "bed", "bed-bundle", "bed-fasta"].includes(outputFormat)) {
     return [
       "GFF3/BED exports are interval-oriented exchange formats and may not preserve every flatfile qualifier, fuzzy-location detail, or protein-feature semantic."
@@ -76,7 +76,7 @@ function warningsForSelectedFormat(outputFormat) {
       "Reconstructed flatfile exports are practical exchange files but cannot recreate all original source metadata, references, fuzzy-location notation, dates, or unsupported qualifiers."
     ];
   }
-  if (["whole-fasta", "cds-fasta", "protein-fasta"].includes(outputFormat)) {
+  if (["whole-fasta", "cds-fasta", "protein-fasta"].includes(outputFormat) && records.some(record => record.features?.length)) {
     return [
       "FASTA exports preserve sequence text and titles but do not preserve feature tables or qualifiers."
     ];
@@ -108,7 +108,7 @@ export async function runBiologicalRecordFormatConverter(input, options = {}, co
       filename: `biological-record-converter.${EXTENSIONS[outputFormat]}`,
       mimeType: MIME_TYPES[outputFormat]
     },
-    warnings: [...result.warnings, ...warningsForSelectedFormat(outputFormat)],
+    warnings: [...result.warnings, ...warningsForSelectedFormat(outputFormat, result.records)],
     recordsProcessed: result.records.length,
     basesProcessed: result.records.reduce((sum, record) => sum + (record.sequence?.length ?? 0), 0),
     streams: {

@@ -8,7 +8,7 @@ export const fastaLengthFilterMetadata = {
   category: "FASTA",
   tags: ["DNA", "RNA", "protein", "FASTA"],
   summary: "Select FASTA records by length, title text, sequence text, GC percent, or ambiguous-character count, then optionally sort, trim terminal poly-A/T tails, or join selected records.",
-  inputType: "FASTA records",
+  inputType: "FASTA records or one plain sequence",
   outputType: "Selected FASTA, non-selected FASTA, report, table",
   workflow: {
     inputs: [
@@ -66,14 +66,14 @@ export const fastaLengthFilterMetadata = {
       type: "text",
       label: "Minimum GC %",
       defaultValue: "",
-      help: "Optional DNA/RNA criterion. Leave blank to ignore."
+      help: "GC percentage uses A/C/G/T/U bases as the denominator. Leave blank to ignore."
     },
     {
       id: "maxGcPercent",
       type: "text",
       label: "Maximum GC %",
       defaultValue: "",
-      help: "Optional DNA/RNA criterion. Leave blank to ignore."
+      help: "GC percentage uses A/C/G/T/U bases as the denominator. Leave blank to ignore."
     },
     {
       id: "maxAmbiguousCount",

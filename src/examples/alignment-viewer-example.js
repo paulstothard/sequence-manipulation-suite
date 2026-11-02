@@ -126,7 +126,7 @@ alternate_insertion	0	${alternateReferenceName}	3985	47	35M2I38M	*	0	0	${alterna
 alternate_deletion	0	${alternateReferenceName}	4040	44	30M5D40M	*	0	0	${alternateDeletionRead}	${"I".repeat(alternateDeletionRead.length)}	RG:Z:ALT_SIM
 ##VCF
 ##fileformat=VCFv4.2
-##source=SMS3 alignment viewer example
+##source=SMS3 mapped read alignment viewer example
 ##contig=<ID=NC_001422.1,length=5386>
 ##contig=<ID=${alternateReferenceName},length=${alternateReferenceSequence.length}>
 ##FILTER=<ID=PASS,Description="All filters passed">

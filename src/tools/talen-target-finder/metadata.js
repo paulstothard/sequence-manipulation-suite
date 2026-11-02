@@ -1,6 +1,7 @@
+import { applyTalenDesignOptionDefinitions } from "../../core/talen-design-options.js";
 import { makeDesignFeatureOptions, designFeaturePreviewLimit } from "../design-feature-options.js";
 import { makeFastaSourceInputOptions } from "../fasta-source-options.js";
-import { talenRvdColumns, talenTargetColumns } from "../../core/talen-design.js";
+import { talenRvdColumns, talenTargetColumns, talenReferenceHitColumns } from "../../core/talen-design.js";
 import { makeOptionalReferenceGenomeOptionGroup } from "../reference-genome-options.js";
 
 export const talenTargetFinderMetadata = {
@@ -27,6 +28,8 @@ export const talenTargetFinderMetadata = {
     outputs: [
       { id: "primary", kind: "text", mediaType: "text/plain" },
       { id: "report", kind: "text", mediaType: "text/plain" },
+      { id: "analysis", kind: "text", mediaType: "application/json" },
+      { id: "referenceHits", kind: "table", schema: "talen-reference-hits", columns: talenReferenceHitColumns },
       { id: "table", kind: "table", schema: "talen-target-pairs", columns: talenTargetColumns },
       { id: "rvdTable", kind: "table", schema: "talen-rvd-repeats", columns: talenRvdColumns },
       { id: "contextText", kind: "text", mediaType: "text/plain" },
@@ -36,30 +39,28 @@ export const talenTargetFinderMetadata = {
       { id: "warnings", kind: "warnings" }
     ]
   },
-  options: [
+  options: applyTalenDesignOptionDefinitions([
     ...makeFastaSourceInputOptions({ includeIndexed: false, alphabet: "dna-rna", allowPlainSequence: true, annotatedRecords: true, featurePolicy: "viewer" }),
     makeDesignFeatureOptions("talen"),
     {
       type: "group",
       label: "Target-pair settings",
       options: [
-        { id: "minHalfSiteLength", type: "number", label: "Minimum half-site length", defaultValue: 15, min: 10, max: 25, step: 1 },
-        { id: "maxHalfSiteLength", type: "number", label: "Maximum half-site length", defaultValue: 18, min: 10, max: 25, step: 1 },
-        { id: "minSpacerLength", type: "number", label: "Minimum spacer length", defaultValue: 14, min: 5, max: 40, step: 1 },
-        { id: "maxSpacerLength", type: "number", label: "Maximum spacer length", defaultValue: 20, min: 5, max: 40, step: 1 },
+        { id: "minHalfSiteLength", type: "number", label: "Minimum half-site length" },
+        { id: "maxHalfSiteLength", type: "number", label: "Maximum half-site length" },
+        { id: "minSpacerLength", type: "number", label: "Minimum spacer length" },
+        { id: "maxSpacerLength", type: "number", label: "Maximum spacer length" },
         {
           id: "requireFivePrimeT",
           type: "checkbox",
           label: "Require 5' T bases",
-          defaultValue: true,
           help: "Requires T immediately before the left half-site and A immediately after the right half-site, corresponding to a 5' T for both TAL effectors."
         },
         {
           id: "allowAmbiguousTargets",
           type: "checkbox",
           label: "Allow ambiguous target bases",
-          defaultValue: false,
-          help: "Ambiguous half-sites are reported with uncertain RVD entries and warning flags. Leave off for order-ready review tables."
+          help: "Ambiguous half-sites are reported with uncertain RVD entries and warning flags. Leave off for unambiguous binding sequences."
         },
       ]
     },
@@ -71,7 +72,6 @@ export const talenTargetFinderMetadata = {
           id: "guanineRvd",
           type: "radio",
           label: "Guanine RVD",
-          defaultValue: "NN",
           choices: [
             { value: "NN", label: "NN for G" },
             { value: "NH", label: "NH for G" }
@@ -81,7 +81,7 @@ export const talenTargetFinderMetadata = {
       ]
     },
     makeOptionalReferenceGenomeOptionGroup({
-      help: "Optional local reference genome used to count exact full target-pair hits for each returned TALEN candidate. Hits are reported for interpretation, not treated as automatic failures, because the intended target may also be present in the reference."
+      help: "Optional local reference genome used to find paired half-site RVD-code matches across the selected spacer range (NN recognizes G/A; NH matches G). Spacer sequence is unrestricted. Additional mismatches, bulges and cleavage likelihood are not modeled. Hits are reported for interpretation and include intended sites. Search work is bounded at 50 million oriented bases; details at 5000 hits."
     }),
     {
       type: "group",
@@ -91,11 +91,12 @@ export const talenTargetFinderMetadata = {
           id: "outputFormat",
           type: "radio",
           label: "Output format",
-          defaultValue: "tsv",
           choices: [
             { value: "report", label: "Summary report" },
             { value: "tsv", label: "Target pair table" },
-            { value: "rvd-tsv", label: "RVD repeat table" },
+            { value: "rvd-tsv", label: "RVD repeat table", resultView: { kind: "table", streamId: "rvdTable" } },
+            { value: "reference-tsv", label: "Reference half-site matches", resultView: { kind: "table", streamId: "referenceHits" } },
+            { value: "analysis-json", label: "Complete analysis JSON" },
             { value: "context-text", label: "Context text" },
             { value: "halfsite-fasta", label: "Half-site FASTA" },
             { value: "text-map", label: "Text annotation map" },
@@ -103,7 +104,7 @@ export const talenTargetFinderMetadata = {
             { value: "interactive-viewer", label: "Linear DNA sequence viewer" }
           ]
         },
-        { id: "contextBases", type: "number", label: "Context bases", defaultValue: 20, min: 0, max: 200, step: 1, visibleWhen: { option: "outputFormat", value: "context-text" } }
+        { id: "contextBases", type: "number", label: "Context bases", visibleWhen: { option: "outputFormat", value: "context-text" } }
       ]
     },
     {
@@ -113,16 +114,12 @@ export const talenTargetFinderMetadata = {
       collapsible: true,
       collapsed: true,
       options: [
-        { id: "maxPairsPerRecord", type: "number", label: "Pairs per record", defaultValue: 100, min: 1, max: 2000, step: 1,
+        { id: "maxPairsPerRecord", type: "number", label: "Pairs per record",
           help: "Only the top-ranked target pairs up to this count are returned for each record." },
         {
           id: "mapMaxPairsPerRecord",
           type: "number",
           label: "Map pairs per record",
-          defaultValue: 30,
-          min: 1,
-          max: 500,
-          step: 1,
           visibleWhen: { option: "outputFormat", value: ["text-map", "svg-map"] },
           help: "Limits how many ranked target pairs are drawn in dense visual maps. The target pair table can still report more candidates."
         },
@@ -130,27 +127,18 @@ export const talenTargetFinderMetadata = {
           id: "maxRecordLength",
           type: "number",
           label: "Maximum record length",
-          defaultValue: 200000,
-          min: 100,
-          step: 100,
           help: "Maximum target-record length scanned."
         },
         {
           id: "maxCandidateWindows",
           type: "number",
           label: "Maximum candidate windows",
-          defaultValue: 2000000,
-          min: 1000,
-          step: 1000,
           help: "Upper bound on half-site/spacer combinations evaluated per record."
         },
         {
           id: "maxReferenceRecordLength",
           type: "number",
           label: "Loaded reference record bp limit",
-          defaultValue: 500000,
-          min: 100,
-          step: 100,
           visibleWhen: { option: "referenceGenomeMode", value: "loaded" },
           help: "Maximum loaded FASTA reference-record length scanned for TALEN target hits."
         },
@@ -158,10 +146,6 @@ export const talenTargetFinderMetadata = {
           id: "maxIndexedReferenceBases",
           type: "number",
           label: "Indexed reference bp cap",
-          defaultValue: 5000000,
-          min: 1000,
-          max: 50000000,
-          step: 100000,
           visibleWhen: { option: "referenceGenomeMode", value: ["indexed", "bgzf"] },
           help: "Total indexed reference bases scanned for TALEN target hits."
         },
@@ -171,12 +155,12 @@ export const talenTargetFinderMetadata = {
     {
       id: "scopeNote",
       type: "note",
-      text: "This is a local sequence review aid, not an experimentally validated TALEN activity model. It reports candidate geometry, 5-prime base compatibility, simple RVD strings, and review flags so designs can be checked before ordering."
+      text: "This is a local sequence review aid, not an experimentally validated TALEN activity model. It reports candidate geometry, 5-prime base compatibility, simple RVD strings, and review flags so designs can be checked before ordering. Spacer limits must match your TALEN backbone/linker. Each physical pair is reported once with the left monomer on + and the right monomer on −."
     },
     {
       id: "citationNote",
       type: "note",
       text: "References:\n\nTALE DNA-recognition code: Boch and Bonas 2010; Bogdanove and Voytas 2011.\n\nTALEN design/use example: Miller et al. 2011."
     }
-  ]
+  ])
 };

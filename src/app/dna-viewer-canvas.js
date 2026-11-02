@@ -1,11 +1,16 @@
+import { viewerViewportHeight, allocateViewerLanes, viewerDensityDecision } from '../core/viewer-viewport-layout.js';
+import { VIEWER_VISIBILITY_FOOTER_HEIGHT } from '../core/viewer-feature-visibility.js';
+import { drawViewerFeatureVisibility } from './viewer-feature-visibility.js';
+import { chooseViewerTrackPresentation } from "../core/viewer-track-presentation.js";
 import { featureDensityBins } from "../core/feature-density.js";
 import { drawFeatureFocusGlow, traceLinearFeatureShape } from "./feature-focus-glow.js";
 import { hasCdsTranslations, CDS_TRANSLATION_HELP, drawLinearCdsTranslation } from './viewer-cds-translation.js';
 import { continuousFeatureChevronRows, drawLinearFeatureChevrons, usesFeatureChevrons } from './viewer-feature-chevrons.js';
-import { createViewerGeneModelKey } from './viewer-gene-model-key.js';
+import { createViewerGeneModelKey, layoutViewerFeatureLegend, drawViewerFeatureLegend } from './viewer-gene-model-key.js';
 import { viewerAlignmentPosition, drawViewerAlignmentGuide } from './viewer-alignment-guide.js';
 import { createFeatureSequenceControls } from "./viewer-feature-sequence-ui.js";
 import { createViewerFeatureGroupControls } from "./viewer-feature-group-controls.js";
+import { createViewerOverflowControls, scrollViewerTargetIntoSurface } from "./viewer-track-expansion.js";
 import { calculateLinearViewerRows, linearTrackLabelY, linearViewerCanvasSize } from "../core/linear-viewer-layout.js";
 import { geneticCodes, getStartCodons, makeCodonMap } from "../core/genetic-code.js";
 import { complementDnaRnaSequence } from "../core/sequence.js";
@@ -13,9 +18,8 @@ import { DNA_VIEWER_SEARCH_RESULT_LIMIT } from "../core/viewer-limits.js";
 import { featureArrowHeadLength, featureArrowTerminalVisible, linearFeaturePolygon } from "../core/directional-feature-geometry.js";
 import { traceTranslationArrow } from "../core/translation-arrow-geometry.js";
 import {
-  clipStackedIntervalLayout,
-  layoutVisibleIntervals,
-  reservedLinearSlots,
+  layoutStableViewerIntervals,
+  itemsWithLayoutSlots,
   usesAutomaticLinearDensity,
   hasSemanticLinearSlots,
   makeLinearPartConnectors,
@@ -36,9 +40,11 @@ import {
   getViewerRangeSequence,
   getSelectionTranslation,
   getViewerTrackItems,
+  getViewerStableLaneMemory,
   getViewerTargetClientPosition,
   getVisibleViewerTracks,
   getViewerTrackDisplayMode,
+  isViewerTrackExpanded,
   hasHiddenViewerItemTypes,
   hitTestRegions,
   makeTooltipText,
@@ -575,6 +581,7 @@ function drawDensityBins(ctx, items, options) {
 
 export function shouldUseLinearTrackSummary(track, state, pxPerBp, visibleItemCount, recordLength) {
   if (isQuantitativeTrack(track)) return false;
+  if (isViewerTrackExpanded(track, state)) return false;
   if (hasSemanticLinearSlots(track) && track.autoDensity !== true) return false;
   if (hasHiddenViewerItemTypes(track, state) && !usesAutomaticLinearDensity(track)) return false;
   if (!track.summary?.bins?.length && !usesAutomaticLinearDensity(track)) return false;
@@ -593,7 +600,7 @@ export function shouldUseLinearTrackSummary(track, state, pxPerBp, visibleItemCo
   const densityCount = recordLength > 0
     ? getViewerTrackItems(track, state).length * Math.min(1, (state.viewEnd - state.viewStart) / recordLength)
     : visibleCount;
-  return densityCount > threshold;
+  return viewerDensityDecision(track, state, densityCount / threshold);
 }
 
 function drawTrackSummaryBins(ctx, track, options) {
@@ -781,90 +788,44 @@ function visibleTrackItemCount(track, state, viewStart, viewEnd) {
   return visibleIntervalItems(track, state, viewStart, viewEnd).length;
 }
 
-function hasVisibleGeneModels(record, state) {
-  return getVisibleViewerTracks(record, state).some(track => getViewerTrackItems(track, state).some(item => item.geneModel || item.geneFeatureClass || record.geneFeatureLegend?.length));
-}
-
 export function buildLinearTrackLayouts(record, state, pxPerBp) {
-  return getVisibleViewerTracks(record, state).map((track) => {
+  const tracks = getVisibleViewerTracks(record, state);
+  const stackedTracks = tracks.filter(isStackedIntervalTrack);
+  const sequenceRows = calculateLinearViewerRows([], {
+    ...state, hideSequence: record.hideSequenceInterpretationControls === true,
+    protein: isProteinRecord(record), compactLayout: record.compactLayout,
+    hideRulers: record.hideRulers, topInset: record.hideRulers ? 32 : 24, sequencePosition: record.sequencePosition
+  });
+  const available = (state.viewportHeight || 640) - (state.featureLegendHeight || 40) -
+    sequenceRows.markerBottom - 32 - tracks.reduce((sum, track) => sum +
+      (isStackedIntervalTrack(track) ? 24 : isQuantitativeTrack(track) ? 70 : 42), 0);
+  const budgets = allocateViewerLanes(stackedTracks, available / (record.compactLayout ? 14 : 18));
+  return tracks.map(track => {
     const displayMode = getViewerTrackDisplayMode(track, state);
+    if (isQuantitativeTrack(track)) return { track, displayMode, quantitative: true, stacked: false, height: 70 };
     const visibleCount = visibleTrackItemCount(track, state, state.viewStart, state.viewEnd);
-    const reservedSlots = isStackedIntervalTrack(track) ? reservedLinearSlots(track) : 0;
-    const slotHeight = displayMode === "squished" ? SQUISHED_FEATURE_SLOT_HEIGHT : record.compactLayout ? 14 : FEATURE_SLOT_HEIGHT;
-    // Reserve the same lanes and overflow footer in overview, detail and empty
-    // windows. Only explicit display settings may change a track's height.
-    const reservedHeight = reservedSlots
-      ? (record.compactLayout ? 10 : 18) + reservedSlots * slotHeight + 16
-      : 0;
-    if (isQuantitativeTrack(track)) {
-      return {
-        track,
-        displayMode,
-        quantitative: true,
-        stacked: false,
-        height: 70
-      };
-    }
-    if (shouldUseLinearTrackSummary(track, state, pxPerBp, visibleCount, record.length)) {
-      return {
-        track,
-        displayMode,
-        stacked: false,
-        summary: true,
-        reservedSlots,
-        height: reservedHeight || 42
-      };
-    }
-    if (!isStackedIntervalTrack(track)) {
-      return {
-        track,
-        displayMode,
-        stacked: false,
-        height: displayMode === "squished"
-          ? (track.type === "restriction-sites" ? 24 : 30)
-          : 42
-      };
-    }
-    const layout = getCachedLinearSlotLayout(record, state, track, pxPerBp);
-    const height = reservedHeight || (record.compactLayout ? 10 : 18) + layout.slotCount * slotHeight + (layout.hidden.length > 0 ? 16 : 0);
-    return {
-      track,
-      displayMode,
-      stacked: true,
-      layout,
-      slotHeight,
-      reservedSlots,
-      height
-    };
+    const stacked = isStackedIntervalTrack(track);
+    const density = shouldUseLinearTrackSummary(track, { ...state, expandedTrackIds: null }, pxPerBp, visibleCount, record.length);
+    const slots = budgets.get(track) || 1;
+    const layout = stacked ? getCachedLinearSlotLayout(record, state, track, pxPerBp, slots) : null;
+    const slotHeight = displayMode === 'squished' ? SQUISHED_FEATURE_SLOT_HEIGHT : record.compactLayout ? 14 : FEATURE_SLOT_HEIGHT;
+    const presentation = chooseViewerTrackPresentation({ compact: layout, density,
+      preferExpanded: isViewerTrackExpanded(track, state), visibleCount });
+    return { ...presentation, track, displayMode, stacked: stacked && !presentation.summary,
+      slotHeight, reservedSlots: stacked ? slots : 0,
+      height: stacked ? 24 + slots * slotHeight : 42 };
   });
 }
 
-function getCachedLinearSlotLayout(record, state, track, pxPerBp) {
-  if (!state.trackLayoutCache) state.trackLayoutCache = new WeakMap();
-  const trackItems = getViewerTrackItems(track, state);
-  const stableSlots = reservedLinearSlots(track);
-  const maxSlots = stableSlots || 16;
-  // Pack against original contig coordinates once per zoom scale. Clipping
-  // first can reorder left-edge overlaps and replace visible features on pan.
-  const viewStart = stableSlots ? 0 : state.viewStart;
-  const viewEnd = stableSlots ? record.length : state.viewEnd;
-  const visibleLayout = layout => stableSlots ? clipStackedIntervalLayout(layout, state) : layout;
+function getCachedLinearSlotLayout(record, state, track, pxPerBp, maxSlots) {
+  const items = getViewerTrackItems(track, state);
   const selected = state.selectedTarget?.trackId === (track.id || track.type) ? state.selectedTarget : null;
-  const selectedFeatureId = selected?.featureId;
-  const selectedItemIndex = selected?.itemIndex;
-  const key = JSON.stringify([record.length, trackItems.length, maxSlots, viewStart, viewEnd, pxPerBp,
-    selectedFeatureId, selectedItemIndex, track.fixedSlotsByType || track.slotByType, track.allowFixedSlotOverlaps,
-    Array.from(state.hiddenTrackItemTypes?.get(track.id || track.type || "track") || []).sort()]);
-  const cached = state.trackLayoutCache.get(track);
-  if (cached?.key === key) return visibleLayout(cached.layout);
-  const layout = layoutVisibleIntervals(trackItems, {
-    length: record.length, viewStart, viewEnd,
-    maxSlots, minGapPixels: hasSemanticLinearSlots(track) ? 0 : 4, pxPerBp, selectedFeatureId, selectedItemIndex,
-    fixedSlotsByType: track.fixedSlotsByType || track.slotByType,
-    allowFixedSlotOverlaps: track.allowFixedSlotOverlaps === true
+  return layoutStableViewerIntervals(items, {
+    ...track, length: record.length, viewStart: state.viewStart, viewEnd: state.viewEnd,
+    maxSlots, minGap: hasSemanticLinearSlots(track) ? 0 : 4 / Math.max(0.000001, pxPerBp),
+    memory: getViewerStableLaneMemory(track, state),
+    selectedFeatureId: selected?.featureId, selectedItemIndex: selected?.itemIndex
   });
-  state.trackLayoutCache.set(track, { key, layout });
-  return visibleLayout(layout);
 }
 
 function computeLinearRows(record, state, pxPerBp) {
@@ -873,7 +834,7 @@ function computeLinearRows(record, state, pxPerBp) {
     hideSequence: record.hideSequenceInterpretationControls === true,
     protein: isProteinRecord(record),
     compactLayout: record.compactLayout,
-    hideRulers: record.hideRulers,
+    hideRulers: record.hideRulers, topInset: record.hideRulers ? 32 : 24,
     sequencePosition: record.sequencePosition
   });
 }
@@ -1015,6 +976,7 @@ function drawViewer(ctx, canvas, status, record, state, theme = getViewerCanvasT
   const rows = computeLinearRows(record, state, pxPerBp);
   const layout = { plotLeft, plotRight, pxPerBp, markerTop: rows.markerTop, markerBottom: rows.markerBottom };
   state.hitRegions = [];
+  state.trackOverflows = [];
   const selectedIntervalGlows = [];
 
   ctx.clearRect(0, 0, width, height);
@@ -1028,11 +990,11 @@ function drawViewer(ctx, canvas, status, record, state, theme = getViewerCanvasT
     drawViewerAlignmentGuide(ctx, { x, y: rows.markerTop }, { x, y: rows.markerBottom }, theme);
   }
 
-  const rulerY = 46;
+  const rulerY = 70;
   if (!record.hideRulers) drawLinearRuler(ctx, state, layout, { y: rulerY, labelsAbove: true, theme });
 
   for (const row of rows.trackYs) {
-    const { track, y: trackY, topY, height, quantitative, stacked, summary, displayMode, slotHeight, reservedSlots, layout: trackSlotLayout } = row;
+    const { track, y: trackY, topY, height, quantitative, stacked, summary, action, expanded, displayMode, slotHeight, reservedSlots, layout: trackSlotLayout } = row;
     const labelY = linearTrackLabelY(row, record);
     const color = getViewerTrackColor(theme, track);
     const compactTrack = displayMode === "squished";
@@ -1049,9 +1011,10 @@ function drawViewer(ctx, canvas, status, record, state, theme = getViewerCanvasT
 
     if (summary) {
       const options = { plotLeft, plotRight, viewStart: state.viewStart, viewEnd: state.viewEnd,
-        y: labelY, captionY: topY + height - 15, color, theme, length: record.length };
+        y: labelY, captionY: topY + height - (action ? 44 : 15), color, theme, length: record.length };
       if (usesAutomaticLinearDensity(track)) drawDensityBins(ctx, getViewerTrackItems(track, state), options);
       else drawTrackSummaryBins(ctx, track, options) || drawDensityBins(ctx, getViewerTrackItems(track, state), options);
+      state.trackOverflows.push({ track, action, summary: true, count: 0, y: topY + height - 32, right: width - plotRight });
       continue;
     }
 
@@ -1061,6 +1024,7 @@ function drawViewer(ctx, canvas, status, record, state, theme = getViewerCanvasT
         .map((site, itemIndex) => ({ site, itemIndex, cutPosition: restrictionSiteCutPosition(site) }))
         .filter((entry) => entry.cutPosition !== null && entry.cutPosition >= state.viewStart && entry.cutPosition <= state.viewEnd);
       if (shouldUseLinearTrackSummary(track, state, pxPerBp, visible.length, record.length)) {
+        state.trackOverflows.push({ track, summary: true, count: 0 });
         drawTrackSummaryBins(ctx, track, { plotLeft, plotRight, viewStart: state.viewStart, viewEnd: state.viewEnd, y: trackY, color, theme }) ||
           drawDensityBins(ctx, visible.map((entry) => entry.site), { plotLeft, plotRight, viewStart: state.viewStart, viewEnd: state.viewEnd, y: trackY, color });
       } else {
@@ -1128,7 +1092,7 @@ function drawViewer(ctx, canvas, status, record, state, theme = getViewerCanvasT
     }
 
     const visible = visibleIntervalItems(track, state, state.viewStart, state.viewEnd);
-    if (shouldUseLinearTrackSummary(track, state, pxPerBp, visible.length, record.length)) {
+    if (!stacked && shouldUseLinearTrackSummary(track, state, pxPerBp, visible.length, record.length)) {
       drawTrackSummaryBins(ctx, track, { plotLeft, plotRight, viewStart: state.viewStart, viewEnd: state.viewEnd, y: trackY, color, theme }) ||
         drawDensityBins(ctx, visible, { plotLeft, plotRight, viewStart: state.viewStart, viewEnd: state.viewEnd, y: trackY, color });
     } else if (stacked) {
@@ -1137,10 +1101,11 @@ function drawViewer(ctx, canvas, status, record, state, theme = getViewerCanvasT
       const defaultRectHeight = compactTrack ? 7 : 12;
       const hitHalfHeight = compactTrack ? 5 : 7;
       const slotBaseY = topY + (record.compactLayout ? 9 : compactTrack ? 10 : 13);
-      const continuousRows = continuousFeatureChevronRows(getViewerTrackItems(track, state));
-      const continuousItems = new Set(continuousRows.flatMap(row => row.members));
+      const layoutItems = itemsWithLayoutSlots(getViewerTrackItems(track, state), trackSlotLayout);
+      const continuousRows = continuousFeatureChevronRows(layoutItems);
+      const continuousItems = new Set(continuousRows.flatMap(row => row.members.map(item => item.layoutSourceItem ?? item)));
       const rowLabelGaps = new Map();
-      for (const connector of makeLinearPartConnectors(getViewerTrackItems(track, state), state)) {
+      for (const connector of makeLinearPartConnectors(layoutItems, state)) {
         const y = slotBaseY + connector.slot * rowSlotHeight;
         ctx.strokeStyle = getViewerFeatureTypeStyle(connector.item, color).stroke;
         ctx.lineWidth = 1;
@@ -1228,13 +1193,13 @@ function drawViewer(ctx, canvas, status, record, state, theme = getViewerCanvasT
           if (!rowLabelGaps.has(placement.slot)) rowLabelGaps.set(placement.slot, []);
           rowLabelGaps.get(placement.slot).push({ start: x1, end: x2 });
         }
-        const labelPlan = getFeatureLabelRenderPlan(ctx, item.label || item.name || item.type || "", widthPx - headLength, pxPerBp, {
+        const labelPlan = getFeatureLabelRenderPlan(ctx, item.modelLabel || item.label || item.name || item.type || "", widthPx - headLength, pxPerBp, {
           minSize: 8,
           maxSize: 10,
           padding: 8,
           minAvailableWidth: 24
         });
-        const showLabel = !cdsDrawn && !readBasesDrawn && !compactTrack && !item.geneModel && labelPlan.fits;
+        const showLabel = !cdsDrawn && !readBasesDrawn && !compactTrack && (!item.geneModel || (item.layoutGroup && item.geneModel.role === 'CDS')) && labelPlan.fits;
         if (!cdsDrawn && chevrons && !continuousItems.has(item)) drawLinearFeatureChevrons(ctx, x1, x1 + widthPx, laneY, rectHeight, item.strand,
           item.geneModel?.role === 'CDS' || theme.dark ? '#ffffff' : itemStyle.stroke,
           showLabel ? labelPlan.measuredWidth : 0);
@@ -1263,13 +1228,13 @@ function drawViewer(ctx, canvas, status, record, state, theme = getViewerCanvasT
             0, rowLabelGaps.get(row.item.slot));
         }
       }
-      if ((trackSlotLayout?.hidden?.length ?? 0) > 0) {
+      if (action || (trackSlotLayout?.hidden?.length ?? 0) > 0) {
         const messageY = slotBaseY + (reservedSlots || trackSlotLayout.slotCount) * rowSlotHeight + 2;
-        const hiddenCount = new Set(trackSlotLayout.hidden.map(placement => placement.itemIndex)).size;
+        const hiddenCount = new Set((trackSlotLayout?.hidden ?? []).map(placement => placement.itemIndex)).size;
         ctx.font = "11px system-ui, sans-serif";
-        ctx.fillStyle = theme.warning;
+        ctx.fillStyle = theme.muted;
         ctx.textAlign = "right";
-        ctx.fillText(`${hiddenCount.toLocaleString()} more feature${hiddenCount === 1 ? "" : "s"} · zoom in or select via feature search`, plotRight, messageY);
+        state.trackOverflows.push({ track, action, count: hiddenCount, limit: trackSlotLayout.maxSlots, hidden: trackSlotLayout.hidden, y: messageY - 8, right: width - plotRight });
       }
     } else {
       for (const item of visible) {
@@ -1325,7 +1290,7 @@ function drawViewer(ctx, canvas, status, record, state, theme = getViewerCanvasT
             widthPx,
             height: rectHeight
           }, theme);
-          const labelPlan = getFeatureLabelRenderPlan(ctx, item.label || item.name || item.type || "", widthPx - headLength, pxPerBp, {
+          const labelPlan = getFeatureLabelRenderPlan(ctx, item.modelLabel || item.label || item.name || item.type || "", widthPx - headLength, pxPerBp, {
             minSize: 8,
             maxSize: 11,
             padding: 10,
@@ -1485,29 +1450,9 @@ function drawViewer(ctx, canvas, status, record, state, theme = getViewerCanvasT
     drawLinearSelectedIntervalGlow(ctx, { ...outline, plotLeft, plotRight, theme });
   }
 
-  if (hasVisibleGeneModels(record, state)) {
-    ctx.fillStyle = theme.muted;
-    ctx.font = "10px system-ui, sans-serif";
-    ctx.textAlign = "left";
-    ctx.textBaseline = "middle";
-    const legend = record.geneFeatureLegend;
-    if (legend?.length) {
-      const width = legend.reduce((sum, entry) => sum + 28 + ctx.measureText(entry.label).width, 0) - 10;
-      let x = Math.min(plotLeft, Math.max(12, plotRight - width));
-      for (const entry of legend) {
-        const y = rows.markerBottom + 9;
-        ctx.fillStyle = entry.color;
-        ctx.fillRect(x, y - entry.height / 2, 12, entry.height);
-        ctx.fillStyle = theme.muted;
-        ctx.fillText(entry.label, x + 18, y);
-        x += 28 + ctx.measureText(entry.label).width;
-      }
-    } else {
-      const key = "UTR: thin · CDS: thick · intron: line";
-      const keyX = Math.min(plotLeft, Math.max(12, plotRight - ctx.measureText(key).width));
-      ctx.fillText(key, keyX, rows.markerBottom + 9);
-    }
-  }
+  const legend = layoutViewerFeatureLegend(ctx, record, width);
+  drawViewerFeatureVisibility(ctx, record, state, width, height - legend.height - 6, theme);
+  drawViewerFeatureLegend(ctx, legend, height - legend.height - 6, theme);
 
   status.textContent = "";
   const rangeLine = document.createElement("span");
@@ -1518,6 +1463,7 @@ function drawViewer(ctx, canvas, status, record, state, theme = getViewerCanvasT
   status.append(rangeLine, scaleLine);
   canvas.dataset.sms3InspectionReady = "true";
   canvas.setAttribute("aria-busy", "false");
+  state.syncTrackOverflow?.();
 }
 
 function createButton(icon, title) {
@@ -1727,9 +1673,12 @@ export function searchFeatures(record, query, state) {
     const items = getViewerTrackItems(track, state);
     for (const [itemIndex, item] of items.entries()) {
       const text = [
-        track.label,
+        track.layout === 'packed-models' ? '' : track.label,
         track.type,
         item.label,
+        item.modelLabel,
+        item.transcriptId,
+        item.proteinId,
         item.name,
         item.featureId,
         item.motifId,
@@ -1810,6 +1759,7 @@ function makeLinearViewerSnapshot(record, state, searchControls) {
     showCdsTranslations: state.showCdsTranslations,
     composition: snapshotViewerCompositionState(state),
     hiddenTrackIds: Array.from(state.hiddenTrackIds || []),
+    expandedTrackIds: Array.from(state.expandedTrackIds || []),
     hiddenTrackItemTypes: Array.from(state.hiddenTrackItemTypes || [], ([key, types]) => [key, Array.from(types)]),
     trackDisplayModes: Array.from(state.trackDisplayModes || []),
     rangeAnchors: Array.isArray(state.rangeAnchors) ? state.rangeAnchors.map((anchor) => ({ ...anchor })) : [],
@@ -1851,11 +1801,15 @@ function cloneViewerStateForExport(state) {
     activeSearchTarget: state.activeSearchTarget ? { ...state.activeSearchTarget } : null,
     hitRegions: [],
     hiddenTrackIds: new Set(state.hiddenTrackIds || []),
+    expandedTrackIds: new Set(state.expandedTrackIds || []),
+    syncTrackOverflow: null,
     hiddenTrackItemTypes: new Map(
       Array.from(state.hiddenTrackItemTypes || []).map(([key, value]) => [key, new Set(value)])
     ),
     trackDisplayModes: new Map(state.trackDisplayModes || []),
-    trackLayoutCache: new WeakMap()
+    trackLayoutCache: new WeakMap(),
+    stableLaneMemory: new WeakMap(),
+    densityMemory: new Map(state.densityMemory)
   };
 }
 
@@ -1906,17 +1860,22 @@ function installViewer(panel, record, options = {}) {
   toolbar.append(leftControls, toggles, menuControls);
 
   const canvas = document.createElement("canvas");
+  canvas.style.height = `${viewerViewportHeight(window.innerHeight)}px`;
   canvas.className = "dna-viewer-canvas";
   canvas.dataset.sms3InspectionReady = "false";
   canvas.setAttribute("aria-busy", "true");
   const ctx = canvas.getContext("2d");
-  // Keep space for the tallest plot visited during navigation. The canvas
-  // itself retains its natural height, so exports have no reserved whitespace.
+  // The stage stays the same height through navigation and representation changes.
   const stage = document.createElement("div");
   stage.className = "dna-viewer-stage";
   stage.style.minWidth = "0";
-  stage.append(canvas);
-  let reservedHeight = 0;
+  const surface = document.createElement("div");
+  surface.className = "dna-viewer-linear-surface";
+  const drawing = document.createElement("div");
+  drawing.className = "dna-viewer-linear-drawing";
+  drawing.append(canvas);
+  surface.append(drawing);
+  stage.append(surface);
   const selectionEmptyText = proteinViewer
     ? "Click a feature, residue, or coordinate to inspect it."
     : "Click a feature, site, base, codon, amino acid, or coordinate to inspect it.";
@@ -1947,7 +1906,9 @@ function installViewer(panel, record, options = {}) {
     activeSearchTarget: null,
     searchNavigationStarted: false,
     hitRegions: [],
+    densityMemory: new Map(),
     hiddenTrackIds: new Set(Array.isArray(preserved?.hiddenTrackIds) ? preserved.hiddenTrackIds : []),
+    expandedTrackIds: new Set(Array.isArray(preserved?.expandedTrackIds) ? preserved.expandedTrackIds : []),
     hiddenTrackItemTypes: new Map(Array.isArray(preserved?.hiddenTrackItemTypes)
       ? preserved.hiddenTrackItemTypes.filter(entry => Array.isArray(entry) && Array.isArray(entry[1])).map(([key, types]) => [key, new Set(types)]) : []),
     trackDisplayModes: new Map(Array.isArray(preserved?.trackDisplayModes) ? preserved.trackDisplayModes : [])
@@ -1956,12 +1917,10 @@ function installViewer(panel, record, options = {}) {
   clampView(state, record.length);
   initializeViewerCompositionTracks(record, state, preserved?.composition);
   const compositionControls = createViewerCompositionControls(record, state, () => {
-    reservedHeight = 0;
     state.trackLayoutCache = new WeakMap();
     scheduleResize();
   });
   function updateTrackVisibility() {
-    reservedHeight = 0;
     cancelInertia();
     trackControls?.syncVisibility();
     featureGroupControls?.sync();
@@ -1976,9 +1935,14 @@ function installViewer(panel, record, options = {}) {
     displayModes: true
   });
   const featureGroupControls = createViewerFeatureGroupControls(record, state, updateTrackVisibility);
+  const overflowControls = createViewerOverflowControls(canvas, state, updateTrackVisibility, {
+    onSelect: target => selectTarget(target, { keepIfSame: true }), protein: proteinViewer
+  });
+  drawing.append(overflowControls.element, overflowControls.browser);
+  stage.prepend(overflowControls.notices);
   if (featureGroupControls) toolbar.append(featureGroupControls.element);
   const modelKey = createViewerGeneModelKey(record);
-  if (modelKey) (featureGroupControls?.element ?? toolbar).append(modelKey);
+  if (modelKey) stage.append(modelKey);
   secondStrandToggle.input.checked = state.showSecondStrand;
   forwardTranslationToggle.input.checked = state.showForwardTranslations;
   reverseTranslationToggle.input.checked = state.showReverseTranslations;
@@ -1991,19 +1955,12 @@ function installViewer(panel, record, options = {}) {
   }
 
   function resize() {
-    let rect = canvas.getBoundingClientRect();
-    const { plotLeft, plotRight } = getLinearPlotBounds(rect.width);
-    const span = state.viewEnd - state.viewStart;
-    const pxPerBp = (plotRight - plotLeft) / Math.max(1, span);
-    const rows = computeLinearRows(record, state, pxPerBp);
-    const minimumHeight = 80;
-    const desiredHeight = Math.max(minimumHeight, rows.markerBottom + (record.compactLayout ? hasVisibleGeneModels(record, state) ? 30 : 16 : 70));
-    if (Math.abs(rect.height - desiredHeight) > 2) {
-      canvas.style.height = `${desiredHeight}px`;
-      rect = canvas.getBoundingClientRect();
-    }
-    reservedHeight = Math.max(reservedHeight, rect.height);
-    stage.style.minHeight = `${reservedHeight}px`;
+    state.viewportHeight = viewerViewportHeight(window.innerHeight);
+    stage.style.setProperty('--viewer-height', `${state.viewportHeight}px`);
+    stage.closest('.interactive-sequence-viewer-workspace')?.style.setProperty('--viewer-height', `${state.viewportHeight}px`);
+    canvas.style.height = `${state.viewportHeight}px`;
+    const rect = canvas.getBoundingClientRect();
+    state.featureLegendHeight = layoutViewerFeatureLegend(ctx, record, rect.width).height + 12 + VIEWER_VISIBILITY_FOOTER_HEIGHT;
     const { width: nextWidth, height: nextHeight, pixelRatio: dpr } = linearViewerCanvasSize(
       rect.width, rect.height, window.devicePixelRatio || 1
     );
@@ -2099,6 +2056,7 @@ function installViewer(panel, record, options = {}) {
     if (focus) {
       Object.assign(state, computeFeatureFocusView(state, record.length, focus));
       resize();
+      scrollViewerTargetIntoSurface(state, target, canvas, surface);
       return;
     }
     const range = getLinearSelectionRange(target, record);
@@ -2128,6 +2086,9 @@ function installViewer(panel, record, options = {}) {
       clampView(state, record.length);
       resize();
       navigationFrame = t < 1 ? requestAnimationFrame(step) : 0;
+      if (t === 1) requestAnimationFrame(() => {
+        if (state.selectedTarget === target) scrollViewerTargetIntoSurface(state, target, canvas, surface);
+      });
     }
     navigationFrame = requestAnimationFrame(step);
   }
@@ -2385,6 +2346,7 @@ function installViewer(panel, record, options = {}) {
   camera.addEventListener("click", () => {
     const safeTitle = makeSafeFileStem(record.title, proteinViewer ? "protein-viewer" : "dna-viewer");
     downloadCanvasPng(canvas, `${safeTitle}-viewer.png`, {
+      boundBitmap: true,
       drawSnapshot: (exportContext, exportCanvas) => {
         // The detached export canvas does not inherit the viewer's CSS colours.
         drawViewer(exportContext, exportCanvas, document.createElement("div"), record, cloneViewerStateForExport(state), getViewerCanvasTheme(canvas));
@@ -2393,33 +2355,35 @@ function installViewer(panel, record, options = {}) {
   });
   svgDownload.addEventListener("click", () => {
     const safeTitle = makeSafeFileStem(record.title, proteinViewer ? "protein-viewer" : "dna-viewer");
-    downloadCanvasSvg(canvas, `${safeTitle}-viewer.svg`, {
-      title: `${record.title || (proteinViewer ? "Protein sequence" : "DNA sequence")} linear viewer`,
-      description: `Current linear viewer snapshot. ${status.textContent || ""}`.trim(),
-      metadata: {
-        viewer: "linear",
-        recordTitle: record.title || "",
-        sequenceLength: record.length,
-        viewStart: Math.floor(state.viewStart + 1),
-        viewEnd: Math.ceil(state.viewEnd)
-      }
-    });
+    drawViewer(ctx, canvas, document.createElement("div"), record, cloneViewerStateForExport(state));
+    try {
+      downloadCanvasSvg(canvas, `${safeTitle}-viewer.svg`, {
+        title: `${record.title || (proteinViewer ? "Protein sequence" : "DNA sequence")} linear viewer`,
+        description: `Current linear viewer snapshot. ${status.textContent || ""}`.trim(),
+        metadata: {
+          viewer: "linear",
+          recordTitle: record.title || "",
+          sequenceLength: record.length,
+          viewStart: Math.floor(state.viewStart + 1),
+          viewEnd: Math.ceil(state.viewEnd)
+        }
+      });
+    } finally {
+      drawViewer(ctx, canvas, status, record, state);
+    }
   });
   secondStrandToggle.input.addEventListener("change", () => {
     cancelInertia();
-    reservedHeight = 0;
     state.showSecondStrand = secondStrandToggle.input.checked;
     resize();
   });
   forwardTranslationToggle.input.addEventListener("change", () => {
     cancelInertia();
-    reservedHeight = 0;
     state.showForwardTranslations = forwardTranslationToggle.input.checked;
     resize();
   });
   reverseTranslationToggle.input.addEventListener("change", () => {
     cancelInertia();
-    reservedHeight = 0;
     state.showReverseTranslations = reverseTranslationToggle.input.checked;
     resize();
   });
@@ -2468,6 +2432,7 @@ function installViewer(panel, record, options = {}) {
     });
   });
   canvas.addEventListener("wheel", (event) => {
+    if (!event.ctrlKey && !event.metaKey && surface.scrollHeight > surface.clientHeight + 1) return;
     const factor = viewerWheelZoomFactor(event);
     if (factor === 1) return;
     event.preventDefault();

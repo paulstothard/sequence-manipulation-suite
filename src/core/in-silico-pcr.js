@@ -3,8 +3,9 @@ import { formatFastaRecord } from "./fasta.js";
 import { makeDnaViewerData } from "./dna-viewer-data.js";
 import { makeRestrictionGelSvg } from "./restriction-tools.js";
 import { cleanDnaRnaSequence, complementDnaRnaSequence } from "./sequence.js";
-import { parsePrimerSequences } from "./primer-input.js";
-import { effectiveToolLimit } from "./tool-limit-policy.js";
+import { parsePrimerRecords, parsePrimerSequences } from "./primer-input.js";
+import { normalizePcrOptions, normalizePcrNumber } from "./in-silico-pcr-options.js";
+export { normalizePcrOptions } from "./in-silico-pcr-options.js";
 
 export const pcrProductTableColumns = [
   { id: "template", label: "Template", type: "string" },
@@ -19,7 +20,14 @@ export const pcrProductTableColumns = [
   { id: "reverse_end", label: "Reverse end", type: "number" },
   { id: "forward_mismatches", label: "Forward mismatches", type: "number" },
   { id: "reverse_mismatches", label: "Reverse mismatches", type: "number" },
-  { id: "product_sequence", label: "Product sequence", type: "string" }
+  { id: "product_sequence", label: "Selected sequence", type: "string" },
+  { id: "template_id", label: "Template ID", type: "string" },
+  { id: "forward_primer_id", label: "Forward primer ID", type: "string" },
+  { id: "reverse_primer_id", label: "Reverse primer ID", type: "string" },
+  { id: "template_span_length", label: "Template span length", type: "number" },
+  { id: "sequence_mode", label: "Sequence mode", type: "string" },
+  { id: "sequence_status", label: "Sequence status", type: "string" },
+  { id: "search_status", label: "Search status", type: "string" }
 ];
 
 export const pcrBindingSiteTableColumns = [
@@ -29,7 +37,15 @@ export const pcrBindingSiteTableColumns = [
   { id: "start", label: "Start", type: "number" },
   { id: "end", label: "End", type: "number" },
   { id: "mismatches", label: "Mismatches", type: "number" },
-  { id: "primer_sequence", label: "Primer sequence", type: "string" }
+  { id: "primer_sequence", label: "Annealing sequence", type: "string" },
+  { id: "template_id", label: "Template ID", type: "string" },
+  { id: "primer_id", label: "Primer ID", type: "string" },
+  { id: "tail_sequence", label: "5-prime tail", type: "string" },
+  { id: "template_binding_sequence", label: "Template in primer orientation", type: "string" },
+  { id: "alignment", label: "Match alignment", type: "string" },
+  { id: "mismatch_positions", label: "Mismatch positions from primer 5-prime end", type: "string" },
+  { id: "exact_three_prime_bases", label: "Exact 3-prime bases", type: "number" },
+  { id: "search_status", label: "Search status", type: "string" }
 ];
 
 const DNA_SYMBOLS = {
@@ -52,8 +68,6 @@ const DNA_SYMBOLS = {
 };
 
 const SCAN_CHECK_INTERVAL = 2048;
-const DEFAULT_MAX_BINDING_SITES_PER_TEMPLATE = 5000;
-const DEFAULT_MAX_PRODUCTS = 1000;
 
 function reverseComplement(sequence) {
   return Array.from(complementDnaRnaSequence(sequence, { preserveCase: false })).reverse().join("");
@@ -61,10 +75,44 @@ function reverseComplement(sequence) {
 
 function splitInput(input, separator = "---") {
   const pattern = new RegExp(`\\n${separator.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}\\n`);
-  const parts = String(input ?? "").split(pattern);
+  const parts = String(input ?? "").replace(/\r\n?/g, "\n").split(pattern);
   return {
     templateText: parts[0] ?? "",
     primerText: parts.slice(1).join(`\n${separator}\n`)
+  };
+}
+
+function parsePcrPrimers(text, warnings) {
+  return parsePrimerRecords(text).flatMap((record, index) => {
+    const parts = record.sequence.split("|");
+    if (parts.length > 2 || parts.some((part) => !part)) {
+      throw new Error(`${record.title}: use annealing sequence alone or 5-prime-tail|annealing-sequence.`);
+    }
+    const sequence = parts.at(-1);
+    const parsed = parsePrimerSequences(`>${record.title}\n${sequence}`, warnings)[0];
+    const tail = parts.length === 2 ? parsePrimerSequences(`>${record.title} tail\n${parts[0]}`, warnings)[0]?.sequence ?? "" : "";
+    return parsed ? [{ ...parsed, id: `primer-${index + 1}`, tail_sequence: tail, full_sequence: tail + parsed.sequence }] : [];
+  });
+}
+
+function makeBindingSite(template, primer, start, strand, mismatches, options) {
+  const direct = circularSlice(template, start, start + primer.sequence.length);
+  const target = strand === "+" ? direct : reverseComplement(direct);
+  const mismatchPositions = [];
+  const alignment = Array.from(primer.sequence, (base, index) => {
+    if (base === target[index]) return "|";
+    if (symbolsOverlap(base, target[index])) return ":";
+    mismatchPositions.push(index + 1);
+    return "X";
+  }).join("");
+  return {
+    primer: primer.title, primer_id: primer.id,
+    primer_sequence: primer.sequence, tail_sequence: primer.tail_sequence,
+    template_binding_sequence: target, alignment,
+    mismatch_positions: mismatchPositions.join(","),
+    exact_three_prime_bases: Math.min(options.exactThreePrimeBases, primer.sequence.length),
+    strand, start: start + 1, end: ((start + primer.sequence.length - 1) % template.length) + 1,
+    startIndex: start, endIndex: start + primer.sequence.length - 1, mismatches
   };
 }
 
@@ -108,60 +156,9 @@ function comparePrimerAt(template, primer, start, options, threePrimeSide = "rig
   return mismatches;
 }
 
-function findPrimerBindingSites(template, primer, options, remainingSiteLimit = Number.POSITIVE_INFINITY, context = {}) {
+function* scanPrimerBindingSites(template, primer, options, remainingSiteLimit, context = {}, progress = {}) {
   const sites = [];
-  const forwardPrimer = primer.sequence;
-  const reversePrimer = reverseComplement(primer.sequence).replaceAll("U", "T");
-  const scanTemplate = options.topology === "circular"
-    ? template + template.slice(0, Math.max(0, primer.sequence.length - 1))
-    : template;
-  const limit = template.length;
-
-  for (let start = 0; start < limit; start += 1) {
-    if (start % SCAN_CHECK_INTERVAL === 0) {
-      context.throwIfCancelled?.();
-    }
-    if (start + primer.sequence.length > scanTemplate.length) {
-      break;
-    }
-    const forwardMismatches = comparePrimerAt(scanTemplate, forwardPrimer, start, options);
-    if (forwardMismatches !== null) {
-      sites.push({
-        primer: primer.title,
-        primer_sequence: primer.sequence,
-        strand: "+",
-        start: start + 1,
-        end: ((start + primer.sequence.length - 1) % template.length) + 1,
-        startIndex: start,
-        endIndex: start + primer.sequence.length - 1,
-        mismatches: forwardMismatches
-      });
-      if (sites.length >= remainingSiteLimit) {
-        return { sites, capped: true };
-      }
-    }
-    const reverseMismatches = comparePrimerAt(scanTemplate, reversePrimer, start, options, "left");
-    if (reverseMismatches !== null) {
-      sites.push({
-        primer: primer.title,
-        primer_sequence: primer.sequence,
-        strand: "-",
-        start: start + 1,
-        end: ((start + primer.sequence.length - 1) % template.length) + 1,
-        startIndex: start,
-        endIndex: start + primer.sequence.length - 1,
-        mismatches: reverseMismatches
-      });
-      if (sites.length >= remainingSiteLimit) {
-        return { sites, capped: true };
-      }
-    }
-  }
-  return { sites, capped: false };
-}
-
-async function findPrimerBindingSitesAsync(template, primer, options, remainingSiteLimit, context = {}, progress = {}) {
-  const sites = [];
+  if (primer.sequence.length > template.length) return { sites, capped: false };
   const forwardPrimer = primer.sequence;
   const reversePrimer = reverseComplement(primer.sequence).replaceAll("U", "T");
   const scanTemplate = options.topology === "circular"
@@ -174,39 +171,21 @@ async function findPrimerBindingSitesAsync(template, primer, options, remainingS
       const progressValue = progress.base + (progress.span * start) / Math.max(1, limit);
       context.reportProgress?.({ phase: "scanning-primers", detail: progress.detail, progress: progressValue });
       context.throwIfCancelled?.();
-      await context.yieldIfNeeded?.();
+      yield;
     }
     if (start + primer.sequence.length > scanTemplate.length) {
       break;
     }
     const forwardMismatches = comparePrimerAt(scanTemplate, forwardPrimer, start, options);
     if (forwardMismatches !== null) {
-      sites.push({
-        primer: primer.title,
-        primer_sequence: primer.sequence,
-        strand: "+",
-        start: start + 1,
-        end: ((start + primer.sequence.length - 1) % template.length) + 1,
-        startIndex: start,
-        endIndex: start + primer.sequence.length - 1,
-        mismatches: forwardMismatches
-      });
+      sites.push(makeBindingSite(template, primer, start, "+", forwardMismatches, options));
       if (sites.length >= remainingSiteLimit) {
         return { sites, capped: true };
       }
     }
     const reverseMismatches = comparePrimerAt(scanTemplate, reversePrimer, start, options, "left");
     if (reverseMismatches !== null) {
-      sites.push({
-        primer: primer.title,
-        primer_sequence: primer.sequence,
-        strand: "-",
-        start: start + 1,
-        end: ((start + primer.sequence.length - 1) % template.length) + 1,
-        startIndex: start,
-        endIndex: start + primer.sequence.length - 1,
-        mismatches: reverseMismatches
-      });
+      sites.push(makeBindingSite(template, primer, start, "-", reverseMismatches, options));
       if (sites.length >= remainingSiteLimit) {
         return { sites, capped: true };
       }
@@ -216,22 +195,30 @@ async function findPrimerBindingSitesAsync(template, primer, options, remainingS
 }
 
 function circularSlice(sequence, startInclusive, endExclusive) {
-  if (endExclusive <= sequence.length) {
-    return sequence.slice(startInclusive, endExclusive);
-  }
-  return sequence.slice(startInclusive) + sequence.slice(0, endExclusive - sequence.length);
+  const span = endExclusive - startInclusive;
+  const start = startInclusive % sequence.length;
+  return sequence.repeat(Math.ceil((start + span) / sequence.length)).slice(start, start + span);
 }
 
-function productSequence(template, forwardSite, reverseSite, topology) {
-  const start = forwardSite.startIndex;
-  let end = reverseSite.endIndex + 1;
-  if (topology === "linear") {
-    return template.slice(start, end);
+// Real PCR incorporates primer bases. A template-interval export is explicitly
+// separate; see https://bigsdb.readthedocs.io/en/latest/data_analysis/in_silico_pcr.html.
+function incorporatePrimers(templateSequence, forward, reverse) {
+  const bases = Array.from(templateSequence);
+  const reverseBases = reverseComplement(reverse.primer_sequence);
+  const reverseStart = bases.length - reverseBases.length;
+  const codes = Object.entries(DNA_SYMBOLS).filter(([code]) => code !== "U");
+  for (let index = 0; index < forward.primer_sequence.length; index += 1) bases[index] = forward.primer_sequence[index];
+  for (let index = 0; index < reverseBases.length; index += 1) {
+    const position = reverseStart + index;
+    const base = reverseBases[index];
+    if (position < forward.primer_sequence.length) {
+      const shared = [...DNA_SYMBOLS[bases[position]]].filter((symbol) => symbol !== "U" && DNA_SYMBOLS[base].has(symbol));
+      if (shared.length === 0) return { sequence: "", status: "unavailable: conflicting overlapping primers" };
+      bases[position] = codes.find(([, symbols]) => [...symbols].filter((symbol) => symbol !== "U").length === shared.length && shared.every((symbol) => symbols.has(symbol)))[0];
+    } else bases[position] = base;
   }
-  if (end <= start) {
-    end += template.length;
-  }
-  return circularSlice(template, start, end);
+  const sequence = forward.tail_sequence + bases.join("") + reverseComplement(reverse.tail_sequence);
+  return { sequence, status: /^[ACGT]+$/.test(sequence) ? "resolved sequence" : "IUPAC alternatives; individual molecules unresolved" };
 }
 
 function makeProductRows(templateRecord, sites, options, remainingProductLimit = Number.POSITIVE_INFINITY) {
@@ -240,52 +227,32 @@ function makeProductRows(templateRecord, sites, options, remainingProductLimit =
   const reverseSites = sites.filter((site) => site.strand === "-");
   for (const forwardSite of forwardSites) {
     for (const reverseSite of reverseSites) {
-      let length = reverseSite.endIndex - forwardSite.startIndex + 1;
-      if (options.topology === "circular" && length <= 0) {
-        length += templateRecord.sequence.length;
-      }
-      if (length < options.minProductLength || length > options.maxProductLength) {
-        continue;
-      }
-      if (options.topology === "linear" && forwardSite.startIndex > reverseSite.startIndex) {
-        continue;
-      }
+      let reverseStart = reverseSite.startIndex;
+      if (options.topology === "circular" && reverseStart < forwardSite.startIndex) reverseStart += templateRecord.sequence.length;
+      const templateLength = reverseStart + reverseSite.primer_sequence.length - forwardSite.startIndex;
+      // Both complete annealing regions must fit; ordinary compatible overlaps remain valid.
+      if (reverseStart < forwardSite.startIndex || templateLength < forwardSite.primer_sequence.length || templateLength < reverseSite.primer_sequence.length) continue;
+      const length = templateLength + forwardSite.tail_sequence.length + reverseSite.tail_sequence.length;
+      if (length < options.minProductLength || length > options.maxProductLength) continue;
+      const templateSequence = circularSlice(templateRecord.sequence, forwardSite.startIndex, forwardSite.startIndex + templateLength);
+      const incorporated = incorporatePrimers(templateSequence, forwardSite, reverseSite);
       rows.push({
-        template: templateRecord.title,
-        forward_primer: forwardSite.primer,
-        reverse_primer: reverseSite.primer,
-        product: 0,
-        length,
-        topology: options.topology,
-        forward_start: forwardSite.start,
-        forward_end: forwardSite.end,
-        reverse_start: reverseSite.start,
-        reverse_end: reverseSite.end,
-        forward_mismatches: forwardSite.mismatches,
-        reverse_mismatches: reverseSite.mismatches,
-        product_sequence: productSequence(templateRecord.sequence, forwardSite, reverseSite, options.topology)
+        template: templateRecord.title, template_id: templateRecord.id,
+        forward_primer: forwardSite.primer, forward_primer_id: forwardSite.primer_id,
+        reverse_primer: reverseSite.primer, reverse_primer_id: reverseSite.primer_id,
+        product: 0, length, template_span_length: templateLength, topology: options.topology,
+        forward_start: forwardSite.start, forward_end: forwardSite.end,
+        reverse_start: reverseSite.start, reverse_end: reverseSite.end,
+        forward_mismatches: forwardSite.mismatches, reverse_mismatches: reverseSite.mismatches,
+        sequence_mode: options.productSequenceMode,
+        sequence_status: options.productSequenceMode === "template" ? "template-derived interval; excludes primer changes and tails" : incorporated.status,
+        product_sequence: options.productSequenceMode === "template" ? templateSequence : incorporated.sequence,
+        template_sequence: templateSequence, amplicon_sequence: incorporated.sequence
       });
-      if (rows.length >= remainingProductLimit) {
-        return { rows: rows.sort((left, right) => left.length - right.length || left.forward_start - right.forward_start), capped: true };
-      }
+      if (rows.length >= remainingProductLimit) return { rows: rows.sort((a, b) => a.length - b.length || a.forward_start - b.forward_start), capped: true };
     }
   }
-  return { rows: rows.sort((left, right) => left.length - right.length || left.forward_start - right.forward_start), capped: false };
-}
-
-export function normalizePcrOptions(options = {}) {
-  const exactThreePrimeBases = Number.parseInt(options.exactThreePrimeBases, 10);
-  const minProductLength = Math.max(1, Number.parseInt(options.minProductLength, 10) || 20);
-  const maxProductLength = Math.max(minProductLength, Number.parseInt(options.maxProductLength, 10) || 5000);
-  return {
-    topology: options.topology === "circular" ? "circular" : "linear",
-    maxMismatches: Math.max(0, Math.min(6, Number.parseInt(options.maxMismatches, 10) || 0)),
-    exactThreePrimeBases: Math.max(0, Math.min(12, Number.isFinite(exactThreePrimeBases) ? exactThreePrimeBases : 3)),
-    minProductLength,
-    maxProductLength,
-    maxBindingSitesPerTemplate: effectiveToolLimit(options, "maxBindingSitesPerTemplate", Math.max(1, Math.min(100000, Number.parseInt(options.maxBindingSitesPerTemplate, 10) || DEFAULT_MAX_BINDING_SITES_PER_TEMPLATE))),
-    maxProducts: effectiveToolLimit(options, "maxProducts", Math.max(1, Math.min(100000, Number.parseInt(options.maxProducts, 10) || DEFAULT_MAX_PRODUCTS)))
-  };
+  return { rows: rows.sort((a, b) => a.length - b.length || a.forward_start - b.forward_start), capped: false };
 }
 
 function cleanTemplateRecords(templateRecords, warnings) {
@@ -298,6 +265,7 @@ function cleanTemplateRecords(templateRecords, warnings) {
     }
     return {
       ...record,
+      id: `template-${index + 1}`,
       title: record.title || `Template ${index + 1}`,
       sequence: cleaned.sequence.replaceAll("U", "T")
     };
@@ -306,80 +274,23 @@ function cleanTemplateRecords(templateRecords, warnings) {
 }
 
 function makeSiteRows(record, sites) {
-  return sites.map((site) => ({
-    template: record.title,
-    primer: site.primer,
-    strand: site.strand,
-    start: site.start,
-    end: site.end,
-    mismatches: site.mismatches,
-    primer_sequence: site.primer_sequence
-  }));
+  return sites.map(({ startIndex, endIndex, ...site }) => ({ template: record.title, template_id: record.id, ...site }));
 }
 
-export function findInSilicoPcrProducts(input, options = {}, context = {}) {
-  const normalized = normalizePcrOptions(options);
-  const warnings = [];
-  const { templateText, primerText } = splitInput(input);
-  const parsedTemplates = parsePcrTemplateInput(templateText, {
-    fallbackTitle: "sequence",
-    label: "Template input",
-    convertUtoT: true
-  });
-  warnings.push(...parsedTemplates.warnings);
-  const templateRecords = parsedTemplates.records;
-  const primers = parsePrimerSequences(primerText, warnings);
-  if (templateRecords.length === 0) {
-    return { records: [], primers, rows: [], warnings: [...warnings, "No template sequence was provided."], charactersRemoved: parsedTemplates.charactersRemoved };
-  }
-  if (primers.length === 0) {
-    return { records: [], primers, rows: [], warnings: ["No primer sequences were provided."], charactersRemoved: 0 };
-  }
-
-  const { records, charactersRemoved } = cleanTemplateRecords(templateRecords, warnings);
-
-  const rows = [];
-  const siteRows = [];
-  const sitesByTemplate = [];
-  for (const record of records) {
-    context.throwIfCancelled?.();
-    const sites = [];
-    for (const primer of primers) {
-      const remainingSites = normalized.maxBindingSitesPerTemplate - sites.length;
-      if (remainingSites <= 0) {
-        warnings.push(`${record.title}: binding-site scan stopped after ${normalized.maxBindingSitesPerTemplate.toLocaleString()} site(s). Product calls may be incomplete; tighten primer settings or raise the cap.`);
-        break;
-      }
-      const scan = findPrimerBindingSites(record.sequence, primer, normalized, remainingSites, context);
-      sites.push(...scan.sites);
-      if (scan.capped) {
-        warnings.push(`${record.title}: binding-site scan stopped after ${normalized.maxBindingSitesPerTemplate.toLocaleString()} site(s). Product calls may be incomplete; tighten primer settings or raise the cap.`);
-        break;
-      }
-    }
-    sitesByTemplate.push({ record, sites });
-    siteRows.push(...makeSiteRows(record, sites));
-    const remainingProducts = normalized.maxProducts - rows.length;
-    if (remainingProducts <= 0) {
-      warnings.push(`Product calling stopped after ${normalized.maxProducts.toLocaleString()} product(s). Tighten the product range or primer settings, or raise the cap.`);
-      break;
-    }
-    const productResult = makeProductRows(record, sites, normalized, remainingProducts);
-    rows.push(...productResult.rows.map((row, index) => ({ ...row, product: rows.length + index + 1 })));
-    if (productResult.capped) {
-      warnings.push(`Product calling stopped after ${normalized.maxProducts.toLocaleString()} product(s). Tighten the product range or primer settings, or raise the cap.`);
-      break;
-    }
-  }
-  return { records, primers, rows, siteRows, sitesByTemplate, warnings, charactersRemoved: parsedTemplates.charactersRemoved + charactersRemoved, options: normalized };
+function finishPcrResult(result) {
+  result.analysisRevision = "2026-11-01";
+  result.searchStatus = result.searchStatus ?? "complete";
+  const unresolved = result.rows.filter((row) => !row.product_sequence).length;
+  if (unresolved) result.warnings.push(`${unresolved} candidate product(s) have conflicting overlapping primer bases; their sequences are unavailable and omitted from FASTA.`);
+  for (const row of [...result.rows, ...result.siteRows]) row.search_status = result.searchStatus;
+  return result;
 }
 
-export async function findInSilicoPcrProductsAsync(input, options = {}, context = {}) {
-  const normalized = normalizePcrOptions(options);
+function* scanPcrProducts(input, normalized, context, bindingSitesOnly = false) {
   const warnings = [];
   context.reportProgress?.({ phase: "parsing-input", progress: 0.05 });
   context.throwIfCancelled?.();
-  await context.yieldIfNeeded?.();
+  yield;
 
   const { templateText, primerText } = splitInput(input);
   const parsedTemplates = parsePcrTemplateInput(templateText, {
@@ -389,18 +300,19 @@ export async function findInSilicoPcrProductsAsync(input, options = {}, context 
   });
   warnings.push(...parsedTemplates.warnings);
   const templateRecords = parsedTemplates.records;
-  const primers = parsePrimerSequences(primerText, warnings);
+  const primers = parsePcrPrimers(primerText, warnings);
   if (templateRecords.length === 0) {
-    return { records: [], primers, rows: [], warnings: [...warnings, "No template sequence was provided."], charactersRemoved: parsedTemplates.charactersRemoved, options: normalized };
+    return finishPcrResult({ records: [], primers, rows: [], siteRows: [], sitesByTemplate: [], searchStatus: "not run", options: normalized, warnings: [...warnings, "No template sequence was provided."], charactersRemoved: parsedTemplates.charactersRemoved });
   }
   if (primers.length === 0) {
-    return { records: [], primers, rows: [], warnings: ["No primer sequences were provided."], charactersRemoved: 0, options: normalized };
+    return finishPcrResult({ records: [], primers, rows: [], siteRows: [], sitesByTemplate: [], searchStatus: "not run", options: normalized, warnings: ["No primer sequences were provided."], charactersRemoved: 0 });
   }
 
   const { records, charactersRemoved } = cleanTemplateRecords(templateRecords, warnings);
   const rows = [];
   const siteRows = [];
   const sitesByTemplate = [];
+  let searchStatus = "complete";
   const scanCount = Math.max(1, records.length * primers.length);
   let scanIndex = 0;
   for (const [recordIndex, record] of records.entries()) {
@@ -408,12 +320,13 @@ export async function findInSilicoPcrProductsAsync(input, options = {}, context 
     for (const primer of primers) {
       const remainingSites = normalized.maxBindingSitesPerTemplate - sites.length;
       if (remainingSites <= 0) {
+        searchStatus = "partial";
         warnings.push(`${record.title}: binding-site scan stopped after ${normalized.maxBindingSitesPerTemplate.toLocaleString()} site(s). Product calls may be incomplete; tighten primer settings or raise the cap.`);
         break;
       }
       const progressBase = 0.1 + (scanIndex / scanCount) * 0.65;
       const progressSpan = 0.65 / scanCount;
-      const scan = await findPrimerBindingSitesAsync(record.sequence, primer, normalized, remainingSites, context, {
+      const scan = yield* scanPrimerBindingSites(record.sequence, primer, normalized, remainingSites, context, {
         base: progressBase,
         span: progressSpan,
         detail: `${record.title}: ${primer.title}`
@@ -421,28 +334,63 @@ export async function findInSilicoPcrProductsAsync(input, options = {}, context 
       scanIndex += 1;
       sites.push(...scan.sites);
       if (scan.capped) {
+        searchStatus = "partial";
         warnings.push(`${record.title}: binding-site scan stopped after ${normalized.maxBindingSitesPerTemplate.toLocaleString()} site(s). Product calls may be incomplete; tighten primer settings or raise the cap.`);
         break;
       }
     }
     context.reportProgress?.({ phase: "calling-products", detail: record.title, progress: 0.78 + (recordIndex / Math.max(1, records.length)) * 0.07 });
     context.throwIfCancelled?.();
-    await context.yieldIfNeeded?.();
+    yield;
     sitesByTemplate.push({ record, sites });
     siteRows.push(...makeSiteRows(record, sites));
+    if (bindingSitesOnly) continue;
     const remainingProducts = normalized.maxProducts - rows.length;
     if (remainingProducts <= 0) {
+      searchStatus = "partial";
       warnings.push(`Product calling stopped after ${normalized.maxProducts.toLocaleString()} product(s). Tighten the product range or primer settings, or raise the cap.`);
       break;
     }
     const productResult = makeProductRows(record, sites, normalized, remainingProducts);
     rows.push(...productResult.rows.map((row, index) => ({ ...row, product: rows.length + index + 1 })));
     if (productResult.capped) {
+      searchStatus = "partial";
       warnings.push(`Product calling stopped after ${normalized.maxProducts.toLocaleString()} product(s). Tighten the product range or primer settings, or raise the cap.`);
       break;
     }
   }
-  return { records, primers, rows, siteRows, sitesByTemplate, warnings, charactersRemoved: parsedTemplates.charactersRemoved + charactersRemoved, options: normalized };
+  return finishPcrResult({ records, primers, rows, siteRows, sitesByTemplate, warnings, searchStatus, charactersRemoved: parsedTemplates.charactersRemoved + charactersRemoved, options: normalized });
+}
+
+// Compatibility entry points drain the same computation. Only the async wrapper
+// waits at cooperative checkpoints; no biological or normalization logic differs.
+export function findInSilicoPcrProducts(input, options = {}, context = {}) {
+  const scan = scanPcrProducts(input, normalizePcrOptions(options), context);
+  let step = scan.next();
+  while (!step.done) step = scan.next();
+  return step.value;
+}
+
+async function finishPcrScanAsync(scan, context) {
+  let step = scan.next();
+  while (!step.done) {
+    await context.yieldIfNeeded?.();
+    context.throwIfCancelled?.();
+    step = scan.next();
+  }
+  return step.value;
+}
+
+export function findInSilicoPcrProductsAsync(input, options = {}, context = {}) {
+  return finishPcrScanAsync(scanPcrProducts(input, normalizePcrOptions(options), context), context);
+}
+
+// Sequence Extractor consumes sites only and owns its own site ceiling. Keep
+// that internal consumer separate from the In Silico PCR tool's fixed ceilings.
+export function findPcrPrimerSitesAsync(input, options = {}, context = {}) {
+  const normalized = normalizePcrOptions(options);
+  normalized.maxBindingSitesPerTemplate = normalizePcrNumber("maxBindingSitesPerTemplate", options.maxBindingSitesPerTemplate);
+  return finishPcrScanAsync(scanPcrProducts(input, normalized, context, true), context);
 }
 
 export function makePcrReport(result) {
@@ -455,9 +403,12 @@ export function makePcrReport(result) {
   lines.push(`Required exact 3' bases: ${result.options.exactThreePrimeBases}`);
   lines.push(`Product length range: ${result.options.minProductLength}-${result.options.maxProductLength} bp`);
   lines.push(`Products found: ${result.rows.length}`);
+  lines.push(`Search status: ${result.searchStatus}`);
+  lines.push(`Sequence mode: ${result.options.productSequenceMode}; product lengths include specified 5-prime tails.`);
+  lines.push(...result.warnings.map((warning) => `Warning: ${warning}`));
   lines.push("");
   if (result.rows.length === 0) {
-    lines.push("No products matched the current primer and product-length settings.");
+    lines.push(result.searchStatus === "partial" ? "No products found in the partial search; additional products may have been excluded by limits." : "No products matched the current primer and product-length settings.");
     return lines.join("\n");
   }
   lines.push("template\tproduct\tlength\tforward_primer\tforward_start\tforward_end\treverse_primer\treverse_start\treverse_end\tmismatches");
@@ -478,6 +429,20 @@ export function makePcrReport(result) {
   return lines.join("\n");
 }
 
+export function makePcrBindingAlignments(result) {
+  const lines = ["PCR primer/template alignments", `Search status: ${result.searchStatus}`, "Coordinates are 1-based on the submitted template; primer positions run 5-prime to 3-prime.", "Match key: | exact; : compatible IUPAC; X mismatch. * marks the exact 3-prime clamp.", ...result.warnings.map((warning) => `Warning: ${warning}`), ""];
+  for (const row of result.siteRows) {
+    const tail = row.tail_sequence;
+    lines.push(`${row.template_id} ${row.template}: ${row.start}-${row.end} (${row.strand}); ${row.primer_id} ${row.primer}`,
+      `primer   5' ${tail}${row.primer_sequence} 3'`,
+      `            ${" ".repeat(tail.length)}${row.alignment}`,
+      `template 3' ${"-".repeat(tail.length)}${complementDnaRnaSequence(row.template_binding_sequence)} 5'`,
+      `clamp       ${" ".repeat(tail.length + row.primer_sequence.length - row.exact_three_prime_bases)}${"*".repeat(row.exact_three_prime_bases)}`,
+      `5-prime tail: ${tail || "none"}; mismatch positions in annealing region: ${row.mismatch_positions || "none"}`, "");
+  }
+  return lines.join("\n");
+}
+
 export function makePcrProductsTsv(rows) {
   const headers = pcrProductTableColumns.map((column) => column.id);
   return [
@@ -494,12 +459,13 @@ export function makePcrBindingSitesTsv(rows) {
   ].join("\n");
 }
 
-export function makePcrProductsFasta(rows, lineWidth = 60) {
-  return rows.map((row) =>
+export function makePcrProductsFasta(rows, lineWidth) {
+  const width = normalizePcrNumber("lineWidth", lineWidth);
+  return rows.filter((row) => row.product_sequence).map((row) =>
     formatFastaRecord(
-      `${row.template}_pcr_product_${row.product} ${row.forward_primer}/${row.reverse_primer} ${row.length} bp`,
+      `${row.template}_pcr_product_${row.product} ${row.forward_primer}/${row.reverse_primer} ${row.product_sequence.length} bp; template_id=${row.template_id}; sequence=${row.sequence_mode}; search=${row.search_status}; ${row.sequence_status}`,
       row.product_sequence,
-      lineWidth
+      width
     )
   ).join("\n");
 }
@@ -509,7 +475,7 @@ export function makePcrProductGelSvg(result) {
     title: record.title,
     length: record.sequence.length,
     fragments: (result.rows ?? [])
-      .filter((row) => row.template === record.title)
+      .filter((row) => row.template_id === record.id)
       .map((row) => ({
         ...row,
         length: row.length,
@@ -527,7 +493,7 @@ export function makePcrProductGelSvg(result) {
     emptyFragmentsAsNoBand: true,
     title: "Simulated PCR product gel",
     subtitle: "PCR lanes show amplified products only; low-abundance template DNA is not drawn.",
-    note: "Qualitative schematic gel: PCR product bands use product length and mass-scaled intensity; lanes with no products are empty."
+    note: `Qualitative schematic gel: band intensity does not predict amplification yield. Search: ${result.searchStatus}; lanes with no products found are empty.`
   });
 }
 
@@ -535,7 +501,7 @@ function makeProductViewerItem(row) {
   return {
     start: row.forward_start,
     end: row.reverse_end,
-    length: row.length,
+    length: row.template_span_length,
     label: `Product ${row.product} (${row.length} bp)`,
     name: `PCR product ${row.product}`,
     type: "PCR product",
@@ -571,10 +537,10 @@ export function makePcrViewerData(result, options = {}) {
   const layout = options.layout === "circular" ? "circular" : "linear";
   const records = (result.records ?? []).map((record) => {
     const productItems = (result.rows ?? [])
-      .filter((row) => row.template === record.title)
+      .filter((row) => row.template_id === record.id)
       .map(makeProductViewerItem);
     const primerItems = (result.siteRows ?? [])
-      .filter((row) => row.template === record.title)
+      .filter((row) => row.template_id === record.id)
       .map(makePrimerViewerItem);
     const tracks = makePcrTemplateFeatureTracks(record);
     if (productItems.length > 0) {
@@ -620,11 +586,13 @@ function markerText(site) {
   return arrow.repeat(Math.min(length, 24));
 }
 
-export function makePcrTextMap(result, lineWidth = 80) {
-  const width = Math.max(40, Math.min(140, Number.parseInt(lineWidth, 10) || 80));
+export function makePcrTextMap(result, lineWidth) {
+  const width = normalizePcrNumber("textMapWidth", lineWidth);
   const lines = [];
   for (const entry of result.sitesByTemplate ?? []) {
     const sequence = entry.record.sequence;
+    const mapSites = entry.sites.flatMap((site) => site.endIndex >= sequence.length
+      ? [{ ...site, endIndex: sequence.length - 1 }, { ...site, startIndex: 0, endIndex: site.endIndex % sequence.length }] : [site]);
     lines.push(entry.record.title);
     lines.push(`Length: ${sequence.length} bp; primer binding sites: ${entry.sites.length}`);
     for (let offset = 0; offset < sequence.length; offset += width) {
@@ -635,7 +603,7 @@ export function makePcrTextMap(result, lineWidth = 80) {
       const rightLabel = String(blockEnd).padStart(8, " ");
       lines.push(`pos ${leftLabel} ${" ".repeat(Math.max(0, chunk.length - 8))}${rightLabel}`);
       lines.push(`seq ${" ".repeat(8)} ${chunk}`);
-      const visibleSites = entry.sites
+      const visibleSites = mapSites
         .filter((site) => site.startIndex <= blockEnd - 1 && site.endIndex >= offset)
         .slice(0, 8);
       for (const site of visibleSites) {
@@ -646,7 +614,7 @@ export function makePcrTextMap(result, lineWidth = 80) {
         const marker = markerText({ ...site, endIndex: site.startIndex + span - 1 });
         lines.push(`hit ${" ".repeat(8)} ${" ".repeat(relativeStart)}${marker.padEnd(span, site.strand === "+" ? ">" : "<")} ${label}`);
       }
-      const omitted = entry.sites.filter((site) => site.startIndex <= blockEnd - 1 && site.endIndex >= offset).length - visibleSites.length;
+      const omitted = mapSites.filter((site) => site.startIndex <= blockEnd - 1 && site.endIndex >= offset).length - visibleSites.length;
       if (omitted > 0) {
         lines.push(`hit ${" ".repeat(8)} +${omitted} additional site(s) in this block; see the binding-site table.`);
       }

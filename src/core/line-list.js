@@ -60,9 +60,8 @@ function splitItems(input, splitMode) {
   return String(input ?? "").split(delimiter);
 }
 
-function normalizeItems(items, options, warnings, context = {}) {
+function normalizeItems(items, options, context = {}) {
   const normalized = [];
-  let removed = 0;
   for (const [index, rawItem] of items.entries()) {
     checkCancellation(context, index);
     let item = String(rawItem ?? "");
@@ -73,13 +72,9 @@ function normalizeItems(items, options, warnings, context = {}) {
       item = item.replace(/ {2,}/g, " ");
     }
     if (options.removeBlankItems !== false && item === "") {
-      removed += 1;
       continue;
     }
     normalized.push(item);
-  }
-  if (removed > 0) {
-    warnings.push(`${removed} blank item${removed === 1 ? "" : "s"} removed.`);
   }
   return normalized;
 }
@@ -142,7 +137,7 @@ export function processLineList(input, options = {}, context = {}) {
 
   context.throwIfCancelled?.();
   const rawItems = splitItems(input, splitMode);
-  let items = normalizeItems(rawItems, options, warnings, context);
+  let items = normalizeItems(rawItems, options, context);
   const originalItemCount = rawItems.length;
   const normalizedItemCount = items.length;
   let sortChecks = 0;
@@ -189,6 +184,7 @@ export function processLineList(input, options = {}, context = {}) {
     stats: {
       originalItemCount,
       normalizedItemCount,
+      blankItemsRemoved: originalItemCount - normalizedItemCount,
       outputItemCount: operation === "count" ? countRows.length : items.length
     },
     settings: {

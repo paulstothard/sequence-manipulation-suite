@@ -1,6 +1,8 @@
+import { applySirnaDesignOptionDefinitions } from "../../core/sirna-design-options.js";
 import { makeFastaSourceInputOptions } from "../fasta-source-options.js";
 import {
   sirnaDesignTableColumns,
+  sirnaSeedColumns,
   sirnaReferenceMatchColumns
 } from "../../core/sirna-design.js";
 import { makeOptionalReferenceGenomeOptionGroup } from "../reference-genome-options.js";
@@ -25,6 +27,10 @@ export const sirnaDesignMetadata = {
     outputs: [
       { id: "primary", kind: "text", mediaType: "text/plain" },
       { id: "report", kind: "text", mediaType: "text/plain" },
+      { id: "analysis", kind: "text", mediaType: "application/json" },
+      { id: "duplexFasta", kind: "text", mediaType: "text/x-fasta" },
+      { id: "duplexText", kind: "text", mediaType: "text/plain" },
+      { id: "seedTable", kind: "table", schema: "sirna-seed-matches", columns: sirnaSeedColumns },
       { id: "table", kind: "table", schema: "sirna-design", columns: sirnaDesignTableColumns },
       { id: "offTargetTable", kind: "table", schema: "sirna-reference-matches", columns: sirnaReferenceMatchColumns },
       { id: "guideFasta", kind: "text", mediaType: "text/x-fasta" },
@@ -35,37 +41,36 @@ export const sirnaDesignMetadata = {
   runInWorker: true,
   workerModule: "../tools/sirna-design/run.js",
   workerExport: "runSirnaDesign",
-  options: [
+  options: applySirnaDesignOptionDefinitions([
     ...makeFastaSourceInputOptions({ includeIndexed: false, alphabet: "dna-rna", allowPlainSequence: true, annotatedRecords: true, featurePolicy: "none" }),
     {
       type: "group",
       label: "Candidate rules",
       options: [
-        { id: "targetLength", type: "number", label: "Target length", defaultValue: 19, min: 19, max: 23, step: 1 },
-        { id: "minGcPercent", type: "number", label: "Minimum target GC %", defaultValue: 30, min: 0, max: 100, step: 1 },
-        { id: "maxGcPercent", type: "number", label: "Maximum target GC %", defaultValue: 52, min: 0, max: 100, step: 1 },
-        { id: "skipFirstBases", type: "number", label: "Skip first bases", defaultValue: 0, min: 0, step: 1, help: "Set this when you want to avoid candidates near the 5' end, for example around the start codon." }
+        { id: "targetLength", type: "number", label: "Target length", help: "Sequence-rule scores apply only to 19-nt targets. Longer targets are enumerated in input coordinate order with unavailable scores." },
+        { id: "minGcPercent", type: "number", label: "Minimum target GC %" },
+        { id: "maxGcPercent", type: "number", label: "Maximum target GC %" },
+        { id: "skipFirstBases", type: "number", label: "Skip first bases", help: "Set this when you want to avoid candidates near the 5' end, for example around the start codon." }
       ]
     },
     {
       type: "group",
       label: "Duplex output",
       options: [
-        { id: "includeOverhangs", type: "checkbox", label: "Add 3' overhangs", defaultValue: true },
-        { id: "overhang", type: "text", label: "3' overhang", defaultValue: "UU", visibleWhen: { option: "includeOverhangs", value: true } }
+        { id: "includeOverhangs", type: "checkbox", label: "Add 3' overhangs" },
+        { id: "overhang", type: "text", label: "3' overhang", visibleWhen: { option: "includeOverhangs", value: true } }
       ]
     },
     makeOptionalReferenceGenomeOptionGroup({
       help: "Optional local reference genome or transcript set used to count near matches for each siRNA candidate target window. Hits are reported for interpretation, not treated as automatic failures, because the intended target may also be present in the reference.",
       additionalOptions: [
+        { id: "referenceSequenceType", type: "radio", label: "Reference sequence type", choices: [{ value: "genomic", label: "Genome / unspecified" }, { value: "transcripts", label: "Sense transcripts" }], help: "Choose mature sense transcripts to screen full-length targets and guide seeds in transcribed orientation. Genomic DNA does not represent splicing. Counts include intended transcripts; UTRs and isoforms are not classified.", visibleWhen: { option: "referenceGenomeMode", value: ["loaded", "indexed", "bgzf"] } },
+        { id: "intendedTranscriptIds", type: "text", label: "Intended transcript IDs", help: "Optional comma/space-separated FASTA identifiers (first header word), including intended isoforms. Exact unique IDs classify seed hits as intended or other. Without intended IDs, or for duplicate reference IDs, hits remain unclassified. No transcript identity is inferred from sequence similarity.", visibleWhen: { option: "referenceSequenceType", value: "transcripts" } },
+        { id: "seedLength", type: "radio", label: "Guide seed", choices: [{ value: 7, label: "Positions 2–8 (7 nt)" }, { value: 6, label: "Positions 2–7 (6 nt)" }], help: "Exact seed-complement review only. Seed scanning is limited to 5 million reference bases and 10 million matching candidate/site comparisons; hit details to 5000 rows. Complete counts do not rule out other unintended silencing effects.", visibleWhen: { option: "referenceSequenceType", value: "transcripts" } },
         {
           id: "maxOffTargetMismatches",
           type: "number",
           label: "Maximum mismatches",
-          defaultValue: 2,
-          min: 0,
-          max: 5,
-          step: 1,
           visibleWhen: { option: "referenceGenomeMode", value: ["loaded", "indexed", "bgzf"] },
           help: "Reference hits are ungapped candidate target-window comparisons against the reference."
         }
@@ -79,16 +84,19 @@ export const sirnaDesignMetadata = {
           id: "outputFormat",
           type: "radio",
           label: "Output format",
-          defaultValue: "tsv",
           choices: [
             { value: "report", label: "Summary report" },
             { value: "tsv", label: "Candidate table" },
-            { value: "offtarget-tsv", label: "Reference-match table" },
+            { value: "offtarget-tsv", label: "Reference-match table", resultView: { kind: "table", streamId: "offTargetTable" } },
+            { value: "seed-tsv", label: "Transcript seed matches", resultView: { kind: "table", streamId: "seedTable" } },
+            { value: "analysis-json", label: "Complete analysis JSON" },
+            { value: "duplex-fasta", label: "Paired guide/passenger FASTA" },
+            { value: "duplex-text", label: "Antiparallel duplex alignment" },
             { value: "guide-fasta", label: "Guide FASTA" },
             { value: "context-text", label: "Context text" }
           ]
         },
-        { id: "contextBases", type: "number", label: "Context bases", defaultValue: 20, min: 0, max: 100, step: 1, visibleWhen: { option: "outputFormat", value: "context-text" } }
+        { id: "contextBases", type: "number", label: "Context bases", visibleWhen: { option: "outputFormat", value: "context-text" } }
       ]
     },
     {
@@ -98,7 +106,7 @@ export const sirnaDesignMetadata = {
       collapsible: true,
       collapsed: true,
       options: [
-        { id: "maxCandidatesPerRecord", type: "number", label: "Candidates per record", defaultValue: 25, min: 1, max: 1000, step: 1,
+        { id: "maxCandidatesPerRecord", type: "number", label: "Candidates per record",
           help: "Only the top-ranked candidates up to this count are returned for each record." }
       ]
     },
@@ -113,38 +121,23 @@ export const sirnaDesignMetadata = {
         {
           id: "maxOffTargetMatchesPerCandidate",
           type: "number",
-          label: "Rows per candidate",
-          defaultValue: 25,
-          min: 1,
-          max: 500,
-          step: 1
+          label: "Rows per candidate"
         },
         {
           id: "maxOffTargetRows",
           type: "number",
-          label: "Maximum reference-match rows",
-          defaultValue: 1000,
-          min: 1,
-          max: 10000,
-          step: 100
+          label: "Maximum reference-match rows"
         },
         {
           id: "maxReferenceRecordLength",
           type: "number",
           label: "Loaded reference record bp limit",
-          defaultValue: 200000,
-          min: 100,
-          step: 100,
           help: "Maximum loaded FASTA reference-record length scanned for local reference matches."
         },
         {
           id: "maxIndexedReferenceBases",
           type: "number",
           label: "Indexed reference bp cap",
-          defaultValue: 1000000,
-          min: 1000,
-          max: 10000000,
-          step: 100000,
           help: "Total indexed reference bases scanned by the current local mismatch model."
         }
       ]
@@ -158,12 +151,12 @@ export const sirnaDesignMetadata = {
     {
       id: "methodNote",
       type: "note",
-      text: "Assumes each input sequence or flatfile record is the direct/sense transcript or cDNA sequence. DNA is converted to RNA by replacing T with U."
+      text: "Assumes each input sequence or flatfile record is the direct/sense transcript or cDNA sequence. DNA is converted to RNA by replacing T with U. Scores are uncalibrated counts of seven Reynolds-derived sequence rules (hairpin stability omitted) and four Ui-Tei-derived rules, with a homopolymer penalty. They apply only to 19-nt targets."
     },
     {
       id: "citationNote",
       type: "note",
-      text: "References:\n\nsiRNA design rules: Reynolds et al. 2004; Ui-Tei et al. 2004."
+      text: "References:\n\nsiRNA design rules: Reynolds et al. 2004; Ui-Tei et al. 2004.\n\nSeed-mediated transcript effects: Jackson et al. 2006."
     }
-  ]
+  ])
 };

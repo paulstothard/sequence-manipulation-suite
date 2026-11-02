@@ -234,7 +234,7 @@ export function renderAlignmentViewerRegionNavigation(container, value, {
 
   const form = document.createElement("form");
   form.className = "alignment-viewer-region-navigation";
-  form.setAttribute("aria-label", "Alignment viewer region");
+  form.setAttribute("aria-label", "Mapped read alignment viewer region");
   form.noValidate = true;
   form.title = navigation.sourceMode === "indexed-bam"
     ? `${navigation.references.length.toLocaleString()} references · indexed BAM interval queries`

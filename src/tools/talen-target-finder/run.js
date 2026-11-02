@@ -1,3 +1,5 @@
+import { makeDesignAnalysisJson } from "../../core/design-analysis.js";
+import { exportDelimitedTable } from "../../core/table.js";
 import { makeSequenceFeatureTracks } from "../../core/sequence-feature-tracks.js";
 import {
   makeDnaViewerData,
@@ -11,19 +13,14 @@ import {
   makeTalenRvdTsv,
   makeTalenTargetTsv,
   talenRvdColumns,
+  talenReferenceHitColumns,
   talenTargetColumns
 } from "../../core/talen-design.js";
 import { renderSequenceMap } from "../../core/sequence-map-renderer.js";
 import { renderTextAnnotationMapFromItems } from "../../core/text-annotation-map.js";
 import { makeTableStream, makeTextStream, makeToolResult } from "../../core/workflow.js";
 import { loadReferenceGenomeRecords } from "../reference-genome-runner.js";
-import { effectiveToolLimit } from "../../core/tool-limit-policy.js";
-
-const OUTPUT_FORMATS = new Set(["report", "tsv", "rvd-tsv", "context-text", "halfsite-fasta", "text-map", "svg-map", "interactive-viewer"]);
-
-function normalizeOutputFormat(value) {
-  return OUTPUT_FORMATS.has(value) ? value : "tsv";
-}
+import { normalizeTalenDesignOptions } from "../../core/talen-design-options.js";
 
 function rowsByRecord(result) {
   return result.records.map((record, recordIndex) => ({
@@ -48,7 +45,7 @@ function mapItemsForRow(row) {
       label: `${row.pair_id} R`,
       start: row.right_start,
       end: row.right_end,
-      strand: row.strand,
+      strand: row.right_strand,
       type: "TALEN right half-site"
     }
   ];
@@ -109,7 +106,7 @@ function makeSvgMap(result) {
             {
               start: row.right_start,
               end: row.right_end,
-              strand: row.strand,
+              strand: row.right_strand,
               className: "talenRight",
               label: `${row.pair_id} R`,
               showLabel: true,
@@ -174,7 +171,7 @@ function makeTalenViewerData(result) {
                 {
                   start: row.right_start,
                   end: row.right_end,
-                  strand: row.strand,
+                  strand: row.right_strand,
                   length: row.right_length,
                   label: `${row.pair_id} R`,
                   name: `${row.pair_id} right half-site`,
@@ -210,19 +207,22 @@ export async function runTalenTargetFinder(input, options = {}, context = {}) {
   context.throwIfCancelled?.();
   await context.yieldIfNeeded?.();
 
+  options = { ...options, ...normalizeTalenDesignOptions(options) };
   const reference = await loadReferenceGenomeRecords(options, {
-    loadedRecordLimit: effectiveToolLimit(options, "maxReferenceRecordLength", Number.parseInt(options.maxReferenceRecordLength, 10) || 500000),
-    indexedBaseLimit: effectiveToolLimit(options, "maxIndexedReferenceBases", Number.parseInt(options.maxIndexedReferenceBases, 10) || 5000000)
+    loadedRecordLimit: options.maxReferenceRecordLength,
+    indexedBaseLimit: options.maxIndexedReferenceBases
   }, context);
   const result = await designTalenTargets(input, {
     ...options,
     referenceRecords: reference.records,
     referenceWarnings: reference.warnings,
+    referenceRecordsSkipped: reference.recordsSkipped ?? 0,
     referenceCharactersRemoved: reference.charactersRemoved,
     referenceBasesProcessed: reference.basesProcessed,
     referenceSource: reference.source
   }, context);
-  const outputFormat = normalizeOutputFormat(options.outputFormat);
+  const outputFormat = result.options.outputFormat;
+  result.analysisRevision = "2026-11-01";
 
   context.reportProgress?.({ phase: "building-output", progress: 0.9 });
   context.throwIfCancelled?.();
@@ -232,12 +232,14 @@ export async function runTalenTargetFinder(input, options = {}, context = {}) {
   const tsv = outputFormat === "tsv" ? makeTalenTargetTsv(result.rows) : "";
   const rvdTsv = outputFormat === "rvd-tsv" ? makeTalenRvdTsv(result.rvdRows) : "";
   const contextText = outputFormat === "context-text" ? makeTalenContextText(result.rows) : "";
-  const halfsiteFasta = outputFormat === "halfsite-fasta" ? makeTalenHalfSiteFasta(result.rows, Number.parseInt(options.lineWidth, 10) || 60) : "";
+  const halfsiteFasta = outputFormat === "halfsite-fasta" ? makeTalenHalfSiteFasta(result.rows, result.options.lineWidth) : "";
   const textMap = outputFormat === "text-map" ? makeTextMap(result) : "";
   const svgMap = outputFormat === "svg-map" ? makeSvgMap(result) : "";
   const viewer = outputFormat === "interactive-viewer" ? makeTalenViewerData(result) : null;
   const viewerJson = viewer ? JSON.stringify(viewer, null, 2) : "";
-  const output = outputFormat === "tsv"
+  const analysis = outputFormat === "analysis-json" ? makeDesignAnalysisJson("talen-target-finder", result, options) : "";
+  const referenceTsv = outputFormat === "reference-tsv" ? exportDelimitedTable(talenReferenceHitColumns, result.referenceHits, "\t") : "";
+  const output = outputFormat === "analysis-json" ? analysis : outputFormat === "reference-tsv" ? referenceTsv : outputFormat === "tsv"
     ? tsv
     : outputFormat === "rvd-tsv"
       ? rvdTsv
@@ -256,6 +258,7 @@ export async function runTalenTargetFinder(input, options = {}, context = {}) {
   context.reportProgress?.({ phase: "finished", progress: 1 });
   return makeToolResult({
     output,
+    optionsUsed: result.options,
     sequenceSearch: outputFormat === "halfsite-fasta"
       ? { format: "fasta", alphabet: "dna-rna" }
       : outputFormat === "context-text"
@@ -264,7 +267,7 @@ export async function runTalenTargetFinder(input, options = {}, context = {}) {
           ? { format: "labelled-blocks", alphabet: "dna-rna" }
           : undefined,
     download: {
-      filename: outputFormat === "tsv"
+      filename: outputFormat === "analysis-json" ? "talen-analysis.json" : outputFormat === "reference-tsv" ? "talen-reference-hits.tsv" : outputFormat === "tsv"
         ? "talen-target-pairs.tsv"
         : outputFormat === "rvd-tsv"
           ? "talen-rvd-repeats.tsv"
@@ -275,7 +278,7 @@ export async function runTalenTargetFinder(input, options = {}, context = {}) {
             : outputFormat === "interactive-viewer"
               ? "talen-target-viewer.json"
               : "talen-target-finder.txt",
-      mimeType: outputFormat === "tsv" || outputFormat === "rvd-tsv"
+      mimeType: outputFormat === "analysis-json" ? "application/json;charset=utf-8" : outputFormat === "reference-tsv" ? "text/tab-separated-values;charset=utf-8" : outputFormat === "tsv" || outputFormat === "rvd-tsv"
         ? "text/tab-separated-values;charset=utf-8"
         : outputFormat === "halfsite-fasta"
           ? "text/x-fasta;charset=utf-8"
@@ -286,11 +289,14 @@ export async function runTalenTargetFinder(input, options = {}, context = {}) {
             : "text/plain;charset=utf-8"
     },
     warnings: result.warnings,
+    notes: result.notes,
     recordsProcessed: result.records.length,
     basesProcessed: result.basesProcessed,
     charactersRemoved: result.charactersRemoved,
     streams: {
       report: makeTextStream(report, "text/plain"),
+      ...(analysis ? { analysis: makeTextStream(analysis, "application/json") } : {}),
+      ...(outputFormat === "reference-tsv" ? { referenceHits: makeTableStream(talenReferenceHitColumns, result.referenceHits, "talen-reference-hits") } : {}),
       table: makeTableStream(talenTargetColumns, result.rows, "talen-target-pairs"),
       ...(outputFormat === "rvd-tsv" ? { rvdTable: makeTableStream(talenRvdColumns, result.rvdRows, "talen-rvd-repeats") } : {}),
       ...(outputFormat === "context-text" ? {

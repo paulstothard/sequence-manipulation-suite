@@ -1,37 +1,9 @@
-import { geneFeatureClass, GENE_FEATURE_STYLES } from '../core/gene-viewer-feature-style.js';
+import { getViewerItemTypeKey, getViewerFeatureTypeColor } from '../core/viewer-feature-style.js';
+export { getViewerItemTypeKey } from '../core/viewer-feature-style.js';
 import { isViewerGeneratedCompositionTrack } from "./dna-viewer-composition-controls.js";
 import { showCopiedFeedback } from "./copy-feedback.js";
+import { isStackedIntervalTrack } from "../core/viewer-track-layout.js";
 
-const FEATURE_TYPE_COLORS = new Map([
-  ["CDS", "#2563eb"],
-  ["gene", "#16a34a"],
-  ["source", "#64748b"],
-  ["tRNA", "#7c3aed"],
-  ["rRNA", "#d97706"],
-  ["misc_feature", "#0f766e"],
-  ["repeat_region", "#db2777"],
-  ["mobile_element", "#c2410c"],
-  ["regulatory", "#0891b2"],
-  ["promoter", "#9333ea"],
-  ["terminator", "#be123c"],
-  ["primer_bind", "#059669"],
-  ["SNV", "#2563eb"],
-  ["MNV", "#0891b2"],
-  ["insertion", "#16a34a"],
-  ["deletion", "#dc2626"],
-  ["indel", "#d97706"],
-  ["multi-allelic", "#7c3aed"]
-]);
-const FEATURE_TYPE_PALETTE = [
-  "#2563eb",
-  "#16a34a",
-  "#7c3aed",
-  "#d97706",
-  "#0891b2",
-  "#db2777",
-  "#0f766e",
-  "#c2410c"
-];
 const TRACK_DISPLAY_MODES = [
   {
     value: "auto",
@@ -117,8 +89,10 @@ export function addPolarHit(state, polar, target) {
 
 export function hitTestRegions(state, clientX, clientY, canvas) {
   const rect = canvas.getBoundingClientRect();
-  const x = clientX - rect.left;
-  const y = clientY - rect.top;
+  const scale = state.canvasDisplayScale || 1;
+  const x = (clientX - rect.left) / scale;
+  const y = (clientY - rect.top) / scale;
+  if (state.featureLegendHeight && y >= rect.height / scale - state.featureLegendHeight) return null;
   const regions = state.hitRegions || [];
   for (let index = regions.length - 1; index >= 0; index -= 1) {
     const region = regions[index];
@@ -181,16 +155,12 @@ export function getViewerTargetClientPosition(state, target, canvas) {
   }
   if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
   const rect = canvas.getBoundingClientRect();
-  return { clientX: rect.left + x, clientY: rect.top + y };
+  const scale = state.canvasDisplayScale || 1;
+  return { clientX: rect.left + x * scale, clientY: rect.top + y * scale };
 }
 
 export function getViewerTrackKey(track, index = 0) {
   return String(track?.id || track?.type || `track-${index + 1}`);
-}
-
-export function getViewerItemTypeKey(item) {
-  const value = item?.featureType || item?.type || item?.feature || item?.className || item?.kind || "item";
-  return String(value).replace(/\s+/g, " ").trim() || "item";
 }
 
 export function getViewerTrackTypeEntries(track) {
@@ -209,6 +179,19 @@ export function hasHiddenViewerItemTypes(track, state) {
   return Boolean(hidden?.size);
 }
 
+// Explicit type filters start a new packing arrangement. Zoom and pan retain
+// the arrangement so surviving features do not jump between rows.
+export function getViewerStableLaneMemory(track, state) {
+  state.stableLaneMemory ??= new WeakMap();
+  const key = [...(state.hiddenTrackItemTypes?.get(getViewerTrackKey(track)) ?? [])].sort().join('\0');
+  let memory = state.stableLaneMemory.get(track);
+  if (!memory || memory.filterKey !== key) {
+    memory = new Map(); memory.filterKey = key;
+    state.stableLaneMemory.set(track, memory);
+  }
+  return memory;
+}
+
 export function getViewerTrackItems(track, state) {
   const items = Array.isArray(track?.items) ? track.items : [];
   const hidden = state?.hiddenTrackItemTypes?.get(getViewerTrackKey(track));
@@ -217,9 +200,7 @@ export function getViewerTrackItems(track, state) {
 }
 
 export function getViewerFeatureTypeStyle(item, fallback = "#2563eb") {
-  const direct = item?.color || item?.stroke || item?.fillColor;
-  const type = getViewerItemTypeKey(item);
-  const stroke = direct || GENE_FEATURE_STYLES[geneFeatureClass(type)]?.color || FEATURE_TYPE_COLORS.get(type) || FEATURE_TYPE_PALETTE[hashString(type) % FEATURE_TYPE_PALETTE.length] || fallback;
+  const stroke = getViewerFeatureTypeColor(item, fallback);
   return {
     stroke,
     fill: colorWithAlpha(stroke, 0.18) || colorWithAlpha(fallback, 0.18) || "#dbeafe"
@@ -321,6 +302,10 @@ export function getViewerTrackDisplayMode(track, state) {
   return TRACK_DISPLAY_MODES.some((mode) => mode.value === value) ? value : "auto";
 }
 
+export function isViewerTrackExpanded(track, state) {
+  return state?.expandedTrackIds?.has(getViewerTrackKey(track)) === true;
+}
+
 function setViewerTrackDisplayMode(track, state, value) {
   if (!state.trackDisplayModes) {
     state.trackDisplayModes = new Map();
@@ -339,6 +324,7 @@ export function createViewerTrackControls(record, state, onChange, options = {})
     return null;
   }
   const showDisplayModes = options.displayModes === true;
+  state.expandedTrackIds ??= new Set();
   if (!state.hiddenTrackIds) {
     state.hiddenTrackIds = new Set();
   }
@@ -380,6 +366,30 @@ export function createViewerTrackControls(record, state, onChange, options = {})
     label.append(checkbox, document.createTextNode(`${text}${count}`));
     row.append(label);
 
+    if (isStackedIntervalTrack(track)) {
+      const expand = document.createElement("button");
+      expand.type = "button";
+      expand.className = "dna-viewer-track-expansion";
+      const syncExpansion = () => {
+        const action = state.trackOverflows?.find(entry => getViewerTrackKey(entry.track) === key)?.action;
+        expand.hidden = !action;
+        if (!action) return;
+        expand.textContent = action.label;
+        expand.title = action.title;
+        expand.setAttribute("aria-expanded", String(!action.expand));
+      };
+      expand.addEventListener("click", () => {
+        const action = state.trackOverflows?.find(entry => getViewerTrackKey(entry.track) === key)?.action;
+        if (!action) return;
+        if (action.expand) state.expandedTrackIds.add(key);
+        else state.expandedTrackIds.delete(key);
+        onChange?.();
+      });
+      visibilityUpdates.push(syncExpansion);
+      syncExpansion();
+      row.append(expand);
+    }
+
     if (showDisplayModes && track.type !== "quantitative") {
       const modeLabel = document.createElement("label");
       modeLabel.className = "dna-viewer-track-mode";
@@ -397,8 +407,11 @@ export function createViewerTrackControls(record, state, onChange, options = {})
       }
       modeSelect.value = getViewerTrackDisplayMode(track, state);
       const updateModeHelp = () => {
-        modeHelp.textContent = TRACK_DISPLAY_MODES.find((mode) => mode.value === modeSelect.value)?.help || "";
+        modeHelp.textContent = isViewerTrackExpanded(track, state)
+          ? "Individual features stay enabled while navigating, within the display limit."
+          : TRACK_DISPLAY_MODES.find((mode) => mode.value === modeSelect.value)?.help || "";
       };
+      visibilityUpdates.push(updateModeHelp);
       updateModeHelp();
       modeSelect.addEventListener("change", () => {
         setViewerTrackDisplayMode(track, state, modeSelect.value);
@@ -459,6 +472,7 @@ export function createViewerTrackControls(record, state, onChange, options = {})
   });
   details.append(summary, list);
   details.syncVisibility = () => visibilityUpdates.forEach(update => update());
+  state.syncTrackControls = details.syncVisibility;
   return details;
 }
 
@@ -1192,14 +1206,6 @@ function isAngleWithin(angle, startAngle, endAngle) {
 function normalizeAngle(angle) {
   const twoPi = Math.PI * 2;
   return ((angle % twoPi) + twoPi) % twoPi;
-}
-
-function hashString(value) {
-  let hash = 0;
-  for (const char of String(value)) {
-    hash = ((hash << 5) - hash + char.charCodeAt(0)) | 0;
-  }
-  return Math.abs(hash);
 }
 
 function colorWithAlpha(color, alpha) {

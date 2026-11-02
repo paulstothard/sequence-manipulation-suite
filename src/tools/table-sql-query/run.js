@@ -52,6 +52,7 @@ export async function runTableSqlQuery(input, options = {}, context = {}) {
     output: outputForFormat(result, outputFormat),
     download: DOWNLOADS[outputFormat],
     warnings: result.warnings,
+    notes: result.notes,
     recordsProcessed: result.rows.length,
     streams,
     optionsUsed: { outputFormat }

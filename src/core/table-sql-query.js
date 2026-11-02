@@ -47,6 +47,7 @@ function coerceTableInput(input, options = {}) {
       inputFormat,
       columns: converted.columns,
       rows: converted.rows,
+      notes: converted.notes,
       warnings: converted.warnings
     };
   }
@@ -556,7 +557,7 @@ function runProjection(rows, columns, selectItems, groupColumns, maxOutputRows) 
       break;
     }
   }
-  return { columns: outputColumns, rows: outputRows };
+  return { columns: outputColumns, rows: outputRows, truncated: grouped.length > outputRows.length };
 }
 
 function parseOrderBy(orderByText, outputColumns) {
@@ -658,8 +659,11 @@ export function runTableSqlQueryCore(input, options = {}, context = {}) {
   const sortedRows = applyOrderBy(projected.rows, parseOrderBy(clauses.orderBy, projected.columns));
   const limit = parseLimit(clauses.limit, maxOutputRows);
   const rows = sortedRows.slice(0, limit);
-  if (projected.rows.length > rows.length || filteredRows.length > maxOutputRows) {
-    warnings.push(`Query output was limited to ${rows.length.toLocaleString()} row(s).`);
+  const requestedLimit = clauses.limit ? parseLimit(clauses.limit, Infinity) : Infinity;
+  if (projected.truncated) {
+    warnings.push(`Group calculation stopped at the ${maxOutputRows.toLocaleString()}-row output limit. Additional groups were omitted before sorting and LIMIT; query results may be incomplete.`);
+  } else if (sortedRows.length > maxOutputRows && requestedLimit > maxOutputRows) {
+    warnings.push(`Query output reached the ${maxOutputRows.toLocaleString()}-row output limit; additional requested rows were omitted.`);
   }
   const tsv = tableToDelimited(projected.columns, rows, "\t");
   const csv = tableToDelimited(projected.columns, rows, ",");
@@ -677,6 +681,7 @@ export function runTableSqlQueryCore(input, options = {}, context = {}) {
     csv,
     json,
     query,
+    notes: parsed.notes ?? [],
     warnings
   };
   return { ...result, report: makeReport(result) };

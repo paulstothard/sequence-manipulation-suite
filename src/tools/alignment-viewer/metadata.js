@@ -4,7 +4,7 @@ import { makeOptionalReferenceGenomeOptionGroup } from "../reference-genome-opti
 
 function makeAlignmentViewerReferenceGenomeOptionGroup() {
   const group = makeOptionalReferenceGenomeOptionGroup({
-    help: "Optional reference sequence used to replace placeholder bases and mark read-base mismatches in the alignment viewer."
+    help: "Optional reference sequence used to replace placeholder bases and mark read-base mismatches in the mapped read alignment viewer."
   });
   return {
     ...group,
@@ -49,13 +49,13 @@ function makeAlignmentViewerReferenceGenomeOptionGroup() {
 
 export const alignmentViewerMetadata = {
   id: "alignment-viewer",
-  name: "Alignment Viewer",
+  name: "Mapped Read Alignment Viewer",
   category: "Viewers & Figures",
   tags: ["DNA", "RNA", "FASTA", "SAM", "BAM", "VCF", "alignment", "coordinates", "map"],
   summary: "Inspect mapped reads in selected SAM/BAM reference regions, with optional variant markers and reference bases.",
   whenToUse: "Review mapped reads alongside supplied variants and reference bases, and navigate between reference regions.",
   inputType: "SAM/SAM.GZ text or local indexed BAM plus optional VCF and reference FASTA",
-  outputType: "Alignment viewer, region alignment table, or summary report",
+  outputType: "Mapped read alignment viewer, region alignment table, or summary report",
   splitInput: {
     customRenderer: "alignment-viewer-workspace",
     separator: "##VCF",
@@ -72,7 +72,7 @@ export const alignmentViewerMetadata = {
         label: "Optional VCF variants",
         dropLabel: "Drop optional VCF or VCF.GZ here",
         accept: ".vcf,.vcf.gz,.gz,.txt",
-        placeholder: "Paste optional VCF text here to overlay variant sites in the alignment viewer. Leave blank when no VCF is available."
+        placeholder: "Paste optional VCF text here to overlay variant sites in the mapped read alignment viewer. Leave blank when no VCF is available."
       }
     ]
   },
@@ -145,7 +145,7 @@ export const alignmentViewerMetadata = {
       type: "group",
       id: "regionToInspect",
       label: "Region to inspect",
-      help: "The alignment viewer is intentionally bounded. Choose one reference/chromosome and coordinate range to render.",
+      help: "The mapped read alignment viewer is intentionally bounded. Choose one reference/chromosome and coordinate range to render.",
       options: [
         {
           id: "chromosome",
@@ -237,7 +237,7 @@ export const alignmentViewerMetadata = {
           label: "Output format",
           defaultValue: "interactive-viewer",
           choices: [
-            { value: "interactive-viewer", label: "Alignment viewer" },
+            { value: "interactive-viewer", label: "Mapped read alignment viewer" },
             { value: "alignment-tsv", label: "Region alignment table" },
             { value: "report", label: "Summary report" }
           ]
@@ -252,7 +252,7 @@ export const alignmentViewerMetadata = {
       collapsed: true,
       options: [
         { type: "limit-value", label: "Interactive viewer region", value: `${MAX_VIEWER_REGION_SPAN.toLocaleString("en-US")} bp`,
-          help: "A larger selected span skips the alignment viewer; choose a narrower region." },
+          help: "A larger selected span skips the mapped read alignment viewer; choose a narrower region." },
         {
           id: "maxAlignments",
           type: "number",

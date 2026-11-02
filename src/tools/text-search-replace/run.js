@@ -44,6 +44,7 @@ export function runTextSearchReplace(input, options = {}, context = {}) {
       mimeType: outputFormat === "tsv" ? "text/tab-separated-values;charset=utf-8" : "text/plain;charset=utf-8"
     },
     warnings: result.warnings,
+    notes: result.notes,
     recordsProcessed: result.stats.matches,
     streams: {
       text: makeTextStream(result.output, "text/plain"),

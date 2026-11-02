@@ -12,9 +12,9 @@ export const samBamSummaryRegionViewerMetadata = {
   name: "SAM/BAM Summary And Region Viewer",
   category: "High-Throughput Sequencing",
   tags: ["DNA", "RNA", "table", "SAM", "BAM", "alignment", "coordinates", "map", "statistics"],
-  summary: "Summarize SAM/SAM.GZ alignments or query local indexed BAM/BAI files for coverage statistics, bounded region tables, region maps, or a navigable alignment viewer.",
+  summary: "Summarize SAM/SAM.GZ alignments or query local indexed BAM/BAI files for coverage statistics, bounded region tables, region maps, or a navigable mapped read alignment viewer.",
   inputType: "SAM text, SAM.GZ, or local indexed BAM plus BAI/CSI",
-  outputType: "SAM report, coverage table, alignment tables, region map, or alignment viewer",
+  outputType: "SAM report, coverage table, alignment tables, region map, or mapped read alignment viewer",
   workflow: {
     inputs: [{ id: "input", kind: "text", mediaType: "text/plain" }],
     outputs: [
@@ -133,7 +133,7 @@ export const samBamSummaryRegionViewerMetadata = {
             { value: "coverage-tsv", label: "Coverage statistics table", always: true },
             { value: "alignment-tsv", label: "Region alignment table", always: true },
             { value: "region-svg", label: "Region map", always: true },
-            { value: "interactive-viewer", label: "Alignment viewer", always: true }
+            { value: "interactive-viewer", label: "Mapped read alignment viewer", always: true }
           ]
         }
       ]

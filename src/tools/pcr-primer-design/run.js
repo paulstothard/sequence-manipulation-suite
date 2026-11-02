@@ -1,3 +1,5 @@
+import { appVersion } from "../../app-version.js";
+import { makeDesignAnalysisJson } from "../../core/design-analysis.js";
 import {
   designPcrPrimers,
   makePcrPrimerDesignPrimerFasta,
@@ -8,15 +10,9 @@ import {
 } from "../../core/pcr-primer-design.js";
 import { makeDnaViewerData, makeDnaViewerStream } from "../../core/dna-viewer-data.js";
 import { makeTableStream, makeTextStream, makeToolResult } from "../../core/workflow.js";
-import { loadReferenceGenomeRecords } from "../reference-genome-runner.js";
+import { loadReferenceGenomeRecords, normalizeReferenceGenomeMode } from "../reference-genome-runner.js";
 import { makePcrTemplateFeatureTracks } from "../../core/pcr-template-input.js";
-import { effectiveToolLimit } from "../../core/tool-limit-policy.js";
-
-const OUTPUT_FORMATS = new Set(["report", "tsv", "primer-fasta", "product-fasta", "interactive-viewer", "interactive-circular-viewer"]);
-
-function normalizeOutputFormat(value) {
-  return OUTPUT_FORMATS.has(value) ? value : "tsv";
-}
+import { normalizePcrPrimerDesignOptions } from "../../core/pcr-primer-design-options.js";
 
 function isInteractiveViewerFormat(outputFormat) {
   return outputFormat === "interactive-viewer" || outputFormat === "interactive-circular-viewer";
@@ -108,13 +104,14 @@ function makePrimerDesignViewerData(result, outputFormat) {
 }
 
 export async function runPcrPrimerDesign(input, options = {}, context = {}) {
+  options = { ...options, ...normalizePcrPrimerDesignOptions(options) };
   context.reportProgress?.({ phase: "starting", progress: 0.02 });
   context.throwIfCancelled?.();
   await context.yieldIfNeeded?.();
 
   const reference = await loadReferenceGenomeRecords(options, {
-    loadedRecordLimit: effectiveToolLimit(options, "maxReferenceRecordLength", Number.parseInt(options.maxReferenceRecordLength, 10) || 500000),
-    indexedBaseLimit: effectiveToolLimit(options, "maxIndexedReferenceBases", Number.parseInt(options.maxIndexedReferenceBases, 10) || 5000000)
+    loadedRecordLimit: options.maxReferenceRecordLength,
+    indexedBaseLimit: options.maxIndexedReferenceBases
   }, context);
   const result = await designPcrPrimers(input, {
     ...options,
@@ -124,18 +121,51 @@ export async function runPcrPrimerDesign(input, options = {}, context = {}) {
     referenceBasesProcessed: reference.basesProcessed,
     referenceSource: reference.source
   }, context);
-  const outputFormat = normalizeOutputFormat(options.outputFormat);
+  const outputFormat = options.outputFormat;
 
   context.reportProgress?.({ phase: "building-output", progress: 0.9 });
   context.throwIfCancelled?.();
   await context.yieldIfNeeded?.();
 
-  const report = makePcrPrimerDesignReport(result);
-  const tsv = makePcrPrimerDesignTsv(result.rows);
+  const recordsSkipped = reference.recordsSkipped ?? 0;
+  const status = reference.records.length ? (recordsSkipped ? "partial" : "complete")
+    : (normalizeReferenceGenomeMode(options.referenceGenomeMode) === "none" ? "not run" : "skipped");
+  result.referenceScreen = {
+    ...result.referenceScreen, status, source: reference.source, records: reference.records.length,
+    recordsSkipped, basesProcessed: reference.basesProcessed,
+    recordScopes: reference.recordScopes ?? [],
+    searchModel: "Per-primer exact matches on both strands of linear reference records; no pair specificity or circular-origin search",
+    countInterpretation: status === "partial" ? "lower bound in scanned reference" : status === "complete" ? "exact count in scanned reference" : "unavailable"
+  };
+  result.search.candidatesReturned = result.rows.length;
+  for (const row of result.rows) {
+    row.candidate_search_status = result.search.status;
+    row.reference_search_status = status;
+    row.reference_records_skipped = recordsSkipped;
+    row.reference_count_interpretation = result.referenceScreen.countInterpretation;
+  }
+  const inputFiles = Object.fromEntries(Object.entries(options)
+    .filter(([, value]) => value && typeof value.slice === "function" && Number.isFinite(value.size))
+    .map(([key, value]) => [key, { name: value.name ?? "unnamed file", size: value.size }]));
+  result.inputFiles = inputFiles;
+  const analysisContext = {
+    tool: "pcr-primer-design", appVersion, analysisRevision: "2026-11-01",
+    options: result.options, inputFiles, search: result.search, referenceScreen: result.referenceScreen,
+    warnings: result.warnings, notes: result.notes ?? [],
+    method: "Heuristic linear PCR candidate search; approximate composition Tm; uninterrupted Watson–Crick structure runs; at most eight lengths retained per endpoint; reference matches do not filter or rerank pairs"
+  };
+  const report = outputFormat === "report" ? makePcrPrimerDesignReport(result) : "";
+  const tsv = outputFormat === "tsv" ? makePcrPrimerDesignTsv(result.rows) : "";
+  const analysis = outputFormat === "analysis-json" ? makeDesignAnalysisJson("pcr-primer-design", {
+    ...result, analysisRevision: analysisContext.analysisRevision, method: analysisContext.method,
+    referenceRecords: reference.records
+  }, options) : "";
   const primerFasta = outputFormat === "primer-fasta" ? makePcrPrimerDesignPrimerFasta(result.rows, result.options.lineWidth) : "";
   const productFasta = outputFormat === "product-fasta" ? makePcrPrimerDesignProductFasta(result.rows, result.options.lineWidth) : "";
   const viewer = isInteractiveViewerFormat(outputFormat) ? makePrimerDesignViewerData(result, outputFormat) : null;
+  if (viewer) viewer.analysisContext = JSON.parse(JSON.stringify(analysisContext, (key, value) => typeof value === "number" && !Number.isFinite(value) ? "unlimited" : value));
   const outputs = {
+    "analysis-json": analysis,
     report,
     tsv,
     "primer-fasta": primerFasta,
@@ -146,10 +176,11 @@ export async function runPcrPrimerDesign(input, options = {}, context = {}) {
 
   context.reportProgress?.({ phase: "finished", progress: 1 });
 
-  return makeToolResult({
+  return { search: result.search, analysisContext, ...makeToolResult({
+    optionsUsed: result.options,
     output: outputs[outputFormat],
     download: {
-      filename: outputFormat === "tsv"
+      filename: outputFormat === "analysis-json" ? "pcr-primer-design-analysis.json" : outputFormat === "tsv"
         ? "pcr-primer-design-candidates.tsv"
         : outputFormat === "primer-fasta"
           ? "pcr-primer-design-primers.fasta"
@@ -158,7 +189,7 @@ export async function runPcrPrimerDesign(input, options = {}, context = {}) {
             : isInteractiveViewerFormat(outputFormat)
               ? "pcr-primer-design-viewer.json"
             : "pcr-primer-design.txt",
-      mimeType: outputFormat === "tsv"
+      mimeType: outputFormat === "analysis-json" ? "application/json;charset=utf-8" : outputFormat === "tsv"
         ? "text/tab-separated-values;charset=utf-8"
         : outputFormat.endsWith("fasta")
           ? "text/x-fasta;charset=utf-8"
@@ -167,16 +198,18 @@ export async function runPcrPrimerDesign(input, options = {}, context = {}) {
           : "text/plain;charset=utf-8"
     },
     warnings: result.warnings,
+    notes: [...(result.notes ?? []), ...(["tsv", "primer-fasta", "product-fasta"].includes(outputFormat) ? ["Sequence and candidate exports contain the selected data. Choose Summary report or Analysis JSON to save settings, search scope and warnings."] : [])],
     recordsProcessed: result.records.length,
     basesProcessed: result.basesProcessed ?? result.records.reduce((sum, record) => sum + record.sequence.length, 0),
     charactersRemoved: result.charactersRemoved,
     streams: {
-      report: makeTextStream(report, "text/plain"),
-      table: makeTableStream(pcrPrimerDesignTableColumns, result.rows, "pcr-primer-design"),
+      ...(outputFormat === "report" ? { report: makeTextStream(report, "text/plain") } : {}),
+      ...(outputFormat === "tsv" ? { table: makeTableStream(pcrPrimerDesignTableColumns, result.rows, "pcr-primer-design") } : {}),
+      ...(outputFormat === "analysis-json" ? { analysis: makeTextStream(analysis, "application/json") } : {}),
       ...(outputFormat === "primer-fasta" ? { primerFasta: makeTextStream(primerFasta, "text/x-fasta") } : {}),
       ...(outputFormat === "product-fasta" ? { productFasta: makeTextStream(productFasta, "text/x-fasta") } : {}),
       ...(viewer ? { viewer: makeDnaViewerStream(viewer) } : {})
     },
     visual: viewer ? { viewer } : undefined
-  });
+  }) };
 }

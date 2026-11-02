@@ -62,6 +62,9 @@ export function calculateLinearViewerRows(trackLayouts, options = {}) {
   }
   if (options.hideRulers) rows.markerTop = 0;
   rows.markerBottom = rows.bottomRulerY + (compact ? 0 : 14);
+  const inset = options.topInset || 0;
+  for (const key of Object.keys(rows)) if (typeof rows[key] === "number") rows[key] += inset;
+  for (const row of trackYs) { row.y += inset; row.topY += inset; }
   return rows;
 }
 

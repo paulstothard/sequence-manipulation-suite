@@ -75,6 +75,7 @@ function coerceTableInput(input, options = {}) {
       inputFormat: "json",
       columns: converted.columns,
       rows: converted.rows,
+      notes: converted.notes,
       warnings: converted.warnings
     };
   }
@@ -1010,6 +1011,7 @@ export function analyzeTableColumnComparison(input, options = {}) {
     pairRows,
     plotData: typedResult,
     svg,
+    notes: table.notes ?? [],
     warnings
   };
   return { ...result, compactHeatmapSvg: renderCompactHeatmap(result, options), report: makeReport(result) };

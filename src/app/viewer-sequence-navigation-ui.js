@@ -113,7 +113,14 @@ export function makeViewerSequenceInitialState(viewer, selection, previousState 
       length: selection.length,
       viewCenter: ((selection.start - 1) + selection.end) / 2,
       viewSpan: selection.end - selection.start + 1,
-      viewMoved: false
+      viewMoved: false,
+      // A requested region gets a fresh camera, while track/filter settings
+      // survive. Reusing the previous canvas anchor can put this region offscreen.
+      centerX: null,
+      centerY: null,
+      canvasSize: null,
+      gapCenterAngle: -Math.PI / 2,
+      userRotated: false
     };
   }
   return {

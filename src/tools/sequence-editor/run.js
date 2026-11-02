@@ -101,6 +101,7 @@ export async function runSequenceEditor(input = "", options = {}, context = {}) 
     output,
     download,
     warnings: result.warnings,
+    notes: result.notes,
     recordsProcessed: result.recordsProcessed,
     basesProcessed: result.basesProcessed,
     charactersRemoved: result.charactersRemoved,

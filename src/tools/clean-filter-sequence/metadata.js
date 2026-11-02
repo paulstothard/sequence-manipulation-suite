@@ -1,3 +1,5 @@
+import { dnaRnaFilterOptions, dnaRnaOutputOption, CLEAN_FILTER_DNA_RNA_DEFAULTS as defaults } from "../../core/clean-filter-dna-rna-options.js";
+
 const cleanFilterBaseOptions = [
   { id: "keepGaps", type: "checkbox", label: "Keep gap characters (. and -)", defaultValue: false },
   { id: "formatFasta", type: "checkbox", label: "Return FASTA records", defaultValue: true }
@@ -27,56 +29,6 @@ function makeCleanFilterWorkflow(alphabet) {
     ]
   };
 }
-
-const dnaRnaFilterOptions = [
-  {
-    id: "filterPreset",
-    type: "select",
-    label: "Filter",
-    defaultValue: "valid-dna-rna-iupac",
-    help: "Choose which characters are removed or replaced. Normal filtering changes are expected and are reported in result counts rather than warnings.",
-    choices: [
-      { value: "valid-basic-dna-rna", label: "Keep A, C, G, T, U, N only" },
-      { value: "valid-dna-rna-iupac", label: "Keep DNA/RNA IUPAC symbols" },
-      { value: "remove-t", label: "Remove T/t" },
-      { value: "remove-u", label: "Remove U/u" },
-      { value: "whitespace", label: "Remove whitespace" },
-      { value: "digits", label: "Remove digits" },
-      { value: "digits-whitespace", label: "Remove digits and whitespace" },
-      { value: "keep-lowercase-dna-rna", label: "Keep lowercase DNA/RNA symbols" },
-      { value: "keep-uppercase-dna-rna", label: "Keep uppercase DNA/RNA symbols" }
-    ]
-  },
-  {
-    id: "replacement",
-    type: "select",
-    label: "Replace filtered characters with",
-    defaultValue: "",
-    choices: [
-      { value: "", label: "Nothing" },
-      { value: "n", label: "n" },
-      { value: "N", label: "N" },
-      { value: "t", label: "t" },
-      { value: "T", label: "T" },
-      { value: "u", label: "u" },
-      { value: "U", label: "U" },
-      { value: "-", label: "-" },
-      { value: "?", label: "?" },
-      { value: "*", label: "*" }
-    ]
-  },
-  {
-    id: "caseMode",
-    type: "radio",
-    label: "Case",
-    defaultValue: "preserve",
-    choices: [
-      { value: "uppercase", label: "Uppercase" },
-      { value: "lowercase", label: "Lowercase" },
-      { value: "preserve", label: "Preserve input case" }
-    ]
-  }
-];
 
 const proteinFilterOptions = [
   {
@@ -132,6 +84,7 @@ export const cleanFilterDnaRnaMetadata = {
   tags: ["DNA", "RNA", "raw", "FASTA", "cleaning"],
   summary:
     "Remove or replace selected characters from DNA/RNA text using common filtering presets.",
+  whenToUse: "Clean pasted DNA/RNA text, preserve or select letter case, or replace specified characters before sequence analysis.",
   inputType: "DNA/RNA sequence",
   outputType: "Filtered DNA/RNA sequence",
   fileInput: dnaRnaTextFastaFileInput,
@@ -141,12 +94,9 @@ export const cleanFilterDnaRnaMetadata = {
   workflow: makeCleanFilterWorkflow("dna-rna"),
   options: [
     ...dnaRnaFilterOptions,
-    ...cleanFilterBaseOptions,
-    {
-      id: "cleaningNote",
-      type: "note",
-      text: "The IUPAC filter preserves DNA/RNA ambiguity symbols such as R, Y, S, W, K, M, B, D, H, V, N, and X. Filtered character counts appear in the output details; warnings are reserved for unexpected issues."
-    }
+    { ...cleanFilterBaseOptions[0], defaultValue: defaults.keepGaps,
+      help: "Keep dot and dash gaps with nucleotide and case-selective filters. Other presets remove only the characters named in the filter." },
+    dnaRnaOutputOption
   ]
 };
 

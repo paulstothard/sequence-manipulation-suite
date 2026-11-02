@@ -116,6 +116,8 @@ export async function loadReferenceGenomeRecords(options = {}, {
     }
     return {
       records: kept,
+      recordScopes: records.map((record, recordIndex) => ({ recordIndex, title: record.title, length: record.sequence.length, status: record.sequence.length > loadedRecordLimit ? "skipped limit" : "scanned" })),
+      recordsSkipped: records.length - kept.length,
       warnings,
       charactersRemoved,
       basesProcessed: kept.reduce((sum, record) => sum + record.sequence.length, 0),
@@ -146,7 +148,7 @@ export async function loadReferenceGenomeRecords(options = {}, {
   const source = indexedInput.isBgzip ? "indexed BGZF FASTA" : "indexed FASTA";
   if (totalIndexedBases > indexedBaseLimit) {
     warnings.push(`Reference genome hit counting was skipped because the indexed FASTA contains ${totalIndexedBases.toLocaleString()} bp, above the current limit of ${indexedBaseLimit.toLocaleString()} bp.`);
-    return { records: [], warnings, charactersRemoved: 0, basesProcessed: 0, source };
+    return { records: [], recordScopes: indexedSequences.map((record, recordIndex) => ({ recordIndex, title: record.name, length: record.length, status: "skipped limit" })), warnings, recordsSkipped: indexedSequences.length, charactersRemoved: 0, basesProcessed: 0, source };
   }
 
   const reader = makeIndexedFastaReader(indexedInput);
@@ -167,6 +169,7 @@ export async function loadReferenceGenomeRecords(options = {}, {
   }
   return {
     records,
+    recordScopes: records.map((record, recordIndex) => ({ recordIndex, title: record.title, length: record.sequence.length, status: "scanned" })),
     warnings,
     charactersRemoved: 0,
     basesProcessed: totalIndexedBases,

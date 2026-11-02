@@ -1164,6 +1164,7 @@ function renderSelectedTool() {
   );
   elements.optionsPanel.classList.toggle("pcr-primer-design-options", metadata.id === PCR_PRIMER_DESIGN_TOOL_ID);
   elements.toolView.classList.toggle("pcr-template-workflow", [PCR_PRIMER_DESIGN_TOOL_ID, IN_SILICO_PCR_TOOL_ID].includes(metadata.id));
+  elements.toolView.classList.toggle("named-input-workflow", Boolean(metadata.splitInput?.sourceLabel));
   elements.toolView.classList.toggle("sequence-source-workflow", isFastaSourceTabbedTool());
   elements.toolView.classList.toggle("structure-identifier-workflow", metadata.id === "protein-structure-viewer");
   elements.toolView.classList.toggle("primer-oligo-workflow", metadata.id === "primer-oligo-properties");
@@ -2814,7 +2815,7 @@ const PSEUDOMOLECULE_SOURCE_MODES = {
 const PCR_TEMPLATE_SOURCE_MODES = {
   sequence: {
     tabText: "Sequence / FASTA",
-    annotationLabel: "Template sequence",
+    annotationLabel: "DNA sequence / FASTA",
     annotationDropLabel: "Drop one plain-text template DNA sequence or FASTA records here",
     annotationPlaceholder: "Paste one plain-text template DNA sequence or FASTA records here.",
     annotationAccept: ".fa,.fasta,.fna,.ffn,.fa.gz,.fasta.gz,.fna.gz,.ffn.gz,.gz,.txt,.seq",
@@ -3123,17 +3124,17 @@ function makeAlignmentViewerReferenceModeExamples() {
     flatfile: {
       annotation: makeFlatfileReferenceExample(firstFastaRecord, {
         locus: name,
-        definition: "PhiX174 reference for the SMS3 alignment viewer example."
+        definition: "PhiX174 reference for the SMS3 mapped read alignment viewer example."
       }),
       fasta: ""
     },
     "gff3-fasta": {
       annotation: `##gff-version 3
-${name}\tSMS3\tregion\t3920\t4130\t.\t+\t.\tID=alignment_region;Name=alignment viewer example region`,
+${name}\tSMS3\tregion\t3920\t4130\t.\t+\t.\tID=alignment_region;Name=mapped read alignment viewer example region`,
       fasta: alignmentViewerReferenceExample
     },
     "gtf-fasta": {
-      annotation: `${name}\tSMS3\tregion\t3920\t4130\t.\t+\t.\tgene_id "alignment_region"; gene_name "alignment viewer example region";`,
+      annotation: `${name}\tSMS3\tregion\t3920\t4130\t.\t+\t.\tgene_id "alignment_region"; gene_name "mapped read alignment viewer example region";`,
       fasta: alignmentViewerReferenceExample
     },
     "bed-fasta": {
@@ -3286,6 +3287,10 @@ function renderBiologicalRecordTabbedInput(tool) {
 
   const sourceCard = document.createElement("section");
   sourceCard.className = "bio-record-source-card";
+  if (splitInput.sourceLabel) {
+    appendInputSourceHeading(sourceCard, splitInput.sourceLabel, "biologicalRecordSourceHeading");
+    sourceCard.classList.add("named-input-source-card");
+  }
   const tabs = createTabbedInputWorkflowTabs({
     document,
     modes: sourceModes,
@@ -3307,12 +3312,14 @@ function renderBiologicalRecordTabbedInput(tool) {
       key: "annotation",
       panel: splitInput.panels?.[0],
       index: 0,
+      headingLevel: splitInput.sourceLabel ? 5 : 4,
       value: exampleParts[0] ?? ""
     }),
     createBiologicalRecordInputSection({
       key: "fasta",
       panel: splitInput.panels?.[1],
       index: 1,
+      headingLevel: splitInput.sourceLabel ? 5 : 4,
       value: exampleParts[1] ?? ""
     })
   );
@@ -3335,13 +3342,15 @@ function renderBiologicalRecordTabbedInput(tool) {
   });
 }
 
-function createBiologicalRecordInputSection({ key, panel, index, value }) {
+function createBiologicalRecordInputSection({ key, panel, index, value, headingLevel = 4 }) {
   const section = document.createElement("section");
   section.className = "split-input-section bio-record-input-section";
   section.dataset.bioRecordSection = key;
   const heading = document.createElement("div");
   heading.className = "split-input-heading";
-  const title = document.createElement("h4");
+  const title = document.createElement(`h${headingLevel}`);
+  title.className = "input-pane-title";
+  title.id = `bio-record-${key}-heading`;
   title.textContent = panel?.label ?? `Input ${index + 1}`;
   const fileLabel = document.createElement("label");
   fileLabel.className = "file-button";
@@ -3367,6 +3376,7 @@ function createBiologicalRecordInputSection({ key, panel, index, value }) {
   textarea.wrap = "off";
   textarea.value = formatExampleInputForDisplay(value);
   textarea.placeholder = panel?.placeholder ?? "";
+  textarea.setAttribute("aria-labelledby", title.id);
 
   const loadFile = async (file) => {
     if (!file) {
@@ -3420,7 +3430,7 @@ function setBiologicalRecordSourceMode(mode, { syncOption = true, maybeLoadExamp
 
   updateTabbedInputWorkflowTabs(panel, sourceMode, { tabSelector: ".bio-record-source-tab" });
   const annotationSection = panel.querySelector('[data-bio-record-section="annotation"]');
-  const annotationTitle = annotationSection?.querySelector(".split-input-heading h4");
+  const annotationTitle = annotationSection?.querySelector(".input-pane-title");
   const annotationInput = annotationSection?.querySelector(".split-input-textarea");
   const annotationDrop = annotationSection?.querySelector(".split-drop-zone");
   if (annotationTitle) {
@@ -3555,6 +3565,15 @@ function loadBiologicalRecordModeExampleIfSafe(panel, sourceMode) {
   }
 }
 
+function appendInputSourceHeading(container, label, id) {
+  const heading = document.createElement("h4");
+  heading.className = "input-source-heading";
+  heading.id = id;
+  heading.textContent = label;
+  container.setAttribute("aria-labelledby", id);
+  container.append(heading);
+}
+
 function createPcrTextPane({
   key,
   label,
@@ -3563,14 +3582,17 @@ function createPcrTextPane({
   placeholder = "",
   value = "",
   splitInputIndex = null,
-  inputRole = ""
+  inputRole = "",
+  headingLevel = 5
 }) {
   const section = document.createElement("section");
   section.className = "split-input-section";
   section.dataset.pcrTemplatePane = key;
   const heading = document.createElement("div");
   heading.className = "split-input-heading";
-  const title = document.createElement("h4");
+  const title = document.createElement(`h${headingLevel}`);
+  title.className = "input-pane-title";
+  title.id = `pcr-${key}-heading`;
   title.textContent = label;
   const fileLabel = document.createElement("label");
   fileLabel.className = "file-button";
@@ -3592,6 +3614,7 @@ function createPcrTextPane({
   textarea.wrap = "off";
   textarea.value = formatExampleInputForDisplay(value);
   textarea.placeholder = placeholder;
+  textarea.setAttribute("aria-labelledby", title.id);
   if (splitInputIndex !== null) {
     textarea.dataset.splitInputIndex = String(splitInputIndex);
   }
@@ -3644,7 +3667,8 @@ function createInSilicoPcrPrimerSection(panel, index, value) {
     dropLabel: panel?.dropLabel ?? "Drop primer FASTA or text file here",
     value,
     splitInputIndex: index,
-    inputRole: "primers"
+    inputRole: "primers",
+    headingLevel: 4
   });
   section.dataset.pcrInputSection = "primers";
   const textarea = section.querySelector("textarea");
@@ -3663,7 +3687,7 @@ function renderPcrInput(tool) {
   const resolvedPrimerIndex = primerIndex >= 0 ? primerIndex : 1;
   const resolvedTemplateIndex = templateIndex >= 0 ? templateIndex : 0;
   const primerPanel = panels[resolvedPrimerIndex] ?? { id: "primers", label: "Primer sequences" };
-  const templatePanel = panels[resolvedTemplateIndex] ?? { id: "template", label: "Template sequence" };
+  const templatePanel = panels[resolvedTemplateIndex] ?? { id: "template", label: "Template sequences" };
 
   elements.splitInputPanel.hidden = false;
   elements.splitInputPanel.textContent = "";
@@ -3681,6 +3705,7 @@ function createPcrTemplateSection(panel, index, value) {
   wrapper.dataset.sourceMode = "sequence";
   wrapper.dataset.pcrInputSection = "template";
   wrapper.dataset.sequenceExample = value ?? "";
+  appendInputSourceHeading(wrapper, panel.label, "pcrTemplateSourceHeading");
 
   const tabs = createTabbedInputWorkflowTabs({
     document,
@@ -3731,7 +3756,7 @@ function setPcrTemplateSourceMode(mode, { clearOutput = true, maybeLoadExample =
   updateTabbedInputWorkflowTabs(panel, sourceMode, { tabSelector: ".bio-record-source-tab" });
 
   const annotationPane = panel.querySelector('[data-pcr-template-pane="annotation"]');
-  const annotationTitle = annotationPane?.querySelector(".split-input-heading h4");
+  const annotationTitle = annotationPane?.querySelector(".input-pane-title");
   const annotationDrop = annotationPane?.querySelector(".split-drop-zone");
   const annotationInput = annotationPane?.querySelector(".split-input-textarea");
   const annotationFileInput = annotationPane?.querySelector('input[type="file"]');
@@ -3750,7 +3775,7 @@ function setPcrTemplateSourceMode(mode, { clearOutput = true, maybeLoadExample =
   }
 
   const fastaPane = panel.querySelector('[data-pcr-template-pane="fasta"]');
-  const fastaTitle = fastaPane?.querySelector(".split-input-heading h4");
+  const fastaTitle = fastaPane?.querySelector(".input-pane-title");
   const fastaDrop = fastaPane?.querySelector(".split-drop-zone");
   const fastaInput = fastaPane?.querySelector(".split-input-textarea");
   const fastaFileInput = fastaPane?.querySelector('input[type="file"]');
@@ -5039,7 +5064,7 @@ async function loadAlignmentViewerRegion(region, { onProgress } = {}) {
   const tool = state.selectedTool;
   const supportedToolIds = new Set(["alignment-viewer", "sam-bam-summary-region-viewer"]);
   if (!supportedToolIds.has(tool?.metadata?.id)) {
-    throw new Error("Region loading is available only for alignment viewer outputs.");
+    throw new Error("Region loading is available only for mapped read alignment viewer outputs.");
   }
 
   setAlignmentViewerRegionOptions(region);
@@ -5053,6 +5078,8 @@ async function loadAlignmentViewerRegion(region, { onProgress } = {}) {
   const isCurrent = () => state.toolRun === runState && state.selectedTool === tool && state.activeView === "tool";
   setToolRunning(true);
   try {
+    const retrieved = await identifierInput.resolve(abortController.signal);
+    if (!isCurrent() || abortController.signal.aborted) throw makeRunAbortError();
     const inputText = getSelectedToolInputText();
     const options = getOptions();
     const result = await runAppTool(tool, inputText, options, {
@@ -5065,6 +5092,7 @@ async function loadAlignmentViewerRegion(region, { onProgress } = {}) {
     if (!isCurrent()) {
       throw new Error("The selected tool changed before the region finished loading.");
     }
+    if (retrieved.length) result.downloads = [...(result.downloads ?? []), ...identifierDownloads(retrieved)];
     await displayToolResult(result, inputText, options, isCurrent, abortController.signal);
     return result;
   } catch (error) {

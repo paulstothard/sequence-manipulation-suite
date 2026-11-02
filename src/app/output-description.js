@@ -149,6 +149,7 @@ export function buildOutputDescriptionText({
   ]);
 
   appendSection(lines, "Options", optionLines.length > 0 ? optionLines : ["Default settings used."]);
+  if (result?.notes?.length) appendSection(lines, "Run notes", result.notes);
 
   const hasTextCharacterCount = Number.isInteger(inputTextCharacters) && inputTextCharacters >= 0;
   const inputLines = [];

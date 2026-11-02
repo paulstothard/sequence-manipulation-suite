@@ -33,6 +33,8 @@ export async function runTsnePlot(input, options = {}, context = {}) {
       mimeType: outputFormat === "svg" ? "image/svg+xml;charset=utf-8" : outputFormat === "report" ? "text/plain;charset=utf-8" : "text/tab-separated-values;charset=utf-8"
     },
     warnings: result.warnings,
+    notes: result.runOptions?.seed != null ? [`Random seed: ${result.runOptions.seed}.`] : [],
+    optionsUsed: result.runOptions?.seed != null ? { seed: result.runOptions.seed } : {},
     recordsProcessed: result.table.rows.length,
     streams: {
       report: makeTextStream(result.report, "text/plain"),

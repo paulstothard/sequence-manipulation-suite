@@ -40,6 +40,7 @@ export const proteinStructureViewerMetadata = {
           id: "format",
           type: "select",
           label: "Input format",
+          help: "mmCIF support covers common PDBx atom-site coordinate loops. Unusual multiline metadata may be summarized incompletely; retain the source file for those fields.",
           defaultValue: "auto",
           choices: [
             { value: "auto", label: "Auto-detect PDB or mmCIF" },

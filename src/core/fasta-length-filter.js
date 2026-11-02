@@ -184,6 +184,7 @@ export function filterFastaByLength(input, options = {}) {
   const normalized = normalizeFastaLengthFilterOptions(options);
   const records = parseSequenceInput(input, "sequence");
   const warnings = [];
+  const notes = [];
 
   if (records.length === 0) {
     return {
@@ -201,13 +202,10 @@ export function filterFastaByLength(input, options = {}) {
   }
 
   if (!String(input ?? "").trim().startsWith(">")) {
-    warnings.push("Input did not start with a FASTA header; treated it as one raw sequence record.");
+    notes.push("Input format: one unheadered sequence record, named sequence.");
   }
   if (normalized.maxLength < normalized.minLength) {
     warnings.push("Maximum length is shorter than minimum length; no records can be within the selected range.");
-  }
-  if (normalized.minGcPercent !== null || normalized.maxGcPercent !== null) {
-    warnings.push("GC percent filters count A/C/G/T/U characters only; other symbols are ignored for the percentage denominator.");
   }
 
   const keptRecords = [];
@@ -219,6 +217,9 @@ export function filterFastaByLength(input, options = {}) {
     const length = record.sequence.length;
     basesProcessed += length;
     const stats = sequenceStats(record.sequence);
+    if ((normalized.minGcPercent !== null || normalized.maxGcPercent !== null) && stats.ambiguousCount > 0) {
+      warnings.push(`${record.title}: GC filtering excludes ${stats.ambiguousCount} non-ACGT/U character(s) from the percentage denominator.`);
+    }
     const reasons = recordReasons(record, normalized, stats);
     const matches = reasons.length === 0;
     const keep = normalized.selectionAction === "keep" ? matches : !matches;
@@ -280,6 +281,7 @@ export function filterFastaByLength(input, options = {}) {
     keptFasta,
     removedFasta,
     warnings,
+    notes,
     basesProcessed,
     options: normalized
   };
@@ -497,13 +499,16 @@ export async function filterFastaRecordSource(source, options = {}, context = {}
   }
 
   const warnings = [...source.warnings];
+  const notes = [];
   if (records.length === 0) warnings.push("No sequence input was provided.");
-  if (source.stats.usedRawSequence) warnings.push("Input did not start with a FASTA header; treated it as one raw sequence record.");
+  if (source.stats.usedRawSequence) notes.push("Input format: one unheadered sequence record, named sequence.");
   if (normalized.maxLength < normalized.minLength) {
     warnings.push("Maximum length is shorter than minimum length; no records can be within the selected range.");
   }
   if (normalized.minGcPercent !== null || normalized.maxGcPercent !== null) {
-    warnings.push("GC percent filters count A/C/G/T/U characters only; other symbols are ignored for the percentage denominator.");
+    for (const record of records) if (record.ambiguousCount > 0) {
+      warnings.push(`${record.title}: GC filtering excludes ${record.ambiguousCount} non-ACGT/U character(s) from the percentage denominator.`);
+    }
   }
   const keptCount = records.filter((record) => record.keep).length;
   const removedCount = records.length - keptCount;
@@ -535,6 +540,7 @@ export async function filterFastaRecordSource(source, options = {}, context = {}
     keptFasta: outputFormat === "filtered-fasta" ? selected.fasta : "",
     removedFasta: outputFormat === "removed-fasta" ? selected.fasta : "",
     warnings,
+    notes,
     basesProcessed,
     options: normalized,
     keptCount,

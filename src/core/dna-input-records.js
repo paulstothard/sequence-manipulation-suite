@@ -70,7 +70,6 @@ export function parseDnaRnaSequenceOrFlatfile(input, options = {}) {
     charactersRemoved = nucleotideRecords.reduce((sum, record) => sum + record.removedCount, 0);
     warnings.push(...flatfile.warnings);
     if (nucleotideRecords.length > 0) {
-      warnings.push(`${label}: parsed ${nucleotideRecords.length.toLocaleString()} GenBank/DDBJ/EMBL nucleotide record(s).`);
       return { records: nucleotideRecords, warnings, charactersRemoved, source: "flatfile" };
     }
     warnings.push(`${label}: no GenBank/DDBJ/EMBL nucleotide records with sequence were found.`);

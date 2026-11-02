@@ -10,7 +10,7 @@ export async function loadConsensusInput(input, options = {}, context = {}) {
   const vcfMode=options.consensusVcfMode??'loaded', refMode=options.consensusRefMode??'loaded';
   if(!['loaded','indexed'].includes(vcfMode)||!['loaded','indexed','bgzf'].includes(refMode)) throw new Error('Invalid reference or VCF source mode.');
   const read=file=>readTextFile(file,{maxDecodedBytes:s.maxInputCharacters,signal:context.signal});
-  const warnings=[];
+  const warnings=[], notes=[];
   if(vcfMode==='indexed'||refMode!=='loaded') {
     if(!s.chromosome||s.end===null) throw new Error('Indexed input requires a reference / chromosome and explicit start and end positions.');
     if(s.end-s.start+1>s.maxReferenceBases) throw new Error(`Indexed region exceeds ${s.maxReferenceBases.toLocaleString('en-US')} reference bases.`);
@@ -21,7 +21,7 @@ export async function loadConsensusInput(input, options = {}, context = {}) {
     if(!options.consensusVcfFile||!options.consensusVcfIndex) throw new Error('Choose BGZF VCF.GZ and its matching TBI or CSI index.');
     const result=await runBcftoolsIndexedRegion({vcfFile:options.consensusVcfFile,indexFile:options.consensusVcfIndex,region:`${s.chromosome}:${s.start}-${s.end}`},context);
     vcf=result.headerText.trimEnd()+'\n'+result.dataText;
-    warnings.push('Indexed variants read with BCFtools 1.10 via local BioWasm.');
+    notes.push('Indexed variants read with BCFtools 1.10 via local BioWasm.');
   }
   const parsed=await parseConsensusVcf(vcf,s,context);
   let references;
@@ -46,7 +46,7 @@ export async function loadConsensusInput(input, options = {}, context = {}) {
     const sequence=[...extracted.values()][0].sequence;
     if(sequence.length!==hi-lo+1) throw new Error('Indexed reference length differs from the requested span. Check the FASTA/index pairing.');
     references=new Map([[s.chromosome,{id:s.chromosome,start:lo,sequence}]]);
-    warnings.push('Indexed reference read with SAMtools 1.21 via local BioWasm.');
+    notes.push('Indexed reference read with SAMtools 1.21 via local BioWasm.');
   }
-  return {references,parsed,settings:s,warnings};
+  return {references,parsed,settings:s,warnings,notes};
 }

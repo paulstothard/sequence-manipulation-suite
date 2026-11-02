@@ -1,3 +1,5 @@
+import { makeDesignAnalysisJson } from "../../core/design-analysis.js";
+import { exportDelimitedTable } from "../../core/table.js";
 import {
   SIRNA_REFERENCE_SEPARATOR,
   designSirna,
@@ -5,18 +7,15 @@ import {
   makeSirnaDesignReport,
   makeSirnaDesignTsv,
   makeSirnaGuideFasta,
+  makeSirnaDuplexFasta,
+  makeSirnaDuplexText,
+  sirnaSeedColumns,
   makeSirnaReferenceMatchTsv,
   sirnaDesignTableColumns,
   sirnaReferenceMatchColumns
 } from "../../core/sirna-design.js";
 import { makeTableStream, makeTextStream, makeToolResult } from "../../core/workflow.js";
 import { makeLegacyReferenceScreenOptions } from "../reference-genome-runner.js";
-
-const OUTPUT_FORMATS = new Set(["report", "tsv", "offtarget-tsv", "guide-fasta", "context-text"]);
-
-function normalizeOutputFormat(value) {
-  return OUTPUT_FORMATS.has(value) ? value : "tsv";
-}
 
 function inputWithOptionalReference(input, options = {}) {
   const text = String(input ?? "");
@@ -41,9 +40,11 @@ export async function runSirnaDesign(input, options = {}, context = {}) {
   context.throwIfCancelled?.();
   await context.yieldIfNeeded?.();
 
+  options = options && typeof options === "object" ? options : {};
   const runOptions = await makeLegacyReferenceScreenOptions(options, context);
   const result = await designSirna(inputWithOptionalReference(input, runOptions), runOptions, context);
-  const outputFormat = normalizeOutputFormat(options.outputFormat);
+  const outputFormat = result.options.outputFormat;
+  result.analysisRevision = "2026-11-01";
 
   context.reportProgress?.({ phase: "building-output", progress: 0.9 });
   context.throwIfCancelled?.();
@@ -54,7 +55,14 @@ export async function runSirnaDesign(input, options = {}, context = {}) {
   const offTargetTsv = outputFormat === "offtarget-tsv" ? makeSirnaReferenceMatchTsv(result.referenceMatchRows ?? []) : "";
   const guideFasta = outputFormat === "guide-fasta" ? makeSirnaGuideFasta(result.rows, result.options.lineWidth) : "";
   const contextText = outputFormat === "context-text" ? makeSirnaContextText(result.rows) : "";
+  const extras = {
+    "analysis-json": outputFormat === "analysis-json" ? makeDesignAnalysisJson("sirna-design", result, options) : "",
+    "duplex-fasta": outputFormat === "duplex-fasta" ? makeSirnaDuplexFasta(result.rows, result.options.lineWidth) : "",
+    "duplex-text": outputFormat === "duplex-text" ? makeSirnaDuplexText(result.rows) : "",
+    "seed-tsv": outputFormat === "seed-tsv" ? exportDelimitedTable(sirnaSeedColumns, result.seedMatchRows ?? [], "\t") : ""
+  };
   const outputs = {
+    ...extras,
     report,
     tsv,
     "offtarget-tsv": offTargetTsv,
@@ -65,14 +73,15 @@ export async function runSirnaDesign(input, options = {}, context = {}) {
   context.reportProgress?.({ phase: "finished", progress: 1 });
 
   return makeToolResult({
+    optionsUsed: result.options,
     output: outputs[outputFormat],
-    sequenceSearch: outputFormat === "guide-fasta"
+    sequenceSearch: ["guide-fasta", "duplex-fasta"].includes(outputFormat)
       ? { format: "fasta", alphabet: "dna-rna" }
       : outputFormat === "context-text"
         ? { format: "context", alphabet: "dna-rna" }
         : undefined,
     download: {
-      filename: outputFormat === "tsv"
+      filename: outputFormat in extras ? `sirna-${outputFormat}.${outputFormat === "analysis-json" ? "json" : outputFormat === "duplex-fasta" ? "fasta" : outputFormat === "seed-tsv" ? "tsv" : "txt"}` : outputFormat === "tsv"
         ? "sirna-design-candidates.tsv"
         : outputFormat === "offtarget-tsv"
           ? "sirna-design-reference-matches.tsv"
@@ -81,18 +90,23 @@ export async function runSirnaDesign(input, options = {}, context = {}) {
           : outputFormat === "context-text"
             ? "sirna-design-context.txt"
             : "sirna-design.txt",
-      mimeType: outputFormat === "tsv" || outputFormat === "offtarget-tsv"
+      mimeType: outputFormat === "analysis-json" ? "application/json;charset=utf-8" : outputFormat === "duplex-fasta" ? "text/x-fasta;charset=utf-8" : outputFormat === "seed-tsv" ? "text/tab-separated-values;charset=utf-8" : outputFormat === "tsv" || outputFormat === "offtarget-tsv"
         ? "text/tab-separated-values;charset=utf-8"
         : outputFormat === "guide-fasta"
           ? "text/x-fasta;charset=utf-8"
           : "text/plain;charset=utf-8"
     },
     warnings: result.warnings,
+    notes: result.notes,
     recordsProcessed: result.records.length,
     basesProcessed: (result.basesProcessed ?? result.records.reduce((sum, record) => sum + record.sequence.length, 0)) + (result.referenceScreen?.basesProcessed ?? 0),
     charactersRemoved: (result.charactersRemoved ?? 0) + (result.referenceCharactersRemoved ?? 0),
     streams: {
       report: makeTextStream(report, "text/plain"),
+      ...(outputFormat === "analysis-json" ? { analysis: makeTextStream(extras[outputFormat], "application/json") } : {}),
+      ...(outputFormat === "duplex-fasta" ? { duplexFasta: makeTextStream(extras[outputFormat], "text/x-fasta") } : {}),
+      ...(outputFormat === "duplex-text" ? { duplexText: makeTextStream(extras[outputFormat], "text/plain") } : {}),
+      ...(outputFormat === "seed-tsv" ? { seedTable: makeTableStream(sirnaSeedColumns, result.seedMatchRows ?? [], "sirna-seed-matches") } : {}),
       table: makeTableStream(sirnaDesignTableColumns, result.rows, "sirna-design"),
       ...(outputFormat === "offtarget-tsv"
         ? { offTargetTable: makeTableStream(sirnaReferenceMatchColumns, result.referenceMatchRows ?? [], "sirna-reference-matches") }

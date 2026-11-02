@@ -1,3 +1,4 @@
+import { referenceCoverageColumns, finalizeReferenceCoverage, referenceCoverageText, designSearchColumns, finalizeDesignSearch, designSearchText } from "./design-analysis.js";
 import { parseDnaRnaSequenceOrFlatfile } from "./dna-input-records.js";
 import { resolveDesignFeatureTarget, designFeatureTargetLabel, featureContainsInterval } from "./design-feature-targets.js";
 import { formatFastaRecord, parseSequenceInput } from "./fasta.js";
@@ -9,7 +10,8 @@ import {
 } from "./indexed-genomics/indexed-fasta-reader.js";
 import { cleanDnaRnaSequence, complementDnaRnaSequence, makeSequenceContext } from "./sequence.js";
 import { exportDelimitedTable } from "./table.js";
-import { effectiveToolLimit } from "./tool-limit-policy.js";
+import { CRISPR_GUIDE_DESIGN_DEFAULTS, normalizeCrisprGuideDesignOptions, getIndexedReferenceFiles, hasIndexedReferenceOptions } from "./crispr-guide-design-options.js";
+export { normalizeCrisprGuideDesignOptions } from "./crispr-guide-design-options.js";
 
 export const crisprGuideDesignColumns = [
   { id: "rank", label: "Rank", type: "number" },
@@ -32,6 +34,9 @@ export const crisprGuideDesignColumns = [
   { id: "guide_features", label: "Guide features", type: "string" },
   { id: "cut_features", label: "Cut features", type: "string" },
   { id: "nearest_feature", label: "Nearest feature", type: "string" },
+  { id: "score_interpretation", label: "Score interpretation", type: "string" },
+  ...designSearchColumns,
+  ...referenceCoverageColumns,
   { id: "reference_match_count", label: "Reference matches", type: "number" },
   { id: "exact_reference_match_count", label: "Exact reference matches", type: "number" },
   { id: "near_reference_match_count", label: "Near reference matches", type: "number" },
@@ -65,7 +70,8 @@ export const crisprReferenceMatchColumns = [
   { id: "left_context", label: "Left context", type: "string" },
   { id: "matched_text", label: "Matched reference region", type: "string" },
   { id: "right_context", label: "Right context", type: "string" },
-  { id: "context_sequence", label: "Context sequence", type: "string" }
+  { id: "context_sequence", label: "Context sequence", type: "string" },
+  ...referenceCoverageColumns
 ];
 
 export const CRISPR_REFERENCE_SEPARATOR = "##REFERENCE";
@@ -90,139 +96,12 @@ const IUPAC_SETS = {
   N: new Set(["A", "C", "G", "T"])
 };
 
-// Scope/citation note:
-// This first production pass implements transparent local sequence review for
-// CRISPR guide candidates. SpCas9 NGG-style PAM handling and the approximate
-// cut-site convention follow the commonly used Streptococcus pyogenes Cas9
-// model described in Jinek et al., Science 2012 and early genome-editing
-// applications such as Cong et al., Science 2013 and Mali et al., Science 2013.
-// Optional reference hit counting is implemented as an ungapped local guide+PAM
-// mismatch comparison against user-supplied FASTA/reference text. It deliberately
-// does not implement genome-wide activity or chromatin-aware specificity scoring.
-const PAM_PRESETS = {
-  "spcas9-ngg": {
-    label: "SpCas9 NGG",
-    nuclease: "SpCas9",
-    pamPattern: "NGG",
-    pamSide: "3prime",
-    guideLength: 20,
-    cutOffsetFromPamStart: -3,
-    description: "SpCas9-style 20 nt guide with a 3' NGG PAM."
-  },
-  "spcas9-ngn": {
-    label: "SpCas9 NGN relaxed",
-    nuclease: "SpCas9 relaxed PAM",
-    pamPattern: "NGN",
-    pamSide: "3prime",
-    guideLength: 20,
-    cutOffsetFromPamStart: -3,
-    description: "Broad 3' NGN PAM review mode. Treat hits as lower-specificity candidates."
-  },
-  "spcas9-nag": {
-    label: "SpCas9 NAG alternate",
-    nuclease: "SpCas9 alternate PAM",
-    pamPattern: "NAG",
-    pamSide: "3prime",
-    guideLength: 20,
-    cutOffsetFromPamStart: -3,
-    description: "Alternate 3' NAG PAM review mode. Treat hits as lower-efficiency candidates unless externally validated."
-  },
-  "custom-3prime": {
-    label: "Custom 3' PAM",
-    nuclease: "Custom 3' PAM",
-    pamPattern: "NGG",
-    pamSide: "3prime",
-    guideLength: 20,
-    cutOffsetFromPamStart: null,
-    description: "Custom 3' PAM scan. Cut position is not estimated."
-  },
-  "custom-5prime": {
-    label: "Custom 5' PAM",
-    nuclease: "Custom 5' PAM",
-    pamPattern: "TTTV",
-    pamSide: "5prime",
-    guideLength: 23,
-    cutOffsetFromPamStart: null,
-    description: "Custom 5' PAM scan. Cut position is not estimated."
-  }
-};
-
-function clampNumber(value, fallback, min, max) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) {
-    return fallback;
-  }
-  return Math.max(min, Math.min(max, numeric));
-}
-
-function clampInteger(value, fallback, min, max) {
-  return Math.round(clampNumber(value, fallback, min, max));
-}
-
 function round(value, digits = 2) {
   return Number.isFinite(value) ? Number(value.toFixed(digits)) : "";
 }
 
 function reverseComplementDna(sequence) {
   return Array.from(complementDnaRnaSequence(sequence, { preserveCase: false })).reverse().join("").replaceAll("U", "T");
-}
-
-function normalizePamPattern(value, fallback) {
-  const normalized = String(value ?? fallback).toUpperCase().replace(/[^ACGTRYSWKMBDHVN]/g, "");
-  return normalized.slice(0, 12) || fallback;
-}
-
-function getPamModel(options = {}) {
-  const presetId = PAM_PRESETS[options.pamPreset] ? options.pamPreset : "spcas9-ngg";
-  const preset = PAM_PRESETS[presetId];
-  if (presetId === "custom-3prime" || presetId === "custom-5prime") {
-    return {
-      ...preset,
-      pamPattern: normalizePamPattern(options.customPamPattern, preset.pamPattern),
-      guideLength: clampInteger(options.guideLength, preset.guideLength, 16, 30)
-    };
-  }
-  return preset;
-}
-
-export function normalizeCrisprGuideDesignOptions(options = {}) {
-  const minGcPercent = clampNumber(options.minGcPercent, 35, 0, 100);
-  const maxGcPercent = Math.max(minGcPercent, clampNumber(options.maxGcPercent, 75, 0, 100));
-  const fivePrimeGPolicy = ["off", "flag", "require"].includes(options.fivePrimeGPolicy)
-    ? options.fivePrimeGPolicy
-    : options.preferFivePrimeG === true
-      ? "flag"
-      : "off";
-  const referenceInputMode = ["indexed", "indexed-bgzf"].includes(options.referenceInputMode)
-    ? "indexed"
-    : options.referenceInputMode === "pasted"
-      ? "pasted"
-      : hasIndexedReferenceOptions(options)
-        ? "indexed"
-        : "pasted";
-  return {
-    targetFeature: String(options.targetFeature ?? ""),
-    pamModel: getPamModel(options),
-    minGcPercent,
-    maxGcPercent,
-    fivePrimeGPolicy,
-    preferFivePrimeG: fivePrimeGPolicy === "flag",
-    requireFivePrimeG: fivePrimeGPolicy === "require",
-    allowAmbiguousCandidates: options.allowAmbiguousCandidates === true,
-    maxCandidatesPerRecord: effectiveToolLimit(options, "maxCandidatesPerRecord", clampInteger(options.maxCandidatesPerRecord, 50, 1, 2000)),
-    maxRecordLength: clampInteger(options.maxRecordLength, 500000, 100, 10000000),
-    searchReferenceOffTargets: options.searchReferenceOffTargets === true,
-    referenceInputMode,
-    maxOffTargetMismatches: clampInteger(options.maxOffTargetMismatches, 2, 0, 5),
-    maxReferenceRecordLength: effectiveToolLimit(options, "maxReferenceRecordLength", clampInteger(options.maxReferenceRecordLength, 500000, 100, 10000000)),
-    maxIndexedReferenceBases: effectiveToolLimit(options, "maxIndexedReferenceBases", clampInteger(options.maxIndexedReferenceBases, 5000000, 1000, 50000000)),
-    indexedReferenceChunkSize: clampInteger(options.indexedReferenceChunkSize, 200000, 10000, 1000000),
-    maxOffTargetMatchesPerGuide: effectiveToolLimit(options, "maxOffTargetMatchesPerGuide", clampInteger(options.maxOffTargetMatchesPerGuide, 25, 1, 500)),
-    maxOffTargetRows: effectiveToolLimit(options, "maxOffTargetRows", clampInteger(options.maxOffTargetRows, 1000, 1, 10000)),
-    contextBases: clampInteger(options.contextBases, 20, 0, 200),
-    lineWidth: clampInteger(options.lineWidth, 60, 10, 200),
-    mapMaxCandidatesPerRecord: clampInteger(options.mapMaxCandidatesPerRecord, 80, 1, 500)
-  };
 }
 
 function setIntersects(left, right) {
@@ -443,10 +322,6 @@ function normalizeRecords(input, warnings, label = "Input", options = {}) {
       .filter((record) => record.sequence.length > 0);
     if (flatfileRecords.length > 0) {
       warnings.push(...flatfile.warnings);
-      const featureCount = flatfileRecords.reduce((sum, record) => sum + record.features.length, 0);
-      if (featureCount > 0) {
-        warnings.push(`${label}: parsed ${featureCount.toLocaleString()} annotated feature(s) from flatfile target record(s) for guide context.`);
-      }
       return {
         records: flatfileRecords,
         charactersRemoved: 0
@@ -565,7 +440,7 @@ function annotateGuideFeatureContext(row, record) {
 function makeReferenceSite(record, workingSequence, strand, workingGuideStart, options, skipped) {
   const recordLength = record.length ?? record.sequence.length;
   const workingOffset = record.workingStartOffset ?? 0;
-  const model = options.pamModel;
+  const model = options.referencePamModel;
   const pamLength = model.pamPattern.length;
   const guideLength = model.guideLength;
   const guideStart = model.pamSide === "5prime" ? workingGuideStart + pamLength : workingGuideStart;
@@ -608,15 +483,20 @@ function makeReferenceSite(record, workingSequence, strand, workingGuideStart, o
 async function collectReferenceSites(referenceRecords, options, warnings, context) {
   const sites = [];
   let basesProcessed = 0;
+  let recordsScanned = 0;
+  let recordsSkipped = 0;
+  let skippedAmbiguousWindows = 0;
   for (const [recordIndex, record] of referenceRecords.entries()) {
     context.reportProgress?.({ phase: "scanning-reference", detail: record.title, progress: 0.75 + (recordIndex / Math.max(1, referenceRecords.length)) * 0.1 });
     context.throwIfCancelled?.();
     await context.yieldIfNeeded?.();
-    basesProcessed += record.sequence.length;
     if (record.sequence.length > options.maxReferenceRecordLength) {
+      recordsSkipped += 1;
       warnings.push(`${record.title}: skipped as reference because ${record.sequence.length} nt exceeds the current reference-hit counting limit of ${options.maxReferenceRecordLength} nt.`);
       continue;
     }
+    basesProcessed += record.sequence.length;
+    recordsScanned += 1;
     const skipped = { ambiguous: 0 };
     for (const strand of ["+", "-"]) {
       const workingSequence = strand === "+" ? record.sequence : reverseComplementDna(record.sequence);
@@ -632,29 +512,12 @@ async function collectReferenceSites(referenceRecords, options, warnings, contex
         }
       }
     }
+    skippedAmbiguousWindows += skipped.ambiguous;
     if (skipped.ambiguous > 0) {
       warnings.push(`${record.title}: skipped ${skipped.ambiguous} reference guide/PAM window(s) with ambiguous bases.`);
     }
   }
-  return { sites, basesProcessed };
-}
-
-function getIndexedReferenceFiles(options = {}) {
-  const preferBgzf = options.referenceInputMode === "indexed-bgzf";
-  return {
-    fastaFile: preferBgzf
-      ? (options.indexedReferenceBgzfFile ?? options.indexedReferenceFastaFile)
-      : (options.indexedReferenceFastaFile ?? options.indexedReferenceBgzfFile),
-    faiFile: preferBgzf
-      ? (options.indexedReferenceBgzfFaiFile ?? options.indexedReferenceFaiFile)
-      : (options.indexedReferenceFaiFile ?? options.indexedReferenceBgzfFaiFile),
-    gziFile: options.indexedReferenceGziFile
-  };
-}
-
-function hasIndexedReferenceOptions(options = {}) {
-  const { fastaFile, faiFile } = getIndexedReferenceFiles(options);
-  return Boolean(fastaFile?.slice && faiFile?.text);
+  return { sites, basesProcessed, recordsScanned, recordsSkipped, skippedAmbiguousWindows };
 }
 
 function makeFetchedSequenceContext(sequence, fetchedStart, start, end, contextBases) {
@@ -778,6 +641,7 @@ async function collectIndexedReferenceSites(options, warnings, context) {
 
   const sites = [];
   let basesProcessed = 0;
+  let skippedAmbiguousWindows = 0;
   const reader = makeIndexedFastaReader(indexedInput);
   const readerWarningStart = reader.warnings?.length ?? 0;
   if (readerWarningStart > 0) {
@@ -814,6 +678,7 @@ async function collectIndexedReferenceSites(options, warnings, context) {
         });
       }
     }
+    skippedAmbiguousWindows += skipped.ambiguous;
     if (skipped.ambiguous > 0) {
       warnings.push(`${record.name}: skipped ${skipped.ambiguous} indexed reference guide/PAM window(s) with ambiguous bases.`);
     }
@@ -825,6 +690,7 @@ async function collectIndexedReferenceSites(options, warnings, context) {
     sites,
     basesProcessed,
     indexedSequences,
+    skippedAmbiguousWindows,
     skipped: false,
     isBgzip: indexedInput.isBgzip
   };
@@ -1029,6 +895,7 @@ function materializeReferenceMatchRows(guideRows, referenceScreen, options) {
 export async function designCrisprGuides(input, options = {}, context = {}) {
   const normalized = normalizeCrisprGuideDesignOptions(options);
   const warnings = [];
+  const notes = [];
   context.reportProgress?.({ phase: "parsing-input", progress: 0.05 });
   context.throwIfCancelled?.();
   await context.yieldIfNeeded?.();
@@ -1067,17 +934,20 @@ export async function designCrisprGuides(input, options = {}, context = {}) {
   }
 
   const rows = [];
+  const candidateSearch = { recordsScanned: 0, recordsSkipped: 0, candidatesMatched: 0, ambiguousWindowsExcluded: 0, gcWindowsExcluded: 0, fivePrimeGWindowsExcluded: 0 };
   let basesProcessed = 0;
   for (const [recordIndex, record] of records.entries()) {
     if (featureTarget && featureTarget.recordIndex !== recordIndex) continue;
     context.reportProgress?.({ phase: "scanning-guides", detail: record.title, progress: 0.1 + (recordIndex / records.length) * 0.75 });
     context.throwIfCancelled?.();
     await context.yieldIfNeeded?.();
-    basesProcessed += record.sequence.length;
     if (record.sequence.length > normalized.maxRecordLength) {
+      candidateSearch.recordsSkipped++;
       warnings.push(`${record.title}: skipped because ${record.sequence.length} nt exceeds the current CRISPR guide-design limit of ${normalized.maxRecordLength} nt.`);
       continue;
     }
+    basesProcessed += record.sequence.length;
+    candidateSearch.recordsScanned++;
     const recordRows = [];
     const skipped = { ambiguous: 0, gc: 0, fivePrimeG: 0 };
     for (const strand of ["+", "-"]) {
@@ -1101,10 +971,10 @@ export async function designCrisprGuides(input, options = {}, context = {}) {
       warnings.push(`${record.title}: skipped ${skipped.ambiguous} candidate window(s) with ambiguous guide or PAM bases. Enable ambiguous candidates to review possible hits.`);
     }
     if (skipped.gc > 0) {
-      warnings.push(`${record.title}: skipped ${skipped.gc} candidate window(s) outside the selected GC range.`);
+      notes.push(`${record.title}: excluded ${skipped.gc} candidate window(s) outside the selected GC range.`);
     }
     if (skipped.fivePrimeG > 0) {
-      warnings.push(`${record.title}: skipped ${skipped.fivePrimeG} candidate window(s) lacking a 5' G.`);
+      notes.push(`${record.title}: excluded ${skipped.fivePrimeG} candidate window(s) lacking a 5' G.`);
     }
     recordRows.sort((left, right) =>
       right.review_score - left.review_score ||
@@ -1112,6 +982,10 @@ export async function designCrisprGuides(input, options = {}, context = {}) {
       left.guide_start - right.guide_start ||
       left.strand.localeCompare(right.strand)
     );
+    candidateSearch.candidatesMatched += recordRows.length;
+    candidateSearch.ambiguousWindowsExcluded += skipped.ambiguous;
+    candidateSearch.gcWindowsExcluded += skipped.gc;
+    candidateSearch.fivePrimeGWindowsExcluded += skipped.fivePrimeG;
     rows.push(...recordRows.slice(0, normalized.maxCandidatesPerRecord));
   }
 
@@ -1128,7 +1002,7 @@ export async function designCrisprGuides(input, options = {}, context = {}) {
 
   let referenceMatchRows = [];
   let referenceScreen = {
-    status: referenceRecords.length > 0 && normalized.searchReferenceOffTargets ? "run" : "not run",
+    status: "not run",
     referenceSites: 0,
     omittedRows: 0,
     basesProcessed: 0
@@ -1139,7 +1013,10 @@ export async function designCrisprGuides(input, options = {}, context = {}) {
       status: "run",
       referenceSites: referenceScan.sites.length,
       omittedRows: 0,
-      basesProcessed: referenceScan.basesProcessed
+      basesProcessed: referenceScan.basesProcessed,
+      recordsScanned: referenceScan.recordsScanned,
+      recordsSkipped: referenceScan.recordsSkipped,
+      skippedAmbiguousWindows: referenceScan.skippedAmbiguousWindows
     };
     const referenceMatches = await screenReferenceMatches(rows, referenceScan.sites, normalized, context);
     const materialized = materializeReferenceMatchRows(rows, referenceMatches, normalized);
@@ -1178,6 +1055,9 @@ export async function designCrisprGuides(input, options = {}, context = {}) {
       referenceSites: indexedReferenceScan.sites.length,
       omittedRows: 0,
       basesProcessed: indexedReferenceScan.basesProcessed,
+      recordsScanned: indexedReferenceScan.skipped ? 0 : referenceRecords.length,
+      recordsSkipped: indexedReferenceScan.skipped ? referenceRecords.length : 0,
+      skippedAmbiguousWindows: indexedReferenceScan.skippedAmbiguousWindows ?? 0,
       source: indexedReferenceScan.isBgzip ? "indexed BGZF FASTA" : "indexed FASTA",
       skipReason: indexedReferenceScan.skipReason
     };
@@ -1196,8 +1076,20 @@ export async function designCrisprGuides(input, options = {}, context = {}) {
     warnings.push("Indexed reference FASTA files were provided, but reference hit counting is turned off.");
   }
 
+  finalizeDesignSearch(rows, candidateSearch);
+  referenceScreen.pamPattern = normalized.referencePamModel.pamPattern;
+  referenceScreen.maxMismatches = normalized.maxOffTargetMismatches;
+  referenceScreen.alignment = "ungapped";
+  referenceScreen.searchModel = `${normalized.referencePamModel.pamPattern} PAM; up to ${normalized.maxOffTargetMismatches} mismatches; no bulges/indels`;
+  finalizeReferenceCoverage(rows, referenceScreen);
+  finalizeReferenceCoverage(referenceMatchRows, referenceScreen);
+  for (const row of rows) {
+    row.reference_search_model = `${normalized.referencePamModel.pamPattern} PAM; up to ${normalized.maxOffTargetMismatches} mismatches; no bulges/indels`;
+    row.score_interpretation = "uncalibrated sequence-review heuristic";
+  }
+
   if (rows.length === 0) {
-    warnings.push("No CRISPR guide candidates matched the selected PAM, GC, ambiguity, and length settings.");
+    notes.push("No CRISPR guide candidates matched the selected PAM, GC, ambiguity, and length settings.");
   }
   if (normalized.pamModel.label.includes("relaxed") || normalized.pamModel.label.includes("alternate")) {
     warnings.push("Relaxed or alternate PAM candidates can have lower or context-dependent activity; review externally before ordering guides.");
@@ -1209,7 +1101,9 @@ export async function designCrisprGuides(input, options = {}, context = {}) {
     rows,
     referenceMatchRows,
     referenceScreen,
+    candidateSearch,
     warnings,
+    notes,
     charactersRemoved,
     referenceCharactersRemoved,
     basesProcessed,
@@ -1234,11 +1128,7 @@ function formatCounts(counts) {
 export function makeCrisprGuideDesignReport(result) {
   const model = result.options.pamModel;
   const screen = result.referenceScreen ?? { status: "not run", referenceSites: 0, omittedRows: 0, basesProcessed: 0 };
-  const referenceScreenText = screen.status === "run"
-    ? `run against ${result.referenceRecords?.length ?? 0} reference record(s), ${screen.basesProcessed ?? 0} reference bp, ${screen.referenceSites ?? 0} PAM-compatible reference site(s)${screen.source ? ` from ${screen.source}` : ""}`
-    : screen.status === "skipped"
-      ? `skipped${screen.skipReason ? `: ${screen.skipReason}` : ""}`
-      : "not run";
+  const referenceScreenText = referenceCoverageText(screen);
   const lines = [
     "CRISPR guide design / review",
     `Records scanned: ${result.options.targetFeature ? 1 : result.records.length}`,
@@ -1247,16 +1137,19 @@ export function makeCrisprGuideDesignReport(result) {
     `PAM model: ${model.label} (${model.pamPattern}; ${model.pamSide === "5prime" ? "5' PAM" : "3' PAM"})`,
     `Guide length: ${model.guideLength} nt`,
     `Candidates reported: ${result.rows.length}`,
+    designSearchText(result.candidateSearch),
     `Annotated target features parsed: ${(result.annotatedFeatureCount ?? 0).toLocaleString()}`,
     `Candidates by strand: ${formatCounts(countBy(result.rows, "strand"))}`,
     `Reference hit count: ${referenceScreenText}`,
-    ...(screen.status === "run" ? [`Reference comparison strategy: ${screen.indexStrategy ?? "full reference-site scan"}; guide/site comparisons: ${(screen.candidateComparisons ?? 0).toLocaleString()}`] : []),
+    `Reference PAM: ${result.options.referencePamModel.pamPattern}; maximum guide mismatches: ${result.options.maxOffTargetMismatches}; ungapped only.`,
+    ...(["complete", "partial"].includes(screen.status) ? [`Reference comparison strategy: ${screen.indexStrategy ?? "full reference-site scan"}; guide/site comparisons: ${(screen.candidateComparisons ?? 0).toLocaleString()}`] : []),
     `Reference match rows: ${result.referenceMatchRows?.length ?? 0}${screen.omittedRows ? ` shown; ${screen.omittedRows} omitted by row limits` : ""}`,
     "",
+    ...(result.notes ?? []),
     "Top candidates"
   ];
   for (const row of result.rows.slice(0, 10)) {
-    const referenceText = screen.status === "run"
+    const referenceText = ["complete", "partial"].includes(screen.status)
       ? `; reference matches ${row.reference_match_count}; exact ${row.exact_reference_match_count}; near ${row.near_reference_match_count}`
       : "";
     const featureText = row.cut_features || row.guide_features
@@ -1270,8 +1163,9 @@ export function makeCrisprGuideDesignReport(result) {
   lines.push(
     "",
     "Scope note:",
-    "This tool performs local PAM/guide sequence review and, when a reference is supplied, counts ungapped guide+PAM matches against that reference. It does not model chromatin, delivery, guide activity beyond transparent sequence flags, or whole-genome specificity unless the user supplies the relevant local reference sequence."
+    "This tool performs local PAM/guide sequence review and, when a reference is supplied, counts ungapped guide+PAM matches against that reference. It does not model chromatin, delivery, guide activity beyond transparent sequence flags, bulges/indels, or comprehensive specificity. Complete means the configured search finished; it does not establish that a guide is safe. Review scores are uncalibrated heuristics."
   );
+  lines.push("", "References: Hsu et al. 2013, https://doi.org/10.1038/nbt.2647; SpG: Walton et al. 2020, https://doi.org/10.1126/science.aba8853", "", "Warnings:", ...(result.warnings.length ? result.warnings.map(w => `- ${w}`) : ["none"]));
   return lines.join("\n") + "\n";
 }
 
@@ -1283,13 +1177,13 @@ export function makeCrisprReferenceMatchTsv(rows) {
   return `${exportDelimitedTable(crisprReferenceMatchColumns, rows, "\t")}\n`;
 }
 
-export function makeCrisprGuideFasta(rows, lineWidth = 60) {
+export function makeCrisprGuideFasta(rows, lineWidth = CRISPR_GUIDE_DESIGN_DEFAULTS.lineWidth) {
   if (rows.length === 0) {
     return "";
   }
   return rows.map((row) =>
     formatFastaRecord(
-      `${row.candidate_id}_${row.record}_${row.strand}_${row.guide_start}_${row.guide_end}_${row.nuclease.replace(/\s+/g, "_")}`,
+      `${row.candidate_id}_${row.record}_${row.strand}_${row.guide_start}_${row.guide_end}_${row.nuclease.replace(/\s+/g, "_")} spacer_only=true scaffold=absent`,
       row.guide_rna,
       lineWidth
     ).trimEnd()

@@ -451,6 +451,16 @@ export function createWorkspaceInputSourceController({
     });
 
     if (activeMode === "workspace") {
+      const sourceLabel = tool.metadata.splitInput?.sourceLabel
+        ?? tool.metadata.splitInput?.panels?.find(panel => panel.id === 'template')?.label;
+      if (sourceLabel) {
+        const heading = document.createElement('h4');
+        heading.id = 'workspaceInputSourceHeading';
+        heading.className = 'input-source-heading';
+        heading.textContent = sourceLabel;
+        panel.setAttribute('aria-labelledby', heading.id);
+        panel.append(heading);
+      }
       const selected = getSelectedToolSequences(tool);
       const requirement = getToolWorkspaceSequenceRequirement(tool.metadata) ?? { minRecords: 1, maxRecords: 1 };
       syncToolOptionsForWorkspaceSequences(tool, selected);

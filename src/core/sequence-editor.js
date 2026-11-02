@@ -162,11 +162,6 @@ function parseEditorInputRecords(input, fallbackTitle, warnings = [], options = 
     if (nucleotideRecords.length > 0) {
       const viewerRecords = makeBiologicalRecordViewerRecords(nucleotideRecords);
       warnings.push(...parsed.warnings);
-      const featureCount = viewerRecords.reduce((sum, record) =>
-        sum + countFeatureTrackItems(record.tracks), 0);
-      if (featureCount > 0) {
-        warnings.push(`Parsed ${featureCount.toLocaleString()} annotated feature(s) from ${parsed.sourceFormat} input for the editor viewer. Coordinate edits shift, clip, or flag displayed feature coordinates where possible; exported FASTA does not preserve annotation rows.`);
-      }
       return viewerRecords.map((record, index) => {
         const cleaned = cleanDnaRnaSequence(record.sequence, {
           preserveCase: false,
@@ -217,10 +212,6 @@ function parseEditorInputRecords(input, fallbackTitle, warnings = [], options = 
       .filter((record) => record.sequence.length > 0);
     if (records.length > 0) {
       warnings.push(...parsed.warnings);
-      const featureCount = records.reduce((sum, record) => sum + record.annotatedFeatureCount, 0);
-      if (featureCount > 0) {
-        warnings.push(`Parsed ${featureCount.toLocaleString()} annotated feature(s) from flatfile input for the editor viewer. Coordinate edits shift, clip, or flag displayed feature coordinates where possible; exported FASTA does not preserve flatfile annotation records.`);
-      }
       return records;
     }
   }
@@ -374,6 +365,9 @@ export function prepareSequenceEditorData(input, options = {}) {
     });
   });
 
+  const featureCount = rows.reduce((sum, row) => sum + row.annotated_features, 0);
+  const notes = featureCount ? [`Imported ${featureCount.toLocaleString()} annotated feature(s) for the editor viewer.`] : [];
+  if (featureCount && options.outputFormat === "fasta") warnings.push(`FASTA output omits ${featureCount.toLocaleString()} annotated feature(s). Save an SMS3 document to retain annotations and settings.`);
   const nonemptyRecords = cleanedRecords.filter((record) => record.sequence.length > 0);
   const viewer = nonemptyRecords.length > 0
     ? makeDnaViewerData(nonemptyRecords, {
@@ -388,6 +382,7 @@ export function prepareSequenceEditorData(input, options = {}) {
   const report = formatSequenceEditorReport({
     rows,
     warnings,
+    notes,
     recordsProcessed: records.length,
     basesProcessed,
     charactersRemoved
@@ -397,6 +392,7 @@ export function prepareSequenceEditorData(input, options = {}) {
     records: nonemptyRecords,
     rows,
     warnings,
+    notes,
     basesProcessed,
     charactersRemoved,
     recordsProcessed: records.length,
@@ -428,6 +424,7 @@ export function formatSequenceEditorReport(result) {
     lines.push("");
   }
 
+  if (result.notes?.length) lines.push("Run notes:", ...result.notes, "");
   if (result.warnings.length > 0) {
     lines.push("Warnings:");
     for (const warning of result.warnings) {
@@ -834,9 +831,9 @@ export function applySequenceEditorCoordinateEdit(input, options = {}) {
       record.featureTracks = remapped.featureTracks;
       record.annotatedFeatureCount = countFeatureTrackItems(record.featureTracks);
       featureUpdates = remapped.updates;
-      const featureUpdateSummary = summarizeFeatureUpdates(featureUpdates);
+      const featureUpdateSummary = summarizeFeatureUpdates(featureUpdates.filter(update => update.status !== "shifted" && update.status !== "unchanged"));
       if (featureUpdateSummary) {
-        warnings.push(`${record.title}: annotated feature coordinates updated after edit (${featureUpdateSummary}). Click affected features in the viewer to inspect their status.`);
+        warnings.push(`${record.title}: annotations need review after edit (${featureUpdateSummary}). Click affected features in the viewer to inspect their status.`);
       }
     }
   } else {

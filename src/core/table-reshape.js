@@ -73,7 +73,7 @@ function normalizeCell(value, trimCells) {
   return trimCells ? text.trim() : text;
 }
 
-function reshapeLongToWide(parsed, options, warnings) {
+function reshapeLongToWide(parsed, options, warnings, notes) {
   const idColumns = resolveColumns(parsed.columns, options.idColumns, warnings, "ID");
   const namesColumn = findColumn(parsed.columns, options.namesFrom);
   const valuesColumn = findColumn(parsed.columns, options.valuesFrom);
@@ -128,9 +128,16 @@ function reshapeLongToWide(parsed, options, warnings) {
   }
 
   if (duplicateCellCount > 0) {
-    warnings.push(
-      `${duplicateCellCount} duplicate long-format value(s) were combined using "${aggregate}".`
-    );
+    const messages = ["sum", "mean"].includes(aggregate) ? notes : warnings;
+    messages.push(`${duplicateCellCount} duplicate long-format value(s) were combined using "${aggregate}".`);
+  }
+
+  if (["sum", "mean"].includes(aggregate)) {
+    let ignored = 0;
+    for (const group of grouped.values()) for (const values of group.values.values()) {
+      ignored += values.filter(value => !Number.isFinite(Number(value))).length;
+    }
+    if (ignored) warnings.push(`${ignored} nonnumeric value(s) were omitted from "${aggregate}" aggregation.`);
   }
 
   const rows = [...grouped.values()].map((group) => {
@@ -184,10 +191,11 @@ function reshapeWideToLong(parsed, options, warnings) {
 export function reshapeTable(input, options = {}) {
   const parsed = coerceTableInput(input, options);
   const warnings = [...parsed.warnings];
+  const notes = [];
   const mode = options.mode === "wide-to-long" ? "wide-to-long" : "long-to-wide";
   const reshaped = mode === "wide-to-long"
     ? reshapeWideToLong(parsed, options, warnings)
-    : reshapeLongToWide(parsed, options, warnings);
+    : reshapeLongToWide(parsed, options, warnings, notes);
 
   const report = [
     "Table reshape",
@@ -206,6 +214,7 @@ export function reshapeTable(input, options = {}) {
     outputRows: reshaped.rows,
     report,
     warnings,
+    notes,
     delimiterId: parsed.delimiterId
   };
 }

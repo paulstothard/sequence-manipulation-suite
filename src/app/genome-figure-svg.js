@@ -521,6 +521,7 @@ function featureFamilySortOrder(type) {
 }
 
 function slotGroupForFeature(feature, grouping = DEFAULT_FEATURE_SLOT_GROUPING) {
+  if (feature.geneModel) return { key: "gene-models", label: "Gene models", colorType: "mRNA", sortOrder: 1.5 };
   const type = String(feature?.type || "misc");
   const family = featureFamily(type);
   const sortOrder = featureFamilySortOrder(type);
@@ -560,7 +561,9 @@ function featureSlotGroups(features, grouping = DEFAULT_FEATURE_SLOT_GROUPING) {
       });
     }
     const existing = groupsByKey.get(group.key);
-    if (!existing.types.includes(feature.type)) existing.types.push(feature.type);
+    for (const type of feature.geneModel ? [...new Set(feature.parts.map(part => part.colorType))] : [feature.type]) {
+      if (type && !existing.types.includes(type)) existing.types.push(type);
+    }
   }
   const groups = [...groupsByKey.values()];
   return groups.sort((left, right) => {
@@ -826,7 +829,7 @@ function plotScaleDescription(plot, scale) {
 }
 
 function getVisibleFeatures(record, state) {
-  return (record.features ?? []).filter((feature) => state.visibleFeatureTypes?.has(feature.type));
+  return (record.features ?? []).filter((feature) => feature.geneModel || state.visibleFeatureTypes?.has(feature.type));
 }
 
 function scaledPlotDelta(value, scale) {
@@ -921,24 +924,21 @@ function normalizeViewRange(record, start, end) {
 }
 
 function clipFeatureToViewRange(feature, range) {
-  const parts = (feature.parts?.length ? feature.parts : [{ start: feature.start, end: feature.end, strand: feature.strand }])
-    .map((part) => ({
-      ...part,
-      sourceStart: part.start,
-      sourceEnd: part.end,
-      start: Math.max(part.start, range.start) - range.start + 1,
-      end: Math.min(part.end, range.end) - range.start + 1
-    }))
-    .filter((part) => part.end >= part.start);
-  if (!parts.length) return null;
-  return {
-    ...feature,
-    sourceStart: feature.start,
-    sourceEnd: feature.end,
-    start: Math.min(...parts.map((part) => part.start)),
-    end: Math.max(...parts.map((part) => part.end)),
-    parts
-  };
+  const clip = parts => parts.map(part => ({ ...part,
+    sourceStart: part.sourceStart ?? part.start,
+    sourceEnd: part.sourceEnd ?? part.end,
+    fullStart: part.start - range.start + 1,
+    fullEnd: part.end - range.start + 1,
+    start: Math.max(part.start, range.start) - range.start + 1,
+    end: Math.min(part.end, range.end) - range.start + 1
+  })).filter(part => part.end >= part.start);
+  const parts = clip(feature.parts?.length ? feature.parts : [feature]);
+  const connectors = clip(feature.connectors ?? []);
+  const intervals = [...parts, ...connectors];
+  if (!intervals.length) return null;
+  return { ...feature, sourceStart: feature.start, sourceEnd: feature.end,
+    start: Math.min(...intervals.map(part => part.start)), end: Math.max(...intervals.map(part => part.end)),
+    parts, connectors, ...(feature.geneModel ? { terminal: feature.terminal - range.start + 1 } : {}) };
 }
 
 function clipPlotToViewRange(plot, range) {
@@ -1049,7 +1049,8 @@ function chooseLabelFeatures(record, density, excludeIds = new Set(), forceIds =
 
 function makeLinearRows(record, width, rowHeight = 420, firstRowY = 215) {
   const plotWidth = width - LINEAR_RIGHT_MARGIN * 2;
-  const rowCount = Math.max(4, Math.min(12, Math.ceil(record.length / 700000) || 4));
+  // Gene-sized regions should read continuously; wrapping is useful for genomes.
+  const rowCount = record.length <= 10000 ? 1 : Math.max(4, Math.min(12, Math.ceil(record.length / 700000) || 4));
   const rowSpan = Math.ceil(record.length / rowCount);
   const rows = [];
   for (let index = 0; index < rowCount; index += 1) {
@@ -1069,12 +1070,15 @@ function makeLinearRows(record, width, rowHeight = 420, firstRowY = 215) {
 }
 
 function clipFeatureToRow(feature, row) {
-  return (feature.parts?.length ? feature.parts : [{ start: feature.start, end: feature.end }])
+  return (Array.isArray(feature.parts) ? feature.parts : [{ start: feature.start, end: feature.end }])
     .map((part, partIndex) => ({
+      ...part,
       start: Math.max(part.start, row.start),
       end: Math.min(part.end, row.end),
-      sourceStart: part.start,
-      sourceEnd: part.end,
+      sourceStart: part.sourceStart ?? part.start,
+      sourceEnd: part.sourceEnd ?? part.end,
+      fullStart: part.fullStart ?? part.start,
+      fullEnd: part.fullEnd ?? part.end,
       partIndex,
       partCount: feature.parts?.length || 1
     }))
@@ -1096,7 +1100,8 @@ export function makeStackedFeatureLayout(record, features, maxSlots = 12, groupi
   for (const [index, group] of groups.entries()) {
     const groupFeatures = features.filter((feature) => slotGroupForFeature(feature, grouping).key === group.key);
     const remainingGroups = groups.length - index - 1;
-    const groupLayout = createStackedIntervalLayout(groupFeatures, {
+    const groupLayout = createStackedIntervalLayout(groupFeatures.map(feature => feature.geneModel
+      ? { ...feature, parts: [{ start: feature.start, end: feature.end }] } : feature), {
       ...layoutOptions,
       maxSlots: Math.max(1, slotBudget - slotCount - remainingGroups)
     });
@@ -1779,6 +1784,9 @@ function appendInspectionTitle(mark, text) {
 }
 
 function featurePartCoordinates(feature, part) {
+  if (Number.isFinite(part?.localStart) && Number.isFinite(part?.localEnd)) {
+    return { start: part.localStart, end: part.localEnd };
+  }
   if (Number.isFinite(Number(part?.sourceStart)) && Number.isFinite(Number(part?.sourceEnd))) {
     return { start: Number(part.sourceStart), end: Number(part.sourceEnd) };
   }
@@ -1795,7 +1803,8 @@ export function describeGenomeFigureFeature(feature, part = feature) {
   const end = Math.max(coordinates.start, coordinates.end);
   const identity = String(feature?.label || feature?.type || "Feature").trim();
   const facts = [identity];
-  if (feature?.type && feature.type !== identity) facts.push(`type ${feature.type}`);
+  if (part.role) facts.push(part.role);
+  if (!feature?.geneModel && feature?.type && feature.type !== identity) facts.push(`type ${feature.type}`);
   if (feature?.contigTitle) facts.push(`sequence ${feature.contigTitle}`);
   if (Number.isFinite(start) && Number.isFinite(end)) {
     facts.push(`coordinates ${start.toLocaleString()}-${end.toLocaleString()} bp`);
@@ -1803,7 +1812,8 @@ export function describeGenomeFigureFeature(feature, part = feature) {
   }
   if (feature?.strand === "+") facts.push("forward strand");
   if (feature?.strand === "-") facts.push("reverse strand");
-  if (feature?.source) facts.push(`source location ${feature.source}`);
+  const source = part.sourceLocation ?? feature?.source;
+  if (source) facts.push(`source location ${source}`);
   return facts.join("; ");
 }
 
@@ -1833,6 +1843,10 @@ function drawLinearFeatureGlyph(svg, feature, left, y, widthPx, height, color, s
     stroke: "none",
     opacity,
     "data-feature-id": feature.id,
+    "data-gene-model": feature.geneModel ? "true" : undefined,
+    "data-component-role": part.role,
+    "data-feature-center": y,
+    "data-feature-thickness": height,
     "data-feature-contig": feature.contigId,
     "data-feature-part-start": part.start,
     "data-feature-part-end": part.end,
@@ -1840,7 +1854,9 @@ function drawLinearFeatureGlyph(svg, feature, left, y, widthPx, height, color, s
     "data-feature-width-px": widthPx,
     "data-feature-display-width-px": displayWidth
   };
-  const terminalVisible = featureArrowTerminalVisible(part, feature.strand);
+  const terminalVisible = feature.geneModel
+    ? (feature.strand === '-' ? part.start : part.end) === feature.terminal
+    : featureArrowTerminalVisible(part, feature.strand);
   const headLength = state.featureGlyph === "directional"
     ? featureArrowHeadLength(widthPx, height, feature.strand, terminalVisible)
     : 0;
@@ -1872,7 +1888,8 @@ function drawCircularFeatureGlyph(svg, feature, cx, cy, radius, slotWidth, start
   const displayEnd = adjustedEnd + (displayAngleSpan - angleSpan) / 2;
   const headLength = state.featureGlyph === "directional"
     ? featureArrowHeadLength(angleSpan * radius, slotWidth, feature.strand,
-      featureArrowTerminalVisible({ ...part, partIndex, partCount: feature.parts?.length || 1 }, feature.strand))
+      (feature.geneModel ? (feature.strand === '-' ? part.start : part.end) === feature.terminal
+        : featureArrowTerminalVisible({ ...part, partIndex, partCount: feature.parts?.length || 1 }, feature.strand)))
     : 0;
   svg.append(appendInspectionTitle(pathEl(directionalAnnularPath(cx, cy, radius + slotWidth / 2, radius - slotWidth / 2, displayStart, displayEnd, feature.strand, headLength), {
     class: "genome-figure-feature-glyph",
@@ -1880,6 +1897,10 @@ function drawCircularFeatureGlyph(svg, feature, cx, cy, radius, slotWidth, start
     stroke: "none",
     opacity,
     "data-feature-id": feature.id,
+    "data-gene-model": feature.geneModel ? "true" : undefined,
+    "data-component-role": part.role,
+    "data-feature-center": radius,
+    "data-feature-thickness": slotWidth,
     "data-feature-contig": feature.contigId,
     "data-feature-part-start": part.start,
     "data-feature-part-end": part.end,
@@ -1888,6 +1909,37 @@ function drawCircularFeatureGlyph(svg, feature, cx, cy, radius, slotWidth, start
     "data-feature-display-arc-px": displayAngleSpan * radius,
     "data-feature-arrow-head-px": headLength.toFixed(2)
   }), describeGenomeFigureFeature(feature, part)));
+}
+
+function modelPartColor(feature, part, state) {
+  return colorForFeatureDisplay({ type: part.colorType || feature.type }, state.palette, state.paletteName, state.featureColorMode);
+}
+
+function modelPartThickness(feature, part, thickness) {
+  return feature.geneModel && part.role !== 'CDS' ? Math.max(3, thickness * 0.38) : thickness;
+}
+
+function drawModelConnector(svg, feature, part, d, state) {
+  svg.append(appendInspectionTitle(pathEl(d, {
+    class: 'genome-figure-intron', fill: 'none', stroke: state.palette.ink,
+    'stroke-width': 1.5, opacity: Number(state.featureOpacity ?? DEFAULT_FEATURE_OPACITY) / 100,
+    'data-feature-id': feature.id, 'data-component-role': part.role,
+    'data-feature-part-start': part.start, 'data-feature-part-end': part.end
+  }), describeGenomeFigureFeature(feature, part)));
+}
+
+function renderGeneModelKey(svg, features, x, y, state) {
+  if (!features.some(feature => feature.geneModel)) return;
+  const group = svgEl('g', { class: 'genome-figure-gene-model-key' });
+  const transcript = modelPartColor({}, {colorType: 'mRNA'}, state);
+  const cds = modelPartColor({}, {colorType: 'CDS'}, state);
+  group.append(svgEl('rect', {x, y: y - 3, width: 24, height: 6, fill: transcript}));
+  group.append(textEl('Exon / UTR', {x: x + 32, y: y + 5, class: 'genome-figure-legend-text'}));
+  group.append(svgEl('rect', {x: x + 156, y: y - 8, width: 24, height: 16, fill: cds}));
+  group.append(textEl('CDS', {x: x + 188, y: y + 5, class: 'genome-figure-legend-text'}));
+  group.append(pathEl(`M ${x + 257} ${y} h 26`, {stroke: state.palette.ink, 'stroke-width': 1.5}));
+  group.append(textEl('Intron / joined gap', {x: x + 291, y: y + 5, class: 'genome-figure-legend-text'}));
+  svg.append(group);
 }
 
 function circularPlotRadii(plots, plotBandHalfHeight) {
@@ -2742,16 +2794,21 @@ function renderCircularRecord(record, state) {
   };
   for (const feature of features) {
     const radius = ringFor(feature);
-    const color = colorForFeatureDisplay(feature, palette, state.paletteName, state.featureColorMode);
+    for (const gap of feature.connectors ?? []) {
+      drawModelConnector(svg, feature, gap, polarPath(cx, cy, radius,
+        circularAngleFor(record, gap.start), circularAngleFor(record, gap.end, {endEdge: true})), state);
+    }
     for (const [partIndex, part] of (feature.parts?.length ? feature.parts : [{ start: feature.start, end: feature.end }]).entries()) {
       const startAngle = circularAngleFor(record, part.start);
       const endAngle = circularAngleFor(record, part.end, { endEdge: true });
-      drawCircularFeatureGlyph(svg, feature, cx, cy, radius, slotWidth, startAngle, endAngle, color, state, part, partIndex);
+      const color = modelPartColor(feature, part, state);
+      const thickness = modelPartThickness(feature, part, slotWidth);
+      drawCircularFeatureGlyph(svg, feature, cx, cy, radius, thickness, startAngle, endAngle, color, state, part, partIndex);
       const labelPlacement = getCircularInsideFeatureLabelPlacement({
         cx,
         cy,
         radius,
-        slotWidth,
+        slotWidth: thickness,
         startAngle,
         endAngle,
         text: feature.label
@@ -2807,6 +2864,7 @@ function renderCircularRecord(record, state) {
       });
     }
     renderPlotLegend(svg, plots, width - 400, legendY, state);
+    renderGeneModelKey(svg, features, width / 2 - 240, height - 36, state);
   }
   return svg;
 }
@@ -2821,7 +2879,7 @@ function linearLegendBottom(slotGroups, features, plots, state) {
   const plotBottom = plots.length
     ? legendY - 24 + plots.length * plotRowHeight + 44
     : 0;
-  return Math.max(112, featureBottom, plotBottom);
+  return Math.max(features.some(feature => feature.geneModel) ? 150 : 112, featureBottom, plotBottom);
 }
 
 function linearFirstRowY(slotGroups, features, plots, state) {
@@ -2878,7 +2936,7 @@ function renderLinearRecord(record, state) {
   const rangeSummary = record.coordinateOffset
     ? `${originalStart.toLocaleString()}-${originalEnd.toLocaleString()} bp shown of ${originalLength.toLocaleString()} bp`
     : `${record.length.toLocaleString()} bp`;
-  svg.append(textEl(`${rangeSummary} · wrapped linear figure · ${features.length.toLocaleString()} shown features`, {
+  svg.append(textEl(`${rangeSummary} · ${rows.length === 1 ? "linear" : "wrapped linear"} figure · ${features.length.toLocaleString()} shown features`, {
     x: 82,
     y: 88,
     class: "genome-figure-subtitle"
@@ -2919,7 +2977,11 @@ function renderLinearRecord(record, state) {
     }
     for (const feature of features) {
       const parts = clipFeatureToRow(feature, row);
-      if (!parts.length) continue;
+      const gaps = (feature.connectors ?? []).map(part => ({ ...part,
+        sourceStart: part.sourceStart ?? part.start, sourceEnd: part.sourceEnd ?? part.end,
+        start: Math.max(part.start, row.start), end: Math.min(part.end, row.end)
+      })).filter(part => part.end >= part.start);
+      if (!parts.length && !gaps.length) continue;
       const labelMidpoint = Math.max(row.start, Math.min(row.end, featureMidpoint(feature)));
       const labelAnchor = { x: rowX(row, labelMidpoint), y: axisY };
       labelAnchorsById.set(`auto:${feature.id}:${row.index}`, labelAnchor);
@@ -2928,13 +2990,16 @@ function renderLinearRecord(record, state) {
       const y = stackedLayout
         ? axisY + LINEAR_FEATURE_TOP_OFFSET + slot * slotStep
         : axisY + LINEAR_FEATURE_TOP_OFFSET + slot * slotStep;
-      const color = colorForFeatureDisplay(feature, palette, state.paletteName, state.featureColorMode);
+      for (const gap of gaps) {
+        drawModelConnector(svg, feature, gap, `M ${rowBoundaryX(row, gap.start)} ${y} H ${rowBoundaryX(row, gap.end + 1)}`, state);
+      }
       for (const part of parts) {
         const x1 = rowBoundaryX(row, part.start);
         const x2 = rowBoundaryX(row, part.end + 1);
         const left = Math.min(x1, x2);
         const widthPx = Math.abs(x2 - x1);
-        const featureSlotWidth = state.slotWidth ?? DEFAULT_FEATURE_TRACK_WIDTH;
+        const color = modelPartColor(feature, part, state);
+        const featureSlotWidth = modelPartThickness(feature, part, state.slotWidth ?? DEFAULT_FEATURE_TRACK_WIDTH);
         drawLinearFeatureGlyph(svg, feature, left, y, widthPx, featureSlotWidth, color, state, part);
         if (shouldUseInsideLabel(feature, labelCandidateIds, insideLabelIds) && featureSlotWidth >= MIN_INSIDE_FEATURE_LABEL_TRACK_WIDTH && widthPx > estimateTextWidth(feature.label, INSIDE_FEATURE_LABEL_FONT_SIZE) + INSIDE_FEATURE_LABEL_PADDING) {
           insideLabelDraws.push({ label: feature.label, x: left + widthPx / 2, y, options: { featureFill: color } });
@@ -2973,6 +3038,7 @@ function renderLinearRecord(record, state) {
       });
     }
     renderPlotLegend(svg, plots, width - 405, legendY, state);
+    renderGeneModelKey(svg, features, 82, 125, state);
   }
   return svg;
 }
@@ -3463,6 +3529,7 @@ function installFigureEditor(panel, sourceRecords, figure, editorDocument) {
     featureColorMode: figure.featureColorMode || "type",
     featureOpacity: DEFAULT_FEATURE_OPACITY,
     featureGlyph: figure.featureGlyph || "directional",
+    geneModels: true,
     labelDensity: figure.labelDensity || "medium",
     tickDensity: DEFAULT_TICK_DENSITY,
     visibleFeatureTypes: defaultVisibleTypes,
@@ -3522,6 +3589,10 @@ function installFigureEditor(panel, sourceRecords, figure, editorDocument) {
     { value: "fixed", label: "Fixed biological scale" },
     { value: "fit", label: "Fit observed range" }
   ], state.plotScaleMode, "Fixed biological scale keeps GC fraction and GC skew comparable across figures. Fit observed range expands the plotted values to use the available plot band.");
+  const geneModelsToggle = makeCheckboxControl("Connected gene models", state.geneModels);
+  geneModelsToggle.input.setAttribute("aria-label", "Connected gene models");
+  const geneModelsHelp = makeInlineHelp("Combine linked transcript and CDS annotations on one row or ring. Thin blocks show exons/UTRs, thick blocks show CDS, and lines join annotated parts. Ambiguous relationships stay separate. Turn off to draw the original annotations individually.");
+  geneModelsToggle.label.append(" ", geneModelsHelp.help, geneModelsHelp.popover);
   const featureLayoutControl = makeSelect("Feature layout", [
     { value: "non-overlap", label: "Pack into lanes" },
     { value: "type-slots", label: "Group by type" }
@@ -3588,7 +3659,7 @@ function installFigureEditor(panel, sourceRecords, figure, editorDocument) {
   const featureControls = document.createElement("div");
   featureControls.className = "genome-figure-controls";
   featureControls.append(
-    makeControlGroup("Features", featureLayoutControl.label, featureSlotGroupingControl.label, featureColorControl.label, featureGlyphControl.label, featureOpacityControl.label, slotWidthControl.label, slotDividerToggle.label, featureTypeControl)
+    makeControlGroup("Features", geneModelsToggle.label, featureLayoutControl.label, featureSlotGroupingControl.label, featureColorControl.label, featureGlyphControl.label, featureOpacityControl.label, slotWidthControl.label, slotDividerToggle.label, featureTypeControl)
   );
   const editor = document.createElement("div");
   editor.className = "genome-figure-label-editor";
@@ -3648,7 +3719,8 @@ function installFigureEditor(panel, sourceRecords, figure, editorDocument) {
     const projected = projectGenomeFigureRecords(sourceRecords, {
       order: state.contigOrder,
       visibleRecordKeys: selectedRecordKeys,
-      windowSize: state.plotWindowSize
+      windowSize: state.plotWindowSize,
+      geneModels: state.geneModels, visibleFeatureTypes: state.visibleFeatureTypes
     });
     if (!projected) return null;
     if (state.regionRecordKey === "all") return projected;
@@ -3682,6 +3754,9 @@ function installFigureEditor(panel, sourceRecords, figure, editorDocument) {
     figureHost.textContent = "";
     state.figure.width = state.figureWidth;
     const displayRecord = currentDisplayRecord();
+    state.circularGeometryRecord = projectGenomeFigureRecords(sourceRecords, {
+      windowSize: state.plotWindowSize, geneModels: state.geneModels, visibleFeatureTypes: state.visibleFeatureTypes
+    });
     syncRegionControl();
     if (!displayRecord) {
       groupingSummary.textContent = "No feature groups shown";
@@ -4009,6 +4084,10 @@ function installFigureEditor(panel, sourceRecords, figure, editorDocument) {
     state.plotScaleMode = plotScaleControl.select.value === "fixed" ? "fixed" : "fit";
     render();
   });
+  geneModelsToggle.input.addEventListener("change", () => {
+    state.geneModels = geneModelsToggle.input.checked;
+    invalidateFeatureLayout(); clearSuggestedLabels(); updateSearchCount(); render();
+  });
   featureLayoutControl.select.addEventListener("change", () => {
     state.featureLayout = featureLayoutControl.select.value;
     state.figure.featureLayout = state.featureLayout;
@@ -4181,11 +4260,11 @@ function installFigureEditor(panel, sourceRecords, figure, editorDocument) {
   workspace.append(figureHost, toolbar);
   panel.append(titleBar, workspace);
   render();
-  const scalarKeys = ['paletteName','gcBaselineMode','plotScaleMode','featureLayout','featureSlotGrouping','featureColorMode','featureOpacity','featureGlyph','labelDensity','tickDensity','figureWidth','slotWidth','plotBandWidth','plotWindowSize','contigOrder','regionRecordKey','viewRangeStart','viewRangeEnd','showLegend','showSlotDividers','showSuggestedLabels','showAddedLabels','labelBoxes'];
+  const scalarKeys = ['geneModels','paletteName','gcBaselineMode','plotScaleMode','featureLayout','featureSlotGrouping','featureColorMode','featureOpacity','featureGlyph','labelDensity','tickDensity','figureWidth','slotWidth','plotBandWidth','plotWindowSize','contigOrder','regionRecordKey','viewRangeStart','viewRangeEnd','showLegend','showSlotDividers','showSuggestedLabels','showAddedLabels','labelBoxes'];
   const setKeys = ['visiblePlots','visibleFeatureTypes','visibleRecordKeys','forceLabelIds'];
   const selects = {paletteName:paletteControl.select,gcBaselineMode:gcBaselineControl.select,plotScaleMode:plotScaleControl.select,featureLayout:featureLayoutControl.select,featureSlotGrouping:featureSlotGroupingControl.select,featureColorMode:featureColorControl.select,featureGlyph:featureGlyphControl.select,labelDensity:densityControl.select,contigOrder:contigOrderControl.select};
   const ranges = {featureOpacity:featureOpacityControl,tickDensity:tickDensityControl,slotWidth:slotWidthControl,plotBandWidth:plotWidthControl,plotWindowSize:plotWindowControl};
-  const toggles = {showLegend:legendToggle.input,showSlotDividers:slotDividerToggle.input,showSuggestedLabels:suggestedLabelsToggle.input,showAddedLabels:addedLabelsToggle.input,labelBoxes:labelBoxToggle.input};
+  const toggles = {geneModels:geneModelsToggle.input,showLegend:legendToggle.input,showSlotDividers:slotDividerToggle.input,showSuggestedLabels:suggestedLabelsToggle.input,showAddedLabels:addedLabelsToggle.input,labelBoxes:labelBoxToggle.input};
   const session = createEditorSession({host:panel, toolbar:titleBar, tool:figure.layout === 'linear' ? 'linear-genome-figure' : 'circular-genome-figure', source:originalFigure, initial:editorDocument?.state,
     read:() => ({...Object.fromEntries(scalarKeys.map(k=>[k,state[k]])),...Object.fromEntries(setKeys.map(k=>[k,[...state[k]]])),labels:state.labels.filter(l=>!isSuggestedLabel(l))}),
     apply:snapshot => {

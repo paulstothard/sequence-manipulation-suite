@@ -10,8 +10,9 @@ export function continuousFeatureChevronRows(items) {
   const lanes = new Map();
   for (const item of items) {
     if (!Number.isInteger(item.slot) || item.slot < 0) continue;
-    if (!lanes.has(item.slot)) lanes.set(item.slot, { connected: [], coding: [] });
-    const lane = lanes.get(item.slot);
+    const key = item.layoutGroup ?? item.slot;
+    if (!lanes.has(key)) lanes.set(key, { connected: [], coding: [] });
+    const lane = lanes.get(key);
     if (item.connectParts) lane.connected.push(item);
     if (item.geneModel?.role === 'CDS') lane.coding.push(item);
   }

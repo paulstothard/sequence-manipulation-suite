@@ -82,12 +82,23 @@ function makeExportRect(width, height) {
   };
 }
 
+export function getPngExportDimensions(width, height, requestedScale) {
+  // Expanded feature stacks can exceed browser bitmap limits at export DPI.
+  // Preserve the whole figure by reducing resolution, never cropping rows.
+  const scale = Math.min(getPngExportScale(requestedScale), 16384 / Math.max(width, height),
+    Math.sqrt(16777216 / (width * height)));
+  return { scale, width: Math.max(1, Math.floor(width * scale)), height: Math.max(1, Math.floor(height * scale)) };
+}
+
 export function makeCanvasPngExportCanvas(canvas, options = {}) {
-  const scale = getPngExportScale(options.scale);
   const display = canvasDisplayDimensions(canvas);
+  const requestedScale = getPngExportScale(options.scale);
+  const { width, height, scale } = options.boundBitmap
+    ? getPngExportDimensions(display.width, display.height, requestedScale)
+    : { width: Math.max(1, Math.round(display.width * requestedScale)), height: Math.max(1, Math.round(display.height * requestedScale)), scale: requestedScale };
   const exportCanvas = document.createElement("canvas");
-  exportCanvas.width = Math.max(1, Math.round(display.width * scale));
-  exportCanvas.height = Math.max(1, Math.round(display.height * scale));
+  exportCanvas.width = width;
+  exportCanvas.height = height;
   const context = exportCanvas.getContext("2d");
   context.fillStyle = "#ffffff";
   context.fillRect(0, 0, exportCanvas.width, exportCanvas.height);

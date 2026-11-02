@@ -1,5 +1,5 @@
 import { exportDelimitedTable } from '../../core/table.js';
-import { createImageState, layoutImage, parseImageSource, imageToolId } from '../../core/text-table-image.js';
+import { createImageState, layoutImage, imageToolId } from '../../core/text-table-image.js';
 import { makeToolResult, makeTextStream } from '../../core/workflow.js';
 
 export async function runTextTableImage(input, options = {}, context = {}) {
@@ -18,6 +18,7 @@ export async function runTextTableImage(input, options = {}, context = {}) {
   context.reportProgress?.({ phase: 'Image ready', progress: 1 });
   return makeToolResult({ output, download: { filename: `${tool}.sms3.json`, mimeType: 'application/json' },
     recordsProcessed: (layout.source.lines ?? layout.source.rows).length, basesProcessed: state.text.length, processedUnitLabel: 'character',
-    warnings: parseImageSource(state.text, state.mode, state).warnings,
+    warnings: layout.source.warnings,
+    notes: layout.source.notes,
     streams: { document: makeTextStream(output, 'application/json') }, visual: { textTableImage: source } });
 }

@@ -1,9 +1,11 @@
+import { appVersion } from "../app-version.js";
 import { resolveDesignFeatureTarget, designFeatureTargetLabel, primerPairMatchesFeature } from "./design-feature-targets.js";
 import { parsePcrTemplateInput } from "./pcr-template-input.js";
 import { formatFastaRecord } from "./fasta.js";
 import { cleanDnaRnaSequence, complementDnaRnaSequence } from "./sequence.js";
 import { exportDelimitedTable } from "./table.js";
-import { effectiveToolLimit } from "./tool-limit-policy.js";
+import { normalizePcrPrimerDesignOptions, PCR_PRIMER_DESIGN_DEFAULTS } from "./pcr-primer-design-options.js";
+export { normalizePcrPrimerDesignOptions } from "./pcr-primer-design-options.js";
 
 export const pcrPrimerDesignTableColumns = [
   { id: "rank", label: "Rank", type: "number" },
@@ -34,7 +36,11 @@ export const pcrPrimerDesignTableColumns = [
   { id: "right_hairpin_stem", label: "Right hairpin stem", type: "number" },
   { id: "left_reference_matches", label: "Left reference matches", type: "number" },
   { id: "right_reference_matches", label: "Right reference matches", type: "number" },
-  { id: "target_feature", label: "Target feature", type: "string" }
+  { id: "target_feature", label: "Target feature", type: "string" },
+  { id: "candidate_search_status", label: "Candidate search status", type: "string" },
+  { id: "reference_search_status", label: "Reference search status", type: "string" },
+  { id: "reference_records_skipped", label: "Reference records skipped", type: "number" },
+  { id: "reference_count_interpretation", label: "Reference count interpretation", type: "string" }
 ];
 
 const EXACT_DNA = /^[ACGT]+$/;
@@ -44,18 +50,6 @@ const COMPLEMENTS = new Map([
   ["G", "C"],
   ["T", "A"]
 ]);
-
-function clampNumber(value, fallback, min, max) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) {
-    return fallback;
-  }
-  return Math.max(min, Math.min(max, numeric));
-}
-
-function clampInteger(value, fallback, min, max) {
-  return Math.round(clampNumber(value, fallback, min, max));
-}
 
 function round(value, digits = 2) {
   if (!Number.isFinite(value)) {
@@ -202,26 +196,16 @@ function maxSelfComplementRun(sequence) {
 
 function maxThreePrimeComplementRun(sequence) {
   const source = String(sequence ?? "").toUpperCase();
-  const reversed = Array.from(source).reverse().join("");
+  // Anchor one end at this copy's 3′ nucleotide. Each otherStart fixes a
+  // single antiparallel alignment against a second copy; stop at a mismatch.
   let best = 0;
-  for (let suffixStart = source.length - 1; suffixStart >= 0; suffixStart -= 1) {
+  for (let otherStart = 0; otherStart < source.length; otherStart += 1) {
     let run = 0;
-    for (let index = suffixStart; index < source.length; index += 1) {
-      const suffixOffset = index - suffixStart;
-      for (let otherIndex = 0; otherIndex < reversed.length; otherIndex += 1) {
-        const compareIndex = otherIndex + suffixOffset;
-        if (compareIndex >= reversed.length) {
-          break;
-        }
-        if (isWatsonCrickPair(source[index], reversed[compareIndex])) {
-          run = Math.max(run, suffixOffset + 1);
-        }
-      }
+    while (run < source.length && otherStart + run < source.length &&
+      isWatsonCrickPair(source[source.length - 1 - run], source[otherStart + run])) {
+      run += 1;
     }
     best = Math.max(best, run);
-    if (best >= source.length - suffixStart) {
-      break;
-    }
   }
   return best;
 }
@@ -233,8 +217,8 @@ function maxHairpinStem(sequence, minLoop = 3) {
     for (let right = left + minLoop + 1; right < source.length; right += 1) {
       let stem = 0;
       while (
-        left + stem < right - minLoop &&
-        right - stem >= 0 &&
+        // The next paired bases must still enclose minLoop unpaired bases.
+        right - stem - (left + stem) - 1 >= minLoop &&
         isWatsonCrickPair(source[left + stem], source[right - stem])
       ) {
         stem += 1;
@@ -395,39 +379,24 @@ function makePairRow(record, left, right, productSize, sequence, options, target
   };
 }
 
-export function normalizePcrPrimerDesignOptions(options = {}) {
-  const primerMinLength = clampInteger(options.primerMinLength, 18, 12, 40);
-  const primerMaxLength = Math.max(primerMinLength, clampInteger(options.primerMaxLength, 24, 12, 40));
-  const primerOptLength = clampInteger(options.primerOptLength, 20, primerMinLength, primerMaxLength);
-  const minProductLength = clampInteger(options.minProductLength, 120, 40, 100000);
-  const maxProductLength = Math.max(minProductLength, clampInteger(options.maxProductLength, 260, 40, 100000));
-  const primerMinTm = clampNumber(options.primerMinTm, 57, 20, 95);
-  const primerMaxTm = Math.max(primerMinTm, clampNumber(options.primerMaxTm, 63, 20, 95));
-  return {
-    minProductLength,
-    maxProductLength,
-    primerMinLength,
-    primerOptLength,
-    primerMaxLength,
-    primerMinTm,
-    primerOptTm: clampNumber(options.primerOptTm, 60, primerMinTm, primerMaxTm),
-    primerMaxTm,
-    primerMinGc: clampNumber(options.primerMinGc, 40, 0, 100),
-    primerMaxGc: clampNumber(options.primerMaxGc, 65, 0, 100),
-    gcClampMin: clampInteger(options.gcClampMin, 1, 0, 5),
-    gcClampMax: clampInteger(options.gcClampMax, 4, 0, 5),
-    maxSelfComplementRun: clampInteger(options.maxSelfComplementRun, 8, 2, 20),
-    maxThreePrimeComplementRun: clampInteger(options.maxThreePrimeComplementRun, 5, 1, 20),
-    maxHairpinStem: clampInteger(options.maxHairpinStem, 5, 1, 20),
-    returnCount: clampInteger(options.returnCount, 10, 1, 5000),
-    maxTemplateLength: effectiveToolLimit(options, "maxTemplateLength", clampInteger(options.maxTemplateLength, 20000, 100, 1000000)),
-    maxPairsToEvaluate: effectiveToolLimit(options, "maxPairsToEvaluate", clampInteger(options.maxPairsToEvaluate, 250000, 1000, 5000000)),
-    targetFeature: String(options.targetFeature ?? ""),
-    featureTargetMode: options.featureTargetMode === "within" ? "within" : "flank",
-    targetRegion: String(options.targetRegion ?? "").trim(),
-    excludedRegions: String(options.excludedRegions ?? "").trim(),
-    lineWidth: clampInteger(options.lineWidth, 60, 10, 200)
-  };
+function compareCandidatePairs(left, right) {
+  return left.score - right.score || left.product_size - right.product_size ||
+    left.left_start - right.left_start || left.right_end - right.right_end;
+}
+
+// Keep the best returnCount candidates throughout the scan, including a capped
+// scan. Insert after ties to preserve the original stable enumeration order.
+function retainCandidate(rows, candidate, limit) {
+  if (rows.length === limit && compareCandidatePairs(candidate, rows.at(-1)) >= 0) return;
+  let low = 0;
+  let high = rows.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (compareCandidatePairs(candidate, rows[middle]) < 0) high = middle;
+    else low = middle + 1;
+  }
+  rows.splice(low, 0, candidate);
+  if (rows.length > limit) rows.pop();
 }
 
 function cleanTemplateRecords(input, warnings, options) {
@@ -456,6 +425,7 @@ function cleanTemplateRecords(input, warnings, options) {
 export async function designPcrPrimers(input, options = {}, context = {}) {
   const normalized = normalizePcrPrimerDesignOptions(options);
   const warnings = [...(Array.isArray(options.referenceWarnings) ? options.referenceWarnings : [])];
+  const notes = [];
   const referenceRecords = Array.isArray(options.referenceRecords)
     ? options.referenceRecords.filter((record) => String(record?.sequence ?? "").length > 0)
     : [];
@@ -467,8 +437,16 @@ export async function designPcrPrimers(input, options = {}, context = {}) {
   const featureTarget = resolveDesignFeatureTarget(records, normalized.targetFeature);
   if (featureTarget?.partial && normalized.featureTargetMode === "flank") throw new Error("This feature has partial boundaries. Choose Design within feature or provide a template with complete feature boundaries.");
   if (featureTarget?.crossesOrigin && normalized.featureTargetMode === "flank") throw new Error("This feature crosses the sequence origin or has parts out of coordinate order. Amplify entire feature requires a linear span; choose Design within feature or rotate the annotated template first.");
+  const search = {
+    status: "complete", evaluatedPairs: 0,
+    templates: records.map((record, recordIndex) => ({
+      recordIndex, id: record.id ?? "", title: record.title, length: record.sequence.length,
+      status: featureTarget && featureTarget.recordIndex !== recordIndex ? "not selected" : "not searched",
+      evaluatedPairs: 0
+    }))
+  };
   if (records.length === 0) {
-    return { records, rows: [], warnings: [...warnings, "No template sequence was provided."], charactersRemoved, options: normalized };
+    return { records, rows: [], warnings: [...warnings, "No template sequence was provided."], charactersRemoved, options: normalized, search };
   }
 
   const rows = [];
@@ -477,6 +455,7 @@ export async function designPcrPrimers(input, options = {}, context = {}) {
   for (let recordIndex = 0; recordIndex < records.length; recordIndex += 1) {
     const record = records[recordIndex];
     if (featureTarget && featureTarget.recordIndex !== recordIndex) continue;
+    const scope = search.templates[recordIndex];
     totalBases += record.sequence.length;
     context.reportProgress?.({
       phase: "scanning-template",
@@ -487,10 +466,13 @@ export async function designPcrPrimers(input, options = {}, context = {}) {
     await context.yieldIfNeeded?.();
 
     if (record.sequence.length > normalized.maxTemplateLength) {
+      scope.status = "skipped limit";
+      search.status = "partial";
       warnings.push(`${record.title}: skipped because ${record.sequence.length} bp exceeds the current design limit of ${normalized.maxTemplateLength} bp.`);
       continue;
     }
     if (record.sequence.length < normalized.minProductLength) {
+      scope.status = "below minimum length";
       warnings.push(`${record.title}: sequence is shorter than the minimum product size.`);
       continue;
     }
@@ -506,6 +488,9 @@ export async function designPcrPrimers(input, options = {}, context = {}) {
       }
     }
 
+    scope.status = "complete";
+    scope.targetRegions = targetRegions;
+    scope.excludedRegions = excludedRegions;
     const { leftByStart, rightByEnd } = makeCandidateMaps(record.sequence, normalized, excludedRegions);
     const candidateRows = [];
     let capped = false;
@@ -528,7 +513,8 @@ export async function designPcrPrimers(input, options = {}, context = {}) {
             if (targetRegions.length > 0 && !flankedTarget) {
               continue;
             }
-            candidateRows.push({ ...makePairRow(record, left, right, productSize, record.sequence, normalized, flankedTarget), recordIndex, target_feature: featureTarget?.label ?? "" });
+            retainCandidate(candidateRows, { ...makePairRow(record, left, right, productSize, record.sequence, normalized, flankedTarget), recordIndex, target_feature: featureTarget?.label ?? "" }, normalized.returnCount);
+            scope.evaluatedPairs += 1;
             evaluatedPairs += 1;
             if (evaluatedPairs >= normalized.maxPairsToEvaluate) {
               capped = true;
@@ -547,19 +533,17 @@ export async function designPcrPrimers(input, options = {}, context = {}) {
         break;
       }
     }
+    rows.push(...candidateRows);
     if (capped) {
-      warnings.push(`Pair scanning stopped after ${normalized.maxPairsToEvaluate.toLocaleString()} evaluated pairs. Tighten the product range or template size for a more exhaustive design.`);
+      scope.status = "partial";
+      search.status = "partial";
+      search.stopReason = `Pair scanning stopped after ${normalized.maxPairsToEvaluate.toLocaleString()} evaluated pairs. Returned candidates are best-so-far from a partial search; any later templates remain unsearched. Tighten the product range or template size for a more exhaustive design.`;
+      warnings.push(search.stopReason);
       break;
     }
-    candidateRows.sort((left, right) =>
-      left.score - right.score ||
-      left.product_size - right.product_size ||
-      left.left_start - right.left_start ||
-      left.right_end - right.right_end
-    );
-    rows.push(...candidateRows.slice(0, normalized.returnCount));
   }
 
+  search.evaluatedPairs = evaluatedPairs;
   rows.sort((left, right) =>
     left.score - right.score ||
     left.template.localeCompare(right.template) ||
@@ -582,17 +566,19 @@ export async function designPcrPrimers(input, options = {}, context = {}) {
   }
 
   if (rows.length === 0) {
-    warnings.push("No primer pairs passed the current constraints.");
+    notes.push(search.status === "partial" ? "No primer pairs were returned from the partial search; unsearched templates may contain candidates." : "No primer pairs passed the current constraints.");
   }
   context.reportProgress?.({ phase: "finished", progress: 1 });
   return {
     records,
     rows,
     warnings,
+    notes,
     charactersRemoved: charactersRemoved + (options.referenceCharactersRemoved ?? 0),
     basesProcessed: totalBases + (options.referenceBasesProcessed ?? 0),
     options: normalized,
     evaluatedPairs,
+    search: { ...search, candidatesReturned: rows.length },
     referenceScreen: {
       status: referenceRecords.length > 0 ? "run" : "not run",
       source: options.referenceSource ?? "",
@@ -613,16 +599,29 @@ export function makePcrPrimerDesignReport(result) {
     `Templates: ${result.records.length}`,
     `Feature target: ${designFeatureTargetLabel(result.options.targetFeature)}${result.options.targetFeature ? (result.options.featureTargetMode === "within" ? "; product within one feature part" : "; primers outside the full feature span") : ""}`,
     `Candidate primer pairs returned: ${result.rows.length}`,
+    `Pair search: ${result.search?.status ?? "complete"}; ${result.search?.evaluatedPairs ?? 0} accepted pairs evaluated`,
+    ...(result.search?.templates ?? []).map(record => `Template ${record.recordIndex + 1} (${record.title}; ${record.length} bp; id ${record.id || "none"}): ${record.status}; ${record.evaluatedPairs} accepted pairs evaluated`),
+
     `Product size range: ${result.options.minProductLength}-${result.options.maxProductLength} bp`,
     `Target region(s): ${result.options.targetRegion || "none"}`,
     `Excluded primer-binding region(s): ${result.options.excludedRegions || "none"}`,
-    `Reference genome hits: ${result.referenceScreen?.status === "run" ? `${result.referenceScreen.records} reference record(s) scanned; per-primer exact hit counts are shown in the table` : "not run"}`,
+    `Reference genome hits: ${result.referenceScreen?.status ?? "not run"}; ${result.referenceScreen?.records ?? 0} record(s) scanned; ${result.referenceScreen?.recordsSkipped ?? 0} record(s) skipped`,
     `Primer length range: ${result.options.primerMinLength}-${result.options.primerMaxLength} nt; optimum ${result.options.primerOptLength} nt`,
     `Tm range: ${result.options.primerMinTm}-${result.options.primerMaxTm} C; optimum ${result.options.primerOptTm} C`,
     `GC percent range: ${result.options.primerMinGc}-${result.options.primerMaxGc}%`,
     `GC clamp: ${result.options.gcClampMin}-${result.options.gcClampMax} G/C bases in the 3' five bases`,
     "",
     "Method: SMS3 enumerates local primer-pair candidates, filters by length, GC, approximate Tm, GC clamp, simple self-complementarity, simple 3' complementarity, hairpin-stem checks, and product size, then ranks lower scores first.",
+    "",
+    `SMS3 version: ${appVersion}; PCR analysis revision: 2026-11-01`,
+    "Effective settings:",
+    JSON.stringify(result.options, (key, value) => typeof value === "number" && !Number.isFinite(value) ? "unlimited" : value, 2),
+    "Input files:",
+    JSON.stringify(result.inputFiles ?? {}, null, 2),
+    "Reference scope:",
+    JSON.stringify(result.referenceScreen ?? {}, null, 2),
+    "Warnings:",
+    ...(result.warnings.length ? result.warnings : ["None"]),
     "",
     "References:",
     "",
@@ -633,7 +632,7 @@ export function makePcrPrimerDesignReport(result) {
     ""
   ];
   if (result.rows.length === 0) {
-    lines.push("No primer pairs passed the current constraints.");
+    lines.push(result.search?.status === "partial" ? "No primer pairs were returned from the partial search; unsearched templates may contain candidates." : "No primer pairs passed the current constraints.");
     return lines.join("\n");
   }
   lines.push("rank\ttemplate\tproduct_size\ttarget_region\tleft_primer\tright_primer\tleft_reference_matches\tright_reference_matches\tleft_start\tright_end\tleft_tm_c\tright_tm_c\tscore");
@@ -657,14 +656,14 @@ export function makePcrPrimerDesignReport(result) {
   return lines.join("\n");
 }
 
-export function makePcrPrimerDesignPrimerFasta(rows, lineWidth = 60) {
+export function makePcrPrimerDesignPrimerFasta(rows, lineWidth = PCR_PRIMER_DESIGN_DEFAULTS.lineWidth) {
   return rows.map((row) => [
     formatFastaRecord(`${row.template}_candidate_${row.rank}_left_${row.left_start}_${row.left_end}`, row.left_primer, lineWidth),
     formatFastaRecord(`${row.template}_candidate_${row.rank}_right_${row.right_start}_${row.right_end}`, row.right_primer, lineWidth)
   ].join("")).join("");
 }
 
-export function makePcrPrimerDesignProductFasta(rows, lineWidth = 60) {
+export function makePcrPrimerDesignProductFasta(rows, lineWidth = PCR_PRIMER_DESIGN_DEFAULTS.lineWidth) {
   return rows.map((row) =>
     formatFastaRecord(`${row.template}_candidate_${row.rank}_product_${row.product_size}_bp`, row.product_sequence, lineWidth)
   ).join("");

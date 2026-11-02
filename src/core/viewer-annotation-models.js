@@ -1,4 +1,4 @@
-import { geneFeatureClass, GENE_FEATURE_STYLES } from './gene-viewer-feature-style.js';
+export { viewerFeatureLegend as viewerGeneFeatureLegend } from './viewer-feature-style.js';
 import { transcriptUtrParts } from './transcript-coding-model.js';
 
 // Build a model only when the source identifies the pair, or when a shared gene
@@ -49,22 +49,17 @@ export function prepareViewerAnnotationTracks(tracks = []) {
       const utrs = transcriptUtrParts(transcript, cds);
       const details = [...(transcript.details ?? []), ...['5′ UTR', '3′ UTR'].map(type => [type,
         utrs.filter(part => part.type === type).map(part => `${part.start}–${part.end}`).join('; ')]).filter(([, value]) => value)];
-      models.push({ ...track, id: `${track.id}-transcript-${index}`, label: transcript.transcriptId || transcript.label || 'Transcript',
-        layout: 'stacked', allowFixedSlotOverlaps: true, featureOpacity: 1, summary: undefined,
-        items: [
-          { ...transcript, slot: 0, connectParts: true, displayParts: utrs, geneModel: { role: 'transcript', utrs }, details },
-          { ...cds, slot: 0, connectParts: false, geneModel: { role: 'CDS' } }
-        ]
-      });
+      const layoutGroup = `${track.id}-transcript-${index}`;
+      models.push(
+        { ...transcript, layoutGroup, connectParts: true, displayParts: utrs, geneModel: { role: 'transcript', utrs }, details },
+        { ...cds, layoutGroup, modelLabel: transcript.transcriptId || transcript.label, connectParts: false, geneModel: { role: 'CDS' } }
+      );
       used.add(transcript); used.add(cds);
     }
     if (!models.length) return [track];
     const rest = items.filter(item => !used.has(item));
-    return [...models, ...(rest.length ? [{ ...track, items: rest, summary: undefined }] : [])];
+    return [{ ...track, id: `${track.id}-transcripts`, label: 'Transcripts & CDS', layout: 'packed-models',
+      featureOpacity: 1, items: models, summary: undefined },
+      ...(rest.length ? [{ ...track, label: track.label && track.label !== 'Features' ? track.label : 'Other annotations', items: rest, summary: undefined }] : [])];
   });
-}
-
-export function viewerGeneFeatureLegend(tracks = []) {
-  const classes = new Set(tracks.flatMap(track => (track.items ?? []).map(item => geneFeatureClass(item.type))));
-  return Object.entries(GENE_FEATURE_STYLES).filter(([kind]) => classes.has(kind)).map(([, style]) => ({ ...style }));
 }

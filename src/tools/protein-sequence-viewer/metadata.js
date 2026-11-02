@@ -1,3 +1,4 @@
+import { LINEAR_VIEWER_ROW_LIMIT } from "../../core/viewer-limits.js";
 import { makeFastaSourceInputOptions } from "../fasta-source-options.js";
 export const proteinSequenceViewerMetadata = {
   id: "protein-sequence-viewer",
@@ -37,6 +38,12 @@ export const proteinSequenceViewerMetadata = {
       choices: [
         { value: "interactive-viewer", label: "Protein sequence viewer" },
         { value: "report", label: "Summary report" }
+      ]
+    },
+    {
+      type: "group", label: "Limits", collapsible: true, collapsed: true, options: [
+        { type: "limit-value", label: "Maximum feature rows per track", value: LINEAR_VIEWER_ROW_LIMIT,
+          help: "The fixed viewer shares its available space between tracks, up to this many rows per track. View hidden features opens the annotations that do not fit; selecting one brings it into view." }
       ]
     }
   ]

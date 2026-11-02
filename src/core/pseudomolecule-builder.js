@@ -318,11 +318,12 @@ export async function buildPseudomolecule(records, options = {}, context = {}) {
   }
 
   const warnings = [];
+  const notes = [];
   for (const id of reverseIds) {
     if (!matchedReverseIds.has(id)) warnings.push(`No input sequence matched reverse-complement ID "${id}".`);
   }
   if (ordered.length > 1) {
-    warnings.push(`Created an artificial pseudomolecule from ${ordered.length} source sequences; coordinates across joins are synthetic and each join contains ${gapLength} N base(s).`);
+    notes.push(`Created an artificial pseudomolecule from ${ordered.length} source sequences; coordinates across joins are synthetic and each join contains ${gapLength} N base(s).`);
   }
   const length = nextStart - 1;
   const sequence = options.materializeSequence ? sequenceParts.join("") : "";
@@ -346,6 +347,7 @@ export async function buildPseudomolecule(records, options = {}, context = {}) {
     record,
     mappingRows,
     warnings,
+    notes,
     sourceRecords: ordered
   };
 }
@@ -414,6 +416,7 @@ export function makePseudomoleculeReport(result, options = {}) {
     `Pseudomolecule length: ${result.length}`,
     `Gap between sequences: ${gapLength} N base(s)`,
     `Reverse-complemented sequences: ${result.mappingRows.filter((row) => row.orientation === "-").length}`,
-    "Coordinates: 1-based inclusive; mapping rows preserve each source interval and orientation."
+    "Coordinates: 1-based inclusive; mapping rows preserve each source interval and orientation.",
+    ...(result.notes ?? [])
   ].join("\n");
 }

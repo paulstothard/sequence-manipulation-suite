@@ -1098,6 +1098,9 @@ export function createToolOptionsController({
     function refreshDynamicOptions() {
       const roots = [elements.toolOptions, elements.inputPanel];
       const optionValues = getCurrentOptionValues(roots, flatOptions);
+      // Identifier references are delivered to workers as loaded FASTA. Keep
+      // the same screening controls visible while the input adapter retrieves it.
+      if (optionValues.referenceGenomeMode === 'identifier') optionValues.referenceGenomeMode = 'loaded';
       for (const option of dependentOptions) {
         const select = roots
           .map((root) => root?.querySelector(`select[name="${option.id}"]`))

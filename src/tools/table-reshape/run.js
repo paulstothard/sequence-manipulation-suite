@@ -37,6 +37,7 @@ export async function runTableReshape(input, options = {}, context = {}) {
       mimeType: outputFormat === "report" ? "text/plain;charset=utf-8" : "text/tab-separated-values;charset=utf-8"
     },
     warnings: result.warnings,
+    notes: result.notes,
     recordsProcessed: result.rows.length,
     streams: {
       report: makeTextStream(result.report, "text/plain"),

@@ -406,7 +406,7 @@ function makeCompositionPlotSpec(records, metric, options) {
   return { ...spec, xAxisMode: positionAxisUsed };
 }
 
-function getSvgPlotWarnings(analyzedRecords, tableRows, requestedPositionAxis, positionAxisUsed, pointMarkers) {
+function getSvgPlotWarnings(analyzedRecords, tableRows, requestedPositionAxis, positionAxisUsed, pointMarkers, notes) {
   const warnings = [];
   const plotRecords = analyzedRecords.filter((record) => record.rows.some((row) => row.metric_value !== null));
   const { minLength, maxLength, ratio } = getLengthRatio(plotRecords);
@@ -416,7 +416,7 @@ function getSvgPlotWarnings(analyzedRecords, tableRows, requestedPositionAxis, p
     );
   }
   if (positionAxisUsed === "relative" && requestedPositionAxis === "auto" && ratio >= RELATIVE_AXIS_LENGTH_RATIO_THRESHOLD) {
-    warnings.push(
+    notes.push(
       `Base composition plot used a relative position axis because record lengths range from ${minLength} to ${maxLength} bases. Table output keeps absolute coordinates.`
     );
   } else if (positionAxisUsed === "absolute" && ratio >= SVG_PLOT_LENGTH_RATIO_WARNING_THRESHOLD) {
@@ -430,7 +430,7 @@ function getSvgPlotWarnings(analyzedRecords, tableRows, requestedPositionAxis, p
     );
   }
   if (pointMarkers === "auto" && tableRows.length > AUTO_POINT_MARKER_THRESHOLD) {
-    warnings.push(
+    notes.push(
       `Point markers are hidden automatically for dense plots with more than ${AUTO_POINT_MARKER_THRESHOLD} windows; lines still show the plotted metric.`
     );
   }
@@ -494,6 +494,7 @@ function makeBaseCompositionResult({
 }) {
   const maxOutputCharacters = effectiveToolLimit(limitOptions, "compositionOutput", MAX_MATERIALIZED_OUTPUT_CHARACTERS);
   const tableRows = analyzedRecords.flatMap((record) => record.rows);
+  const notes = [];
   const windowSettings = { windowMode, windowSize, stepSize };
   const reportOutput = makeReport(analyzedRecords, metric, windowSettings);
   if (reportOutput.length > maxOutputCharacters) {
@@ -511,7 +512,7 @@ function makeBaseCompositionResult({
       showLegend,
       pointMarkers
     });
-    warnings.push(...getSvgPlotWarnings(analyzedRecords, tableRows, positionAxis, plotSpec.xAxisMode, pointMarkers));
+    warnings.push(...getSvgPlotWarnings(analyzedRecords, tableRows, positionAxis, plotSpec.xAxisMode, pointMarkers, notes));
     svgPlot = renderLinePlotSvg(plotSpec);
   } else if (isSvgOutput) {
     warnings.push(
@@ -540,6 +541,7 @@ function makeBaseCompositionResult({
             : "text/plain;charset=utf-8"
     },
     warnings,
+    notes,
     recordsProcessed,
     basesProcessed,
     charactersRemoved,

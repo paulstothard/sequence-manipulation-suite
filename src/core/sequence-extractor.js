@@ -3,7 +3,7 @@ import {
   parseBiologicalRecordInput
 } from "./biological-record-format-converter.js";
 import { parseSequenceInput } from "./fasta.js";
-import { findInSilicoPcrProductsAsync } from "./in-silico-pcr.js";
+import { findPcrPrimerSitesAsync } from "./in-silico-pcr.js";
 import { makeDnaViewerData, makeRestrictionViewerTracks } from "./dna-viewer-data.js";
 import { findRestrictionSites, selectRestrictionEnzymes } from "./restriction-tools.js";
 import { cleanDnaRnaSequence, complementDnaRnaSequence } from "./sequence.js";
@@ -149,7 +149,7 @@ export async function prepareSequenceExtractor(input, options = {}, context = {}
         progress: 0.45 + (recordIndex / Math.max(1, parsed.records.length)) * 0.3,
         record: sourceRecord.title
       });
-      const pcr = await findInSilicoPcrProductsAsync(
+      const pcr = await findPcrPrimerSitesAsync(
         `>${sourceRecord.title}\n${sourceRecord.sequence}\n---\n${primerText}`,
         {
           topology: sourceRecord.topology,
@@ -157,8 +157,7 @@ export async function prepareSequenceExtractor(input, options = {}, context = {}
           exactThreePrimeBases: options.exactThreePrimeBases,
           minProductLength: 1,
           maxProductLength: sourceRecord.sequence.length,
-          maxBindingSitesPerTemplate: options.maxPrimerSites ?? 5000,
-          maxProducts: 1
+          maxBindingSitesPerTemplate: options.maxPrimerSites,
         },
         context
       );

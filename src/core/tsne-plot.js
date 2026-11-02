@@ -67,7 +67,6 @@ function normalizeSeed(value, warnings) {
   const text = String(value ?? "").trim();
   if (text === "") {
     const seed = generatedSeed();
-    warnings.push(`Used generated random seed ${seed}; set Random seed for a reproducible t-SNE layout.`);
     return seed;
   }
   const parsed = Number.parseInt(text, 10);

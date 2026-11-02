@@ -1,7 +1,7 @@
 import { renderExternalError } from './external-error-ui.js';
 import { createRetrievalClient } from '../core/external-resources/get.js';
 import { identifierProviders, planIdentifierInput, retrieveIdentifierInput, previewIdentifierInput, findIdentifierGeneProducts, identifierRecordUrl } from '../core/identifier-retrieval.js';
-import { identifierInputsFor, examplesForIdentifier } from '../tools/identifier-inputs.js';
+import { identifierInputsFor, referenceIdentifierInputsFor, examplesForIdentifier } from '../tools/identifier-inputs.js';
 import { createTabbedInputWorkflowTabs, updateTabbedInputWorkflowTabs } from './tabbed-input-workflow.js';
 
 const node = (tag, text, className) => {
@@ -18,17 +18,19 @@ const button = (text, action) => {
 export function createIdentifierInputController({ elements, getTool, onChange, onReady }) {
   const states = new Map(), client = createRetrievalClient();
   let bindings = [], refreshing = false;
-  const configs = () => identifierInputsFor(getTool()?.metadata.id);
+  const configs = () => [...identifierInputsFor(getTool()?.metadata.id), ...referenceIdentifierInputsFor(getTool()?.metadata.id)];
   const stateFor = config => {
     const key = `${getTool().metadata.id}:${config.slot}`;
     if (!states.has(key)) states.set(key, { mode: 'local', provider: config.providers[0], ...examplesForIdentifier(config, config.providers[0])[0], revision: 0 });
     return states.get(key);
   };
-  const activeConfigs = () => configs().filter(config => stateFor(config).mode === 'identifier');
+  const outputFormat = () => elements.toolOptions.querySelector('[name="outputFormat"]:checked, select[name="outputFormat"]')?.value;
+  const activeConfigs = () => configs().filter(config => stateFor(config).mode === 'identifier'
+    && (!config.whenOutput || outputFormat() === config.whenOutput));
   function cancelPreview(state) { clearTimeout(state.timer); state.previewController?.abort(); }
   function invalidate(binding) {
     const { state } = binding;
-    state.revision++; state.cached = null; state.preview = null;
+    state.revision++; state.cached = null; state.referenceFile = null; state.preview = null;
     cancelPreview(state); binding.status.replaceChildren();
     onChange(); refresh(); schedulePreview(binding);
   }
@@ -110,7 +112,7 @@ export function createIdentifierInputController({ elements, getTool, onChange, o
     panel.append(node('p', help.trim(), 'identifier-help'), button('Check identifiers', () => preview(binding)));
     binding.status = node('div', '', 'identifier-status'); binding.status.setAttribute('role', 'status'); panel.append(binding.status);
     if (state.preview || state.cached) showRecords(binding, state.preview ?? state.cached, Boolean(state.cached));
-    if (config.providers.some(provider => provider.startsWith('ncbi-'))) renderGeneChooser(binding);
+    if (config.geneChooser !== false && config.providers.some(provider => provider.startsWith('ncbi-'))) renderGeneChooser(binding);
   }
   function renderGeneChooser(binding) {
     const { config, state } = binding;
@@ -153,7 +155,15 @@ export function createIdentifierInputController({ elements, getTool, onChange, o
   function locate(config) {
     const q = selector => elements.inputPanel.querySelector(selector);
     let host, hidden = [], tabs;
-    if (config.mount === 'biological') {
+    if (config.mount === 'reference-option') {
+      const source = elements.toolOptions.querySelector('#referenceGenomeMode');
+      return { host: source?.closest('[data-option-id="referenceGenomeMode"]'), source,
+        hidden: [...elements.toolOptions.querySelectorAll('[data-option-id="referenceGenomeFastaFile"], [data-option-id="referenceGenomeFaiFile"], [data-option-id="referenceGenomeGziFile"]')] };
+    } else if (config.mount === 'alignment-reference') {
+      host = q('[data-alignment-viewer-card="reference"]');
+      tabs = host?.querySelector('[role="tablist"]');
+      hidden = [...(host?.children ?? [])].filter(child => !child.classList.contains('alignment-viewer-input-card-heading') && !child.classList.contains('identifier-panel'));
+    } else if (config.mount === 'biological') {
       host = q('#biologicalRecordInputPanel .bio-record-source-card'); hidden = [host?.querySelector('.bio-record-paired-input-grid')];
     } else if (config.mount === 'template') {
       host = q('#pcrTemplateInputPanel'); hidden = [host?.querySelector('.bio-record-source-card')];
@@ -168,8 +178,8 @@ export function createIdentifierInputController({ elements, getTool, onChange, o
       if (host) hidden.push(...[...host.children].filter(child => child.getAttribute('role') !== 'tablist'));
     }
     const workspace = q('#workspaceInputSourcePanel');
-    if (workspace && host !== workspace) hidden.push(workspace);
-    tabs = host?.querySelector(':scope > [role="tablist"]');
+    if (!config.targetOption && workspace && host !== workspace) hidden.push(workspace);
+    tabs ??= host?.querySelector(':scope > [role="tablist"]');
     return { host, tabs, hidden: hidden.filter(Boolean) };
   }
   function restore(binding) {
@@ -180,7 +190,7 @@ export function createIdentifierInputController({ elements, getTool, onChange, o
     const { state } = binding; if (state.mode === mode) return;
     state.mode = mode; state.revision++; cancelPreview(state);
     if (mode === 'local') restore(binding);
-    else binding.localTab = binding.tabs.querySelector('[aria-selected="true"]');
+    else binding.localTab = binding.tabs?.querySelector('[aria-selected="true"]');
     onChange(); refresh(); if (mode === 'identifier' && !state.preview) schedulePreview(binding);
   }
   function attach(config) {
@@ -189,6 +199,16 @@ export function createIdentifierInputController({ elements, getTool, onChange, o
     if (!location.host && config.mount) return null;
     const panel = binding.panel = node('div', '', 'identifier-panel'); panel.dataset.identifierSlot = config.slot;
     panel.id = `identifier-panel-${config.slot}`; panel.setAttribute('role', 'tabpanel');
+    if (location.source) {
+      const choice = binding.choice = node('option', 'By identifier'); choice.value = 'identifier';
+      location.source.append(choice);
+      state.mode = 'local';
+      panel.setAttribute('role', 'region'); panel.setAttribute('aria-label', 'Reference genome by identifier');
+      binding.sourceListener = () => choose(binding, location.source.value === 'identifier' ? 'identifier' : 'local');
+      location.source.addEventListener('change', binding.sourceListener, true);
+      location.host.after(panel); renderFields(binding);
+      return binding;
+    }
     let tabs = location.tabs;
     if (!tabs) {
       tabs = createTabbedInputWorkflowTabs({ modes: { local: { label: 'Paste / upload' } }, selectedMode: 'local', ariaLabel: config.slot === 'input' ? 'Input source' : `${config.slot} input source`, onSelect: () => choose(binding, 'local') });
@@ -212,24 +232,32 @@ export function createIdentifierInputController({ elements, getTool, onChange, o
       };
       tabs.addEventListener('keydown', binding.keyListener);
     }
-    tabs.append(tab); tabs.after(panel); renderFields(binding);
+    tabs.append(tab);
+    if (config.mount === 'alignment-reference') tabs.closest('.alignment-viewer-input-card-heading').after(panel);
+    else tabs.after(panel);
+    renderFields(binding);
     return binding;
+  }
+  function detach(binding) {
+    restore(binding); cancelPreview(binding.state);
+    binding.tabs?.removeEventListener('click', binding.listener, true);
+    binding.tabs?.removeEventListener('keydown', binding.keyListener);
+    binding.source?.removeEventListener('change', binding.sourceListener, true);
+    binding.choice?.remove(); binding.panel.remove(); binding.tab?.remove();
+    if (binding.ownedTabs) binding.tabs.remove();
   }
   function refresh() {
     if (refreshing) return; refreshing = true;
     try {
       elements.toolView.classList.toggle('identifier-input-active', activeConfigs().length > 0);
       for (const binding of bindings.filter(binding => !binding.panel.isConnected)) {
-        restore(binding); binding.tabs.removeEventListener('click', binding.listener, true); binding.tabs.removeEventListener('keydown', binding.keyListener);
-        binding.tab.remove(); if (binding.ownedTabs) binding.tabs.remove();
+        detach(binding);
       }
       bindings = bindings.filter(binding => binding.panel.isConnected);
       for (const config of configs()) {
         let binding = bindings.find(binding => binding.config === config && binding.panel.isConnected);
         if (binding && locate(config).host !== binding.host) {
-          restore(binding); cancelPreview(binding.state);
-          binding.tabs.removeEventListener('click', binding.listener, true); binding.tabs.removeEventListener('keydown', binding.keyListener);
-          binding.panel.remove(); binding.tab.remove(); if (binding.ownedTabs) binding.tabs.remove();
+          detach(binding);
           bindings = bindings.filter(value => value !== binding); binding = null;
         }
         if (!binding) {
@@ -239,27 +267,27 @@ export function createIdentifierInputController({ elements, getTool, onChange, o
         if (!binding) continue;
         const remote = binding.state.mode === 'identifier'; binding.panel.hidden = !remote;
         if (remote) {
-          const forced = { ...config.options, ...(config.optionsFromRange ? { [config.optionsFromRange]: 1 } : {}), ...(config.kind === 'phylogeny' ? { sequenceType: '' } : {}) };
+          const forced = { ...(config.targetOption ? {} : config.options), ...(config.optionsFromRange ? { [config.optionsFromRange]: 1 } : {}), ...(config.kind === 'phylogeny' ? { sequenceType: '' } : {}) };
           for (const id of Object.keys(forced)) { const option = elements.toolOptions.querySelector(`[data-option-id="${id}"]`); if (option && !binding.hidden.includes(option)) binding.hidden.push(option); }
           for (const element of binding.hidden) { if (!binding.hiddenState.has(element)) binding.hiddenState.set(element, element.hidden); element.hidden = true; }
-          updateTabbedInputWorkflowTabs(binding.tabs, 'identifier');
+          if (binding.tabs) updateTabbedInputWorkflowTabs(binding.tabs, 'identifier');
         } else {
-          restore(binding); binding.tab.setAttribute('aria-selected', 'false'); binding.tab.tabIndex = -1;
+          restore(binding);
+          if (!binding.tabs) continue;
+          binding.tab.setAttribute('aria-selected', 'false'); binding.tab.tabIndex = -1;
           if (![...binding.tabs.children].some(tab => tab.getAttribute('aria-selected') === 'true')) { const tab = binding.localTab ?? binding.tabs.firstElementChild; tab.setAttribute('aria-selected', 'true'); tab.tabIndex = 0; }
         }
       }
     } finally { refreshing = false; }
   }
   function render() {
-    for (const binding of bindings) {
-      restore(binding); cancelPreview(binding.state); binding.tabs.removeEventListener('click', binding.listener, true); binding.tabs.removeEventListener('keydown', binding.keyListener);
-      binding.panel.remove(); binding.tab.remove(); if (binding.ownedTabs) binding.tabs.remove();
-    }
+    for (const binding of bindings) detach(binding);
     bindings = [];
   }
   function inputText(local) {
     let text = local;
     for (const config of activeConfigs()) {
+      if (config.targetOption) continue;
       const value = stateFor(config).cached?.text ?? '', separator = `\n${getTool().metadata.splitInput?.separator ?? '---'}\n`;
       if (config.slot === 'input') text = value;
       else {
@@ -274,9 +302,15 @@ export function createIdentifierInputController({ elements, getTool, onChange, o
   }
   function overrideOptions(options) {
     const result = { ...options };
+    if (result.referenceGenomeMode === 'identifier') result.referenceGenomeMode = 'none';
     for (const config of activeConfigs()) {
       const state = stateFor(config);
       Object.assign(result, config.options, state.cached?.options);
+      if (config.targetOption) {
+        if (state.cached && !state.referenceFile) state.referenceFile = new File([state.cached.text], 'retrieved-reference.fasta', { type: 'text/plain' });
+        result[config.targetOption] = state.referenceFile ?? null;
+        result.referenceGenomeFaiFile = null; result.referenceGenomeGziFile = null;
+      }
       if (config.slot === 'input') {
         // Keep local uploads in the UI draft, but never let a streamed file take
         // precedence over the explicitly selected remote sequence during a run.
@@ -308,13 +342,14 @@ export function createIdentifierInputController({ elements, getTool, onChange, o
   // Workspace data and repeatable input cards can arrive after the tool shell.
   // Observe structure only; hiding controls does not retrigger this observer.
   new MutationObserver(refresh).observe(elements.inputPanel, { childList: true, subtree: true });
+  new MutationObserver(refresh).observe(elements.toolOptions, { childList: true, subtree: true });
   return {
     render, refresh, resolve, inputText, overrideOptions,
     active: () => activeConfigs().length > 0,
     replacesWholeInput: () => activeConfigs().some(config => config.slot === 'input'),
     slotText: slot => { const config = activeConfigs().find(config => config.slot === slot); return config ? stateFor(config).cached?.text ?? '' : null; },
     splitText: index => { const config = activeConfigs().find(config => config.index === index); return config ? stateFor(config).cached?.text ?? '' : null; },
-    clear() { const active = bindings.filter(binding => binding.state.mode === 'identifier'); for (const binding of active) setExample(binding, { query: '' }); return active.length > 0; },
-    loadExample() { const active = bindings.filter(binding => binding.state.mode === 'identifier'); for (const binding of active) setExample(binding, examplesForIdentifier(binding.config, binding.state.provider)[0]); return active.length > 0; }
+    clear() { const active = bindings.filter(binding => !binding.config.targetOption && binding.state.mode === 'identifier'); for (const binding of active) setExample(binding, { query: '' }); return active.length > 0; },
+    loadExample() { const active = bindings.filter(binding => !binding.config.targetOption && binding.state.mode === 'identifier'); for (const binding of active) setExample(binding, examplesForIdentifier(binding.config, binding.state.provider)[0]); return active.length > 0; }
   };
 }

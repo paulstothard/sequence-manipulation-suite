@@ -294,9 +294,6 @@ export async function runVcfGenotypeTable(input, options = {}, context = {}) {
   const columns = result.columns ?? vcfGenotypeTableColumns;
   const tsv = makeVcfGenotypeTableTsv(result.rows, columns);
   const viewerCompatibleDataTypes = ["variants", "genotypes", "region-variants", "region-viewer"];
-  if (isInteractiveViewerFormat(outputFormat) && !viewerCompatibleDataTypes.includes(result.dataType)) {
-    result.warnings.push("Variant region viewer output uses variant records from the VCF; choose Variants in region or Sample genotypes in region for matching table output.");
-  }
   const viewer = isInteractiveViewerFormat(outputFormat)
     ? await makeVcfViewerData(
         viewerCompatibleDataTypes.includes(result.dataType)

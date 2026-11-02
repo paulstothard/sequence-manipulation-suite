@@ -1,4 +1,4 @@
-const DNA_RNA_SYMBOLS = new Set("ACGTUNRYSWKMBDHV".split(""));
+const DNA_RNA_SYMBOLS = new Set("ACGTUNRYSWKMBDHVX".split(""));
 const PROTEIN_SYMBOLS = new Set("ABCDEFGHIJKLMNOPQRSTUVWXYZ*".split(""));
 
 function getLines(text = "") {
@@ -92,6 +92,17 @@ function parseFasta(text, descriptor) {
 
 function parsePlainSequence(text, descriptor) {
   const collector = makeTrackCollector(descriptor.alphabet);
+  // Audited producers can supply exact record spans, so preserved blank lines
+  // are presentation whitespace and adjacent records never become one track.
+  if (Array.isArray(descriptor.recordRanges)) {
+    let previousEnd = 0;
+    for (const [index, range] of descriptor.recordRanges.entries()) {
+      if (!Number.isInteger(range.start) || !Number.isInteger(range.end) || range.start < previousEnd || range.end < range.start || range.end > text.length) return [];
+      collector.append(`plain-${index}`, range.title || `sequence ${index + 1}`, descriptor.alphabet, text.slice(range.start, range.end), range.start);
+      previousEnd = range.end;
+    }
+    return collector.finish();
+  }
   let section = 0;
   let active = false;
   for (const line of getLines(text)) {

@@ -1,14 +1,21 @@
+import { viewerViewportHeight, allocateViewerLanes, viewerDensityDecision } from '../core/viewer-viewport-layout.js';
+import { VIEWER_VISIBILITY_FOOTER_HEIGHT } from '../core/viewer-feature-visibility.js';
+import { drawViewerFeatureVisibility } from './viewer-feature-visibility.js';
+import { featureDensityBins } from '../core/feature-density.js';
+import { chooseViewerTrackPresentation } from "../core/viewer-track-presentation.js";
 import { drawFeatureFocusGlow, traceCircularFeatureShape } from "./feature-focus-glow.js";
 import { hasCdsTranslations, CDS_TRANSLATION_HELP, drawCircularCdsTranslation } from './viewer-cds-translation.js';
-import { createViewerGeneModelKey } from './viewer-gene-model-key.js';
+import { createViewerGeneModelKey, layoutViewerFeatureLegend, drawViewerFeatureLegend } from './viewer-gene-model-key.js';
 import { viewerAlignmentPosition, drawViewerAlignmentGuide } from './viewer-alignment-guide.js';
 import { createFeatureSequenceControls } from './viewer-feature-sequence-ui.js';
 import { createViewerFeatureGroupControls } from './viewer-feature-group-controls.js';
+import { createViewerOverflowControls, scrollViewerTargetIntoSurface } from './viewer-track-expansion.js';
+import { linearViewerCanvasSize } from '../core/linear-viewer-layout.js';
 import { geneticCodes, getStartCodons, makeCodonMap } from "../core/genetic-code.js";
 import { complementDnaRnaSequence } from "../core/sequence.js";
-import { DNA_VIEWER_SEARCH_RESULT_LIMIT } from "../core/viewer-limits.js";
+import { DNA_VIEWER_SEARCH_RESULT_LIMIT, CIRCULAR_VIEWER_RING_LIMIT } from "../core/viewer-limits.js";
 import { featureArrowHeadLength, featureArrowTerminalVisible } from "../core/directional-feature-geometry.js";
-import { createStackedIntervalLayout, isStackedIntervalTrack, makeLinearPartConnectors } from "../core/viewer-track-layout.js";
+import { layoutStableViewerIntervals, usesAutomaticLinearDensity, hasSemanticLinearSlots, itemsWithLayoutSlots, isStackedIntervalTrack, makeLinearPartConnectors } from "../core/viewer-track-layout.js";
 import { downloadCanvasPng, downloadCanvasSvg, makeSafeFileStem } from "./canvas-export.js";
 import { calculateBaseSelectionMarker } from "./base-selection-marker.js";
 import { getFeatureLabelRenderPlan, measureCurvedLabel } from "./viewer-label-rules.js";
@@ -26,7 +33,9 @@ import {
   getViewerRangeSequence,
   getSelectionTranslation,
   getViewerTrackDisplayMode,
+  isViewerTrackExpanded,
   getViewerTrackItems,
+  getViewerStableLaneMemory,
   getViewerTargetClientPosition,
   getVisibleViewerTracks,
   hasHiddenViewerItemTypes,
@@ -78,8 +87,6 @@ const ICONS = {
 };
 const FEATURE_RING_GAP = 3;
 const FEATURE_RING_WIDTH = 10;
-const FEATURE_RING_MAX = 16;
-const FEATURE_RING_MIN_GAP_UNITS = 12;
 const RESTRICTION_SITE_RING_HALF_WIDTH = 5;
 const RESTRICTION_SITE_MARKER_ARC_PX = 8;
 const DENSITY_ITEM_THRESHOLD = 700;
@@ -381,9 +388,12 @@ function searchFeatures(record, query, state) {
     const items = getViewerTrackItems(track, state);
     for (const [itemIndex, item] of items.entries()) {
       const text = [
-        track.label,
+        track.layout === 'packed-models' ? '' : track.label,
         track.type,
         item.label,
+        item.modelLabel,
+        item.transcriptId,
+        item.proteinId,
         item.name,
         item.featureId,
         item.motifId,
@@ -698,13 +708,19 @@ export function getVisibleCircularBaseRange(sequence, state, length) {
   };
 }
 
+function circularCanvasRect(canvas, state) {
+  const rect = canvas.getBoundingClientRect();
+  const scale = state.canvasDisplayScale || 1;
+  return { left: rect.left, top: rect.top, width: rect.width / scale, height: rect.height / scale, scale };
+}
+
 function pointerAngle(event, rect, cx, cy) {
-  return Math.atan2(event.clientY - rect.top - cy, event.clientX - rect.left - cx);
+  return Math.atan2((event.clientY - rect.top) / rect.scale - cy, (event.clientX - rect.left) / rect.scale - cx);
 }
 
 function zoomAnchorAngle(event, rect, cx, cy, radius) {
-  const dx = event.clientX - rect.left - cx;
-  const dy = event.clientY - rect.top - cy;
+  const dx = (event.clientX - rect.left) / rect.scale - cx;
+  const dy = (event.clientY - rect.top) / rect.scale - cy;
   const distance = Math.hypot(dx, dy);
   const centerDeadZone = Math.max(
     70,
@@ -754,13 +770,15 @@ export function sortCircularTrackLayoutsForDrawing(layouts = []) {
 
 export function shouldUseCircularTrackSummary(track, state, pxPerBp, visibleItemCount) {
   if (isQuantitativeTrack(track)) return false;
+  if (isViewerTrackExpanded(track, state)) return false;
   if (hasHiddenViewerItemTypes(track, state)) return false;
-  if (!track.summary?.bins?.length) return false;
+  if (!track.summary?.bins?.length && !usesAutomaticLinearDensity(track)) return false;
   const mode = getViewerTrackDisplayMode(track, state);
   if (mode === "full" || mode === "squished") return false;
   const itemCount = track.summary?.itemCount ?? track.items?.length ?? 0;
   const visibleCount = Number.isFinite(Number(visibleItemCount)) ? Number(visibleItemCount) : itemCount;
-  return visibleCount > DENSITY_ITEM_THRESHOLD;
+  const threshold = usesAutomaticLinearDensity(track) ? 80 : DENSITY_ITEM_THRESHOLD;
+  return viewerDensityDecision(track, state, visibleCount / threshold);
 }
 
 function visibleCircularTrackItemCount(track, state, record) {
@@ -1497,6 +1515,7 @@ function drawPointTrack(ctx, track, cx, cy, radius, state, record, arc, pxPerBp,
   const theme = options.theme || getViewerCanvasTheme(ctx.canvas);
   const color = getViewerTrackColor(theme, track);
   if (shouldUseTrackSummary(track, state, pxPerBp, record)) {
+    state.trackOverflows.push({ track, summary: true, count: 0 });
     drawCircularSummaryTrack(ctx, track, cx, cy, radius + 10, radius - 10, state, record, arc, color, theme);
     return;
   }
@@ -1549,6 +1568,22 @@ function drawPointTrack(ctx, track, cx, cy, radius, state, record, arc, pxPerBp,
   }
 }
 
+function drawCircularSummaryLabel(ctx, text, cx, cy, radius, arc, position, theme) {
+  const font = "10px system-ui, sans-serif";
+  const paddingPx = 8;
+  ctx.save();
+  ctx.font = font;
+  const fitted = fitCanvasLabelToWidth(ctx, text, Math.min(Math.abs(arc.arcAngle) * 0.45, Math.PI) * radius - paddingPx);
+  ctx.restore();
+  // Fit the glyphs to the ring and keep their complete arc inside the displayed
+  // window. Density headings follow the same curvature as individual features.
+  const placement = chooseCircularArcLabelPlacement(cx, cy, radius, arc.startAngle,
+    arc.startAngle + arc.arcAngle, null, null, fitted.width, paddingPx,
+    { preferredAngle: arc.startAngle + arc.arcAngle * position });
+  if (placement.fits) drawCurvedText(ctx, fitted.label, cx, cy, radius, placement.angle,
+    placement.availableAngle, { font, fill: theme.muted, paddingPx });
+}
+
 function drawCircularSummaryTrack(ctx, track, cx, cy, outerRadius, innerRadius, state, record, arc, color, theme = getViewerCanvasTheme(ctx.canvas)) {
   const summary = track.summary;
   if (!summary?.bins?.length) return false;
@@ -1594,16 +1629,8 @@ function drawCircularSummaryTrack(ctx, track, cx, cy, outerRadius, innerRadius, 
       }
     }
     ctx.globalAlpha = previousAlpha;
-    drawTangentialText(ctx, `${track.label || "Features"} +`, cx, cy, outerRadius + 11, arc.startAngle + arc.arcAngle * 0.08, {
-      font: "10px system-ui, sans-serif",
-      fill: theme.muted,
-      align: "center"
-    });
-    drawTangentialText(ctx, `${track.label || "Features"} −`, cx, cy, Math.max(12, innerRadius - 10), arc.startAngle + arc.arcAngle * 0.58, {
-      font: "10px system-ui, sans-serif",
-      fill: theme.muted,
-      align: "center"
-    });
+    drawCircularSummaryLabel(ctx, `${track.label || "Features"} +`, cx, cy, outerRadius + 11, arc, 0.08, theme);
+    drawCircularSummaryLabel(ctx, `${track.label || "Features"} −`, cx, cy, Math.max(12, innerRadius - 10), arc, 0.58, theme);
     state.renderDiagnostics.circularSummaryLanes += lanes.length;
     state.renderDiagnostics.circularSummaryRepresentativeItems = summary.representativeItemCount ?? summary.itemCount ?? 0;
     return true;
@@ -1624,11 +1651,7 @@ function drawCircularSummaryTrack(ctx, track, cx, cy, outerRadius, innerRadius, 
     }
   }
   if (drew) {
-    drawTangentialText(ctx, "summary", cx, cy, outerRadius + 12, arc.startAngle + arc.arcAngle * 0.08, {
-      font: "10px system-ui, sans-serif",
-      fill: theme.muted,
-      align: "center"
-    });
+    drawCircularSummaryLabel(ctx, "summary", cx, cy, outerRadius + 12, arc, 0.08, theme);
   }
   return drew;
 }
@@ -1652,79 +1675,31 @@ function getCircularIntervalCopies(track, state, record) {
   );
 }
 
-function layoutCircularFeatureTrack(track, state, record, pxPerBp) {
-  const cachedLayout = getCachedCircularSlotLayout(track, state, record);
-  const visibleCopies = getCircularIntervalCopies(track, state, record);
-  const placements = [];
-  const hidden = [];
-  for (const copy of visibleCopies) {
-    const key = `${copy.itemIndex}:${copy.partStart}:${copy.partEnd}`;
-    const slot = cachedLayout.slotByPart.get(key);
-    if (slot === undefined) {
-      hidden.push(copy);
-    } else {
-      placements.push({ ...copy, slot });
+function layoutCircularFeatureTrack(track, state, record, pxPerBp, maxSlots) {
+  const selected = state.selectedTarget?.trackId === (track.id || track.type) ? state.selectedTarget : null;
+  const items = getViewerTrackItems(track, state);
+  const copies = getCircularIntervalCopies(track, state, record);
+  items.forEach((item, itemIndex) => {
+    if (item.connectParts) for (const copy of getVisibleIntervalCopies({ start: item.start, end: item.end }, state, record.length)) {
+      copies.push({ ...copy, item, itemIndex, connectorOnly: true });
     }
-  }
-  return {
-    ...cachedLayout.layout,
-    placements,
-    hidden,
-    totalHidden: cachedLayout.layout.hidden.length
-  };
-}
-
-function getCachedCircularSlotLayout(track, state, record) {
-  if (!state.trackLayoutCache) {
-    state.trackLayoutCache = new WeakMap();
-  }
-  const cached = state.trackLayoutCache.get(track);
-  const trackItems = getViewerTrackItems(track, state);
-  const itemCount = trackItems.length;
-  const slotConfigKey = JSON.stringify({
-    fixedSlotsByType: track.fixedSlotsByType || track.slotByType || null,
-    allowFixedSlotOverlaps: track.allowFixedSlotOverlaps === true,
-    hiddenItemTypes: Array.from(state.hiddenTrackItemTypes?.get(track.id || track.type || "track") || []).sort()
   });
-  if (
-    cached &&
-    cached.length === record.length &&
-    cached.maxSlots === FEATURE_RING_MAX &&
-    cached.itemCount === itemCount &&
-    cached.slotConfigKey === slotConfigKey
-  ) {
-    return cached;
-  }
-  const layout = createStackedIntervalLayout(trackItems, {
-    length: record.length,
-    maxSlots: FEATURE_RING_MAX,
-    minGapUnits: trackItems.length > DENSITY_ITEM_THRESHOLD ? FEATURE_RING_MIN_GAP_UNITS : 0,
-    fixedSlotsByType: track.fixedSlotsByType || track.slotByType,
-    allowFixedSlotOverlaps: track.allowFixedSlotOverlaps === true
+  return layoutStableViewerIntervals(items, {
+    ...track, copies, maxSlots,
+    circularLength: record.length, viewStart: getViewStart(state), viewEnd: getViewEnd(state),
+    minGap: hasSemanticLinearSlots(track) ? 0 : 4 / Math.max(0.000001, pxPerBp),
+    memory: getViewerStableLaneMemory(track, state),
+    selectedFeatureId: selected?.featureId, selectedItemIndex: selected?.itemIndex
   });
-  const slotByPart = new Map(layout.placements.map((placement) => [
-    `${placement.itemIndex}:${placement.sourceStart}:${placement.sourceEnd}`,
-    placement.slot
-  ]));
-  const next = {
-    length: record.length,
-    maxSlots: FEATURE_RING_MAX,
-    itemCount,
-    slotConfigKey,
-    layout,
-    slotByPart
-  };
-  state.trackLayoutCache.set(track, next);
-  return next;
 }
 
 function circularFeatureTrackWidth(layout) {
-  return Math.max(1, layout?.slotCount ?? 1) * (FEATURE_RING_WIDTH + FEATURE_RING_GAP) + 8 + ((layout?.hidden?.length ?? 0) > 0 ? 14 : 0);
+  return Math.max(1, layout?.slotCount ?? 1) * (FEATURE_RING_WIDTH + FEATURE_RING_GAP) + 8;
 }
 
 function circularTrackLayoutWidth(entry) {
   if (entry.quantitative) return 46;
-  return entry.layout ? circularFeatureTrackWidth(entry.layout) : 34;
+  return entry.reservedWidth ?? (entry.layout ? circularFeatureTrackWidth(entry.layout) : 34);
 }
 
 export function compareCircularLabelCandidatesForDrawing(left, right) {
@@ -1765,23 +1740,27 @@ function computeRenderedCircularLayout(width, height, state, record) {
   const digestFragmentTracks = tracks.filter((track) => track.type === "digest-fragments");
   const restrictionTracks = tracks.filter((track) => track.type === "restriction-sites");
   const otherTracks = tracks.filter((track) => track.type !== "digest-fragments" && track.type !== "restriction-sites");
-  const otherTrackLayouts = otherTracks.map((track) => {
+  const stackedTracks = otherTracks.filter(isStackedIntervalTrack);
+  const displaySize = Math.min(width, height - 2 * (state.featureLegendHeight || 0));
+  const minimumBaseRadius = Math.min(76, Math.max(30, displaySize * 0.15));
+  const primitiveSpace = digestFragmentTracks.length || restrictionTracks.length ? 70 : 0;
+  const fixedSpace = otherTracks.reduce((sum, track) => sum + (isStackedIntervalTrack(track) ? 8 : isQuantitativeTrack(track) ? 46 : 34), 0);
+  const budgets = allocateViewerLanes(stackedTracks,
+    (displaySize / 2 - minimumBaseRadius - 92 - primitiveSpace - fixedSpace) / (FEATURE_RING_WIDTH + FEATURE_RING_GAP), CIRCULAR_VIEWER_RING_LIMIT);
+  const otherTrackLayouts = otherTracks.map(track => {
     const quantitative = isQuantitativeTrack(track);
-    const summary = shouldUseTrackSummary(track, state, pxPerBp, record);
-    return {
-      track,
-      quantitative,
-      summary,
-      layout: !quantitative && isStackedIntervalTrack(track) && !summary
-        ? layoutCircularFeatureTrack(track, state, record, pxPerBp)
-        : null
-    };
+    const density = shouldUseTrackSummary(track, { ...state, expandedTrackIds: null }, pxPerBp, record);
+    const layout = isStackedIntervalTrack(track)
+      ? layoutCircularFeatureTrack(track, state, record, pxPerBp, budgets.get(track)) : null;
+    return { track, quantitative, reservedWidth: layout ? circularFeatureTrackWidth(layout) : quantitative ? 46 : 34,
+      ...chooseViewerTrackPresentation({ compact: layout, density,
+        preferExpanded: isViewerTrackExpanded(track, state), visibleCount: visibleCircularTrackItemCount(track, state, record) }) };
   });
   const orderedTrackLayouts = sortCircularTrackLayoutsForDrawing(otherTrackLayouts);
   const offsets = getCircularTrackOffsets(digestFragmentTracks, restrictionTracks, orderedTrackLayouts, state.compactLayout);
   if (getCenterWeight(state, record) <= 0.05) {
-    const availableOuterRadius = Math.max(150, Math.min(width, height) / 2 - 42);
-    baseRadius = Math.max(76, Math.min(baseRadius, availableOuterRadius - offsets.rulerOffset));
+    const availableOuterRadius = Math.max(150, Math.min(width, height - 2 * (state.featureLegendHeight || 0)) / 2 - 42);
+    baseRadius = Math.max(minimumBaseRadius, Math.min(baseRadius, availableOuterRadius - offsets.rulerOffset));
     pxPerBp = ((TWO_PI - arc.gapAngle) * baseRadius) / state.viewSpan;
   }
   const detailRadius = getInnermostSequenceRadius(baseRadius, state);
@@ -1886,6 +1865,7 @@ function drawIntervalTrack(ctx, track, cx, cy, outerRadius, innerRadius, state, 
   const stroke = track.type === "digest-fragments" ? color : color;
   const labelStats = state.renderDiagnostics?.circularFeatureLabels;
   if (!slotLayout && shouldUseTrackSummary(track, state, pxPerBp, record)) {
+    state.trackOverflows.push({ track, summary: true, count: 0 });
     drawCircularSummaryTrack(ctx, track, cx, cy, outerRadius, innerRadius, state, record, arc, color, theme);
     return;
   }
@@ -1894,7 +1874,7 @@ function drawIntervalTrack(ctx, track, cx, cy, outerRadius, innerRadius, state, 
   const selectedArcOutlines = [];
   const viewStart = getViewStart(state);
   const viewEnd = getViewEnd(state);
-  const connectors = makeLinearPartConnectors(getViewerTrackItems(track, state), { viewStart: 0, viewEnd: record.length });
+  const connectors = makeLinearPartConnectors(itemsWithLayoutSlots(getViewerTrackItems(track, state), slotLayout), { viewStart: 0, viewEnd: record.length });
   for (const connector of connectors) {
     const radius = slotLayout ? innerRadius + FEATURE_RING_WIDTH / 2 + connector.slot * (FEATURE_RING_WIDTH + FEATURE_RING_GAP) : (outerRadius + innerRadius) / 2;
     for (const copy of getVisibleIntervalCopies({ start: connector.start + 1, end: connector.end }, state, record.length)) {
@@ -1950,7 +1930,7 @@ function drawIntervalTrack(ctx, track, cx, cy, outerRadius, innerRadius, state, 
       selectedArcOutlines.push({ outerRadius: slotOuterRadius, innerRadius: slotInnerRadius, startAngle, endAngle, strand: item.strand, headLength });
     }
     if (cdsDrawn || item.geneModel?.role === 'transcript') continue;
-    const labelText = item.label || item.name || item.type || "";
+    const labelText = item.modelLabel || item.label || item.name || item.type || "";
     const labelStart = Math.max(Number(placement.start), viewStart);
     const labelEnd = Math.min(Number(placement.end), viewEnd);
     if (!Number.isFinite(labelStart) || !Number.isFinite(labelEnd) || labelEnd <= labelStart) continue;
@@ -1971,7 +1951,7 @@ function drawIntervalTrack(ctx, track, cx, cy, outerRadius, innerRadius, state, 
       minAvailableWidth: 0
     });
     if (!measuredLabelPlan.label || measuredLabelPlan.measuredWidth <= 0) continue;
-    const canvasRect = ctx.canvas?.getBoundingClientRect?.();
+    const canvasRect = ctx.canvas ? circularCanvasRect(ctx.canvas, state) : null;
     const fullIntervalMidpoint = copiedIntervalMidpoint(placement, record.length);
     const visibleMidpoint = (labelStart + labelEnd) / 2;
     const stableMidpoint = fullIntervalMidpoint !== null && fullIntervalMidpoint >= labelStart && fullIntervalMidpoint <= labelEnd
@@ -2068,7 +2048,7 @@ function drawIntervalTrack(ctx, track, cx, cy, outerRadius, innerRadius, state, 
     drawCircularFeatureFocus(ctx, cx, cy, outline, theme);
   }
   const drawnLabelBounds = [];
-  const labelCanvasRect = ctx.canvas?.getBoundingClientRect?.();
+  const labelCanvasRect = ctx.canvas ? circularCanvasRect(ctx.canvas, state) : null;
   labelCandidates.sort(compareCircularLabelCandidatesForDrawing);
   for (const candidate of labelCandidates) {
     const bounds = getCircularLabelBounds(
@@ -2118,13 +2098,6 @@ function drawIntervalTrack(ctx, track, cx, cy, outerRadius, innerRadius, state, 
       }
       drawnLabelBounds.push(bounds);
     }
-  }
-  if (slotLayout?.hidden?.length > 0) {
-    drawTangentialText(ctx, `${slotLayout.hidden.length.toLocaleString()} hidden; zoom in`, cx, cy, outerRadius + 10, arc.startAngle + arc.arcAngle * 0.14, {
-      font: "11px system-ui, sans-serif",
-      fill: theme.warning,
-      align: "center"
-    });
   }
 }
 
@@ -2360,7 +2333,7 @@ function drawTranslationFrame(ctx, cx, cy, radius, label, frameOffset, strand, s
 
 function computeBaseRadius(width, height, state, record) {
   const zoomRatio = record.length / state.viewSpan;
-  const displaySize = Math.min(width, height);
+  const displaySize = Math.min(width, height - 2 * (state.featureLegendHeight || 0));
   const baseRadiusAtFullView = displaySize * 0.27;
   const zoomBoost = Math.pow(Math.max(0, zoomRatio - 1), 0.86) * displaySize * 0.2;
   const linearWindowBlend = Math.max(0, Math.min(1, (zoomRatio - 1.18) / 0.9));
@@ -2423,11 +2396,11 @@ function ensureZoomedCircularViewHasVisibleCenter(state, record, width, height) 
     return;
   }
   state.viewMoved = false;
+  const layout = computeRenderedCircularLayout(width, height, state, record);
   if (state.userRotated !== true) {
-    const arc = getArcConfig(state, record.length);
-    state.gapCenterAngle = CIRCULAR_ZOOM_ORIENTATION_ANGLE - arc.arcAngle / 2;
+    state.gapCenterAngle = CIRCULAR_ZOOM_ORIENTATION_ANGLE - layout.arc.arcAngle / 2;
   }
-  const baseRadius = computeBaseRadius(width, height, state, record);
+  const baseRadius = layout.baseRadius;
   const focusAngle = CIRCULAR_ZOOM_ORIENTATION_ANGLE;
   setStoredCenterForVisualCenter(
     state,
@@ -2458,7 +2431,7 @@ export function getCircularSequenceCenterBlend(state, length) {
 }
 
 function getCircularAnchorDisplayRadius(width, height, state, recordLength) {
-  const displaySize = Math.min(width, height);
+  const displaySize = Math.min(width, height - 2 * (state.featureLegendHeight || 0));
   const centerBlend = getCircularSequenceCenterBlend(state, recordLength);
   return displaySize * (0.32 * (1 - centerBlend) + 0.04 * centerBlend);
 }
@@ -2485,12 +2458,25 @@ function updateStatus(status, state, record, pxPerBp) {
 }
 
 function drawCircularViewer(ctx, canvas, status, record, state, theme = getViewerCanvasTheme(canvas)) {
-  const rect = canvas.getBoundingClientRect();
+  const displayRect = canvas.getBoundingClientRect();
+  if (displayRect.width <= 0 || displayRect.height <= 0) return;
+  const legend = layoutViewerFeatureLegend(ctx, record, displayRect.width);
+  const legendHeight = (legend.height ? legend.height + 12 : 0) + VIEWER_VISIBILITY_FOOTER_HEIGHT;
+  state.featureLegendHeight = legendHeight;
+  const overview = computeRenderedCircularLayout(displayRect.width, displayRect.height, state, record);
+  const requiredDiameter = 2 * (Math.min(76, Math.max(30, Math.min(displayRect.width, displayRect.height - 2 * legendHeight) * 0.15)) + overview.offsets.rulerOffset + 42);
+  state.canvasDisplayScale = state.viewSpan >= record.length * 0.999
+    ? Math.min(1, Math.max(1, Math.min(displayRect.width, displayRect.height - 2 * legendHeight)) / requiredDiameter)
+    : 1;
+  const scale = state.canvasDisplayScale;
+  state.featureLegendHeight = legendHeight / scale;
+  const rect = circularCanvasRect(canvas, state);
   const width = rect.width;
   const height = rect.height;
   const layout = computeRenderedCircularLayout(width, height, state, record);
   const { cx, cy, baseRadius, pxPerBp, arc, offsets, digestFragmentTracks, restrictionTracks, otherTrackLayouts } = layout;
   state.hitRegions = [];
+  state.trackOverflows = [];
   state.renderDiagnostics = {
     circularSummaryLanes: 0,
     circularSummaryRepresentativeItems: 0,
@@ -2504,9 +2490,14 @@ function drawCircularViewer(ctx, canvas, status, record, state, theme = getViewe
       drawnStraight: 0
     }
   };
-  ctx.clearRect(0, 0, width, height);
+  ctx.clearRect(0, 0, displayRect.width, displayRect.height);
   ctx.fillStyle = theme.background;
-  ctx.fillRect(0, 0, width, height);
+  ctx.fillRect(0, 0, displayRect.width, displayRect.height);
+  ctx.save();
+  ctx.scale(scale, scale);
+  ctx.beginPath();
+  ctx.rect(0, 0, width, height - (state.featureLegendHeight || 0));
+  ctx.clip();
 
   const detailRadius = getInnermostSequenceRadius(baseRadius, state);
   const revealDetail = layout.revealDetail;
@@ -2542,22 +2533,30 @@ function drawCircularViewer(ctx, canvas, status, record, state, theme = getViewe
     });
   }
   let outerTrack = otherTrackStartRadius;
-  for (const { track, quantitative, summary, layout } of otherTrackLayouts) {
+  for (const { track, quantitative, summary, layout, action, reservedWidth } of otherTrackLayouts) {
+    const hidden = summary ? [] : layout?.hidden ?? [];
+    const count = new Set(hidden.map(copy => copy.itemIndex)).size;
+    if (summary || action || count) state.trackOverflows.push({ track, action, summary, count, hidden, limit: layout?.maxSlots });
     if (quantitative) {
       drawCircularQuantitativeTrack(ctx, track, cx, cy, outerTrack + 18, outerTrack - 18, state, record, arc, theme);
-      outerTrack += 46;
     } else if (summary) {
-      drawIntervalTrack(ctx, track, cx, cy, outerTrack + 12, outerTrack - 12, state, record, arc, pxPerBp, null, theme);
-      outerTrack += 34;
-    } else if (layout) {
-      const inner = outerTrack;
-      const outer = outerTrack + circularFeatureTrackWidth(layout) - 8;
-      drawIntervalTrack(ctx, track, cx, cy, outer, inner, state, record, arc, pxPerBp, layout, theme);
-      outerTrack += circularFeatureTrackWidth(layout);
+      if (track.summary?.bins?.length && !hasHiddenViewerItemTypes(track, state)) {
+        drawCircularSummaryTrack(ctx, track, cx, cy, outerTrack + 14, outerTrack + 2, state, record, arc, getViewerTrackColor(theme, track), theme);
+      } else {
+        const bins = featureDensityBins(getCircularIntervalCopies(track, state, record).map(copy => ({ start: copy.start + 1, end: copy.end })),
+          { viewStart: getViewStart(state), viewEnd: getViewEnd(state), binCount: 80, color: getViewerTrackColor(theme, track) });
+        const max = Math.max(1, ...bins.map(bin => bin.count));
+        for (const bin of bins) {
+          if (!bin.count) continue;
+          ctx.globalAlpha = 0.2 + 0.7 * Math.sqrt(bin.count / max);
+          fillAnnularArc(ctx, cx, cy, outerTrack + 14, outerTrack + 2, absToAngle(bin.start, state, arc), absToAngle(bin.end, state, arc), getViewerTrackColor(theme, track));
+        }
+        ctx.globalAlpha = 1;
+      }
     } else {
-      drawIntervalTrack(ctx, track, cx, cy, outerTrack + 12, outerTrack - 12, state, record, arc, pxPerBp, null, theme);
-      outerTrack += 34;
+      drawIntervalTrack(ctx, track, cx, cy, outerTrack + reservedWidth - 8, outerTrack, state, record, arc, pxPerBp, layout, theme);
     }
+    outerTrack += reservedWidth;
   }
 
   drawArc(ctx, cx, cy, rulerRadius, arc.startAngle, arc.startAngle + arc.arcAngle, theme.axis, 2.4);
@@ -2582,18 +2581,10 @@ function drawCircularViewer(ctx, canvas, status, record, state, theme = getViewe
   for (const [index, radius] of (sequenceRows.forward ?? []).entries()) drawTranslationFrame(ctx, cx, cy, radius, `+${index + 1}`, index, "+", state, record, arc, revealDetail, theme);
   for (const [index, radius] of (sequenceRows.reverse ?? []).entries()) drawTranslationFrame(ctx, cx, cy, radius, `-${index + 1}`, index, "-", state, record, arc, revealDetail, theme);
 
-  if (record.geneFeatureLegend?.length) {
-    ctx.save();
-    ctx.font = '10px system-ui, sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-    let x = 12;
-    for (const entry of record.geneFeatureLegend) {
-      ctx.fillStyle = entry.color; ctx.fillRect(x, height - 15 - entry.height / 2, 12, entry.height);
-      ctx.fillStyle = theme.muted; ctx.fillText(entry.label, x + 18, height - 15);
-      x += 28 + ctx.measureText(entry.label).width;
-    }
-    ctx.restore();
-  }
-  updateStatus(status, state, record, pxPerBp);
+  ctx.restore();
+  drawViewerFeatureVisibility(ctx, record, state, displayRect.width, displayRect.height - legend.height - 6, theme);
+  drawViewerFeatureLegend(ctx, legend, displayRect.height - legend.height - 6, theme);
+  updateStatus(status, state, record, pxPerBp * scale);
   if (canvas.dataset) {
     const labels = state.renderDiagnostics.circularFeatureLabels;
     canvas.dataset.circularFeatureLabelsInside = String(labels.drawnInside);
@@ -2610,6 +2601,7 @@ function drawCircularViewer(ctx, canvas, status, record, state, theme = getViewe
     canvas.dataset.sms3InspectionReady = "true";
   }
   canvas.setAttribute("aria-busy", "false");
+  state.syncTrackOverflow?.();
 }
 
 function makeCircularViewerSnapshot(record, state, searchControls) {
@@ -2635,6 +2627,7 @@ function makeCircularViewerSnapshot(record, state, searchControls) {
     searchScope: searchControls?.scope?.value || "",
     searchQuery: searchControls?.input?.value || "",
     hiddenTrackIds: Array.from(state.hiddenTrackIds || []),
+    expandedTrackIds: Array.from(state.expandedTrackIds || []),
     hiddenTrackItemTypes: Array.from(state.hiddenTrackItemTypes || [], ([key, types]) => [key, Array.from(types)])
   };
 }
@@ -2669,10 +2662,14 @@ function cloneViewerStateForExport(state) {
     activeSearchTarget: state.activeSearchTarget ? { ...state.activeSearchTarget } : null,
     hitRegions: [],
     hiddenTrackIds: new Set(state.hiddenTrackIds || []),
+    expandedTrackIds: new Set(state.expandedTrackIds || []),
+    syncTrackOverflow: null,
     hiddenTrackItemTypes: new Map(
       Array.from(state.hiddenTrackItemTypes || []).map(([key, value]) => [key, new Set(value)])
     ),
-    trackLayoutCache: new WeakMap()
+    trackLayoutCache: new WeakMap(),
+    stableLaneMemory: new WeakMap(),
+    densityMemory: new Map(state.densityMemory)
   };
 }
 
@@ -2721,10 +2718,17 @@ function installCircularViewer(panel, record, options = {}) {
   toolbar.append(leftControls, toggles, menuControls);
 
   const canvas = document.createElement("canvas");
+  canvas.style.height = `${viewerViewportHeight(window.innerHeight)}px`;
   canvas.className = "dna-viewer-canvas dna-circular-viewer-canvas";
   canvas.dataset.sms3InspectionReady = "false";
   canvas.setAttribute("aria-busy", "true");
+  canvas.setAttribute("aria-description", "Scroll to zoom. Drag the ring to rotate, or drag the empty center to move the map. Fit full sequence restores the overview.");
   const ctx = canvas.getContext("2d");
+  const stage = document.createElement("div");
+  stage.className = "dna-viewer-circular-stage";
+  const surface = document.createElement("div");
+  surface.className = "dna-viewer-circular-surface";
+  surface.append(canvas);
   const showInspectorPanels = options.showInspectorPanels !== false;
   const selectionPanel = createSelectionPanel();
   const rangePanel = createRangePanel();
@@ -2752,7 +2756,6 @@ function installCircularViewer(panel, record, options = {}) {
     dragLastY: 0,
     dragStartCenterX: null,
     dragStartCenterY: null,
-    dragCenterWeight: 1,
     selectedTarget: null,
     inspectedTarget: null,
     rangeAnchors: Array.isArray(preserved?.rangeAnchors)
@@ -2764,7 +2767,9 @@ function installCircularViewer(panel, record, options = {}) {
     activeSearchTarget: null,
     searchNavigationStarted: false,
     hitRegions: [],
+    densityMemory: new Map(),
     hiddenTrackIds: new Set(preserved?.hiddenTrackIds ?? []),
+    expandedTrackIds: new Set(Array.isArray(preserved?.expandedTrackIds) ? preserved.expandedTrackIds : []),
     hiddenTrackItemTypes: new Map((preserved?.hiddenTrackItemTypes ?? []).map(([key, types]) => [key, new Set(types)])),
     wheelAnchorClientX: null,
     wheelAnchorClientY: null
@@ -2793,11 +2798,14 @@ function installCircularViewer(panel, record, options = {}) {
     }
     scheduleResize();
   }
-  const trackControls = createViewerTrackControls(record, state, updateTrackVisibility);
+  const trackControls = createViewerTrackControls(record, state, updateTrackVisibility, { circular: true });
   const featureGroupControls = createViewerFeatureGroupControls(record, state, updateTrackVisibility);
+  const overflowControls = createViewerOverflowControls(canvas, state, updateTrackVisibility, { circular: true,
+    onSelect: target => selectTarget(target, { keepIfSame: true }) });
+  stage.append(overflowControls.notices, overflowControls.element, surface, overflowControls.browser);
   if (featureGroupControls) toolbar.append(featureGroupControls.element);
   const modelKey = createViewerGeneModelKey(record);
-  if (modelKey) (featureGroupControls?.element ?? toolbar).append(modelKey);
+  if (modelKey) stage.append(modelKey);
   secondStrandToggle.input.checked = state.showSecondStrand;
   forwardTranslationToggle.input.checked = state.showForwardTranslations;
   reverseTranslationToggle.input.checked = state.showReverseTranslations;
@@ -2810,34 +2818,33 @@ function installCircularViewer(panel, record, options = {}) {
   }
 
   function resize() {
-    let rect = canvas.getBoundingClientRect();
-    if (state.compactLayout) {
-      const layout = computeRenderedCircularLayout(rect.width, rect.height, state, record);
-      const desiredHeight = Math.min(760, Math.max(360, 360 + layout.offsets.rulerOffset * 2));
-      if (Math.abs(rect.height - desiredHeight) > 2) {
-        canvas.style.height = `${desiredHeight}px`;
-        rect = canvas.getBoundingClientRect();
-      }
-    }
+    state.viewportHeight = viewerViewportHeight(window.innerHeight);
+    stage.style.setProperty('--viewer-height', `${state.viewportHeight}px`);
+    stage.closest('.interactive-sequence-viewer-workspace')?.style.setProperty('--viewer-height', `${state.viewportHeight}px`);
+    canvas.style.minWidth = '0';
+    canvas.style.height = `${state.viewportHeight}px`;
+    const rect = canvas.getBoundingClientRect();
     const previousSize = state.canvasSize;
+    const previousLayout = previousSize ? computeRenderedCircularLayout(previousSize.width, previousSize.height, state, record) : null;
+    const legend = layoutViewerFeatureLegend(ctx, record, rect.width);
+    state.featureLegendHeight = (legend.height ? legend.height + 12 : 0) + VIEWER_VISIBILITY_FOOTER_HEIGHT;
     if (previousSize && (Math.abs(previousSize.width - rect.width) > 2 || Math.abs(previousSize.height - rect.height) > 2)) {
       resetZoomAnchors();
-    }
-    if (previousSize?.width > 0 && previousSize?.height > 0 && state.viewSpan < record.length * 0.999
-      && (Math.abs(previousSize.width - rect.width) > 2 || Math.abs(previousSize.height - rect.height) > 2)) {
-      const old = computeRenderedCircularLayout(previousSize.width, previousSize.height, state, record);
-      const angle = Math.atan2(previousSize.height * 0.4 - old.cy, previousSize.width / 2 - old.cx);
-      const anchor = pointOnCircle(old.cx, old.cy, old.baseRadius, angle);
-      const radius = computeRenderedCircularLayout(rect.width, rect.height, state, record).baseRadius;
-      const fraction = (value, size) => Math.max(0.2, Math.min(0.8, value / size));
-      setStoredCenterForVisualCenter(state, record, rect.width, rect.height,
-        rect.width * fraction(anchor.x, previousSize.width) - Math.cos(angle) * radius,
-        rect.height * fraction(anchor.y, previousSize.height) - Math.sin(angle) * radius);
+      if (state.viewSpan < record.length * 0.999) {
+        const old = previousLayout;
+        const angle = Math.atan2(previousSize.height * 0.4 - old.cy, previousSize.width / 2 - old.cx);
+        const anchor = pointOnCircle(old.cx, old.cy, old.baseRadius, angle);
+        const radius = computeRenderedCircularLayout(rect.width, rect.height, state, record).baseRadius;
+        const fraction = (value, size) => Math.max(0.2, Math.min(0.8, value / size));
+        setStoredCenterForVisualCenter(state, record, rect.width, rect.height,
+          rect.width * fraction(anchor.x, previousSize.width) - Math.cos(angle) * radius,
+          rect.height * fraction(anchor.y, previousSize.height) - Math.sin(angle) * radius);
+      }
     }
     state.canvasSize = { width: rect.width, height: rect.height };
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = Math.max(1, Math.round(rect.width * dpr));
-    canvas.height = Math.max(1, Math.round(rect.height * dpr));
+    const { width: bitmapWidth, height: bitmapHeight, pixelRatio: dpr } = linearViewerCanvasSize(rect.width, rect.height, window.devicePixelRatio || 1);
+    canvas.width = bitmapWidth;
+    canvas.height = bitmapHeight;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ensureZoomedCircularViewHasVisibleCenter(state, record, rect.width, rect.height);
     drawCircularViewer(ctx, canvas, status, record, state);
@@ -2859,17 +2866,19 @@ function installCircularViewer(panel, record, options = {}) {
       resize();
     });
   }
+  state.resizeForTrackWidth = scheduleResize;
   function zoomAt(clientX, clientY, factor, options = {}) {
     cancelInertia();
     const preserveOrientation = Boolean(options.lockOrientation || options.preserveOrientation);
     const oldSpan = state.viewSpan;
     const minSpan = getMinCircularViewSpan(record.length);
     if (oldSpan <= minSpan && factor > 1) return;
-    const rect = canvas.getBoundingClientRect();
+    let rect = circularCanvasRect(canvas, state);
+    const oldScale = rect.scale;
     const oldLayout = computeRenderedCircularLayout(rect.width, rect.height, state, record);
     const { cx, cy, baseRadius: oldRadius } = oldLayout;
-    const localX = clientX - rect.left;
-    const localY = clientY - rect.top;
+    let localX = (clientX - rect.left) / oldScale;
+    let localY = (clientY - rect.top) / oldScale;
     const pointer = preserveOrientation
       ? CIRCULAR_ZOOM_ORIENTATION_ANGLE
       : zoomAnchorAngle({ clientX, clientY }, rect, cx, cy, oldRadius);
@@ -2896,6 +2905,20 @@ function installCircularViewer(panel, record, options = {}) {
       : wheelZoom ? wheelGestureAnchor(state, rawAnchorBp, record.length, clientX, clientY)
       : rawAnchorBp;
     const nextSpan = Math.max(minSpan, Math.min(record.length, oldSpan / factor));
+    if (oldScale !== 1 && nextSpan < record.length * 0.999) {
+      state.canvasDisplayScale = 1;
+      state.featureLegendHeight *= oldScale;
+      state.centerX = null;
+      state.centerY = null;
+      state.viewMoved = false;
+      rect = circularCanvasRect(canvas, state);
+      localX = clientX - rect.left;
+      localY = clientY - rect.top;
+    }
+    const viewportWidth = rect.width;
+    const viewportHeight = rect.height;
+    const viewportCenterX = rect.width / 2;
+    const viewportCenterY = rect.height / 2;
     const nextArcState = {
       ...state,
       viewSpan: nextSpan
@@ -2945,9 +2968,9 @@ function installCircularViewer(panel, record, options = {}) {
         clamped.cy
       );
     } else if (preserveOrientation) {
-      const displayRadius = getCircularAnchorDisplayRadius(rect.width, rect.height, state, record.length);
-      const displayX = rect.width / 2 + Math.cos(pointer) * displayRadius;
-      const displayY = rect.height / 2 + Math.sin(pointer) * displayRadius;
+      const displayRadius = getCircularAnchorDisplayRadius(viewportWidth, viewportHeight, state, record.length);
+      const displayX = viewportCenterX + Math.cos(pointer) * displayRadius;
+      const displayY = viewportCenterY + Math.sin(pointer) * displayRadius;
       const clamped = clampVisualCenter(
         displayX - Math.cos(pointer) * newRadius,
         displayY - Math.sin(pointer) * newRadius,
@@ -2965,16 +2988,16 @@ function installCircularViewer(panel, record, options = {}) {
       );
       state.viewMoved = false;
     } else if (!preserveOrientation) {
-      const displayRadius = getCircularAnchorDisplayRadius(rect.width, rect.height, state, record.length);
+      const displayRadius = getCircularAnchorDisplayRadius(viewportWidth, viewportHeight, state, record.length);
       const anchorRadius = useCursorAnchor
-        ? newRadius + (pointerDistance - oldRadius)
+        ? newRadius + (pointerDistance - oldRadius) * oldScale
         : newRadius;
       const displayX = useCursorAnchor
         ? localX
-        : rect.width / 2 + Math.cos(pointer) * displayRadius;
+        : viewportCenterX + Math.cos(pointer) * displayRadius;
       const displayY = useCursorAnchor
         ? localY
-        : rect.height / 2 + Math.sin(pointer) * displayRadius;
+        : viewportCenterY + Math.sin(pointer) * displayRadius;
       const clamped = clampVisualCenter(
         displayX - Math.cos(pointer) * anchorRadius,
         displayY - Math.sin(pointer) * anchorRadius,
@@ -2997,7 +3020,7 @@ function installCircularViewer(panel, record, options = {}) {
   function rotateByDirection(direction) {
     cancelInertia();
     resetZoomAnchors();
-    const rect = canvas.getBoundingClientRect();
+    const rect = circularCanvasRect(canvas, state);
     const { baseRadius } = computeLayout(rect.width, rect.height, state, record);
     const bpPerScreenPx = state.viewSpan / Math.max(1, TWO_PI * baseRadius);
     const visualStepBp = bpPerScreenPx * 88;
@@ -3011,10 +3034,10 @@ function installCircularViewer(panel, record, options = {}) {
 
   function zoomAtButtonAnchor(factor) {
     resetZoomAnchors();
-    const rect = canvas.getBoundingClientRect();
+    const rect = circularCanvasRect(canvas, state);
     const { cx, cy, baseRadius } = computeLayout(rect.width, rect.height, state, record);
     const buttonAngle = CIRCULAR_ZOOM_ORIENTATION_ANGLE;
-    zoomAt(rect.left + cx + Math.cos(buttonAngle) * baseRadius, rect.top + cy + Math.sin(buttonAngle) * baseRadius, factor, { lockOrientation: true });
+    zoomAt(rect.left + (cx + Math.cos(buttonAngle) * baseRadius) * rect.scale, rect.top + (cy + Math.sin(buttonAngle) * baseRadius) * rect.scale, factor, { lockOrientation: true });
   }
   function updateSearchControls(searchControls) {
     updateViewerSearchControls(searchControls, state.searchResults, state.activeSearchIndex);
@@ -3060,6 +3083,11 @@ function installCircularViewer(panel, record, options = {}) {
   function zoomToTargetAnimated(target, options = {}) {
     cancelInertia();
     resetZoomAnchors();
+    if (state.canvasDisplayScale !== 1) {
+      state.canvasDisplayScale = 1;
+      state.centerX = null;
+      state.centerY = null;
+    }
     const nextSpan = options.preserveZoom ? state.viewSpan : targetSpan(target);
     const nextCenter = targetCenter(target);
     const fromCenter = state.viewCenter;
@@ -3068,14 +3096,8 @@ function installCircularViewer(panel, record, options = {}) {
     const fromX = Number.isFinite(state.centerX) ? state.centerX : null;
     const fromY = Number.isFinite(state.centerY) ? state.centerY : null;
     const deltaCenter = shortestCoordinateDelta(nextCenter, fromCenter, record.length);
-    const rect = canvas.getBoundingClientRect();
+    const rect = circularCanvasRect(canvas, state);
     const focusAngle = -Math.PI / 2;
-    const nextArc = getArcConfig({ ...state, viewSpan: nextSpan }, record.length);
-    const nextGap = focusAngle - nextArc.arcAngle / 2;
-    const deltaGap = signedAngleDiff(nextGap, fromGap);
-    const nextRadius = computeBaseRadius(rect.width, rect.height, { ...state, viewSpan: nextSpan }, record);
-    const nextX = rect.width / 2;
-    const nextY = rect.height * 0.4 - Math.sin(focusAngle) * nextRadius;
     const started = performance.now();
     const duration = 210;
     function step(now) {
@@ -3083,21 +3105,36 @@ function installCircularViewer(panel, record, options = {}) {
       const eased = 1 - Math.pow(1 - t, 3);
       state.viewCenter = fromCenter + deltaCenter * eased;
       state.viewSpan = fromSpan + (nextSpan - fromSpan) * eased;
-      state.gapCenterAngle = fromGap + deltaGap * eased;
+      // Read current surface dimensions during navigation so a window resize
+      // cannot leave the target arc offscreen. Zoom itself keeps them fixed.
+      const currentRect = circularCanvasRect(canvas, state);
+      const nextLayout = computeRenderedCircularLayout(currentRect.width, currentRect.height,
+        { ...state, viewCenter: nextCenter, viewSpan: nextSpan }, record);
+      // At lower detail the renderer closes the gap. Use that same arc when
+      // orienting the target, or a neighboring part of the record faces north.
+      const nextGap = focusAngle - nextLayout.arc.arcAngle / 2;
+      state.gapCenterAngle = fromGap + signedAngleDiff(nextGap, fromGap) * eased;
+      const nextX = currentRect.width / 2;
+      const nextY = currentRect.height * 0.4 - Math.sin(focusAngle) * nextLayout.baseRadius;
       if (fromX === null) {
         state.centerX = nextX;
       } else {
-        state.centerX = fromX + (nextX - fromX) * eased;
+        const startX = fromX * currentRect.width / rect.width;
+        state.centerX = startX + (nextX - startX) * eased;
       }
       if (fromY === null) {
         state.centerY = nextY;
       } else {
-        state.centerY = fromY + (nextY - fromY) * eased;
+        const startY = fromY * currentRect.height / rect.height;
+        state.centerY = startY + (nextY - startY) * eased;
       }
       state.viewMoved = false;
       clampSpan(state, record.length);
       drawCircularViewer(ctx, canvas, status, record, state);
       navigationFrame = t < 1 ? requestAnimationFrame(step) : 0;
+      if (t === 1) requestAnimationFrame(() => {
+        if (state.selectedTarget === target) scrollViewerTargetIntoSurface(state, target, canvas, surface);
+      });
     }
     navigationFrame = requestAnimationFrame(step);
   }
@@ -3318,11 +3355,14 @@ function installCircularViewer(panel, record, options = {}) {
     state.centerY = null;
     state.viewMoved = false;
     state.userRotated = false;
-    drawCircularViewer(ctx, canvas, status, record, state);
+    surface.scrollLeft = 0;
+    surface.scrollTop = 0;
+    resize();
   });
   camera.addEventListener("click", () => {
     const safeTitle = makeSafeFileStem(record.title, "dna-circular-viewer");
     downloadCanvasPng(canvas, `${safeTitle}-circular-viewer.png`, {
+      boundBitmap: true,
       drawSnapshot: (exportContext, exportCanvas) => {
         // The detached export canvas does not inherit the viewer's CSS colours.
         drawCircularViewer(exportContext, exportCanvas, document.createElement("div"), record, cloneViewerStateForExport(state), getViewerCanvasTheme(canvas));
@@ -3331,17 +3371,22 @@ function installCircularViewer(panel, record, options = {}) {
   });
   svgDownload.addEventListener("click", () => {
     const safeTitle = makeSafeFileStem(record.title, "dna-circular-viewer");
-    downloadCanvasSvg(canvas, `${safeTitle}-circular-viewer.svg`, {
-      title: `${record.title || "DNA sequence"} circular viewer`,
-      description: `Current circular viewer snapshot. ${status.textContent || ""}`.trim(),
-      metadata: {
-        viewer: "circular",
-        recordTitle: record.title || "",
-        sequenceLength: record.length,
-        viewCenter: state.viewCenter,
-        viewSpan: state.viewSpan
-      }
-    });
+    drawCircularViewer(ctx, canvas, document.createElement("div"), record, cloneViewerStateForExport(state));
+    try {
+      downloadCanvasSvg(canvas, `${safeTitle}-circular-viewer.svg`, {
+        title: `${record.title || "DNA sequence"} circular viewer`,
+        description: `Current circular viewer snapshot. ${status.textContent || ""}`.trim(),
+        metadata: {
+          viewer: "circular",
+          recordTitle: record.title || "",
+          sequenceLength: record.length,
+          viewCenter: state.viewCenter,
+          viewSpan: state.viewSpan
+        }
+      });
+    } finally {
+      drawCircularViewer(ctx, canvas, status, record, state);
+    }
   });
   secondStrandToggle.input.addEventListener("change", () => {
     cancelInertia();
@@ -3402,6 +3447,8 @@ function installCircularViewer(panel, record, options = {}) {
     });
   });
   canvas.addEventListener("wheel", (event) => {
+    // Additional rings keep the same wheel-zoom gesture. Showcase applies
+    // its page-scroll policy before this handler.
     const factor = viewerWheelZoomFactor(event);
     if (factor === 1) return;
     event.preventDefault();
@@ -3441,19 +3488,18 @@ function installCircularViewer(panel, record, options = {}) {
     cancelInertia();
     resetZoomAnchors();
     inspection.hide();
-    const rect = canvas.getBoundingClientRect();
-    const { cx, cy } = computeLayout(rect.width, rect.height, state, record);
-    const centerWeight = getDragCenterWeight(state, record);
+    const rect = circularCanvasRect(canvas, state);
+    const { cx, cy, baseRadius } = computeRenderedCircularLayout(rect.width, rect.height, state, record);
+    const distance = Math.hypot((event.clientX - rect.left) / rect.scale - cx, (event.clientY - rect.top) / rect.scale - cy);
     state.dragging = true;
-    state.dragMode = shouldUseCircularFreeMove(state, record.length) ? "move-view" : "rotate";
+    state.dragMode = shouldUseCircularFreeMove(state, record.length) || distance < baseRadius * 0.7 ? "move-view" : "rotate";
     state.dragLastAngle = pointerAngle(event, rect, cx, cy);
     state.dragStartX = event.clientX;
     state.dragStartY = event.clientY;
     state.dragLastX = event.clientX;
     state.dragLastY = event.clientY;
-    state.dragStartCenterX = Number.isFinite(state.centerX) ? state.centerX : rect.width / 2;
-    state.dragStartCenterY = Number.isFinite(state.centerY) ? state.centerY : rect.height / 2;
-    state.dragCenterWeight = Math.max(0.05, centerWeight);
+    state.dragStartCenterX = cx;
+    state.dragStartCenterY = cy;
     inertiaTracker.reset();
     inertiaTracker.add(state.viewCenter, performance.now());
     canvas.classList.add("dragging");
@@ -3462,12 +3508,12 @@ function installCircularViewer(panel, record, options = {}) {
   const onWindowMouseMove = (event) => {
     if (!state.dragging) {
       if (event.target === canvas) {
-        const rect = canvas.getBoundingClientRect();
-        featureZoom.move(event.clientX - rect.left, event.clientY - rect.top);
+        const rect = circularCanvasRect(canvas, state);
+        featureZoom.move((event.clientX - rect.left) / rect.scale, (event.clientY - rect.top) / rect.scale);
       }
       return;
     }
-    const rect = canvas.getBoundingClientRect();
+    const rect = circularCanvasRect(canvas, state);
     const { cx, cy } = computeLayout(rect.width, rect.height, state, record);
     if (state.dragMode === "move-view") {
       state.viewMoved = true;
@@ -3475,14 +3521,13 @@ function installCircularViewer(panel, record, options = {}) {
       state.dragLastY = event.clientY;
       const { baseRadius } = computeLayout(rect.width, rect.height, state, record);
       const next = clampVisualCenter(
-        state.dragStartCenterX + event.clientX - state.dragStartX,
-        state.dragStartCenterY + event.clientY - state.dragStartY,
+        state.dragStartCenterX + (event.clientX - state.dragStartX) / rect.scale,
+        state.dragStartCenterY + (event.clientY - state.dragStartY) / rect.scale,
         baseRadius,
         rect.width,
         rect.height
       );
-      state.centerX = next.cx;
-      state.centerY = next.cy;
+      setStoredCenterForVisualCenter(state, record, rect.width, rect.height, next.cx, next.cy);
       drawCircularViewer(ctx, canvas, status, record, state);
       return;
     }
@@ -3531,10 +3576,10 @@ function installCircularViewer(panel, record, options = {}) {
   resizeObserver?.observe(canvas);
 
   if (showInspectorPanels) {
-    const workspace = createViewerInspectorWorkspace(canvas, selectionPanel, rangePanel);
+    const workspace = createViewerInspectorWorkspace(stage, selectionPanel, rangePanel);
     panel.append(toolbar, searchControls.element, workspace);
   } else {
-    panel.append(toolbar, searchControls.element, canvas);
+    panel.append(toolbar, searchControls.element, stage);
   }
   options.onCoordinateSelectionReady?.((start, end) => {
     if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start || end > record.length) return false;

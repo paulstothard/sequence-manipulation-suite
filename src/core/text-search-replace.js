@@ -90,6 +90,7 @@ function removeMatchingLines(text, regex) {
 export function runTextSearchReplaceCore(input, options = {}) {
   const text = String(input ?? "");
   const warnings = [];
+  const notes = [];
   const pattern = String(options.pattern ?? "");
   const replacementText = String(options.replacement ?? "");
   const searchMode = options.searchMode === "regex" ? "regex" : "plain";
@@ -122,14 +123,15 @@ export function runTextSearchReplaceCore(input, options = {}) {
   if (ignoredZeroLength > 0) {
     warnings.push(`${ignoredZeroLength} zero-length match${ignoredZeroLength === 1 ? "" : "es"} ignored in the match table.`);
   }
-  if (rows.length === 0 && ignoredZeroLength === 0) {
-    warnings.push("No matches were found.");
+  if (text.length > 0 && rows.length === 0 && ignoredZeroLength === 0) {
+    notes.push("No matches were found.");
   }
 
   return {
     output,
     rows,
     warnings,
+    notes,
     stats: {
       inputCharacters: text.length,
       matches: rows.length,

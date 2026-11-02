@@ -158,7 +158,6 @@ function parseReferenceRecords(referenceText, warnings) {
   const biologicalRecords = parseBiologicalRecordInput(referenceText, { inputFormat: "auto" });
   if (biologicalRecords.records.length > 0) {
     warnings.push(...biologicalRecords.warnings);
-    warnings.push(`Reference input was interpreted as ${biologicalRecords.sourceFormat}; mapping uses the whole DNA/RNA sequence records.`);
     const viewerRecords = makeBiologicalRecordViewerRecords(biologicalRecords.records);
     const viewerRecordsByTitle = new Map(viewerRecords.map((record) => [record.title, record]));
     const sequenceRecords = flatfileRecordsToSequenceRecords(biologicalRecords.records, "whole")

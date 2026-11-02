@@ -23,6 +23,7 @@ export const sequenceExtractorMetadata = {
     }
   ],
   splitInput: {
+    sourceLabel: "Source sequences",
     separator: SEQUENCE_EXTRACTOR_SEPARATOR,
     workspaceSourcePanel: true,
     panels: [

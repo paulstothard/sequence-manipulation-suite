@@ -1,42 +1,13 @@
-import { formatFastaRecord, parseSequenceInput } from "../../core/fasta.js";
+import { formatFastaRecord, parseFilterSequenceInput } from "../../core/fasta.js";
 import { makeTextStream, makeToolResult } from "../../core/workflow.js";
+
+import { applySequenceCharacterFilter } from "../../core/sequence-character-filter.js";
+import { normalizeCleanFilterDnaRnaOptions } from "../../core/clean-filter-dna-rna-options.js";
 
 const WORKER_CHUNK_SIZE = 100_000;
 
 function getAlphabetLabel(alphabet) {
   return alphabet === "protein" ? "protein" : "DNA/RNA";
-}
-
-function parseFilterSequenceInput(input, fallbackTitle = "sequence") {
-  const text = String(input ?? "");
-  if (!text.trim()) {
-    return [];
-  }
-
-  if (!text.trimStart().startsWith(">")) {
-    return [
-      {
-        title: fallbackTitle,
-        sequence: text,
-        hadHeader: false
-      }
-    ];
-  }
-
-  const records = [];
-  const normalized = text.replace(/^\s+/, "");
-  const entries = normalized.split(/\n(?=>)/);
-  for (const entry of entries) {
-    const lines = entry.split(/\r?\n/);
-    const header = lines.shift() ?? "";
-    const title = header.replace(/^>\s*/, "").trim() || fallbackTitle;
-    records.push({
-      title,
-      sequence: lines.join("\n"),
-      hadHeader: true
-    });
-  }
-  return records;
 }
 
 function getAlphabetMismatchWarning(sequence, alphabet) {
@@ -60,156 +31,22 @@ function getAlphabetMismatchWarning(sequence, alphabet) {
   return "";
 }
 
-function getCaseMode(options = {}) {
-  if (["uppercase", "lowercase", "preserve"].includes(options.caseMode)) {
-    return options.caseMode;
-  }
-  return options.preserveCase === false ? "uppercase" : "preserve";
-}
-
-function applyCaseMode(sequence, options = {}) {
-  const caseMode = getCaseMode(options);
-  if (caseMode === "uppercase") {
-    return String(sequence ?? "").toUpperCase();
-  }
-  if (caseMode === "lowercase") {
-    return String(sequence ?? "").toLowerCase();
-  }
-  return String(sequence ?? "");
-}
-
-function isDnaRnaIupac(character) {
-  return /[ACGTURYSWKMBDHVNX]/i.test(character);
-}
-
-function isBasicDnaRna(character) {
-  return /[ACGTUN]/i.test(character);
-}
-
-function isProteinIupac(character) {
-  return /[ABCDEFGHIKLMNPQRSTUVWYZXJO*]/i.test(character);
-}
-
-function isStandardProtein(character) {
-  return /[ACDEFGHIKLMNPQRSTVWY]/i.test(character);
-}
-
-function isAllowedGap(character, options = {}) {
-  return options.keepGaps === true && /[.-]/.test(character);
-}
-
-function isLowercaseLetter(character) {
-  return /[a-z]/.test(character);
-}
-
-function isUppercaseLetter(character) {
-  return /[A-Z]/.test(character);
-}
-
-function getFilterPreset(alphabet, options = {}) {
-  if (options.filterPreset) {
-    return options.filterPreset;
-  }
-  return alphabet === "protein" ? "valid-protein-iupac" : "valid-dna-rna-iupac";
-}
-
-function shouldFilterCharacter(character, alphabet, options = {}) {
-  const preset = getFilterPreset(alphabet, options);
-
-  if (alphabet === "protein") {
-    if (preset === "standard-protein") {
-      return !(isStandardProtein(character) || isAllowedGap(character, options));
-    }
-    if (preset === "standard-protein-stop") {
-      return !(isStandardProtein(character) || character === "*" || isAllowedGap(character, options));
-    }
-    if (preset === "whitespace") {
-      return /\s/.test(character);
-    }
-    if (preset === "digits") {
-      return /\d/.test(character);
-    }
-    if (preset === "digits-whitespace") {
-      return /[\s\d]/.test(character);
-    }
-    if (preset === "keep-lowercase-protein") {
-      return !(isProteinIupac(character) && isLowercaseLetter(character));
-    }
-    if (preset === "keep-uppercase-protein") {
-      return !(isProteinIupac(character) && isUppercaseLetter(character));
-    }
-    return !(isProteinIupac(character) || isAllowedGap(character, options));
-  }
-
-  if (preset === "valid-basic-dna-rna") {
-    return !(isBasicDnaRna(character) || isAllowedGap(character, options));
-  }
-  if (preset === "remove-t") {
-    return /[tT]/.test(character);
-  }
-  if (preset === "remove-u") {
-    return /[uU]/.test(character);
-  }
-  if (preset === "whitespace") {
-    return /\s/.test(character);
-  }
-  if (preset === "digits") {
-    return /\d/.test(character);
-  }
-  if (preset === "digits-whitespace") {
-    return /[\s\d]/.test(character);
-  }
-  if (preset === "keep-lowercase-dna-rna") {
-    return !(isDnaRnaIupac(character) && isLowercaseLetter(character));
-  }
-  if (preset === "keep-uppercase-dna-rna") {
-    return !(isDnaRnaIupac(character) && isUppercaseLetter(character));
-  }
-
-  return !(isDnaRnaIupac(character) || isAllowedGap(character, options));
-}
-
-function applyFilterToSequence(sequence, alphabet, options = {}) {
-  let filteredCount = 0;
-  let output = "";
-  const replacement = String(options.replacement ?? "");
-
-  for (const character of String(sequence ?? "")) {
-    if (shouldFilterCharacter(character, alphabet, options)) {
-      filteredCount += 1;
-      output += replacement;
-    } else {
-      output += character;
-    }
-  }
-
-  return {
-    sequence: applyCaseMode(output, options),
-    filteredCount
-  };
-}
-
-async function applyFilterToSequenceChunked(sequence, alphabet, options = {}, context = {}) {
+function* filterSequenceChunks(sequence, alphabet, options, context) {
   let filteredCount = 0;
   const outputParts = [];
   const source = String(sequence ?? "");
-
-  for (let index = 0; index < source.length; index += WORKER_CHUNK_SIZE) {
+  for (let index = 0; index < source.length;) {
     context.throwIfCancelled?.();
-    const filtered = applyFilterToSequence(
-      source.slice(index, index + WORKER_CHUNK_SIZE),
-      alphabet,
-      options
-    );
+    let end = Math.min(index + WORKER_CHUNK_SIZE, source.length);
+    // Keep one Unicode code point together, including at a scheduling boundary.
+    if (end < source.length && /[\uD800-\uDBFF]/.test(source[end - 1]) && /[\uDC00-\uDFFF]/.test(source[end])) end += 1;
+    const filtered = applySequenceCharacterFilter(source.slice(index, end), alphabet, options);
     filteredCount += filtered.filteredCount;
     outputParts.push(filtered.sequence);
-    await context.yieldIfNeeded?.();
+    index = end;
+    yield;
   }
-
-  return {
-    sequence: outputParts.join(""),
-    filteredCount
-  };
+  return { sequence: outputParts.join(""), filteredCount };
 }
 
 function shouldWarnAboutFilteredCharacters(alphabet, options = {}) {
@@ -223,124 +60,97 @@ function shouldWarnAboutFilteredCharacters(alphabet, options = {}) {
 }
 
 function buildCleanFilterResult(processedRecords, warnings, options = {}) {
+  const dna = options.alphabet === "dna-rna";
   const formatFasta = options.formatFasta !== false;
   const lineWidth = options.lineWidth ?? 60;
   const outputParts = [];
   const sequenceRecords = [];
   let basesProcessed = 0;
-  let charactersRemoved = 0;
+  let charactersFiltered = 0;
+  const removed = count => dna && options.replacement ? 0 : count;
 
   for (const record of processedRecords) {
-    basesProcessed += record.sequence.length;
-    charactersRemoved += record.filteredCount;
-    sequenceRecords.push({
+    if (dna && formatFasta && /[^ACGTURYSWKMBDHVNX.\-\s]/i.test(record.sequence)) {
+      throw new Error(`${record.title}: filtered output contains non-nucleotide characters. Choose Filtered text to retain them, or change the filter/replacement for FASTA output.`);
+    }
+    if (dna) {
+      for (const character of record.sequence) basesProcessed += 1;
+    } else basesProcessed += record.sequence.length;
+    charactersFiltered += record.filteredCount;
+    // FASTA's structured records support the existing Workspace save action.
+    // Plain text has no secondary FASTA or sequence-record materialization.
+    if (!dna || formatFasta) sequenceRecords.push({
       title: `${record.title} filtered`,
-      sequence: record.sequence,
+      sequence: dna ? record.sequence.replace(/\s+/g, "") : record.sequence,
       sourceTitle: record.title,
       alphabet: record.alphabet,
-      charactersRemoved: record.filteredCount,
+      charactersRemoved: removed(record.filteredCount),
       charactersFiltered: record.filteredCount
     });
-
-    if (formatFasta) {
-      outputParts.push(formatFastaRecord(`${record.title} filtered`, record.sequence, lineWidth));
-    } else {
-      outputParts.push(record.sequence);
-    }
+    outputParts.push(formatFasta
+      ? formatFastaRecord(`${record.title} filtered`, record.sequence, lineWidth)
+      : record.sequence);
   }
 
-  const output = outputParts.join("\n");
-  const fastaOutput = sequenceRecords
-    .map((record) => formatFastaRecord(record.title, record.sequence, lineWidth))
-    .join("\n");
-
+  const output = outputParts.join(dna && !formatFasta ? "\n\n" : "\n");
+  let sequenceSearch;
+  if (dna) {
+    sequenceSearch = false;
+    if (formatFasta) sequenceSearch = { format: "fasta", alphabet: "dna-rna" };
+    else if (processedRecords.every(record => !/[^ACGTURYSWKMBDHVNX.\-\s]/i.test(record.sequence))) {
+      let offset = 0;
+      sequenceSearch = { format: "plain", alphabet: "dna-rna", recordRanges: outputParts.map((text, index) => {
+        const range = { start: offset, end: offset + text.length, title: processedRecords[index].title };
+        offset = range.end + 2;
+        return range;
+      }) };
+    }
+  }
+  const fastaOutput = formatFasta ? output : !dna
+    ? sequenceRecords.map(record => formatFastaRecord(record.title, record.sequence, lineWidth)).join("\n")
+    : undefined;
   return makeToolResult({
     output,
+    sequenceSearch,
+    optionsUsed: dna ? normalizeCleanFilterDnaRnaOptions(options) : undefined,
     download: {
       filename: `clean-filter-sequence.${formatFasta ? "fasta" : "txt"}`,
-      mimeType: "text/plain;charset=utf-8"
+      mimeType: dna && formatFasta ? "text/x-fasta;charset=utf-8" : "text/plain;charset=utf-8"
     },
     warnings,
+    notes: dna && charactersFiltered > 0 && options.replacement
+      ? [`${charactersFiltered} character(s) replaced by the selected filter.`] : [],
     recordsProcessed: processedRecords.length,
     basesProcessed,
-    charactersRemoved,
-    charactersFiltered: charactersRemoved,
+    processedUnitLabel: dna ? "character" : "base",
+    charactersRemoved: removed(charactersFiltered),
     streams: {
-      fasta: makeTextStream(fastaOutput, "text/x-fasta"),
-      sequenceRecords: {
+      ...(fastaOutput !== undefined ? { fasta: makeTextStream(fastaOutput, "text/x-fasta", sequenceSearch) } : {}),
+      ...(!dna || formatFasta ? { sequenceRecords: {
         kind: "sequence-records",
         schema: "clean-filter-sequence",
         alphabet: processedRecords[0]?.alphabet ?? "dna-rna",
         records: sequenceRecords
-      }
+      } } : {})
     }
   });
 }
 
-export function runCleanFilterSequence(input, options = {}) {
-  const records = options.preserveFilterWhitespace === false
-    ? parseSequenceInput(input, "sequence")
-    : parseFilterSequenceInput(input, "sequence");
-  const warnings = [];
-
-  if (records.length === 0) {
-    return makeToolResult({
-      output: "",
-      warnings: ["No sequence input was provided."],
-      recordsProcessed: 0,
-      basesProcessed: 0,
-      charactersRemoved: 0
-    });
-  }
-
-  const alphabet = options.alphabet === "protein" ? "protein" : "dna-rna";
-  const alphabetLabel = getAlphabetLabel(alphabet);
-  const processedRecords = [];
-
-  for (const record of records) {
-    const mismatchWarning = getAlphabetMismatchWarning(record.sequence, alphabet);
-    if (mismatchWarning) {
-      warnings.push(`${record.title}: ${mismatchWarning}`);
-    }
-
-    const cleaned = applyFilterToSequence(record.sequence, alphabet, options);
-    const sequence = cleaned.sequence;
-    const filteredCount = cleaned.filteredCount ?? cleaned.removedCount ?? 0;
-
-    if (filteredCount > 0 && shouldWarnAboutFilteredCharacters(alphabet, options)) {
-      const message =
-        alphabet === "protein" && !options.filterPreset && !options.replacement && !options.caseMode
-          ? `removed ${filteredCount} non-${alphabetLabel} character(s).`
-          : `filtered ${filteredCount} character(s) using ${alphabetLabel} settings.`;
-      warnings.push(`${record.title}: ${message}`);
-    }
-
-    if (sequence.length === 0) {
-      warnings.push(`${record.title}: no ${alphabetLabel} sequence characters were found.`);
-    }
-
-    processedRecords.push({
-      title: record.title,
-      sequence,
-      alphabet,
-      filteredCount
-    });
-  }
-
-  return buildCleanFilterResult(processedRecords, warnings, options);
-}
-
-export async function runCleanFilterSequenceWorker(input, options = {}, context = {}) {
+function* computeCleanFilterSequence(input, options = {}, context = {}) {
+  const alphabet = options?.alphabet === "protein" ? "protein" : "dna-rna";
+  if (alphabet === "dna-rna") options = { ...normalizeCleanFilterDnaRnaOptions(options), alphabet };
   context.reportProgress?.({ phase: "parsing-input", progress: 0.05 });
   context.throwIfCancelled?.();
-  const records = options.preserveFilterWhitespace === false
-    ? parseSequenceInput(input, "sequence")
-    : parseFilterSequenceInput(input, "sequence");
-  await context.yieldIfNeeded?.();
+  const records = parseFilterSequenceInput(input, "sequence");
+  if (options.preserveFilterWhitespace === false) {
+    for (const record of records) record.sequence = record.sequence.replace(/\s+/g, "");
+  }
+  yield;
 
   if (records.length === 0) {
     return makeToolResult({
       output: "",
+      optionsUsed: alphabet === "dna-rna" ? normalizeCleanFilterDnaRnaOptions(options) : undefined,
       warnings: ["No sequence input was provided."],
       recordsProcessed: 0,
       basesProcessed: 0,
@@ -349,7 +159,6 @@ export async function runCleanFilterSequenceWorker(input, options = {}, context 
     });
   }
 
-  const alphabet = options.alphabet === "protein" ? "protein" : "dna-rna";
   const alphabetLabel = getAlphabetLabel(alphabet);
   const warnings = [];
   const processedRecords = [];
@@ -366,7 +175,7 @@ export async function runCleanFilterSequenceWorker(input, options = {}, context 
       warnings.push(`${record.title}: ${mismatchWarning}`);
     }
 
-    const filtered = await applyFilterToSequenceChunked(record.sequence, alphabet, options, context);
+    const filtered = yield* filterSequenceChunks(record.sequence, alphabet, options, context);
     if (filtered.filteredCount > 0 && shouldWarnAboutFilteredCharacters(alphabet, options)) {
       const message =
         alphabet === "protein" && !options.filterPreset && !options.replacement && !options.caseMode
@@ -389,11 +198,30 @@ export async function runCleanFilterSequenceWorker(input, options = {}, context 
 
   context.reportProgress?.({ phase: "building-output", progress: 0.95 });
   context.throwIfCancelled?.();
-  await context.yieldIfNeeded?.();
+  yield;
 
   const result = buildCleanFilterResult(processedRecords, warnings, options);
   context.reportProgress?.({ phase: "finished", progress: 1 });
   return result;
+}
+
+// Both API shapes drain the same computation; only scheduling differs.
+export function runCleanFilterSequence(input, options = {}) {
+  const computation = computeCleanFilterSequence(input, options);
+  let step = computation.next();
+  while (!step.done) step = computation.next();
+  return step.value;
+}
+
+export async function runCleanFilterSequenceWorker(input, options = {}, context = {}) {
+  const computation = computeCleanFilterSequence(input, options, context);
+  let step = computation.next();
+  while (!step.done) {
+    await context.yieldIfNeeded?.();
+    context.throwIfCancelled?.();
+    step = computation.next();
+  }
+  return step.value;
 }
 
 export function runCleanFilterDnaRna(input, options = {}) {

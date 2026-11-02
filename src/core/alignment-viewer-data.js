@@ -236,7 +236,7 @@ export async function makeAlignmentViewerData({
   vcfRows = [],
   options = {},
   warnings = [],
-  title = "Alignment viewer",
+  title = "Mapped read alignment viewer",
   recordTitleSuffix = "alignments",
   context = {}
 } = {}) {
@@ -247,12 +247,12 @@ export async function makeAlignmentViewerData({
   const span = end - start + 1;
   const regionNavigation = makeRegionNavigation(samResult, options, region);
   if (!reference || !Number.isFinite(span) || span <= 0) {
-    warnings.push("Alignment viewer could not be built because no valid mapped reference region was available.");
+    warnings.push("Mapped read alignment viewer could not be built because no valid mapped reference region was available.");
     return makeRegionViewer([], { title, layout: "linear" }, regionNavigation);
   }
   if (span > MAX_VIEWER_REGION_SPAN) {
     warnings.push(
-      `Skipped the alignment viewer because the selected span is ${span.toLocaleString()} bp. Select a region of ${MAX_VIEWER_REGION_SPAN.toLocaleString()} bp or less.`
+      `Skipped the mapped read alignment viewer because the selected span is ${span.toLocaleString()} bp. Select a region of ${MAX_VIEWER_REGION_SPAN.toLocaleString()} bp or less.`
     );
     return makeRegionViewer([], { title, layout: "linear" }, regionNavigation);
   }
@@ -269,7 +269,7 @@ export async function makeAlignmentViewerData({
   }
   const hasReferenceSequence = referenceSequence.length === span;
   if (referenceSequence && !hasReferenceSequence) {
-    warnings.push(`Reference genome sequence for ${reference}:${start}-${end} was ${referenceSequence.length.toLocaleString()} bp; expected ${span.toLocaleString()} bp, so placeholder bases were used in the alignment viewer.`);
+    warnings.push(`Reference genome sequence for ${reference}:${start}-${end} was ${referenceSequence.length.toLocaleString()} bp; expected ${span.toLocaleString()} bp, so placeholder bases were used in the mapped read alignment viewer.`);
   }
 
   const effectiveReferenceSequence = hasReferenceSequence ? referenceSequence : "";
@@ -284,10 +284,8 @@ export async function makeAlignmentViewerData({
     warnings.push(`VCF records were supplied, but no variants overlapped ${reference}:${start}-${end}.`);
   }
 
-  if (hasReferenceSequence) {
-    warnings.push(`Alignment viewer uses reference bases from ${referenceRegion.sourceLabel || "the supplied reference genome"}. Zoom in to compare read bases and variants against the reference sequence.`);
-  } else {
-    warnings.push("Alignment viewer uses placeholder N bases because SAM/BAM alignments do not include reference sequence. Provide a reference genome in Options to show real bases. Zoom in on read features to see read bases from the SAM SEQ field; insertions and clipped bases are reported in selection details.");
+  if (!hasReferenceSequence) {
+    warnings.push("Mapped read alignment viewer uses placeholder N bases because SAM/BAM alignments do not include reference sequence. Provide a reference genome in Options to show real bases. Zoom in on read features to see read bases from the SAM SEQ field; insertions and clipped bases are reported in selection details.");
   }
 
   const tracks = [
@@ -335,7 +333,7 @@ export async function makeSamViewerData(result, options, warnings, context = {})
     samResult: result,
     options,
     warnings,
-    title: "SAM/BAM alignment viewer",
+    title: "SAM/BAM mapped read alignment viewer",
     recordTitleSuffix: "SAM/BAM alignments",
     context
   });

@@ -5,6 +5,7 @@ export const identifierExamples = {
   uniprot: [example('Insulin', 'P01308'), example('p53', 'P04637'), example('Alpha-globin', 'P69905')],
   'ncbi-protein': [example('p53', 'NP_000537.3'), example('Beta-globin', 'NP_000509.1'), example('Alpha-globin', 'NP_000549.1')],
   'ncbi-nucleotide': [example('phiX174', 'NC_001422.1'), example('pBR322', 'J01749.1'), example('Human HBB transcript', 'NM_000518.5')],
+  'circular-nucleotide': [example('phiX174', 'NC_001422.1'), example('pBR322', 'J01749.1')],
   transcript: [example('HBB transcript', 'NM_000518.5'), example('INS transcript', 'NM_000207.3'), example('TP53 transcript', 'NM_000546.6')],
   'protein-pair': [example('Human alpha/beta globin', 'P69905\nP68871'), example('Human/mouse p53', 'P04637\nP02340')],
   'protein-set': [example('p53 orthologues', 'P04637\nP02340\nP10361'), example('Human globins', 'P69905\nP68871\nP02042')],
@@ -26,7 +27,8 @@ function add(ids, config) { for (const id of ids.split(' ')) configurations[id] 
 
 add('protein-structure-viewer', structure);
 add('protein-sequence-viewer annotated-protein-record-extractor', annotatedProtein);
-add('dna-sequence-viewer circular-dna-sequence-viewer annotated-dna-record-extractor circular-genome-figure linear-genome-figure', { ...annotatedDna, mount: 'biological' });
+add('dna-sequence-viewer annotated-dna-record-extractor linear-genome-figure', { ...annotatedDna, mount: 'biological' });
+add('circular-dna-sequence-viewer circular-genome-figure', { ...annotatedDna, mount: 'biological', examples: 'circular-nucleotide' });
 add('sequence-extractor', { ...annotatedDna, mount: 'biological', slot: 'annotation' });
 add('pcr-primer-design', { ...annotatedDna, maxLength: 20_000, mount: 'template' });
 add('in-silico-pcr', { ...annotatedDna, mount: 'template', slot: 'template' });
@@ -50,6 +52,26 @@ for (const id of ['sanger-genotyper', 'resolve-mixed-sanger-trace']) configurati
 
 export function identifierInputsFor(toolId) { return configurations[toolId] ?? []; }
 export const identifierToolIds = Object.freeze(Object.keys(configurations));
+
+// Optional references are independent of the primary input. Retrieval resolves
+// to the existing loaded-FASTA option before workers or saved analyses see it.
+const referenceConfigurations = {};
+for (const id of ['crispr-guide-design', 'pcr-primer-design', 'sirna-design', 'talen-target-finder']) {
+  referenceConfigurations[id] = [{ ...dna, slot: 'referenceGenome', mount: 'reference-option',
+    targetOption: 'referenceGenomeFastaFile', maxRecords: 10, maxLength: 500_000, examples: 'reference',
+    options: { referenceGenomeMode: 'loaded' }, geneChooser: false,
+    help: 'Only the selected records are screened. Interval coordinates start at 1 and cover part of the genome. Use local FASTA/index files for larger references.' }];
+}
+for (const id of ['sam-bam-summary-region-viewer', 'vcf-genotype-table', 'alignment-viewer']) {
+  referenceConfigurations[id] = [{ ...dna, slot: 'referenceGenome',
+    mount: id === 'alignment-viewer' ? 'alignment-reference' : 'reference-option',
+    targetOption: 'referenceGenomeFastaFile', maxRecords: 10, allowRange: false,
+    options: { referenceGenomeMode: 'loaded' }, geneChooser: false, whenOutput: 'interactive-viewer',
+    help: 'Reference accession.version must match the reference names in your SAM/BAM or VCF. Full records preserve genomic coordinates. Use indexed local FASTA for larger references.' }];
+}
+export function referenceIdentifierInputsFor(toolId) { return referenceConfigurations[toolId] ?? []; }
+export const referenceIdentifierToolIds = Object.freeze(Object.keys(referenceConfigurations));
+
 export function examplesForIdentifier(config, provider) {
   let key = config.examples ?? provider;
   if (config.kind === 'phylogeny') key = provider === 'ncbi-nucleotide' ? 'nucleotide-set' : 'protein-set';

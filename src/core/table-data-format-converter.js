@@ -55,18 +55,20 @@ function stringifyJsonCell(value) {
   return String(value);
 }
 
-function normalizeJsonTableShape(parsed, warnings) {
+function normalizeJsonTableShape(parsed, warnings, notes) {
   if (Array.isArray(parsed)) {
     return parsed;
   }
   if (parsed && typeof parsed === "object") {
-    for (const key of ["rows", "data", "records", "items"]) {
+    const rowKeys = ["rows", "data", "records", "items"].filter(key => Array.isArray(parsed[key]));
+    if (rowKeys.length > 1) warnings.push(`Multiple JSON row arrays found (${rowKeys.join(", ")}); only "${rowKeys[0]}" was used.`);
+    for (const key of rowKeys) {
       if (Array.isArray(parsed[key])) {
-        warnings.push(`Interpreted top-level JSON object property "${key}" as the table rows.`);
+        notes.push(`Table rows: JSON object property "${key}".`);
         return parsed[key];
       }
     }
-    warnings.push("Interpreted top-level JSON object as a one-row table.");
+    notes.push("Input format: JSON object, used as a one-row table.");
     return [parsed];
   }
   warnings.push("Interpreted top-level JSON scalar as a one-row, one-column table.");
@@ -75,15 +77,16 @@ function normalizeJsonTableShape(parsed, warnings) {
 
 export function parseJsonTableInput(input) {
   const warnings = [];
+  const notes = [];
   const parsed = JSON.parse(String(input ?? ""));
-  const array = normalizeJsonTableShape(parsed, warnings);
+  const array = normalizeJsonTableShape(parsed, warnings, notes);
   if (array.every((item) => Array.isArray(item))) {
     const expectedWidth = Math.max(1, ...array.map((item) => item.length));
-    warnings.push("Interpreted JSON array of arrays as a table without a header row.");
+    notes.push("Input format: JSON array of arrays; generated column names, with every array retained as a data row.");
     const table = buildTableFromRows(array.map((item) =>
       Array.from({ length: expectedWidth }, (_, index) => stringifyJsonCell(item[index]))
     ), { hasHeader: false });
-    return { ...table, warnings: [...warnings, ...table.warnings] };
+    return { ...table, notes, warnings: [...warnings, ...table.warnings] };
   }
   const keys = Array.from(new Set(array.flatMap((item) =>
     item && typeof item === "object" && !Array.isArray(item) ? Object.keys(item) : ["value"]
@@ -96,11 +99,12 @@ export function parseJsonTableInput(input) {
     })
   ];
   const table = buildTableFromRows(rawRows, { hasHeader: true });
-  return { ...table, warnings: [...warnings, ...table.warnings] };
+  return { ...table, notes, warnings: [...warnings, ...table.warnings] };
 }
 
 export function convertTableDataFormat(input, options = {}) {
   const warnings = [];
+  const notes = [];
   const inputFormat = inferInputFormat(input, options);
   let columns = [];
   let rows = [];
@@ -109,6 +113,7 @@ export function convertTableDataFormat(input, options = {}) {
       const table = parseJsonTableInput(input);
       columns = table.columns;
       rows = table.rows;
+      notes.push(...table.notes);
       warnings.push(...table.warnings);
     } catch (error) {
       return { inputFormat, columns: [], rows: [], warnings: [`Could not parse JSON input: ${error.message}`], outputs: {} };
@@ -137,5 +142,5 @@ export function convertTableDataFormat(input, options = {}) {
     `Columns: ${columns.length}`,
     "XLSX input and export are handled by the bundled ExcelJS browser library. XLSX files loaded through the app shell are converted to tabular text before this worker runs. YAML remains a planned library-backed format; SMS3 does not implement custom spreadsheet parsers."
   ].join("\n") + "\n";
-  return { inputFormat, columns, rows, warnings, outputs, report };
+  return { inputFormat, columns, rows, warnings, notes, outputs, report };
 }

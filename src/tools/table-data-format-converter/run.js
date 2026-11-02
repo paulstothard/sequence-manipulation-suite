@@ -35,6 +35,7 @@ export async function runTableDataFormatConverter(input, options = {}, context =
       mimeType: MIME_TYPES[outputFormat]
     },
     warnings: result.warnings,
+    notes: result.notes,
     recordsProcessed: result.rows.length,
     streams: {
       report: makeTextStream(result.report, "text/plain"),

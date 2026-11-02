@@ -109,6 +109,7 @@ async function runDnaSequenceViewerWithLayout(input, options = {}, context = {},
   await context.yieldIfNeeded?.();
 
   const warnings = [];
+  const notes = [];
   const parsed = parseBiologicalRecordInput(input, options);
   warnings.push(...parsed.warnings);
   const annotatedRecords = filterNucleotideRecords(parsed.records);
@@ -122,7 +123,7 @@ async function runDnaSequenceViewerWithLayout(input, options = {}, context = {},
       compositionControls: normalized.compositionControls
     });
     basesProcessed = records.reduce((sum, record) => sum + record.sequence.length, 0);
-    warnings.push(`Input: parsed ${annotatedRecords.length.toLocaleString()} annotated nucleotide record(s) as ${parsed.sourceFormat}.`);
+    notes.push(`Input format: ${parsed.sourceFormat}; ${annotatedRecords.length.toLocaleString()} annotated nucleotide record(s).`);
     await context.yieldIfNeeded?.();
   } else {
     const plain = await parsePlainSequenceViewerRecords(input, normalized, context, warnings);
@@ -162,6 +163,7 @@ async function runDnaSequenceViewerWithLayout(input, options = {}, context = {},
         mimeType: "text/plain;charset=utf-8"
       },
       warnings,
+      notes,
       recordsProcessed: records.length,
       basesProcessed,
       charactersRemoved,
@@ -194,6 +196,7 @@ async function runDnaSequenceViewerWithLayout(input, options = {}, context = {},
       mimeType: "application/json;charset=utf-8"
     },
     warnings,
+    notes,
     recordsProcessed: records.length,
     basesProcessed,
     charactersRemoved,

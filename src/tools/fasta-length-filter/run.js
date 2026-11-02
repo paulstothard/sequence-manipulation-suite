@@ -80,6 +80,7 @@ export async function runFastaLengthFilter(input, options = {}, context = {}) {
       mimeType: mimeTypes[outputFormat]
     },
     warnings: result.warnings,
+    notes: result.notes,
     recordsProcessed: result.records.length,
     basesProcessed: result.basesProcessed,
     charactersRemoved: source.stats.ignoredSequenceWhitespace,

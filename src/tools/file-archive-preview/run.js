@@ -44,7 +44,7 @@ export async function runFileArchivePreview(input,options={},context={}) {
       output=report;
     }
   }
-  const toolResult=makeToolResult({output,warnings:result.warnings,streams,recordsProcessed:listing?result.archive.entries.length:1,basesProcessed:result.bytesRead,processedUnitLabel:'byte',sequenceSearch:false,
+  const toolResult=makeToolResult({output,warnings:result.warnings,notes:result.notes,streams,recordsProcessed:listing?result.archive.entries.length:1,basesProcessed:result.bytesRead,processedUnitLabel:'byte',sequenceSearch:false,
     visual:{previewStatus:status,...(!listing&&format!=='report'?{filePreview}:{})},download:{filename,mimeType}});
   toolResult.streams.primary.contentKind=listing?'archive':new Set(result.sections.map(section=>section.kind)).size>1?'mixed':result.sections[0]?.kind;
   return toolResult;

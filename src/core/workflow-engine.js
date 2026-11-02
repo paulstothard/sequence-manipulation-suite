@@ -837,6 +837,7 @@ async function runMapToolStep(step, value, context) {
   return {
     value: makeCollectionStream(items, step.selectStream ?? "primary"),
     mappedResults: toolResults,
+    notes: toolResults.flatMap((result) => result.notes ?? []),
     warnings
   };
 }
@@ -891,7 +892,7 @@ async function runStep(step, value, context) {
   }
   if (step.type === "tool") {
     const resultValue = await runToolStep(step, value, context);
-    return { value: resultValue, result: context.lastToolResult, warnings: context.lastToolResult?.warnings ?? [] };
+    return { value: resultValue, result: context.lastToolResult, warnings: context.lastToolResult?.warnings ?? [], notes: context.lastToolResult?.notes ?? [] };
   }
   if (step.type === "select-stream") {
     return { value: runSelectStreamStep(step, context), result: undefined, warnings: [] };
@@ -918,7 +919,7 @@ async function runStep(step, value, context) {
   }
   if (step.type === "map") {
     const mapped = await runMapToolStep(step, value, context);
-    return { value: mapped.value, result: { mappedResults: mapped.mappedResults }, warnings: mapped.warnings };
+    return { value: mapped.value, result: { mappedResults: mapped.mappedResults }, warnings: mapped.warnings, notes: mapped.notes };
   }
   if (step.type === "gather") {
     return { value: runGatherStep(step, value), result: undefined, warnings: [] };
@@ -1171,6 +1172,7 @@ export async function runWorkflow(workflow, options = {}) {
     lastToolResult: undefined
   };
   const warnings = [];
+  const notes = [];
   let value;
 
   for (const [index, step] of steps.entries()) {
@@ -1189,17 +1191,21 @@ export async function runWorkflow(workflow, options = {}) {
       typeof warning === "string" ? makeStepWarning(normalizedStep, warning) : { ...warning, stepId: normalizedStep.id }
     );
     warnings.push(...stepWarnings);
+    const stepNotes = (stepResult.notes ?? []).map(message => ({ stepId: normalizedStep.id, message }));
+    notes.push(...stepNotes);
     context.stepResults.set(normalizedStep.id, {
       step: normalizedStep,
       value,
       result: stepResult.result,
-      warnings: stepWarnings
+      warnings: stepWarnings,
+      notes: stepNotes
     });
   }
 
   return {
     value,
     warnings,
+    notes,
     steps: Array.from(context.stepResults.values())
   };
 }

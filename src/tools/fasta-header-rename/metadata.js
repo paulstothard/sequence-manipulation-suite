@@ -8,7 +8,7 @@ export const fastaHeaderRenameMetadata = {
   category: "FASTA",
   tags: ["DNA", "RNA", "protein", "FASTA", "cleaning"],
   summary: "Rename FASTA headers with prefix/suffix rules, find-and-replace, safe-ID cleanup, and optional numbering.",
-  inputType: "FASTA records",
+  inputType: "FASTA records or one plain sequence",
   outputType: "Renamed FASTA, report, table",
   workflow: {
     inputs: [

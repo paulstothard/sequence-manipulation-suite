@@ -155,6 +155,7 @@ export async function runPseudomoleculeBuilder(input, options = {}, context = {}
       : undefined,
     download: { filename, mimeType },
     warnings: [...parsed.warnings, ...result.warnings, ...warningsForOutputFormat(outputFormat)],
+    notes: result.notes,
     recordsProcessed: result.mappingRows.length,
     basesProcessed: result.mappingRows.reduce((sum, row) => sum + row.source_length, 0),
     streams

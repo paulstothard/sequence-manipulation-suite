@@ -177,11 +177,6 @@ function makeGenomeGroup(records, warnings, role, groupIndex, titleCounts) {
   }
   const baseLength = cleanedRecords.reduce((sum, record) => sum + record.sequence.length, 0);
   const title = makeUniqueGenomeTitle(cleanedRecords[0].title || `${role} ${groupIndex + 1}`, titleCounts, warnings, role);
-  if (cleanedRecords.length > 1) {
-    warnings.push(
-      `${role} "${title}" contains ${cleanedRecords.length.toLocaleString()} FASTA records; they were treated as contigs of one genome row.`
-    );
-  }
   return {
     title,
     sequence: cleanedRecords.map((record) => record.sequence).join(""),

@@ -1,3 +1,4 @@
+import { genomeFigureDisplayFeatures } from "./genome-figure-gene-models.js";
 import { parseSequenceInput } from "./fasta.js";
 import { parseBiologicalRecordInput } from "./biological-record-format-converter.js";
 import { cleanDnaRnaSequence } from "./sequence.js";
@@ -110,13 +111,24 @@ function normalizeFeature(feature, record, index) {
   if (normalizedParts.length === 0) return null;
   const type = feature.feature || "misc_feature";
   const label = makeFeatureLabel(feature);
+  const qualifier = key => {
+    const value = feature.qualifiers?.[key];
+    return (Array.isArray(value) ? value[0] : value) || "";
+  };
   return {
+    featureId: qualifier("ID") || feature.id,
+    parentIds: qualifier("Parent").split(",").filter(Boolean),
+    transcriptId: qualifier("transcript_id"),
+    proteinId: feature.protein_id,
+    geneQualifier: feature.gene,
+    locus_tag: feature.locus_tag,
+    sequenceLocation: { supported: parsed.supported, partial: parsed.partial },
     id: feature.id || `${record.accession || record.title || "record"}:${index + 1}`,
     type,
     label,
     start: Math.min(...normalizedParts.map((part) => part.start)),
     end: Math.max(...normalizedParts.map((part) => part.end)),
-    strand: parsed.strand === "-" ? "-" : "+",
+    strand: parsed.strand === "-" ? "-" : parsed.strand === "+" ? "+" : ".",
     parts: normalizedParts,
     source: feature.location || "",
     priority: DEFAULT_FEATURE_PRIORITY.get(type) ?? (type === "CDS" ? 8 : 5)
@@ -143,6 +155,18 @@ function cleanSequenceRecord(record, warnings) {
   };
 }
 
+function normalizedRecordFeatures(record) {
+  const ids = new Set();
+  return record.features.map((feature, index) => normalizeFeature(feature, record, index)).filter(Boolean)
+    .map((feature, index) => {
+      // Repeated GFF IDs still need distinct identities for source-row filtering.
+      let id = feature.id;
+      while (ids.has(id)) id += `:annotation-${index}`;
+      ids.add(id);
+      return { ...feature, id };
+    });
+}
+
 export function flatfileRecordsToGenomeFigureRecords(records) {
   return records
     .filter((record) => record.sequence && record.molecule !== "protein")
@@ -151,9 +175,7 @@ export function flatfileRecordsToGenomeFigureRecords(records) {
       accession: record.accession,
       sequence: record.sequence,
       topology: record.topology === "circular" ? "circular" : "linear",
-      features: record.features
-        .map((feature, index) => normalizeFeature(feature, record, index))
-        .filter(Boolean)
+      features: normalizedRecordFeatures(record)
     }));
 }
 
@@ -334,7 +356,10 @@ export function projectGenomeFigureRecords(records, options = {}) {
       topology: record.topology === "circular" ? "circular" : "linear"
     });
 
-    for (const feature of record.features ?? []) {
+    const displayFeatures = options.geneModels
+      ? genomeFigureDisplayFeatures(record, options.visibleFeatureTypes)
+      : record.features ?? [];
+    for (const feature of displayFeatures) {
       const localParts = (feature.parts?.length
         ? feature.parts
         : [{ start: feature.start, end: feature.end, strand: feature.strand }])
@@ -350,8 +375,13 @@ export function projectGenomeFigureRecords(records, options = {}) {
         localParts,
         start: feature.start + offset,
         end: feature.end + offset,
+        ...(feature.geneModel ? {
+          terminal: feature.terminal + offset,
+          connectors: feature.connectors.map(part => ({ ...part, localStart: part.start, localEnd: part.end, start: part.start + offset, end: part.end + offset }))
+        } : {}),
         parts: localParts.map((part) => ({
           ...part,
+          localStart: part.start, localEnd: part.end,
           start: part.start + offset,
           end: part.end + offset
         }))

@@ -21,7 +21,7 @@ export function makeDnaViewerData(records, options = {}) {
     records: records.map((record, index) => {
       const recordLength = Number(record.length) || String(record.sequence ?? "").length;
       const tracks = prepareViewerAnnotationTracks(record.tracks);
-      const legend = record.geneFeatureLegend ?? viewerGeneFeatureLegend(tracks);
+      const legend = viewerGeneFeatureLegend(tracks);
       return {
         id: record.id || `record-${index + 1}`,
         title: record.title || `Record ${index + 1}`,

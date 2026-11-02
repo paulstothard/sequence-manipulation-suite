@@ -68,8 +68,8 @@ export function createViewerFeatureGroupControls(record, state, onChange) {
   actions.className = 'dna-viewer-feature-group-actions';
   const showAll = document.createElement('button'), hideAll = document.createElement('button');
   showAll.type = hideAll.type = 'button';
-  showAll.textContent = 'Show all';
-  hideAll.textContent = 'Hide all';
+  showAll.textContent = 'Show all types';
+  hideAll.textContent = 'Hide all types';
   showAll.addEventListener('click', () => setVisible(allTracks, true));
   hideAll.addEventListener('click', () => setVisible(allTracks, false));
   actions.append(showAll, hideAll);

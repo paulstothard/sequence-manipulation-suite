@@ -1,3 +1,5 @@
+import { REVERSE_COMPLEMENT_DEFAULTS } from "../../core/reverse-complement-options.js";
+
 export const reverseComplementMetadata = {
   id: "reverse-complement",
   name: "Reverse Complement",
@@ -31,15 +33,15 @@ export const reverseComplementMetadata = {
       id: "operation",
       type: "radio",
       label: "Operation",
-      help: "Reverse complement changes both order and bases. Reverse changes only order. Complement changes bases without reversing order.",
-      defaultValue: "reverse-complement",
+      help: "Reverse complement changes both order and bases. Reverse changes only order. Complement changes bases without reversing order. Complemented output uses DNA letters: A becomes T, and U becomes A. Reverse alone retains U.",
+      defaultValue: REVERSE_COMPLEMENT_DEFAULTS.operation,
       choices: [
         { value: "reverse-complement", label: "Reverse complement" },
         { value: "reverse", label: "Reverse" },
         { value: "complement", label: "Complement" }
       ]
     },
-    { id: "preserveCase", type: "checkbox", label: "Preserve input case", defaultValue: true },
+    { id: "preserveCase", type: "checkbox", label: "Preserve input case", help: "When unchecked, output is uppercase for all three operations.", defaultValue: REVERSE_COMPLEMENT_DEFAULTS.preserveCase },
     {
       id: "cleaningNote",
       type: "note",
