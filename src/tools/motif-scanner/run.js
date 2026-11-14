@@ -1,9 +1,10 @@
+import { PROTEIN_MOTIF_LIMITS, normalizeMotifScannerOptions } from "../../core/motif-scanner-options.js";
+import { exportDelimitedTable } from "../../core/table.js";
 import { parseSequenceInput } from "../../core/fasta.js";
 import { openCleanDnaRnaFastaSource } from "../../core/fasta-dna-record-source.js";
 import { iterateFastaFixedWindowSegments } from "../../core/fasta-fixed-window-segments.js";
 import {
   motifMatchTableColumns,
-  scanMotifRecords,
   scanMotifRecordsWithContext
 } from "../../core/motif-scanner.js";
 import { makeDnaViewerData, makeDnaViewerStream } from "../../core/dna-viewer-data.js";
@@ -29,7 +30,7 @@ export const MOTIF_SVG_LABEL_MATCH_THRESHOLD = 48;
 export const MOTIF_SVG_RECORD_LABEL_THRESHOLD = 12;
 
 function getSelectedMotifs(motifs, options = {}) {
-  const motifDatabase = options.motifDatabase ?? "sms3-curated";
+  const motifDatabase = options.motifDatabase;
   return motifs.filter((motif) => {
     if (motifDatabase !== "all" && motif.database !== motifDatabase) {
       return false;
@@ -44,35 +45,8 @@ function getSelectedMotifs(motifs, options = {}) {
   });
 }
 
-function formatScore(value) {
-  return value === null || value === undefined ? "" : String(value);
-}
-
 function makeTsv(rows) {
-  const columns = motifMatchTableColumns.map((column) => column.id);
-  return [
-    columns.join("\t"),
-    ...rows.map((row) =>
-      [
-        row.record,
-        row.motif_id,
-        row.motif_name,
-        row.motif_class,
-        row.source,
-        row.syntax,
-        row.strand,
-        row.start,
-        row.end,
-        row.length,
-        row.left_context,
-        row.matched_text,
-        row.right_context,
-        row.context_sequence,
-        formatScore(row.score),
-        row.description
-      ].join("\t")
-    )
-  ].join("\n");
+  return exportDelimitedTable(motifMatchTableColumns.map((column) => ({ ...column, label: column.id })), rows, "\t");
 }
 
 function getSyntaxSummary(selectedMotifs) {
@@ -86,14 +60,16 @@ function getSyntaxSummary(selectedMotifs) {
     .join(", ") || "none";
 }
 
-function makeReport({ title, rows, selectedMotifs, recordsProcessed, residuesProcessed, alphabet, options = {}, summarizeMatches = false }) {
+function makeReport({ title, rows, selectedMotifs, recordsProcessed, residuesProcessed, alphabet, options = {}, summarizeMatches = false, includesStops = false }) {
   const lines = [
     title,
     `Motif records scanned: ${selectedMotifs.length}`,
     `Motif syntax counts: ${getSyntaxSummary(selectedMotifs)}`,
-    "Matching policy: exact/IUPAC/regex motifs are matched directly; PWM/PSSM motifs are scored by relative PWM score. Spacing models, profile HMMs, structural context, and functional annotation are not applied.",
+    alphabet === "protein"
+      ? "Matching policy: bundled residue patterns are matched directly to stop-delimited peptide chains. Matches are candidate sites; phosphorylation, structural context and function are not established."
+      : "Matching policy: exact/IUPAC/regex motifs are matched directly; PWM/PSSM motifs are scored by relative PWM score. Spacing models, profile HMMs, structural context, and functional annotation are not applied.",
     `Sequences scanned: ${recordsProcessed}`,
-    `${alphabet === "protein" ? "Residues" : "Bases"} scanned: ${residuesProcessed}`,
+    `${alphabet === "protein" ? includesStops ? "Sequence characters" : "Residues" : "Bases"} scanned: ${residuesProcessed}`,
     `Matches found: ${rows.length}`,
     `Database: ${motifProvenance.dataset} ${motifProvenance.version}`,
     `Database note: ${motifProvenance.description}`,
@@ -102,7 +78,7 @@ function makeReport({ title, rows, selectedMotifs, recordsProcessed, residuesPro
 
   const pwmCount = selectedMotifs.filter((motif) => motif.syntax === "pwm").length;
   if (pwmCount > 0) {
-    lines.push(`PWM/PSSM threshold: ${Number(options.pwmThresholdPercent ?? 85)}% relative score`);
+    lines.push(`PWM/PSSM threshold: ${Number(options.pwmThresholdPercent)}% relative score`);
     lines.push("PWM scoring policy: SMS3 converts bundled PFMs to log2 PWM weights with the source-record pseudocount/background and reports relative percent scores.");
     lines.push("");
   }
@@ -130,7 +106,7 @@ function makeReport({ title, rows, selectedMotifs, recordsProcessed, residuesPro
     return lines.join("\n");
   }
 
-  lines.push("record\tmotif\tclass\tstrand\tstart\tend\tmatched_text\tcontext_sequence");
+  lines.push("record\tmotif\tclass\tstrand\tstart\tend\tmatched_text\tcontext_sequence\trecord_number");
   for (const row of rows) {
     lines.push(
       [
@@ -141,7 +117,8 @@ function makeReport({ title, rows, selectedMotifs, recordsProcessed, residuesPro
         row.start,
         row.end,
         row.matched_text,
-        row.context_sequence
+        row.context_sequence,
+        row.record_index
       ].join("\t")
     );
   }
@@ -177,7 +154,7 @@ function makeCompactMotifLabel(row) {
 
 function makeTextMap(analyzedRecords, config, maxMatches = MOTIF_TEXT_MAP_MATCH_THRESHOLD) {
   let remaining = maxMatches;
-  return renderTextAnnotationMapFromItems(rowsByRecord(analyzedRecords).map((record) => ({
+  const records = rowsByRecord(analyzedRecords).map((record) => ({
     title: record.title,
     sequence: record.sequence,
     items: record.rows.flatMap((row, index) => {
@@ -187,11 +164,13 @@ function makeTextMap(analyzedRecords, config, maxMatches = MOTIF_TEXT_MAP_MATCH_
       remaining -= 1;
       return [{ ...row, label: `m${index + 1}` }];
     })
-  })), {
+  }));
+  return records.map(record => renderTextAnnotationMapFromItems([record], {
     width: 60,
+    headerPrefix: "",
     alphabet: config.alphabet,
     showSecondStrand: config.alphabet === "dna-rna"
-  });
+  }) + (record.items.length ? "\n\nMotif labels:\n" + record.items.map(row => `${row.label}\t${row.start}-${row.end} (${row.strand})\t${row.motif_name}\t${row.motif_id}`).join("\n") : "")).join("\n\n");
 }
 
 function allocateSvgMatchCaps(records, maxTotal = MOTIF_SVG_MAP_MATCH_THRESHOLD, maxPerRecord = MOTIF_SVG_RECORD_MATCH_THRESHOLD) {
@@ -258,12 +237,13 @@ function makeSvgMap(analyzedRecords, config, maxMatches = MOTIF_SVG_MAP_MATCH_TH
     const hiddenMatches = Math.max(0, record.rows.length - features.length);
     return {
       title: record.title,
+      sequence: record.sequence,
       length: record.sequenceLength,
       topology: "linear",
       molecule: config.alphabet === "protein" ? "protein" : "dna",
       features,
       notes: record.rows.length > 0
-        ? [`Motif matches: ${record.rows.length.toLocaleString()} total; ${features.length.toLocaleString()} shown in map; ${hiddenMatches.toLocaleString()} omitted. Full coordinates are in the table.`]
+        ? [`Motif matches: ${record.rows.length.toLocaleString()} total; ${features.length.toLocaleString()} shown in map; ${hiddenMatches.toLocaleString()} omitted. Select Summary table for all coordinates.`]
         : ["Motif matches: 0 total; 0 shown in map; 0 omitted."]
     };
   });
@@ -329,18 +309,11 @@ function makeMotifViewerData(analyzedRecords, options = {}, config = {}) {
   });
 }
 
-function getOutputFormat(options, config) {
-  if (isInteractiveViewerFormat(options.outputFormat, config)) {
-    return options.outputFormat;
-  }
-  if (options.outputFormat === "text-map" || options.outputFormat === "svg-map") {
-    return options.outputFormat;
-  }
-  return options.outputFormat === "report" ? "report" : options.outputFormat === "tsv" ? "tsv" : "svg-map";
-}
-
 function buildMotifScannerOutput({ analyzedRecords, rows, selectedMotifs, recordsProcessed, sequenceLength, alphabet, title, options, config, warnings }) {
-  const outputFormat = getOutputFormat(options, config);
+  const outputFormat = options.outputFormat;
+  for (const [index, record] of analyzedRecords.entries()) {
+    for (const row of record.rows) row.record_index = index + 1;
+  }
   const totalMatches = rows.length;
   if (outputFormat === "text-map" && totalMatches > MOTIF_TEXT_MAP_MATCH_THRESHOLD) {
     warnings.push(
@@ -367,7 +340,7 @@ function buildMotifScannerOutput({ analyzedRecords, rows, selectedMotifs, record
       `Detailed report rows were summarized because this run found ${totalMatches} matches. Use table output for the full hit table.`
     );
   }
-  const report = makeReport({
+  const report = outputFormat === "report" ? makeReport({
     title,
     rows,
     selectedMotifs,
@@ -375,9 +348,10 @@ function buildMotifScannerOutput({ analyzedRecords, rows, selectedMotifs, record
     residuesProcessed: sequenceLength,
     alphabet,
     options,
-    summarizeMatches: outputFormat === "report" && totalMatches > DETAILED_REPORT_MATCH_THRESHOLD
-  });
-  const tsv = makeTsv(rows);
+    includesStops: alphabet === "protein" && analyzedRecords.some(record => record.sequence.includes("*")),
+    summarizeMatches: totalMatches > DETAILED_REPORT_MATCH_THRESHOLD
+  }) : "";
+  const tsv = outputFormat === "tsv" ? makeTsv(rows) : "";
   const textMap = outputFormat === "text-map" ? makeTextMap(analyzedRecords, config) : "";
   const svgMap = outputFormat === "svg-map" ? makeSvgMap(analyzedRecords, config) : "";
   const viewer = isInteractiveViewerFormat(outputFormat, config) ? makeMotifViewerData(analyzedRecords, options, config) : null;
@@ -401,108 +375,34 @@ function buildMotifScannerOutput({ analyzedRecords, rows, selectedMotifs, record
   };
 }
 
-function runMotifScanner(input, options = {}, config) {
-  const records = parseSequenceInput(input, config.alphabet);
-  const selectedMotifs = getSelectedMotifs(config.motifs, options);
-  const warnings = [];
-
-  if (records.length === 0) {
-    return makeToolResult({
-      output: "",
-      warnings: [`No ${config.alphabet === "protein" ? "protein" : "DNA/RNA"} sequence input was provided.`],
-      recordsProcessed: 0,
-      basesProcessed: 0,
-      processedUnitLabel: config.alphabet === "protein" ? "residue" : "base",
-      charactersRemoved: 0,
-      streams: {
-        table: makeTableStream(motifMatchTableColumns, [], config.schema)
+async function runDnaRnaScanner(input, options, config, context) {
+  // The source and matcher request checkpoints per chunk/record. Coalesce real
+  // timer yields and progress messages, while checking cancellation at every call.
+  const executionContext = context;
+  let lastYield = -Infinity;
+  let lastProgress = -Infinity;
+  let lastPhase;
+  context = {
+    ...executionContext,
+    async yieldIfNeeded() {
+      executionContext.throwIfCancelled?.();
+      if (Date.now() - lastYield >= 8) {
+        await executionContext.yieldIfNeeded?.();
+        lastYield = Date.now();
       }
-    });
-  }
-
-  if (selectedMotifs.length === 0) {
-    warnings.push("No bundled motif records matched the selected filters.");
-  }
-
-  const rows = [];
-  const analyzedRecords = [];
-  let sequenceLength = 0;
-  let charactersRemoved = 0;
-
-  for (const record of records) {
-    const result = scanMotifRecords(record, selectedMotifs, {
-      alphabet: config.alphabet,
-      strand: config.alphabet === "dna-rna" ? options.strand ?? "both" : "forward",
-      allowOverlaps: options.allowOverlaps !== false,
-      pwmThresholdPercent: options.pwmThresholdPercent
-    });
-    rows.push(...result.rows);
-    analyzedRecords.push({
-      title: record.title ?? "sequence",
-      sequence: result.sequence,
-      sequenceLength: result.sequenceLength,
-      rows: result.rows
-    });
-    warnings.push(...result.warnings);
-    sequenceLength += result.sequenceLength;
-    charactersRemoved += result.charactersRemoved;
-  }
-
-  const materialized = buildMotifScannerOutput({
-    analyzedRecords,
-    rows,
-    selectedMotifs,
-    recordsProcessed: records.length,
-    sequenceLength,
-    alphabet: config.alphabet,
-    title: config.title,
-    options,
-    config,
-    warnings
-  });
-
-  return makeToolResult({
-    output: materialized.output,
-    sequenceSearch: materialized.outputFormat === "text-map"
-      ? { format: "labelled-blocks", alphabet: config.alphabet }
-      : undefined,
-    download: {
-      filename: `${config.filenameBase}.${materialized.outputFormat === "tsv" ? "tsv" : materialized.outputFormat === "svg-map" ? "svg" : materialized.viewer ? "json" : "txt"}`,
-      mimeType:
-        materialized.outputFormat === "tsv"
-          ? "text/tab-separated-values"
-          : materialized.outputFormat === "svg-map"
-            ? "image/svg+xml;charset=utf-8"
-            : materialized.viewer
-              ? "application/json;charset=utf-8"
-            : "text/plain;charset=utf-8"
     },
-    warnings,
-    recordsProcessed: records.length,
-    basesProcessed: sequenceLength,
-    processedUnitLabel: config.alphabet === "protein" ? "residue" : "base",
-    charactersRemoved,
-    streams: {
-      report: makeTextStream(materialized.report, "text/plain"),
-      ...(materialized.outputFormat === "text-map" ? {
-        textMap: makeTextStream(materialized.textMap, "text/plain", {
-          format: "labelled-blocks",
-          alphabet: config.alphabet
-        })
-      } : {}),
-      ...(materialized.outputFormat === "svg-map" ? { overview: makeTextStream(materialized.svgMap, "image/svg+xml") } : {}),
-      ...(materialized.viewer ? { viewer: config.alphabet === "protein" ? makeProteinViewerStream(materialized.viewer) : makeDnaViewerStream(materialized.viewer) } : {}),
-      table: makeTableStream(motifMatchTableColumns, rows, config.schema)
-    },
-    visual: materialized.outputFormat === "svg-map"
-      ? { svg: materialized.svgMap }
-      : materialized.viewer
-        ? { viewer: materialized.viewer }
-        : undefined
-  });
-}
-
-async function runStreamedDnaRnaMotifScanner(input, options, config, context) {
+    reportProgress(detail) {
+      const now = Date.now();
+      if (detail.phase !== lastPhase || now - lastProgress >= 32) {
+        executionContext.reportProgress?.(detail);
+        lastPhase = detail.phase;
+        lastProgress = now;
+      }
+    }
+  };
+  context.reportProgress?.({ phase: "parsing-input", progress: 0.05 });
+  const richOutput = ["text-map", "interactive-viewer", "interactive-circular-viewer"].includes(options.outputFormat);
+  const boundedPaste = !options.loadedFastaFile?.stream && !["indexed", "bgzf"].includes(options.sourceMode) && String(input ?? "").length <= MAX_PASTED_FASTA_CHARACTERS_FOR_RICH_OUTPUTS;
   const maxWork = effectiveToolLimit(options, "motifScoring", MAX_MOTIF_WORK);
   const maxCandidateHits = effectiveToolLimit(options, "motifCandidates", MAX_STREAMED_MOTIF_HITS);
   const maxOutputCharacters = effectiveToolLimit(options, "motifOutput", MAX_MATERIALIZED_OUTPUT_CHARACTERS);
@@ -510,8 +410,8 @@ async function runStreamedDnaRnaMotifScanner(input, options, config, context) {
   if (selectedMotifs.some((motif) => motif.syntax === "regex")) {
     throw new Error("Large FASTA motif scans support fixed-width exact, IUPAC, and PWM motifs. Regex motifs require bounded pasted input.");
   }
-  const outputFormat = getOutputFormat(options, config);
-  if (!["report", "tsv", "svg-map"].includes(outputFormat)) {
+  const outputFormat = options.outputFormat;
+  if (richOutput && !boundedPaste) {
     throw new Error("Large FASTA motif scans support report, table, and linear map output. Text maps and sequence viewers require bounded pasted input.");
   }
   const widths = selectedMotifs.map((motif) => motif.syntax === "pwm" ? motif.pwm?.weights?.length ?? 0 : motif.pattern?.length ?? 0);
@@ -520,6 +420,8 @@ async function runStreamedDnaRnaMotifScanner(input, options, config, context) {
   const workPerBase = selectedMotifs.reduce((sum, motif, index) => sum + widths[index] * (options.strand === "forward" || motif.match?.strand !== "both" ? 1 : 2), 0);
   const sourceOptions = applyDisabledFastaSourceLimits({
     ...options,
+    strictHeaders: true,
+    sourceChunkSize: Math.min(65_536, Number(options.sourceChunkSize) || 65_536),
     maxSourceBases: Math.min(MAX_STREAMED_MOTIF_BASES, Number(options.maxSourceBases) || MAX_STREAMED_MOTIF_BASES)
   }, {
     maxSourceBases: "motifSource",
@@ -537,9 +439,15 @@ async function runStreamedDnaRnaMotifScanner(input, options, config, context) {
   let retainedRowCharacters = 0;
   let sequenceLength = 0;
   let charactersRemoved = 0;
-  for await (const event of iterateFastaFixedWindowSegments(opened.events(), { maxWindowLength: maxWidth + 20 })) {
+  async function* events() {
+    for await (const event of opened.events()) {
+      if (richOutput && event.type === "sequence-chunk") current.sequenceChunks.push(event.text);
+      yield event;
+    }
+  }
+  for await (const event of iterateFastaFixedWindowSegments(events(), { maxWindowLength: maxWidth + 20, segmentLength: 8192 })) {
     if (event.type === "record-start") {
-      current = { title: event.title ?? "sequence", sequence: "", sequenceLength: 0, rows: [] };
+      current = { title: event.title ?? "sequence", sequence: "", sequenceChunks: [], sequenceLength: 0, rows: [] };
       continue;
     }
     if (event.type === "scan-segment") {
@@ -556,7 +464,7 @@ async function runStreamedDnaRnaMotifScanner(input, options, config, context) {
           if (start0 < event.ownedStart0 || start0 >= event.ownedEnd0) continue;
           const retained = { ...row, start: start0 + 1, end: event.segmentStart0 + row.end };
           retainedRowCharacters += JSON.stringify(retained).length;
-          if (retainedRowCharacters > maxOutputCharacters) throw new Error("Motif hit table exceeds the materialized-output limit. Choose fewer motifs or records.");
+          if (retainedRowCharacters > maxOutputCharacters) throw new Error(`Motif hit table exceeds the materialized-output limit of ${maxOutputCharacters.toLocaleString()} characters. Choose fewer motifs or records.`);
           current.rows.push(retained);
           candidateHits += 1;
           if (candidateHits > maxCandidateHits) throw new Error(`Motif scan exceeds the ${maxCandidateHits.toLocaleString()}-candidate-hit limit. Raise the PWM threshold or choose fewer motifs.`);
@@ -567,6 +475,8 @@ async function runStreamedDnaRnaMotifScanner(input, options, config, context) {
       continue;
     }
     if (event.type === "record-end" && current) {
+      current.sequence = richOutput ? current.sequenceChunks.join("") : "";
+      delete current.sequenceChunks;
       current.sequenceLength = event.length;
       sequenceLength += event.length;
       charactersRemoved += event.removedCount;
@@ -600,34 +510,51 @@ async function runStreamedDnaRnaMotifScanner(input, options, config, context) {
     }
   }
   warnings.push(...opened.warnings);
-  if (!analyzedRecords.length) return makeToolResult({ output: "", warnings: [opened.source.stats.inputProvided ? "No DNA/RNA records were found." : "No DNA/RNA sequence input was provided.", ...warnings], recordsProcessed: 0, basesProcessed: 0, charactersRemoved: 0, streams: { table: makeTableStream(motifMatchTableColumns, [], config.schema) } });
+  if (!analyzedRecords.length) return makeToolResult({ output: "", warnings: [opened.source.stats.inputProvided ? "No DNA/RNA records were found." : "No DNA/RNA sequence input was provided.", ...warnings], recordsProcessed: 0, basesProcessed: 0, charactersRemoved: 0, streams: {} });
   if (!selectedMotifs.length) warnings.push("No bundled motif records matched the selected filters.");
   const rows = analyzedRecords.flatMap((record) => record.rows);
   context.reportProgress?.({ phase: "building-output", progress: 0.95 });
   const materialized = buildMotifScannerOutput({ analyzedRecords, rows, selectedMotifs, recordsProcessed: analyzedRecords.length, sequenceLength, alphabet: "dna-rna", title: config.title, options, config, warnings });
-  if (Math.max(materialized.output.length, materialized.report.length) > maxOutputCharacters) throw new Error("Motif output exceeds the materialized-output limit. Choose fewer motifs or records.");
+  if (Math.max(materialized.output.length, materialized.report.length) > maxOutputCharacters) throw new Error(`Motif output exceeds the materialized-output limit of ${maxOutputCharacters.toLocaleString()} characters. Choose fewer motifs or records.`);
   return makeToolResult({
     output: materialized.output,
-    download: { filename: `${config.filenameBase}.${outputFormat === "tsv" ? "tsv" : outputFormat === "svg-map" ? "svg" : "txt"}`, mimeType: outputFormat === "tsv" ? "text/tab-separated-values" : outputFormat === "svg-map" ? "image/svg+xml;charset=utf-8" : "text/plain;charset=utf-8" },
-    warnings, recordsProcessed: analyzedRecords.length, basesProcessed: sequenceLength, charactersRemoved,
+    sequenceSearch: outputFormat === "text-map" ? { format: "labelled-blocks", plainMapHeadings: true, alphabet: "dna-rna" } : undefined,
+    download: { filename: `${config.filenameBase}.${outputFormat === "tsv" ? "tsv" : outputFormat === "svg-map" ? "svg" : materialized.viewer ? "json" : "txt"}`, mimeType: outputFormat === "tsv" ? "text/tab-separated-values" : outputFormat === "svg-map" ? "image/svg+xml;charset=utf-8" : materialized.viewer ? "application/json;charset=utf-8" : "text/plain;charset=utf-8" },
+    warnings, notes: [`Reference build: ${motifProvenance.version}.`],
+    recordsProcessed: analyzedRecords.length, basesProcessed: sequenceLength, charactersRemoved,
     streams: {
-      report: makeTextStream(materialized.report, "text/plain"),
+      ...(materialized.outputFormat === "report" ? { report: makeTextStream(materialized.report, "text/plain") } : {}),
+      ...(outputFormat === "text-map" ? { textMap: makeTextStream(materialized.textMap, "text/plain", { format: "labelled-blocks", plainMapHeadings: true, alphabet: "dna-rna" }) } : {}),
+      ...(materialized.viewer ? { viewer: makeDnaViewerStream(materialized.viewer) } : {}),
       ...(outputFormat === "svg-map" ? { overview: makeTextStream(materialized.svgMap, "image/svg+xml") } : {}),
-      table: makeTableStream(motifMatchTableColumns, rows, config.schema)
+      ...(materialized.outputFormat === "tsv" ? { table: makeTableStream(motifMatchTableColumns, rows, config.schema) } : {})
     },
-    visual: outputFormat === "svg-map" ? { svg: materialized.svgMap } : undefined
+    visual: outputFormat === "svg-map" ? { svg: materialized.svgMap } : materialized.viewer ? { viewer: materialized.viewer } : undefined
   });
 }
 
 async function runMotifScannerWorker(input, options = {}, config, context = {}) {
-  const largeSource = config.alphabet === "dna-rna" && Boolean(
-    options.loadedFastaFile?.stream || ["indexed", "bgzf"].includes(options.sourceMode) || String(input ?? "").length > MAX_PASTED_FASTA_CHARACTERS_FOR_RICH_OUTPUTS
-  );
-  if (largeSource) return runStreamedDnaRnaMotifScanner(input, options, config, context);
+  if (config.alphabet === "dna-rna") return runDnaRnaScanner(input, options, config, context);
+  const executionContext = context;
+  let lastYield = -Infinity, lastProgress = -Infinity, lastPhase;
+  context = { ...executionContext,
+    async yieldIfNeeded() { executionContext.throwIfCancelled?.(); if (Date.now() - lastYield >= 8) { await executionContext.yieldIfNeeded?.(); lastYield = Date.now(); } },
+    reportProgress(detail) { const now = Date.now(); if (detail.phase !== lastPhase || now - lastProgress >= 32) { executionContext.reportProgress?.(detail); lastPhase = detail.phase; lastProgress = now; } }
+  };
   context.reportProgress?.({ phase: "parsing-input", progress: 0.05 });
-  const records = parseSequenceInput(input, config.alphabet);
+  const limits = PROTEIN_MOTIF_LIMITS;
+  const maxInput = effectiveToolLimit(options, "proteinMotifInput", limits.inputCharacters);
+  const maxHits = effectiveToolLimit(options, "proteinMotifHits", limits.hits);
+  const maxOutput = effectiveToolLimit(options, "proteinMotifOutput", limits.outputCharacters);
+  if (String(input ?? "").length > maxInput) throw new Error("Protein motif input exceeds 2,000,000 characters.");
+  context.throwIfCancelled?.();
+  await context.yieldIfNeeded?.();
+  const records = parseSequenceInput(input, config.alphabet, { strictHeaders: true });
+  if (records.length > effectiveToolLimit(options, "proteinMotifRecords", limits.records)) throw new Error("Protein motif input exceeds 10,000 records.");
+  if (records.some(record => record.title.length > limits.headerCharacters)) throw new Error("Protein motif FASTA headers must not exceed 1,000 characters.");
   const selectedMotifs = getSelectedMotifs(config.motifs, options);
   const warnings = [];
+  const notes = [`Reference build: ${motifProvenance.version}.`];
 
   if (records.length === 0) {
     return makeToolResult({
@@ -637,9 +564,7 @@ async function runMotifScannerWorker(input, options = {}, config, context = {}) 
       basesProcessed: 0,
       processedUnitLabel: config.alphabet === "protein" ? "residue" : "base",
       charactersRemoved: 0,
-      streams: {
-        table: makeTableStream(motifMatchTableColumns, [], config.schema)
-      }
+      streams: {}
     });
   }
 
@@ -651,9 +576,12 @@ async function runMotifScannerWorker(input, options = {}, config, context = {}) 
   const analyzedRecords = [];
   let sequenceLength = 0;
   let charactersRemoved = 0;
+  let work = 0, rowCharacters = 0, matchedCharacters = 0;
 
   for (const [index, record] of records.entries()) {
     await context.yieldIfNeeded?.();
+    work += record.sequence.length * selectedMotifs.length;
+    if (work > effectiveToolLimit(options, "proteinMotifWork", limits.work)) throw new Error("Protein motif scan exceeds 50,000,000 residue-pattern positions. Select fewer motifs or records.");
     const result = await scanMotifRecordsWithContext(
       record,
       selectedMotifs,
@@ -661,11 +589,18 @@ async function runMotifScannerWorker(input, options = {}, config, context = {}) 
         alphabet: config.alphabet,
         strand: config.alphabet === "dna-rna" ? options.strand ?? "both" : "forward",
         allowOverlaps: options.allowOverlaps !== false,
-        pwmThresholdPercent: options.pwmThresholdPercent
+        pwmThresholdPercent: options.pwmThresholdPercent,
+        maxMatches: maxHits - rows.length,
+        maxMatchedCharacters: maxOutput / 2 - matchedCharacters
       },
       context
     );
-    rows.push(...result.rows);
+    for (const row of result.rows) {
+      rowCharacters += JSON.stringify(row).length;
+      matchedCharacters += row.matched_text.length;
+      if (rowCharacters > maxOutput) throw new Error("Protein motif retained rows exceed 26,214,400 characters. Select fewer motifs or records.");
+      rows.push(row);
+    }
     analyzedRecords.push({
       title: record.title ?? "sequence",
       sequence: result.sequence,
@@ -673,6 +608,7 @@ async function runMotifScannerWorker(input, options = {}, config, context = {}) 
       rows: result.rows
     });
     warnings.push(...result.warnings);
+    notes.push(...(result.notes ?? []));
     sequenceLength += result.sequenceLength;
     charactersRemoved += result.charactersRemoved;
     context.reportProgress?.({
@@ -698,10 +634,11 @@ async function runMotifScannerWorker(input, options = {}, config, context = {}) 
     warnings
   });
 
+  if (materialized.output.length > maxOutput) throw new Error("Protein motif output exceeds 26,214,400 characters. Select fewer motifs or records.");
   return makeToolResult({
     output: materialized.output,
     sequenceSearch: materialized.outputFormat === "text-map"
-      ? { format: "labelled-blocks", alphabet: config.alphabet }
+      ? { format: "labelled-blocks", plainMapHeadings: true, alphabet: config.alphabet }
       : undefined,
     download: {
       filename: `${config.filenameBase}.${materialized.outputFormat === "tsv" ? "tsv" : materialized.outputFormat === "svg-map" ? "svg" : materialized.viewer ? "json" : "txt"}`,
@@ -715,21 +652,22 @@ async function runMotifScannerWorker(input, options = {}, config, context = {}) 
             : "text/plain;charset=utf-8"
     },
     warnings,
+    notes: [...notes, ...(analyzedRecords.some(record => record.sequence.includes("*")) ? ["Stop symbols separate peptide chains; matches cannot cross them. Coordinates include retained stop positions, and terminal patterns apply to each chain."] : [])],
     recordsProcessed: records.length,
     basesProcessed: sequenceLength,
-    processedUnitLabel: config.alphabet === "protein" ? "residue" : "base",
+    processedUnitLabel: analyzedRecords.some(record => record.sequence.includes("*")) ? "character" : "residue",
     charactersRemoved,
     streams: {
-      report: makeTextStream(materialized.report, "text/plain"),
+      ...(materialized.outputFormat === "report" ? { report: makeTextStream(materialized.report, "text/plain") } : {}),
       ...(materialized.outputFormat === "text-map" ? {
         textMap: makeTextStream(materialized.textMap, "text/plain", {
-          format: "labelled-blocks",
+          format: "labelled-blocks", plainMapHeadings: true,
           alphabet: config.alphabet
         })
       } : {}),
       ...(materialized.outputFormat === "svg-map" ? { overview: makeTextStream(materialized.svgMap, "image/svg+xml") } : {}),
       ...(materialized.viewer ? { viewer: config.alphabet === "protein" ? makeProteinViewerStream(materialized.viewer) : makeDnaViewerStream(materialized.viewer) } : {}),
-      table: makeTableStream(motifMatchTableColumns, rows, config.schema)
+      ...(materialized.outputFormat === "tsv" ? { table: makeTableStream(motifMatchTableColumns, rows, config.schema) } : {})
     },
     visual: materialized.outputFormat === "svg-map"
       ? { svg: materialized.svgMap }
@@ -739,30 +677,15 @@ async function runMotifScannerWorker(input, options = {}, config, context = {}) 
   });
 }
 
-export function runDnaRnaMotifScanner(input, options = {}) {
-  return runMotifScanner(input, options, {
-    alphabet: "dna-rna",
-    motifs: dnaRnaMotifs,
-    schema: "dna-rna-motif-scanner",
-    title: "DNA/RNA motif scanner",
-    filenameBase: "dna-rna-motif-scanner"
-  });
-}
+export const runDnaRnaMotifScanner = runDnaRnaMotifScannerWorker;
 
-export function runProteinMotifScanner(input, options = {}) {
-  return runMotifScanner(input, options, {
-    alphabet: "protein",
-    motifs: proteinMotifs,
-    schema: "protein-motif-scanner",
-    title: "Protein motif scanner",
-    filenameBase: "protein-motif-scanner"
-  });
-}
+export const runProteinMotifScanner = runProteinMotifScannerWorker;
 
 export async function runDnaRnaMotifScannerWorker(input, options = {}, context = {}) {
-  return runMotifScannerWorker(
+  const optionsUsed = normalizeMotifScannerOptions(options, "dna-rna");
+  const result = await runMotifScannerWorker(
     input,
-    options,
+    { ...options, ...optionsUsed },
     {
       alphabet: "dna-rna",
       motifs: dnaRnaMotifs,
@@ -772,12 +695,14 @@ export async function runDnaRnaMotifScannerWorker(input, options = {}, context =
     },
     context
   );
+  return { ...result, optionsUsed };
 }
 
 export async function runProteinMotifScannerWorker(input, options = {}, context = {}) {
-  return runMotifScannerWorker(
+  const optionsUsed = normalizeMotifScannerOptions(options, "protein");
+  const result = await runMotifScannerWorker(
     input,
-    options,
+    { ...options, ...optionsUsed },
     {
       alphabet: "protein",
       motifs: proteinMotifs,
@@ -787,4 +712,5 @@ export async function runProteinMotifScannerWorker(input, options = {}, context 
     },
     context
   );
+  return { ...result, optionsUsed };
 }

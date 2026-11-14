@@ -1,3 +1,4 @@
+import { DNA_RNA_PATTERN_DEFAULTS as defaults } from "../../core/dna-rna-pattern-options.js";
 import {
   DNA_RNA_PATTERN_MATCHED_REGION_RECORD_THRESHOLD,
   DNA_RNA_PATTERN_SVG_MAP_MATCH_THRESHOLD,
@@ -12,9 +13,10 @@ export const dnaRnaPatternFinderMetadata = {
   category: "Sequence Analysis",
   tags: ["DNA", "RNA", "raw", "motif", "regex", "search"],
   summary:
-    "Find plain-text, IUPAC, or regular-expression DNA/RNA motifs on one or both strands.",
+    "Find plain-text, IUPAC, or regular-expression DNA/RNA patterns on one or both strands.",
+  whenToUse: "Locate a specified nucleotide pattern and inspect its coordinates, strand and surrounding sequence.",
   inputType: "DNA/RNA sequence, FASTA/FASTA.GZ, or indexed FASTA",
-  outputType: "Match report, table, pattern text map, linear pattern map, linear DNA sequence viewer",
+  outputType: "Match report, table, pattern text map, linear pattern map, linear or circular DNA sequence viewer",
   runInWorker: true,
   workerModule: "../tools/dna-rna-pattern-finder/run.js",
   workerExport: "runDnaRnaPatternFinderWorker",
@@ -25,12 +27,12 @@ export const dnaRnaPatternFinderMetadata = {
     ],
     outputs: [
       { id: "primary", kind: "text", mediaType: "text/plain" },
-      { id: "report", kind: "text", mediaType: "text/plain" },
-      { id: "textMap", kind: "text", mediaType: "text/plain" },
-      { id: "table", kind: "table", schema: "dna-rna-pattern-finder", columns: dnaRnaPatternFinderTableColumns },
-      { id: "overview", kind: "text", mediaType: "image/svg+xml" },
-      { id: "viewer", kind: "viewer", viewerType: "dna-sequence-viewer" },
-      { id: "matchedRegions", kind: "sequence-records", alphabet: "dna-rna", schema: "dna-rna-pattern-finder" },
+      { id: "report", outputFormat: "report", kind: "text", mediaType: "text/plain" },
+      { id: "textMap", outputFormat: "text-map", kind: "text", mediaType: "text/plain" },
+      { id: "table", outputFormat: "tsv", kind: "table", schema: "dna-rna-pattern-finder", columns: dnaRnaPatternFinderTableColumns },
+      { id: "overview", outputFormat: "svg-map", kind: "text", mediaType: "image/svg+xml" },
+      { id: "viewer", outputFormat: "interactive-viewer", kind: "viewer", viewerType: "dna-sequence-viewer" },
+      { id: "matchedRegions", outputFormat: "matched-regions", kind: "sequence-records", alphabet: "dna-rna", schema: "dna-rna-pattern-finder" },
       { id: "warnings", kind: "warnings" }
     ]
   },
@@ -41,14 +43,14 @@ export const dnaRnaPatternFinderMetadata = {
       type: "text",
       label: "Pattern",
       help: "Enter the sequence pattern to find. In IUPAC mode, ambiguity symbols such as N, R, and Y are interpreted biologically.",
-      defaultValue: "ATGN"
+      defaultValue: defaults.pattern
     },
     {
       id: "patternMode",
       type: "radio",
       label: "Pattern mode",
       help: "Plain text searches for exact characters. IUPAC motif expands ambiguity codes. JavaScript regex uses the pattern as a regex source, without slash delimiters such as /ATG/i. See the JavaScript regex reference page for syntax and supported flags.",
-      defaultValue: "iupac",
+      defaultValue: defaults.patternMode,
       choices: [
         { value: "plain", label: "Plain text" },
         { value: "iupac", label: "IUPAC motif" },
@@ -60,19 +62,19 @@ export const dnaRnaPatternFinderMetadata = {
       type: "radio",
       label: "Strand",
       help: "Both strands searches the submitted sequence and its reverse complement, while reporting coordinates on the original submitted sequence.",
-      defaultValue: "forward",
+      defaultValue: defaults.strand,
       choices: [
         { value: "forward", label: "Forward only" },
         { value: "both", label: "Both strands" }
       ]
     },
-    { id: "caseInsensitive", type: "checkbox", label: "Case-insensitive search", defaultValue: true, help: "Treat uppercase and lowercase letters as equivalent during matching. In regex mode this controls JavaScript i-flag behavior; other regex flags are not user options in this tool." },
-    { id: "allowOverlaps", type: "checkbox", label: "Allow overlapping matches", defaultValue: true, help: "Allows matches that share one or more sequence positions, such as finding ATA twice in ATATA." },
+    { id: "caseInsensitive", type: "checkbox", label: "Case-insensitive search", defaultValue: defaults.caseInsensitive, help: "Treat uppercase and lowercase letters as equivalent during matching. Turn off to match the original input case. In regex mode this controls JavaScript i-flag behavior; other regex flags are not user options in this tool." },
+    { id: "allowOverlaps", type: "checkbox", label: "Allow overlapping matches", defaultValue: defaults.allowOverlaps, help: "Allows matches that share one or more sequence positions, such as finding ATA twice in ATATA." },
     {
       id: "outputFormat",
       type: "radio",
       label: "Output format",
-      defaultValue: "svg-map",
+      defaultValue: defaults.outputFormat,
       choices: [
         { value: "report", label: "Summary report" },
         { value: "text-map", label: "Pattern text map" },
@@ -92,14 +94,19 @@ export const dnaRnaPatternFinderMetadata = {
         {
           id: "patternOutputLimitNote",
           type: "note",
-          text: `Large FASTA scans support plain/IUPAC patterns up to 1,000 bases, 50 million source bases, 500 million symbol comparisons, and 100,000 candidate hits. Use report, table, or linear map output; text maps, sequence viewers, and JavaScript regex require bounded pasted input. Matched-region streams are capped at ${DNA_RNA_PATTERN_MATCHED_REGION_RECORD_THRESHOLD.toLocaleString()} records; linear maps show at most ${DNA_RNA_PATTERN_SVG_MAP_MATCH_THRESHOLD.toLocaleString()} matches.`
+          text: `Plain/IUPAC scans support patterns up to 1,000 characters, 50 million non-whitespace input characters, 10,000 records, 500 million symbol comparisons, and 100,000 candidate hits. Retained hit data and selected output are limited to 26,214,400 characters. Use report, table, or linear map output; text maps, sequence viewers, and JavaScript regex require bounded pasted input. Matched regions requested in workflows are capped at ${DNA_RNA_PATTERN_MATCHED_REGION_RECORD_THRESHOLD.toLocaleString()} records; linear maps show at most ${DNA_RNA_PATTERN_SVG_MAP_MATCH_THRESHOLD.toLocaleString()} matches.`
         }
       ]
     },
     {
       id: "patternNote",
       type: "note",
-      text: `IUPAC motif mode treats ambiguity codes as matching symbols with overlapping possible bases. Regex mode uses JavaScript regular-expression source syntax; use the case-insensitive checkbox for i-flag behavior. Alignment gap characters (. and -) are removed before searching. Coordinates are 1-based and inclusive on the cleaned sequence. ${STREAMED_FASTA_SCAN_NOTE}`
+      text: `IUPAC mode finds compatible possible bases, treats T/U as equivalent, and accepts X as N. Plain text and regex distinguish T/U; reverse complements use DNA T. Gap characters (. and -) are removed. Coordinates are 1-based inclusive on the cleaned direct strand; table context shows that strand, while workflow matched regions follow the searched strand. Circular viewers display a linear scan, so origin-spanning matches are not searched. Regex uses source syntax and the case checkbox controls its i flag. ${STREAMED_FASTA_SCAN_NOTE}`
+    },
+    {
+      id: "patternReferences",
+      type: "note",
+      text: "References:\n\nAmbiguity symbols: Cornish-Bowden 1985.\n\nRegular expressions: ECMAScript documentation."
     }
   ]
 };

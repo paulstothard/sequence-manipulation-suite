@@ -1,3 +1,4 @@
+import { preserveRenderHeight } from "./preserve-render-height.js";
 import { makeSafeFileStem } from "./canvas-export.js";
 import { downloadText } from "./file-download.js";
 import { downloadSvgAsPng, serializeSvgElement } from "./svg-export.js";
@@ -628,7 +629,7 @@ function makeSelect(labelText, choices, value, onChange) {
   return { label, select };
 }
 
-function exportButton(format, onClick) {
+function exportButton(format, onClick, onError) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "dna-viewer-export-button";
@@ -646,6 +647,8 @@ function exportButton(format, onClick) {
     button.disabled = true;
     try {
       await onClick();
+    } catch (error) {
+      onError(error);
     } finally {
       button.disabled = false;
     }
@@ -695,7 +698,7 @@ export function renderProteinSequenceFigure(container, figure) {
   host.className = "protein-figure-svg-host";
   paper.append(host);
 
-  const render = () => {
+  const render = () => preserveRenderHeight(host, () => {
     const record = records[state.recordIndex] ?? records[0];
     const paperStyle = getComputedStyle(paper);
     const paperPadding = Number.parseFloat(paperStyle.paddingLeft || "0")
@@ -706,7 +709,7 @@ export function renderProteinSequenceFigure(container, figure) {
     host.style.width = `${viewBoxWidth + 34}px`;
     host.style.maxWidth = "100%";
     host.replaceChildren(currentSvg);
-  };
+  });
   const queueRender = () => {
     cancelAnimationFrame(renderFrame);
     renderFrame = requestAnimationFrame(render);
@@ -744,6 +747,16 @@ export function renderProteinSequenceFigure(container, figure) {
     ], state.annotations, (value) => { state.annotations = value; render(); }).label
   );
 
+  const exportStatus = document.createElement("div");
+  exportStatus.className = "protein-figure-export-status";
+  exportStatus.setAttribute("role", "status");
+  exportStatus.setAttribute("aria-label", "Protein figure export status");
+  exportStatus.hidden = true;
+  const clearExportStatus = () => { exportStatus.textContent = ""; exportStatus.hidden = true; };
+  const showExportError = error => {
+    exportStatus.textContent = error?.message || "Could not download the figure.";
+    exportStatus.hidden = false;
+  };
   const downloads = document.createElement("div");
   downloads.className = "dna-viewer-buttons protein-figure-downloads";
   downloads.setAttribute("role", "group");
@@ -751,14 +764,16 @@ export function renderProteinSequenceFigure(container, figure) {
   const filename = () => `${makeSafeFileStem(records[state.recordIndex]?.accession || records[state.recordIndex]?.title, "protein-sequence")}.figure`;
   downloads.append(
     exportButton("PNG", async () => {
+      clearExportStatus();
       if (currentSvg) await downloadSvgAsPng(serializeSvgElement(currentSvg), `${filename()}.png`);
-    }),
+    }, showExportError),
     exportButton("SVG", () => {
+      clearExportStatus();
       if (currentSvg) downloadText(serializeSvgElement(currentSvg), `${filename()}.svg`, "image/svg+xml;charset=utf-8");
-    })
+    }, showExportError)
   );
   toolbar.append(downloads);
-  workspace.append(toolbar, paper);
+  workspace.append(toolbar, exportStatus, paper);
   container.append(workspace);
   render();
 

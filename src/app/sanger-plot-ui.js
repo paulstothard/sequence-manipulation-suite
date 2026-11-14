@@ -1,6 +1,7 @@
 import { geneticCodes } from '../core/genetic-code.js';
 import { renderSangerPlot } from '../core/sanger-plot.js';
 import { installVisualInspection } from './visual-inspection.js';
+import { preserveRenderHeight } from './preserve-render-height.js';
 
 export function renderSangerPlotControls(container, model, initialSvg, onChange = () => {}) {
   const display = {...model.options};
@@ -10,11 +11,11 @@ export function renderSangerPlotControls(container, model, initialSvg, onChange 
   const drawing = document.createElement('div');
   drawing.className = 'sanger-plot-drawing';
   let cleanup, code;
-  const draw = (svg) => {
+  const draw = (svg) => preserveRenderHeight(drawing, () => {
     cleanup?.();
     drawing.innerHTML = svg;
     cleanup = installVisualInspection(drawing);
-  };
+  });
   const redraw = () => {
     Object.assign(model.options, display);
     if (code) code.disabled = !display.showForwardTranslations && !display.showReverseTranslations;

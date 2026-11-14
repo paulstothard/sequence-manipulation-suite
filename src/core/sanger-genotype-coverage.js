@@ -1,3 +1,4 @@
+import { isolateSvgStyles } from "./svg-style-scope.js";
 import {
   makePublicationPlotStyle,
   publicationPlotCss,
@@ -65,7 +66,11 @@ function arrowChevrons(left, right, y, reverse) {
     : '';
 }
 
-export function sangerGenotypeCoverageSvg(result) {
+export function sangerGenotypeCoverageSvg(...args) {
+  return isolateSvgStyles(sangerGenotypeCoverageSvgUnscoped(...args));
+}
+
+function sangerGenotypeCoverageSvgUnscoped(result) {
   const groups = sangerGenotypeCoverage(result);
   const width = 980, height = 168 + groups.length * 90 + result.reads.length * 28;
   const style = makePublicationPlotStyle(width, height);

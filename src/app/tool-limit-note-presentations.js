@@ -1,5 +1,6 @@
 // Compact display rows for legacy limit notes. The source notes remain in tool
 // metadata for summaries; the registry test ensures every note is reviewed here.
+import { ASSEMBLY_LIMITS } from "../core/lightweight-assembly-options.js";
 import { MAX_PASTED_FASTA_CHARACTERS_FOR_RICH_OUTPUTS } from "../tools/fasta-input-policy.js";
 
 const row = (id, label, value, detail = "") => ({ id, type: "limit-value", label, value, detail });
@@ -29,6 +30,14 @@ const gcPlot = [
 
 // Entries follow the order of note options within each tool's Limits group.
 export const TOOL_LIMIT_NOTE_PRESENTATIONS = {
+  "lightweight-sequence-assembly": [[
+    row("assemblyInputLimits", "Fixed input allocation", `${ASSEMBLY_LIMITS.inputCharacters.toLocaleString("en-US")} characters · ${ASSEMBLY_LIMITS.inputRecords.toLocaleString("en-US")} records`, "These ceilings remain enforced when the normal read/contig cap is disabled."),
+    row("assemblyReadLimits", "Individual read", `${ASSEMBLY_LIMITS.readBases.toLocaleString("en-US")} bases · ${ASSEMBLY_LIMITS.readCharacters.toLocaleString("en-US")} source characters`),
+    row("assemblyTotalBases", "Total input bases", ASSEMBLY_LIMITS.totalBases.toLocaleString("en-US")),
+    row("assemblyTitleLimit", "Individual title", `${ASSEMBLY_LIMITS.titleCharacters.toLocaleString("en-US")} characters`),
+    row("assemblyWorkLimits", "Assembly work", `${ASSEMBLY_LIMITS.readTrials.toLocaleString("en-US")} read trials · ${ASSEMBLY_LIMITS.comparisons.toLocaleString("en-US")} base comparisons`),
+    row("assemblyOutputLimits", "Generated output", `${ASSEMBLY_LIMITS.mapCells.toLocaleString("en-US")} text-map cells · ${ASSEMBLY_LIMITS.outputCharacters.toLocaleString("en-US")} characters`)
+  ]],
   "plate-layout-planner": [[
     row("plateCount", "Plates per run", "20"),
     row("plateSampleRows", "Sample rows per run", "2,000"),
@@ -43,25 +52,31 @@ export const TOOL_LIMIT_NOTE_PRESENTATIONS = {
     row("compositionInput", "Accepted FASTA input", "100 million bases · 10,000 records"),
     row("compositionWindows", "Calculated windows", "50,000 per run"),
     row("compositionPlotWindows", "Windows shown in plot", "5,000", "Increase the step size or select fewer records for a larger run."),
-    row("compositionOutput", "Materialized output", "25 MiB")
+    row("compositionOutput", "Materialized output", "26,214,400 characters", "Output above this ceiling is rejected.")
   ]],
   "codon-usage": [[
-    row("codonUsageInput", "Accepted coding input", "1,000 records · 100 million source characters"),
+    row("codonUsageInput", "Accepted coding input", "1,000 records · 100 million non-whitespace sequence characters · 512 MiB file · 150 MiB decoded text"),
     row("codonUsagePlot", "Records in plot", "20", "Use the table or report for larger collections."),
-    row("codonUsageOutput", "Materialized output", "25 MiB")
+    row("codonUsageOutput", "Materialized output", "26,214,400 characters"),
+    row("codonUsageHeader", "Individual FASTA header", "10,000 characters"),
+    row("codonUsageHeaders", "Combined FASTA headers", "5 million characters"),
+    row("codonUsageIndex", "Index files", "16 MiB each")
   ]],
   "codon-adaptation-index": [[
-    row("caiInput", "Summary and report input", "10,000 records · 100 million source characters"),
-    row("caiRows", "Per-codon output", "250,000 rows"),
-    row("caiOutput", "Materialized output", "25 MiB")
+    row("caiInput", "Input source", "10,000 records · 100 million non-whitespace sequence characters · 512 MiB file · 150 MiB decoded text", "Input above any of these ceilings is rejected."),
+    row("caiRows", "Per-codon output", "250,000 rows", "Larger codon tables are rejected; select a summary table or report."),
+    row("caiOutput", "Materialized output", "26,214,400 characters", "Output above this ceiling is rejected."),
+    row("caiHeader", "Individual FASTA header", "10,000 characters", "Longer headers are rejected."),
+    row("caiHeaders", "Combined FASTA headers", "5 million characters", "Input above this ceiling is rejected."),
+    row("caiIndex", "Index files", "16 MiB each", "Larger index files are rejected.")
   ]],
   "dna-rna-pattern-finder": [[
-    row("patternLength", "Plain/IUPAC pattern in large FASTA scans", "1,000 bases"),
-    row("patternSource", "Large FASTA scan source", "50 million bases"),
-    row("patternWork", "Large FASTA scan work", "500 million symbol comparisons"),
-    row("patternHits", "Large FASTA candidate hits", "100,000"),
-    row("patternRegionStream", "Matched-region stream", "5,000 records"),
-    row("patternOutput", "Materialized output", "25 MiB"),
+    row("patternLength", "Plain/IUPAC pattern", "1,000 characters", "The fixed-window scanner supports at most 65,516 pattern characters even with this ceiling disabled."),
+    row("patternSource", "Pattern input", "50 million non-whitespace input characters · 10,000 records", "Applies to pasted and file input. Source files: 512 MiB; decoded text: 150 MiB. Headers: 10,000 characters each, 5 million total; indexes: 16 MiB (fixed)."),
+    row("patternWork", "Plain/IUPAC scan work", "500 million symbol comparisons"),
+    row("patternHits", "Candidate hits", "100,000", "Both strands combined; fixed-width candidates are counted before removing overlaps."),
+    row("patternRegionStream", "Matched regions in workflows", "5,000 records"),
+    row("patternOutput", "Materialized output", "26,214,400 characters", "Applies to retained hit rows, regex matched sequence and the selected output."),
     row("patternLinearMap", "Linear pattern map", "5,000 matches shown"),
     row("patternBoundedInput", "Text maps, viewers, and JavaScript regex", richOutputPastedInput)
   ]],
@@ -70,13 +85,23 @@ export const TOOL_LIMIT_NOTE_PRESENTATIONS = {
   "linear-genome-figure": [gcPlot],
   "genome-figure": [gcPlot],
   "dna-rna-motif-scanner": [motifMap, [
-    row("motifSource", "Large FASTA motif scan", "50 million bases"),
+    row("motifSource", "Motif input", "50 million non-whitespace input characters · 10,000 records", "Applies to pasted and file input. Source files: 512 MiB; decoded text: 150 MiB. Headers: 10,000 characters each, 5 million total; indexes: 16 MiB (fixed)."),
     row("motifScoring", "Motif scoring work", "200 million symbol operations"),
     row("motifCandidates", "Candidate hits", "50,000"),
-    row("motifOutput", "Materialized output", "25 MiB", "Select a motif or class for larger scans."),
+    row("motifOutput", "Materialized output", "26,214,400 characters", "Applies to retained hit rows and the selected output. Select a motif or class for larger scans."),
     row("motifBoundedInput", "Text maps and sequence viewers", richOutputPastedInput)
   ]],
   "plasmid-common-feature-scanner": [[
+    row("plasmidInput", "Scan input", "5,000,000 non-whitespace characters · 10,000 records"),
+    row("plasmidWork", "Scan work", "500,000,000 symbol comparisons"),
+    row("plasmidHits", "Retained hits", "100,000 hits"),
+    row("plasmidOutput", "Retained hit text and serialized result", "26,214,400 characters each"),
+    row("plasmidTextMap", "Text annotation map", "1,000,000 bases · 10,000 hits"),
+    row("plasmidSourceFile", "Scan source file", "512 MiB", "The shared text upload ceiling also applies."),
+    row("plasmidDecodedSource", "Decoded scan source", "150 MiB", "The shared decoded text ceiling also applies."),
+    row("plasmidHeader", "Individual FASTA header", "10,000 characters"),
+    row("plasmidHeaders", "Combined FASTA headers", "5,000,000 characters")
+  ], [
     row("plasmidFeatureMap", "Linear feature map", "12 records · 240 hits total · 80 per record", "The table contains all hit coordinates.")
   ]],
   "table-correlation-matrix": [[]],
@@ -90,14 +115,14 @@ export const TOOL_LIMIT_NOTE_PRESENTATIONS = {
   ]],
   "venn-diagram": [[row("vennLists", "Venn diagram", "3 lists", "Use UpSet Plot for larger comparisons.")]],
   "vector-contamination-scanner": [[
-    row("vectorSource", "Large FASTA scan source", "10 million bases"),
+    row("vectorSource", "Scan source", "10 million non-whitespace characters · 10,000 records", "All sources; file size 512 MiB, decoded text 150 MiB. Fixed metadata bounds: 10,000 characters per header, 5 million total header characters, 16 MiB sidecar indexes."),
     row("vectorWindows", "A/C/G/T query windows", "5 million"),
     row("vectorSeedExtensions", "Seed extensions", "100,000"),
     row("vectorCandidates", "Candidate hits", "20,000"),
-    row("vectorOutput", "Materialized output", "25 MiB"),
+    row("vectorOutput", "Materialized output", "26,214,400 characters", "Applies to retained candidate rows and the serialized selected result."),
     row("vectorBoundedInput", "Text maps and sequence viewers", richOutputPastedInput)
   ], [
-    row("vectorLinearMap", "Linear contamination map", "5,000 hits shown", "The table contains all hit coordinates."),
+    row("vectorLinearMap", "Linear contamination map", "5,000 hits shown", "The table contains all retained hit coordinates, subject to the per-record cap."),
     row("vectorIndexedHeader", "FAI-backed source metadata", "Indexed sequence names", "Full FASTA header descriptions and line formatting are unavailable.")
   ]],
   "restriction-summary": [[
@@ -156,7 +181,9 @@ export const TOOL_LIMIT_NOTE_PRESENTATIONS = {
     row("sequenceStatsFile", "Source file", "512 MiB"),
     row("sequenceStatsDecoded", "Decoded text", "150 MiB"),
     row("sequenceStatsInput", "Accepted input", "10,000 records · 100 million source characters"),
-    row("sequenceStatsOutput", "Materialized report or table", "25 MiB")
+    row("sequenceStatsOutput", "Selected output", "26,214,400 characters"),
+    row("sequenceStatsHeaders", "FASTA headers", "10,000 characters each · 5,000,000 total"),
+    row("sequenceStatsIndex", "Each index sidecar", "16 MiB")
   ]],
   "orf-finder": [[]]
 };

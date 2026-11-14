@@ -1,3 +1,4 @@
+import { isolateSvgStyles } from "./svg-style-scope.js";
 import "../vendor/d3/d3.min.js";
 import { escapeXml } from "./plot-renderer.js";
 import {
@@ -322,7 +323,11 @@ export function makeSankeyPlot(input, options = {}) {
   };
 }
 
-export function renderSankeySvg(rows, warnings = [], options = {}) {
+export function renderSankeySvg(...args) {
+  return isolateSvgStyles(renderSankeySvgUnscoped(...args));
+}
+
+function renderSankeySvgUnscoped(rows, warnings = [], options = {}) {
   const width = Number(options.width ?? 1040) || 1040;
   const height = Number(options.height ?? 640) || 640;
   const style = makePublicationPlotStyle(width, height, options);

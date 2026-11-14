@@ -28,10 +28,10 @@ export const vectorContaminationProvenance = {
   },
   "redistribution": "NCBI UniVec_Core data are bundled as derived browser-local reference data. README.uv states a United States Government disclaimer and identifies company-contributed non-GenBank sources.",
   "oracleFixtures": [
-    "Future oracle fixtures should include BLAST+/VecScreen-style command output for perfect, reverse-strand, short high-identity, near-threshold mismatch, and clean no-hit cases."
+    "BLAST+ 2.16.0 fixtures: test/fixtures/vector-contamination/expected/manifest.json covers perfect, reverse-strand, short high-identity, near-threshold mismatch, clean no-hit and gapped-insertion cases. The gapped case documents an unsupported alignment model."
   ],
   "notes": [
-    "NCBI VecScreen uses BLAST with stringent vector-screening parameters; SMS3 currently uses a lighter ungapped scanner suitable for browser demonstration.",
+    "SMS3 uses an ungapped 11-base seed-and-extend candidate screen. Confidence tiers are local length/identity heuristics; NCBI VecScreen classifications are not reproduced.",
     "The browser app does not fetch external contamination databases at runtime."
   ]
 };

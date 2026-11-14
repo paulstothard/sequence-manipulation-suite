@@ -1,5 +1,7 @@
-import { parseSequenceInput } from "../../core/fasta.js";
-import { findPatternMatches, makePatternRegex } from "../../core/pattern.js";
+import { exportDelimitedTable } from "../../core/table.js";
+import { PROTEIN_PATTERN_LIMITS, normalizeProteinPatternOptions } from "../../core/protein-pattern-options.js";
+import { formatFastaRecord, parseSequenceInput } from "../../core/fasta.js";
+import { findPatternMatchSteps, makePatternRegex } from "../../core/pattern.js";
 import { cleanProteinSequence, makeSequenceContext } from "../../core/sequence.js";
 import { makeProteinViewerData, makeProteinViewerStream } from "../../core/protein-viewer-data.js";
 import { renderSequenceMap } from "../../core/sequence-map-renderer.js";
@@ -9,6 +11,7 @@ import { makeTableStream, makeTextStream, makeToolResult } from "../../core/work
 
 export const proteinPatternFinderTableColumns = [
   { id: "record", label: "Record", type: "string" },
+  { id: "record_index", label: "Record number", type: "number" },
   { id: "match", label: "Match", type: "number" },
   { id: "start", label: "Start", type: "number" },
   { id: "end", label: "End", type: "number" },
@@ -18,15 +21,15 @@ export const proteinPatternFinderTableColumns = [
   { id: "right_context", label: "Right context", type: "string" },
   { id: "context_sequence", label: "Context sequence", type: "string" }
 ];
-const TSV_COLUMNS = proteinPatternFinderTableColumns.map((column) => column.id);
 const DETAILED_REPORT_MATCH_THRESHOLD = 2000;
 export const PROTEIN_PATTERN_MATCHED_REGION_RECORD_THRESHOLD = 5000;
 export const PROTEIN_PATTERN_SVG_MAP_MATCH_THRESHOLD = 5000;
 
 function makeRows(records) {
-  return records.flatMap((record) =>
+  return records.flatMap((record, recordIndex) =>
     record.matches.map((match, index) => ({
       record: record.title,
+      record_index: recordIndex + 1,
       match: index + 1,
       start: match.start,
       end: match.end,
@@ -38,7 +41,7 @@ function makeRows(records) {
 
 function makeMatchedRegionRecords(records, maxRecords = Number.POSITIVE_INFINITY) {
   let remaining = maxRecords;
-  return records.flatMap((record) =>
+  return records.flatMap((record, recordIndex) =>
     record.matches.flatMap((match, index) => {
       if (remaining <= 0) {
         return [];
@@ -48,6 +51,7 @@ function makeMatchedRegionRecords(records, maxRecords = Number.POSITIVE_INFINITY
         title: `${record.title} match ${index + 1} ${match.start}-${match.end}`,
         sequence: match.matchedText,
         sourceTitle: record.title,
+        sourceRecordIndex: recordIndex + 1,
         start: match.start,
         end: match.end
       }];
@@ -105,22 +109,7 @@ function makeSummaryReport(records, pattern, options = {}) {
 }
 
 function makeTsv(rows) {
-  return [
-    TSV_COLUMNS.join("\t"),
-    ...rows.map((row) =>
-      [
-        row.record,
-        row.match,
-        row.start,
-        row.end,
-        row.length,
-        row.left_context,
-        row.matched_text,
-        row.right_context,
-        row.context_sequence
-      ].join("\t")
-    )
-  ].join("\n");
+  return exportDelimitedTable(proteinPatternFinderTableColumns.map(column => ({ ...column, label: column.id })), rows, "\t");
 }
 
 function makeTextMap(records) {
@@ -132,7 +121,8 @@ function makeTextMap(records) {
     width: 60,
     alphabet: "protein",
     labelPrefix: "m",
-    includeStrand: false
+    includeStrand: false,
+    headerPrefix: ""
   });
 }
 
@@ -164,6 +154,7 @@ function makeSvgMap(records, pattern, maxMatches = PROTEIN_PATTERN_SVG_MAP_MATCH
     }
     return {
       title: record.title,
+      sequence: record.sequence,
       length: record.cleanedLength,
       topology: "linear",
       molecule: "protein",
@@ -214,10 +205,43 @@ function looksLikeSlashDelimitedRegex(pattern) {
   return /^\/.*\/[a-z]*$/i.test(String(pattern ?? ""));
 }
 
-export function runProteinPatternFinder(input, options = {}, context = {}) {
+export async function runProteinPatternFinder(input, options = {}, context = {}) {
+  const optionsUsed = normalizeProteinPatternOptions(options);
+  const result = await scanProteinPatterns(input, { ...options, ...optionsUsed }, context);
+  context.reportProgress?.({ phase: "finished", progress: 1 });
+  return { ...result, optionsUsed };
+}
+
+async function scanProteinPatterns(input, options, context) {
+  const executionContext = context;
+  let lastYield = -Infinity, lastProgress = -Infinity, lastPhase;
+  context = { ...executionContext,
+    async yieldIfNeeded() {
+      executionContext.throwIfCancelled?.();
+      if (Date.now() - lastYield >= 8) {
+        await executionContext.yieldIfNeeded?.();
+        lastYield = Date.now();
+      }
+    },
+    reportProgress(detail) {
+      const now = Date.now();
+      if (detail.phase !== lastPhase || now - lastProgress >= 32) {
+        executionContext.reportProgress?.(detail); lastPhase = detail.phase; lastProgress = now;
+      }
+    }
+  };
+  const limits = PROTEIN_PATTERN_LIMITS;
+  const maxInput = effectiveToolLimit(options, "proteinPatternInput", limits.inputCharacters);
+  const maxHits = effectiveToolLimit(options, "proteinPatternHits", limits.hits);
+  const maxOutput = effectiveToolLimit(options, "proteinPatternOutput", limits.outputCharacters);
+  if (String(input ?? "").length > maxInput) throw new Error("Protein pattern input exceeds 2,000,000 characters.");
+  await context.yieldIfNeeded();
   context.reportProgress?.({ phase: "parsing-input", progress: 0.05 });
-  const records = parseSequenceInput(input, "sequence");
+  const records = parseSequenceInput(input, "sequence", { strictHeaders: true });
+  if (records.length > effectiveToolLimit(options, "proteinPatternRecords", limits.records)) throw new Error("Protein pattern input exceeds 10,000 records.");
+  if (records.some(record => record.title.length > limits.headerCharacters)) throw new Error("Protein pattern FASTA headers must not exceed 1,000 characters.");
   const warnings = [];
+  const notes = [];
   const pattern = String(options.pattern ?? "").trim();
   const searchOptions = { ...options, keepGaps: false };
 
@@ -230,6 +254,8 @@ export function runProteinPatternFinder(input, options = {}, context = {}) {
       charactersRemoved: 0
     });
   }
+
+  if (pattern.length > limits.patternCharacters) throw new Error("Protein patterns must not exceed 1,000 characters.");
 
   try {
     makePatternRegex(pattern, { ...searchOptions, alphabet: "protein" });
@@ -263,7 +289,11 @@ export function runProteinPatternFinder(input, options = {}, context = {}) {
   let basesProcessed = 0;
   let charactersRemoved = 0;
 
-  records.forEach((record, recordIndex) => {
+  let work = 0, hitCount = 0, matchedCharacters = 0;
+  for (const [recordIndex, record] of records.entries()) {
+    await context.yieldIfNeeded();
+    work += record.sequence.length * pattern.length;
+    if (work > effectiveToolLimit(options, "proteinPatternWork", limits.work)) throw new Error("Protein pattern scan exceeds 50,000,000 residue-pattern positions. Use a shorter pattern or fewer records.");
     context.throwIfCancelled?.();
     context.reportProgress?.({
       phase: "scanning",
@@ -272,29 +302,31 @@ export function runProteinPatternFinder(input, options = {}, context = {}) {
       totalRecords: records.length
     });
     const cleaned = cleanProteinSequence(record.sequence, {
-      preserveCase: false,
+      preserveCase: options.caseInsensitive === false,
       keepGaps: false
     });
     basesProcessed += cleaned.sequence.length;
     charactersRemoved += cleaned.removedCount;
 
-    if (cleaned.removedCount > 0) {
-      warnings.push(`${record.title}: removed ${cleaned.removedCount} non-protein character(s).`);
+    const gapCount = (record.sequence.match(/[-.]/g) ?? []).length;
+    if (gapCount) notes.push(`${record.title}: removed ${gapCount} alignment gap character(s); coordinates refer to the cleaned sequence.`);
+    if (cleaned.removedCount > gapCount) {
+      warnings.push(`${record.title}: removed ${cleaned.removedCount - gapCount} non-protein character(s).`);
     }
 
     if (cleaned.sequence.length === 0) {
       warnings.push(`${record.title}: no protein sequence characters were found.`);
     }
 
-    let matches = [];
-    try {
-      matches = findPatternMatches(cleaned.sequence, pattern, { ...searchOptions, alphabet: "protein" }, context);
-    } catch (error) {
-      if (error?.name === "AbortError") {
-        throw error;
-      }
-      warnings.push(`${record.title}: ${error.message}`);
-    }
+    const steps = findPatternMatchSteps(cleaned.sequence, pattern, {
+      ...searchOptions, alphabet: "protein", maxMatches: maxHits - hitCount,
+      maxMatchedCharacters: maxOutput / 2 - matchedCharacters
+    }, context);
+    let step = steps.next();
+    while (!step.done) { await context.yieldIfNeeded(); step = steps.next(); }
+    const matches = step.value;
+    hitCount += matches.length;
+    matchedCharacters += matches.reduce((sum, match) => sum + match.length, 0);
 
     analyzedRecords.push({
       title: record.title,
@@ -302,14 +334,14 @@ export function runProteinPatternFinder(input, options = {}, context = {}) {
       sequence: cleaned.sequence,
       matches
     });
-  });
+  }
 
   context.throwIfCancelled?.();
   context.reportProgress?.({ phase: "building-output", progress: 0.9 });
-  const outputFormat = ["report", "tsv", "text-map", "svg-map", "interactive-viewer"].includes(options.outputFormat) ? options.outputFormat : "svg-map";
+  const outputFormat = options.outputFormat;
   const totalMatches = analyzedRecords.reduce((sum, record) => sum + record.matches.length, 0);
   const maxMatchedRegionRecords = effectiveToolLimit(options, "proteinPatternRegions", PROTEIN_PATTERN_MATCHED_REGION_RECORD_THRESHOLD);
-  if (totalMatches > maxMatchedRegionRecords) {
+  if (outputFormat === "matched-regions" && totalMatches > maxMatchedRegionRecords) {
     warnings.push(
       `Matched-region sequence stream was capped at ${maxMatchedRegionRecords === PROTEIN_PATTERN_MATCHED_REGION_RECORD_THRESHOLD ? String(maxMatchedRegionRecords) : maxMatchedRegionRecords.toLocaleString()} of ${totalMatches} matches to avoid duplicating a very large hit set. Use the table output for all coordinates.`
     );
@@ -324,15 +356,15 @@ export function runProteinPatternFinder(input, options = {}, context = {}) {
       `Linear pattern map was capped at ${PROTEIN_PATTERN_SVG_MAP_MATCH_THRESHOLD} of ${totalMatches} matches to keep the browser responsive. Use table output for all coordinates.`
     );
   }
-  const tableRows = makeRows(analyzedRecords);
-  const matchedRegions = makeMatchedRegionRecords(analyzedRecords, maxMatchedRegionRecords);
-  const reportOutput = outputFormat === "report" && totalMatches > DETAILED_REPORT_MATCH_THRESHOLD
-    ? makeSummaryReport(analyzedRecords, pattern, options)
-    : makeReport(analyzedRecords, pattern, options);
+  const tableRows = outputFormat === "tsv" ? makeRows(analyzedRecords) : null;
+  const matchedRegions = outputFormat === "matched-regions" ? makeMatchedRegionRecords(analyzedRecords, maxMatchedRegionRecords) : null;
+  const reportOutput = outputFormat === "report"
+    ? (totalMatches > DETAILED_REPORT_MATCH_THRESHOLD ? makeSummaryReport : makeReport)(analyzedRecords, pattern, options)
+    : "";
   const textMap = outputFormat === "text-map" ? makeTextMap(analyzedRecords) : "";
   const svgMap = outputFormat === "svg-map" ? makeSvgMap(analyzedRecords, pattern) : "";
   const viewer = outputFormat === "interactive-viewer" ? makeProteinPatternViewerData(analyzedRecords, pattern) : null;
-  const output = outputFormat === "tsv"
+  const output = matchedRegions ? matchedRegions.map(record => formatFastaRecord(record.title, record.sequence)).join("") : outputFormat === "tsv"
     ? makeTsv(tableRows)
     : outputFormat === "text-map"
       ? textMap
@@ -342,13 +374,14 @@ export function runProteinPatternFinder(input, options = {}, context = {}) {
           ? JSON.stringify(viewer, null, 2)
           : reportOutput;
 
+  if (output.length > maxOutput) throw new Error("Protein pattern output exceeds 26,214,400 characters. Select fewer records or a narrower pattern.");
   return makeToolResult({
     output,
     sequenceSearch: outputFormat === "text-map"
-      ? { format: "labelled-blocks", alphabet: "protein" }
+      ? { format: "labelled-blocks", plainMapHeadings: true, alphabet: "protein" }
       : undefined,
     download: {
-      filename: `protein-pattern-finder.${outputFormat === "tsv" ? "tsv" : outputFormat === "svg-map" ? "svg" : viewer ? "json" : "txt"}`,
+      filename: `protein-pattern-finder.${matchedRegions ? "fasta" : outputFormat === "tsv" ? "tsv" : outputFormat === "svg-map" ? "svg" : viewer ? "json" : "txt"}`,
       mimeType:
         outputFormat === "tsv"
           ? "text/tab-separated-values"
@@ -359,22 +392,23 @@ export function runProteinPatternFinder(input, options = {}, context = {}) {
               : "text/plain;charset=utf-8"
     },
     warnings,
+    notes: [...notes, ...(analyzedRecords.some(record => record.sequence.includes("*")) ? ["Stop symbols are retained as sequence characters. User patterns can match them; regex anchors refer to the full record."] : [])],
     recordsProcessed: records.length,
     basesProcessed,
-    processedUnitLabel: "residue",
+    processedUnitLabel: analyzedRecords.some(record => record.sequence.includes("*")) ? "character" : "residue",
     charactersRemoved,
     streams: {
-      report: makeTextStream(reportOutput, "text/plain"),
-      ...(outputFormat === "text-map" ? { textMap: makeTextStream(textMap, "text/plain", { format: "labelled-blocks", alphabet: "protein" }) } : {}),
+      ...(outputFormat === "report" ? { report: makeTextStream(reportOutput, "text/plain") } : {}),
+      ...(outputFormat === "text-map" ? { textMap: makeTextStream(textMap, "text/plain", { format: "labelled-blocks", plainMapHeadings: true, alphabet: "protein" }) } : {}),
       ...(outputFormat === "svg-map" ? { overview: makeTextStream(svgMap, "image/svg+xml") } : {}),
       ...(viewer ? { viewer: makeProteinViewerStream(viewer) } : {}),
-      table: makeTableStream(proteinPatternFinderTableColumns, tableRows, "protein-pattern-finder"),
-      matchedRegions: {
+      ...(tableRows ? { table: makeTableStream(proteinPatternFinderTableColumns, tableRows, "protein-pattern-finder") } : {}),
+      ...(matchedRegions ? { matchedRegions: {
         kind: "sequence-records",
         schema: "protein-pattern-finder",
         alphabet: "protein",
         records: matchedRegions
-      }
+      } } : {})
     },
     visual: outputFormat === "svg-map"
       ? { svg: svgMap }
@@ -384,11 +418,4 @@ export function runProteinPatternFinder(input, options = {}, context = {}) {
   });
 }
 
-export async function runProteinPatternFinderWorker(input, options = {}, context = {}) {
-  context.reportProgress?.({ phase: "started", progress: 0 });
-  await context.yieldIfNeeded?.();
-  const result = runProteinPatternFinder(input, options, context);
-  await context.yieldIfNeeded?.();
-  context.reportProgress?.({ phase: "finished", progress: 1 });
-  return result;
-}
+export const runProteinPatternFinderWorker = runProteinPatternFinder;

@@ -36,6 +36,7 @@ import {
   isViewerTrackExpanded,
   getViewerTrackItems,
   getViewerStableLaneMemory,
+  cloneViewerStableLaneMemory,
   getViewerTargetClientPosition,
   getVisibleViewerTracks,
   hasHiddenViewerItemTypes,
@@ -1445,6 +1446,7 @@ function drawTicks(ctx, cx, cy, radius, state, record, arc, pxPerBp, options = {
   const step = circularMajorTickStep(state, record, pxPerBp);
   const minorStep = minorTickStep(step);
   const labelStats = { curved: 0, straight: 0 };
+  const drawnLabels = [];
   if (minorStep && minorStep * pxPerBp >= 14 && state.viewSpan / minorStep <= 180) {
     for (const tick of getVisibleRulerTicks(minorStep, record.length, state, false)) {
       if (tick.label % step === 0) continue;
@@ -1473,6 +1475,24 @@ function drawTicks(ctx, cx, cy, radius, state, record, arc, pxPerBp, options = {
     if (showLabels) {
       const labelPoint = pointOnCircle(cx, cy, radius + labelOffset, angle);
       const labelText = tick.label.toLocaleString();
+      ctx.font = "11px system-ui, sans-serif";
+      const labelWidth = measureCurvedLabel(ctx, labelText).width;
+      // The first and last coordinates can be only one base apart across
+      // the origin. Keep their tick marks, but do not overprint their labels.
+      const labelRadius = Math.max(1, radius + labelOffset);
+      const collides = drawnLabels.some(previous => {
+        if (labelStyle === "curved") {
+          const separation = Math.abs(Math.atan2(Math.sin(angle - previous.angle), Math.cos(angle - previous.angle))) * labelRadius;
+          return separation < (labelWidth + previous.width) / 2 + 8;
+        }
+        return labelBoundsOverlap(
+          { x: labelPoint.x - labelWidth / 2, y: labelPoint.y - 5.5, width: labelWidth, height: 11 },
+          previous.bounds, 4
+        );
+      });
+      if (collides) continue;
+      drawnLabels.push({ angle, width: labelWidth,
+        bounds: { x: labelPoint.x - labelWidth / 2, y: labelPoint.y - 5.5, width: labelWidth, height: 11 } });
       addCircleHit(state, { x: labelPoint.x, y: labelPoint.y, radius: 15 }, {
         kind: "coordinate",
         type: "Coordinate",
@@ -1759,7 +1779,9 @@ function computeRenderedCircularLayout(width, height, state, record) {
   const orderedTrackLayouts = sortCircularTrackLayoutsForDrawing(otherTrackLayouts);
   const offsets = getCircularTrackOffsets(digestFragmentTracks, restrictionTracks, orderedTrackLayouts, state.compactLayout);
   if (getCenterWeight(state, record) <= 0.05) {
-    const availableOuterRadius = Math.max(150, Math.min(width, height - 2 * (state.featureLegendHeight || 0)) / 2 - 42);
+    // Honor narrow viewports after overview scaling; a fixed radius floor
+    // can push the outer coordinate labels beyond the Canvas clip.
+    const availableOuterRadius = Math.max(0, Math.min(width, height - 2 * (state.featureLegendHeight || 0)) / 2 - 42);
     baseRadius = Math.max(minimumBaseRadius, Math.min(baseRadius, availableOuterRadius - offsets.rulerOffset));
     pxPerBp = ((TWO_PI - arc.gapAngle) * baseRadius) / state.viewSpan;
   }
@@ -2653,7 +2675,7 @@ function viewerInitialStateForRecord(viewerOptions, previousSnapshots, index) {
   return index === 0 ? provided : null;
 }
 
-function cloneViewerStateForExport(state) {
+function cloneViewerStateForExport(state, record) {
   return {
     ...state,
     rangeAnchors: Array.isArray(state.rangeAnchors) ? state.rangeAnchors.map((anchor) => ({ ...anchor })) : [],
@@ -2668,7 +2690,7 @@ function cloneViewerStateForExport(state) {
       Array.from(state.hiddenTrackItemTypes || []).map(([key, value]) => [key, new Set(value)])
     ),
     trackLayoutCache: new WeakMap(),
-    stableLaneMemory: new WeakMap(),
+    stableLaneMemory: cloneViewerStableLaneMemory(record, state),
     densityMemory: new Map(state.densityMemory)
   };
 }
@@ -3359,19 +3381,22 @@ function installCircularViewer(panel, record, options = {}) {
     surface.scrollTop = 0;
     resize();
   });
-  camera.addEventListener("click", () => {
+  camera.addEventListener("click", async () => {
     const safeTitle = makeSafeFileStem(record.title, "dna-circular-viewer");
-    downloadCanvasPng(canvas, `${safeTitle}-circular-viewer.png`, {
-      boundBitmap: true,
-      drawSnapshot: (exportContext, exportCanvas) => {
-        // The detached export canvas does not inherit the viewer's CSS colours.
-        drawCircularViewer(exportContext, exportCanvas, document.createElement("div"), record, cloneViewerStateForExport(state), getViewerCanvasTheme(canvas));
-      }
-    });
+    try {
+      await downloadCanvasPng(canvas, `${safeTitle}-circular-viewer.png`, {
+        drawSnapshot: (exportContext, exportCanvas) => {
+          // The detached export canvas does not inherit the viewer's CSS colours.
+          drawCircularViewer(exportContext, exportCanvas, document.createElement("div"), record, cloneViewerStateForExport(state, record), getViewerCanvasTheme(canvas));
+        }
+      });
+    } catch (error) {
+      status.textContent = error.message;
+    }
   });
   svgDownload.addEventListener("click", () => {
     const safeTitle = makeSafeFileStem(record.title, "dna-circular-viewer");
-    drawCircularViewer(ctx, canvas, document.createElement("div"), record, cloneViewerStateForExport(state));
+    drawCircularViewer(ctx, canvas, document.createElement("div"), record, cloneViewerStateForExport(state, record));
     try {
       downloadCanvasSvg(canvas, `${safeTitle}-circular-viewer.svg`, {
         title: `${record.title || "DNA sequence"} circular viewer`,

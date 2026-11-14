@@ -1,247 +1,123 @@
+import { normalizeMultipleAlignmentOptions, MSA_STREAM_FORMATS } from "../../core/multiple-alignment-options.js";
+import { clustalIdentifierNotes } from "../../core/alignment-identifiers.js";
 import { makeAlignmentTreeViewerResult } from "../../core/alignment-tree-viewer.js";
 import {
-  alignMultipleCodingDna,
-  alignMultipleSequences,
-  makeIdentityHeatmapSvg,
-  makeIdentityMatrixTsv,
-  makeIdentityPairsTsv,
-  makeMultipleCodingDnaProteinFasta,
-  makeMultipleAlignmentClustal,
-  makeMultipleAlignmentDistanceRows,
-  makeMultipleAlignmentFasta,
-  makeMultipleAlignmentReport,
-  makeMultipleAlignmentSvg,
-  makeMultipleAlignmentTreeSvg,
-  makeMultipleAlignmentTreeReport,
-  makeMultipleAlignmentTsv,
-  makeMultipleAlignmentIdentityMatrix,
-  multipleCodingDnaAlignmentTableColumns,
-  multipleAlignmentDistanceTableColumns,
-  multipleAlignmentIdentityTableColumns,
+  alignMultipleCodingDna, alignMultipleSequences, buildNeighborJoiningTree,
+  makeIdentityHeatmapSvg, makeIdentityMatrixTable,
+  makeMultipleCodingDnaProteinFasta, makeMultipleAlignmentClustal,
+  makeMultipleAlignmentDistanceRows, makeMultipleAlignmentFasta,
+  makeMultipleAlignmentReport, makeMultipleAlignmentSvg,
+  makeMultipleAlignmentTreeSvg, makeMultipleAlignmentTreeReport,
+  makeMultipleAlignmentIdentityMatrix, multipleCodingDnaAlignmentTableColumns,
+  multipleAlignmentDistanceTableColumns, multipleAlignmentIdentityTableColumns,
   multipleAlignmentTableColumns
 } from "../../core/multiple-sequence-alignment.js";
 import { makeTableStream, makeTextStream, makeToolResult } from "../../core/workflow.js";
 import { calculateSequenceLogo } from "../../core/sequence-logo.js";
 import { formatFastaRecord } from "../../core/fasta.js";
+import { DEFAULT_ALIGNMENT_SVG_CELL_LIMIT } from "../../core/alignment-svg.js";
+import { exportDelimitedTable } from "../../core/table.js";
 
-const OUTPUT_FORMATS = new Set([
-  "report",
-  "aligned-fasta",
-  "translated-protein-fasta",
-  "clustal",
-  "tsv",
-  "svg-color",
-  "sequence-logo",
-  "tree-viewer",
-  "nj-tree",
-  "nj-tree-svg",
-  "identity-matrix",
-  "identity-heatmap"
-]);
+const identityStreams = new Set(['identityMatrix', 'identityMatrixTable', 'identityPairs', 'identityHeatmap']);
+const extensions = { report: 'txt', fasta: 'fasta', proteinFasta: 'faa', clustal: 'aln', table: 'tsv', coloredSvg: 'svg', sequenceLogo: 'logo-summary.txt', treeDocument: 'json', newick: 'nwk', tree: 'nwk.txt', treeSvg: 'tree.svg', distanceTable: 'distances.tsv', identityMatrix: 'identity-matrix.tsv', identityPairs: 'identity-pairs.tsv', identityHeatmap: 'identity-heatmap.svg' };
 
-function normalizeOutputFormat(value) {
-  return OUTPUT_FORMATS.has(value) ? value : "svg-color";
-}
-
-async function runMultipleAlignment(input, options = {}, alphabet, context = {}) {
+async function runMultipleAlignment(input, rawOptions = {}, alphabet, context = {}) {
   context.reportProgress?.({ phase: "parsing-input", progress: 0.05 });
   context.throwIfCancelled?.();
   await context.yieldIfNeeded?.();
-
-  const outputFormat = normalizeOutputFormat(options.outputFormat);
-  if (outputFormat === "identity-matrix" || outputFormat === "identity-heatmap") {
-    const identityResult = await makeMultipleAlignmentIdentityMatrix(input, options, alphabet, context);
-    if (!identityResult.identity) {
-      return makeToolResult({
-        output: "",
-        warnings: identityResult.warnings,
-        recordsProcessed: identityResult.records.length,
-        basesProcessed: identityResult.totalSymbols,
-        charactersRemoved: identityResult.charactersRemoved
-      });
-    }
-    const matrixTsv = makeIdentityMatrixTsv(identityResult.identity);
-    const pairsTsv = makeIdentityPairsTsv(identityResult.identity);
-    const heatmap = outputFormat === "identity-heatmap" ? makeIdentityHeatmapSvg(identityResult.identity) : null;
-    const output = outputFormat === "identity-heatmap" ? heatmap.svg : matrixTsv;
-    context.reportProgress?.({ phase: "finished", progress: 1 });
-    return makeToolResult({
-      output,
-      download: {
-        filename: `${alphabet === "protein" ? "protein" : alphabet === "coding-dna" ? "coding-dna" : "dna-rna"}-identity-${outputFormat === "identity-heatmap" ? "heatmap.svg" : "matrix.tsv"}`,
-        mimeType: outputFormat === "identity-heatmap" ? "image/svg+xml;charset=utf-8" : "text/tab-separated-values;charset=utf-8"
-      },
-      warnings: identityResult.warnings,
-      recordsProcessed: identityResult.records.length,
-      basesProcessed: identityResult.totalSymbols,
-      charactersRemoved: identityResult.charactersRemoved,
-      streams: {
-        identityMatrix: makeTextStream(matrixTsv, "text/tab-separated-values"),
-        identityPairs: makeTableStream(multipleAlignmentIdentityTableColumns, identityResult.identity.rows, `multiple-alignment-${alphabet}-identity`),
-        ...(outputFormat === "identity-heatmap" ? {
-          identityHeatmap: {
-            kind: "text",
-            mediaType: "image/svg+xml",
-            text: heatmap.svg,
-            svg: heatmap.svg,
-            spec: heatmap.spec,
-            observablePlotConfig: heatmap.observablePlotConfig
-          }
-        } : {})
-      },
-      visual: outputFormat === "identity-heatmap" ? { svg: heatmap.svg } : undefined
-    });
-  }
-
-  const prepared = alphabet === "coding-dna"
-    ? await alignMultipleCodingDna(input, options, context)
-    : await alignMultipleSequences(input, { ...options, alphabet }, context);
-  if (!prepared.alignment) {
-    return makeToolResult({
-      output: "",
-      warnings: prepared.warnings,
-      recordsProcessed: prepared.records.length,
-      basesProcessed: prepared.totalSymbols,
-      charactersRemoved: prepared.charactersRemoved
-    });
-  }
-
-  if (outputFormat === "tree-viewer") {
-    return makeAlignmentTreeViewerResult(prepared, `Multiple Align ${alphabet}`, context);
-  }
-
-  const report = makeMultipleAlignmentReport(prepared);
-  const fasta = makeMultipleAlignmentFasta(prepared.alignment, options.lineWidth);
-  const translatedProteinFasta = alphabet === "coding-dna" ? makeMultipleCodingDnaProteinFasta(prepared.alignment, options.lineWidth) : "";
-  const clustal = makeMultipleAlignmentClustal(prepared.alignment, options.lineWidth);
-  const tsv = makeMultipleAlignmentTsv(prepared.alignment);
-  const svg = makeMultipleAlignmentSvg(prepared.alignment, {
-    alphabet,
-    lineWidth: options.lineWidth,
-    maxCells: options.maxTotalSymbols,
-    showConsensusLine: options.showConsensusLine !== false
-  });
-  const logoCalculation = outputFormat === "sequence-logo"
-    ? await calculateSequenceLogo(
-      prepared.alignment.titles.map((title, index) => formatFastaRecord(
-        title,
-        prepared.alignment.aligned[index],
-        80
-      )).join("\n"),
-      {
-        inputFormat: "alignment",
-        alphabet: alphabet === "protein" ? "protein" : alphabet === "coding-dna" ? "dna" : "auto",
-        ambiguousPolicy: "exclude",
-        sequenceWeighting: "none",
-        correction: "none",
-        bootstrapReplicates: 0,
-        title: alphabet === "coding-dna" ? "Aligned coding-DNA sequence logo" : "Multiple-alignment sequence logo"
-      },
-      context
-    )
+  const options = normalizeMultipleAlignmentOptions(rawOptions, alphabet);
+  const selected = Object.keys(MSA_STREAM_FORMATS).find(id => MSA_STREAM_FORMATS[id] === options.outputFormat);
+  const requested = new Set([selected, ...options.requestedAlignmentOutputs]);
+  if (selected === 'identityMatrix') requested.add('identityMatrixTable');
+  const needsAlignment = [...requested].some(id => !identityStreams.has(id));
+  const needsIdentity = [...requested].some(id => identityStreams.has(id));
+  options.materializeAlignmentRows = requested.has('table');
+  const prepared = needsAlignment
+    ? alphabet === 'coding-dna'
+      ? await alignMultipleCodingDna(input, options, context)
+      : await alignMultipleSequences(input, { ...options, alphabet }, context)
     : null;
-  const isTreeOutput = outputFormat === "nj-tree" || outputFormat === "nj-tree-svg";
-  const treeReport = isTreeOutput ? makeMultipleAlignmentTreeReport(prepared.alignment) : "";
-  const treeSvg = outputFormat === "nj-tree-svg" ? makeMultipleAlignmentTreeSvg(prepared.alignment) : "";
-  const distanceRows = isTreeOutput ? makeMultipleAlignmentDistanceRows(prepared.alignment) : [];
-  const outputs = {
-    report,
-    "aligned-fasta": fasta,
-    "translated-protein-fasta": translatedProteinFasta,
-    clustal,
-    tsv,
-    "svg-color": svg,
-    "sequence-logo": logoCalculation
-      ? `Sequence logo\nAlphabet: ${logoCalculation.logo.alphabet}\nColumns: ${logoCalculation.logo.alignmentLength}\nSequences: ${logoCalculation.logo.sequenceCount}`
-      : "",
-    "nj-tree": treeReport,
-    "nj-tree-svg": treeSvg
+  const identityResult = needsIdentity ? await makeMultipleAlignmentIdentityMatrix(input, options, alphabet, context) : null;
+  const source = prepared ?? identityResult;
+  const warnings = [...new Set([...(prepared?.warnings ?? []), ...(identityResult?.warnings ?? [])])];
+  const { requestedAlignmentOutputs, materializeAlignmentRows, ...optionsUsed } = options;
+  const notes = [...new Set([...(prepared?.notes ?? []), ...(identityResult?.notes ?? [])])];
+  const resultBase = {
+    optionsUsed, warnings, notes, processedUnitLabel: alphabet === 'protein' ? 'residue' : 'base', recordsProcessed: source.records.length,
+    basesProcessed: source.totalSymbols, charactersRemoved: source.charactersRemoved
   };
-  const extensions = {
-    report: "txt",
-    "aligned-fasta": "fasta",
-    "translated-protein-fasta": "faa",
-    clustal: "aln",
-    tsv: "tsv",
-    "svg-color": "svg",
-    "sequence-logo": "logo-summary.txt",
-    "nj-tree": "nwk.txt",
-    "nj-tree-svg": "tree.svg"
-  };
-  const mimeTypes = {
-    report: "text/plain;charset=utf-8",
-    "aligned-fasta": "text/plain;charset=utf-8",
-    "translated-protein-fasta": "text/plain;charset=utf-8",
-    clustal: "text/plain;charset=utf-8",
-    tsv: "text/tab-separated-values;charset=utf-8",
-    "svg-color": "image/svg+xml;charset=utf-8",
-    "sequence-logo": "text/plain;charset=utf-8",
-    "nj-tree": "text/plain;charset=utf-8",
-    "nj-tree-svg": "image/svg+xml;charset=utf-8"
-  };
+  if ((needsAlignment && !prepared.alignment) || (needsIdentity && !identityResult.identity)) return makeToolResult({ ...resultBase, output: '' });
 
+  const streams = {};
+  let treeData;
+  let matrix;
+  let distanceRows;
+  let treeViewer;
+  const getTree = () => treeData ??= { newick: buildNeighborJoiningTree(prepared.alignment, { warnings }) };
+  const getDistances = () => distanceRows ??= makeMultipleAlignmentDistanceRows(prepared.alignment);
+  const getMatrix = () => matrix ??= makeIdentityMatrixTable(identityResult.identity);
+  const table = (columns, rows, suffix = '') => makeTableStream(columns, rows, `multiple-alignment-${alphabet}${suffix}`);
+  const materializers = {
+    report: () => makeTextStream(makeMultipleAlignmentReport(prepared)),
+    fasta: () => makeTextStream(makeMultipleAlignmentFasta(prepared.alignment, options.lineWidth), 'text/x-fasta', { format: 'fasta', alphabet }),
+    proteinFasta: () => makeTextStream(makeMultipleCodingDnaProteinFasta(prepared.alignment, options.lineWidth), 'text/x-fasta', { format: 'fasta', alphabet: 'protein' }),
+    clustal: () => makeTextStream(makeMultipleAlignmentClustal(prepared.alignment, options.lineWidth), 'text/plain', { format: 'clustal', alphabet }),
+    table: () => table(alphabet === 'coding-dna' ? multipleCodingDnaAlignmentTableColumns : multipleAlignmentTableColumns, prepared.alignment.rows),
+    coloredSvg: () => makeTextStream(makeMultipleAlignmentSvg(prepared.alignment, { alphabet, lineWidth: options.lineWidth, maxCells: DEFAULT_ALIGNMENT_SVG_CELL_LIMIT, showConsensusLine: options.showConsensusLine }), 'image/svg+xml'),
+    sequenceLogo: async () => {
+      const calculation = await calculateSequenceLogo(prepared.alignment.titles.map((title, index) => formatFastaRecord(title, prepared.alignment.aligned[index], 80)).join('\n'), {
+        inputFormat: 'alignment', alphabet: alphabet === 'protein' ? 'protein' : alphabet === 'coding-dna' ? 'dna' : 'auto',
+        ambiguousPolicy: 'exclude', sequenceWeighting: 'none', correction: 'none', bootstrapReplicates: 0,
+        title: alphabet === 'coding-dna' ? 'Aligned coding-DNA sequence logo' : 'Multiple-alignment sequence logo'
+      }, context);
+      warnings.push(...calculation.warnings.filter(warning => !warnings.includes(warning)));
+      return { kind: 'figure', figureType: 'sequence-logo', label: 'Sequence logo', figure: calculation.logo };
+    },
+    treeDocument: async () => {
+      treeViewer = await makeAlignmentTreeViewerResult(prepared, `Multiple Align ${alphabet}`, context, getTree().newick);
+      warnings.push(...treeViewer.warnings.filter(warning => !warnings.includes(warning)));
+      return treeViewer.streams.treeDocument;
+    },
+    newick: () => makeTextStream(getTree().newick, 'text/x-newick'),
+    tree: () => makeTextStream(makeMultipleAlignmentTreeReport(prepared.alignment, { ...getTree(), distanceRows: getDistances() })),
+    treeSvg: () => makeTextStream(makeMultipleAlignmentTreeSvg(prepared.alignment, getTree().newick), 'image/svg+xml'),
+    distanceTable: () => table(multipleAlignmentDistanceTableColumns, getDistances(), '-distances'),
+    identityMatrix: () => makeTextStream(exportDelimitedTable(getMatrix().columns, getMatrix().rows), 'text/tab-separated-values'),
+    identityMatrixTable: () => table(getMatrix().columns, getMatrix().rows, '-identity-matrix'),
+    identityPairs: () => table(multipleAlignmentIdentityTableColumns, identityResult.identity.rows, '-identity'),
+    identityHeatmap: () => {
+      const heatmap = makeIdentityHeatmapSvg(identityResult.identity);
+      return { ...makeTextStream(heatmap.svg, 'image/svg+xml'), ...heatmap };
+    }
+  };
+  for (const id of requested) {
+    context.throwIfCancelled?.();
+    await context.yieldIfNeeded?.();
+    streams[id] = await materializers[id]();
+  }
+  const primary = streams[selected];
+  const output = primary.kind === 'table' ? exportDelimitedTable(primary.columns.map(column => ({ ...column, label: column.id })), primary.rows)
+    : selected === 'treeDocument' ? primary.items[0].text
+    : selected === 'sequenceLogo' ? `Sequence logo\nAlphabet: ${primary.figure.alphabet}\nColumns: ${primary.figure.alignmentLength}\nSequences: ${primary.figure.sequenceCount}`
+    : primary.text;
+  const mediaType = primary.kind === 'table' ? 'text/tab-separated-values' : selected === 'treeDocument' ? primary.items[0].mediaType : primary.mediaType ?? 'text/plain';
   context.reportProgress?.({ phase: "finished", progress: 1 });
-
   return makeToolResult({
-    output: outputs[outputFormat],
-    sequenceSearch: outputFormat === "clustal"
-      ? { format: "clustal", alphabet }
-      : outputFormat === "aligned-fasta"
-        ? { format: "fasta", alphabet }
-        : outputFormat === "translated-protein-fasta"
-          ? { format: "fasta", alphabet: "protein" }
-          : undefined,
-    download: {
-      filename: `${alphabet === "protein" ? "protein" : alphabet === "coding-dna" ? "coding-dna" : "dna-rna"}-multiple-alignment.${extensions[outputFormat]}`,
-      mimeType: mimeTypes[outputFormat]
-    },
-    warnings: prepared.warnings,
-    recordsProcessed: prepared.records.length,
-    basesProcessed: prepared.totalSymbols,
-    charactersRemoved: prepared.charactersRemoved,
-    streams: {
-      report: makeTextStream(report, "text/plain"),
-      fasta: makeTextStream(fasta, "text/x-fasta"),
-      ...(alphabet === "coding-dna" ? { proteinFasta: makeTextStream(translatedProteinFasta, "text/x-fasta") } : {}),
-      clustal: makeTextStream(clustal, "text/plain", { format: "clustal", alphabet }),
-      table: makeTableStream(
-        alphabet === "coding-dna" ? multipleCodingDnaAlignmentTableColumns : multipleAlignmentTableColumns,
-        prepared.alignment.rows,
-        `multiple-alignment-${alphabet}`
-      ),
-      ...(outputFormat === "svg-color" ? { coloredSvg: makeTextStream(svg, "image/svg+xml") } : {}),
-      ...(logoCalculation ? {
-        sequenceLogo: {
-          kind: "figure",
-          figureType: "sequence-logo",
-          label: "Sequence logo",
-          figure: logoCalculation.logo
-        }
-      } : {}),
-      ...(isTreeOutput ? {
-        tree: makeTextStream(treeReport, "text/plain"),
-        distanceTable: makeTableStream(multipleAlignmentDistanceTableColumns, distanceRows, `multiple-alignment-${alphabet}-distances`),
-        ...(outputFormat === "nj-tree-svg" ? { treeSvg: makeTextStream(treeSvg, "image/svg+xml") } : {})
-      } : {})
-    },
-    visual: outputFormat === "svg-color"
-      ? { svg }
-      : outputFormat === "sequence-logo"
-        ? { sequenceLogo: logoCalculation.logo }
-      : outputFormat === "nj-tree-svg"
-        ? { svg: treeSvg }
-        : undefined
+    ...resultBase, output, streams, sequenceSearch: primary.sequenceSearch,
+    notes: [...notes, ...(requested.has('clustal') ? clustalIdentifierNotes(prepared.alignment.titles) : [])],
+    download: { filename: selected === 'treeDocument' ? 'alignment-tree.json' : selected.startsWith('identity') ? `${alphabet}-${extensions[selected]}` : `${alphabet}-multiple-alignment.${extensions[selected]}`, mimeType: `${mediaType};charset=utf-8` },
+    visual: selected === 'treeDocument' ? treeViewer.visual
+      : selected === 'sequenceLogo' ? { sequenceLogo: primary.figure }
+      : mediaType === 'image/svg+xml' ? { svg: output } : undefined
   });
 }
 
 export function runMultipleAlignDnaRna(input, options = {}, context = {}) {
   return runMultipleAlignment(input, options, "dna-rna", context);
 }
-
 export function runMultipleAlignProtein(input, options = {}, context = {}) {
   return runMultipleAlignment(input, options, "protein", context);
 }
-
 export function runMultipleAlignCodingDna(input, options = {}, context = {}) {
   return runMultipleAlignment(input, options, "coding-dna", context);
 }

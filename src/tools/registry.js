@@ -1,3 +1,4 @@
+import { dnaRnaDotPlotExample } from "../examples/alignment-dot-plot-example.js";
 import { identifierInputsFor } from './identifier-inputs.js';
 import {svgEditorMetadata,svgEditorExample} from "./svg-editor/metadata.js";
 import {runSvgEditor} from "./svg-editor/run.js";
@@ -203,10 +204,12 @@ import { runSequenceLogo } from "./sequence-logo/run.js";
 import { sequenceLogoExample } from "../examples/sequence-logo-example.js";
 import { phylogenyBuilderMetadata } from "./phylogeny-builder/metadata.js";
 import { runPhylogenyBuilder } from "./phylogeny-builder/run.js";
+import { runTechnicalSequenceScanner } from "./technical-sequence-scanner/run.js";
 import { technicalSequenceScannerMetadata } from "./technical-sequence-scanner/metadata.js";
 import { plasmidCommonFeatureScannerMetadata } from "./plasmid-common-feature-scanner/metadata.js";
 import { runPlasmidCommonFeatureScanner } from "./plasmid-common-feature-scanner/run.js";
 import { vectorContaminationScannerMetadata } from "./vector-contamination-scanner/metadata.js";
+import { runVectorContaminationScanner } from "./vector-contamination-scanner/run.js";
 import { vcfGenotypeTableMetadata } from "./vcf-genotype-table/metadata.js";
 import { runVcfGenotypeTable } from "./vcf-genotype-table/run.js";
 import { vcfFilterMetadata } from "./vcf-filter/metadata.js";
@@ -408,10 +411,6 @@ import {
 
 const samBamSummaryRegionViewerExample = alignmentViewerExample.split(/\n##VCF\n/u)[0];
 
-function runWorkerOnlyTool() {
-  throw new Error("This tool runs in a Web Worker. Use the app worker runner or provide a workflow runTool callback.");
-}
-
 function lazyExampleTool({ metadata, run, getExample }) {
   const tool = { metadata, run };
   Object.defineProperty(tool, "example", {
@@ -522,7 +521,8 @@ aat gtc attaatgctNNN123`
     metadata: cleanFilterProteinMetadata,
     run: runCleanFilterProtein,
     example: `>NP_000537.3_p53_messy_fragment
-MEEPQSDPSVEPPLSQETFSDLWKLLPENNVLSPLPSQAMDDLMLSPDDIEQWFTEDPGP XZ* 789`
+MEEPQSDPSVEPPLSQETFSDLWKLLPENNVLSPLPSQAMDDLMLSPDDIEQWFTEDPGP
+XZ* 789`
   },
   {
     metadata: baseCompositionPlotMetadata,
@@ -794,18 +794,7 @@ GGGGCCACCATGGCTAGGAGGTTTTATAWAAGGCCAATAAAGGGTATAATTTGACA`
   {
     metadata: dnaRnaAlignmentDotPlotMetadata,
     run: runDnaRnaAlignmentDotPlot,
-    example: `>NC_001416.1_lambda_region_A
-TTGACGGCTAGCTCAGTCCTAGGTACCGGATCCGATGCTAGCGGGAATTCGAGCTCGGTACCAA
-GCTTACGCGTATGAGCACAAAAAAGAAACCATTAACACAAGAGCAGCTTGAGGACGCACGTCGC
-CTTAAAGCAATTTATGAAAAAGAAAAAGATGAGTTTATTGAAGCTGCGCTGAAAGCGGCGGTGA
-AAGAGTTGCTGGCAGCAAAACGTCTGAAAGAAAAACAGGAAACGCTGGCGCATGGTGCGCGTCT
-GAAAGAAAAATAGGCGTTCGACTTCCCGGTTTACGACGTTGAAAACGACGGCCAGTGAATTCCCA
->lambda_region_B_with_inversion
-TTGACGGCTAGCTCAGTCCTAGGTACCGGATCCGATGCTAGCGGGAATTCGAGCTCGGTACCAA
-GCTTACGCGTATGAGCACAAAAAAGAAACCATTAACACAAGAGCAGCTTGAGGACGCACGTCGC
-CTTAAAGCAATTTATGAAAAAGAAAAAGATGAGTTTATTGAAGCTGCGCTGAAAGCGGCGGTGA
-TGGGAATTCACAGCCGTCGTTTTCAACGTCGTAAACCGGGAAGTCGAACGCCTATTTTTCTTTC
-AGACGCGCACCATGCGCCAGCGTTTCCTGTTTTTCTTTCAGACGTTTTGCTGCCAGCAACTCTT`
+    example: dnaRnaDotPlotExample
   },
   {
     metadata: proteinAlignmentDotPlotMetadata,
@@ -861,7 +850,7 @@ MELKVLVKLLGKGSFGKVILVKEKADGRYYAMKMLKKDVVIQDDDVECAMSEKRILALAKQ`
   },
   {
     metadata: technicalSequenceScannerMetadata,
-    run: runWorkerOnlyTool,
+    run: runTechnicalSequenceScanner,
     example: `>adapter and primer example
 AAATGTAAAACGACGGCCAGTCCCTTTAGATCGGAAGAGCACACGTCTGAACTCCAGTCACTGTCTCTTATACACATCT
 >reverse adapter example
@@ -1814,7 +1803,7 @@ Will EcoRI and HindIII release the expected insert?
   },
   {
     metadata: vectorContaminationScannerMetadata,
-    run: runWorkerOnlyTool,
+    run: runVectorContaminationScanner,
     example: `>cloning_read_vector_tail
 ATGCGTACGTTAGCTAGTACCGTACGATCGTACGATCGGATATCGTACGATCGTACCCCGATCGGGAGCTCCCATGGGGCCATGCGTACGTTAGCTAGTACCGTACGATCGTACGATCGGATATCGTACGAAAGGAGAGGACGCTGTCAGAGGACGGTTACGAACGTAGGACAGAAGGGAGAGATGCGTACGTTAGCTAGTACCGTACGATCGTACGATCGGATATCGTACGATCGTACCCCGATCGGGAGCTC
 >reverse_oriented_vector_tail
@@ -2086,9 +2075,11 @@ TTTTCCCCAAAAGGGGNNNNACGTACGT`
   {
     metadata: lightweightSequenceAssemblyMetadata,
     run: runLightweightSequenceAssembly,
+    // M77789.2: reverse complement of circular bases 2620..303; names use fragment coordinates.
     example: `>pUC19_lac_forward_1_160
-TTGACCATGATTACGCCAAGCTTGCATGCCTGCAGGTCGACTCTAGAGGATCCCCGGGTACCGAGCTCGAATTCGTAATC
-ATGGTCATAGCTGTTTCCTGTGTGAAATTGTTATCCGCTCACAATTCCACACAACATACGAGCCGGAAGCATAAAGTGTA
+AAACGACGGCCAGTGAATTCGAGCTCGGTACCCGGGGATCCTCTAGAGTCGACCTGCAGG
+CATGCAAGCTTGGCGTAATCATGGTCATAGCTGTTTCCTGTGTGAAATTGTTATCCGCTC
+ACAATTCCACACAACATACGAGCCGGAAGCATAAAGTGTA
 >pUC19_lac_internal_121_280
 ACAATTCCACACAACATACGAGCCGGAAGCATAAAGTGTAAAGCCTGGGGTGCCTAATGAGTGAGCTAACTCACATTAAT
 TGCGTTGCGCTCACTGCCCGCTTTCCAGTCGGGAAACCTGTCGTGCCAGCTGCATTAATGAATCGGCCAACGCGCGGGGA

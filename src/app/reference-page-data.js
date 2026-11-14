@@ -210,7 +210,7 @@ function formatToolSummaryMetadataChecks(metadata) {
     if (!output.schema) {
       checks.push(`${output.id} table has no schema`);
     }
-    if (output.schema !== "generic-table" && !(output.columns ?? []).length) {
+    if (output.schema !== "generic-table" && output.dynamicColumns !== true && !(output.columns ?? []).length) {
       checks.push(`${output.id} table has no columns`);
     }
   }

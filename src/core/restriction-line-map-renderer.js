@@ -1,3 +1,4 @@
+import { isolateSvgStyles } from "./svg-style-scope.js";
 const DEFAULT_WIDTH = 1000;
 const DEFAULT_MARGIN = { top: 68, right: 62, bottom: 42, left: 168 };
 const RECORD_HEIGHT_WITH_FRAGMENTS = 210;
@@ -284,7 +285,11 @@ function makeSites(hits) {
     }));
 }
 
-export function renderRestrictionLineMap(records, options = {}) {
+export function renderRestrictionLineMap(...args) {
+  return isolateSvgStyles(renderRestrictionLineMapUnscoped(...args));
+}
+
+function renderRestrictionLineMapUnscoped(records, options = {}) {
   const showFragmentLabels = options.showFragmentLabels === true;
   const width = Number(options.width) || DEFAULT_WIDTH;
   const margin = DEFAULT_MARGIN;

@@ -1,3 +1,4 @@
+import { REVERSE_TRANSLATE_DEFAULTS as defaults, REVERSE_TRANSLATE_LIMITS as limits } from "../../core/reverse-translate-options.js";
 import { listCodonUsageReferences } from "../../core/codon-reference.js";
 import { geneticCodes } from "../../core/genetic-code.js";
 import { reverseTranslateTableColumns } from "../../core/reverse-translate.js";
@@ -7,17 +8,14 @@ const referenceChoices = listCodonUsageReferences(codonUsageReferences).map((ref
   value: reference.id,
   label: reference.name
 }));
-const defaultReferenceId =
-  referenceChoices.find((reference) => reference.value === "ecoli-k12-mg1655-refseq")?.value ??
-  referenceChoices[0]?.value ??
-  "";
-
 export const reverseTranslateMetadata = {
   id: "reverse-translate",
   name: "Reverse Translate",
   category: "Sequence Analysis",
   tags: ["DNA", "protein", "raw", "codon", "translation", "reference data"],
   summary: "Reverse translate protein sequences to DNA using bundled codon usage references or degenerate IUPAC codons.",
+  whenToUse: "Construct candidate DNA from protein sequences for codon-reference comparisons or degenerate sequence design.",
+  citations: [{ text: "NCBI Genetic Codes (https://www.ncbi.nlm.nih.gov/Taxonomy/Utils/wprintgc.cgi): ordinary codon assignments; initiation-specific recoding is not inferred." }],
   inputType: "Protein sequence",
   outputType: "DNA FASTA, codon choice table, codon base probability plot, summary report",
   runInWorker: true,
@@ -32,7 +30,7 @@ export const reverseTranslateMetadata = {
       { id: "primary", kind: "text", mediaType: "text/plain" },
       { id: "report", kind: "text", mediaType: "text/plain" },
       { id: "fasta", kind: "text", mediaType: "text/x-fasta" },
-      { id: "dnaRecords", kind: "sequence-records", alphabet: "dna-rna", schema: "reverse-translated-dna-records" },
+      { id: "dnaRecords", outputFormat: "fasta", kind: "sequence-records", alphabet: "dna-rna", schema: "reverse-translated-dna-records" },
       { id: "table", kind: "table", schema: "reverse-translate", columns: reverseTranslateTableColumns },
       { id: "plot", kind: "text", mediaType: "image/svg+xml", label: "Codon base probability plot" },
       { id: "warnings", kind: "warnings" }
@@ -43,18 +41,18 @@ export const reverseTranslateMetadata = {
       id: "mode",
       label: "Codon choice method",
       type: "radio",
-      defaultValue: "most-likely",
+      defaultValue: defaults.mode,
       choices: [
         { value: "most-likely", label: "Most likely codons from reference" },
         { value: "degenerate", label: "Degenerate IUPAC codons" }
       ],
-      help: "Reference mode chooses one codon per residue from the selected codon usage reference. Degenerate mode encodes all possible codons from the selected genetic code using IUPAC ambiguity symbols."
+      help: "Reference mode chooses one codon per residue from the selected codon usage reference. Degenerate mode collapses candidate codons by position; the resulting IUPAC union can also encode other residues or stops."
     },
     {
       id: "referenceId",
       label: "Codon usage reference",
       type: "select",
-      defaultValue: defaultReferenceId,
+      defaultValue: defaults.referenceId,
       choices: referenceChoices,
       visibleWhen: { option: "mode", value: "most-likely" },
       help: "Used in reference mode. Codons are ranked by within-family reference fraction, then per-1000 value, then genetic-code order. The selected reference also supplies its genetic code."
@@ -63,10 +61,10 @@ export const reverseTranslateMetadata = {
       id: "geneticCode",
       label: "Genetic code",
       type: "select",
-      defaultValue: "1",
+      defaultValue: defaults.geneticCode,
       choices: geneticCodes.map((code) => ({ value: code.id, label: `${code.id}. ${code.name}` })),
       visibleWhen: { option: "mode", value: "degenerate" },
-      help: "Used in degenerate mode to determine the codons that belong to each amino acid."
+      help: "Used in degenerate mode to determine the codons that belong to each amino acid. Probability plots use equal weights across candidate codons; they do not predict synthesis frequencies."
     },
     {
       id: "plotSettings",
@@ -78,7 +76,7 @@ export const reverseTranslateMetadata = {
           id: "plotResiduesPerRow",
           type: "number",
           label: "Residues per plot row",
-          defaultValue: 30,
+          defaultValue: defaults.plotResiduesPerRow,
           min: 20,
           max: 40,
           step: 10,
@@ -89,7 +87,7 @@ export const reverseTranslateMetadata = {
           id: "plotMaxResidues",
           type: "number",
           label: "Residues shown per protein record",
-          defaultValue: 1000,
+          defaultValue: defaults.plotMaxResidues,
           min: 10,
           max: 5000,
           step: 10,
@@ -102,7 +100,7 @@ export const reverseTranslateMetadata = {
       id: "outputFormat",
       label: "Output format",
       type: "radio",
-      defaultValue: "fasta",
+      defaultValue: defaults.outputFormat,
       choices: [
         { value: "fasta", label: "Reverse-translated DNA FASTA" },
         { value: "plot", label: "Codon base probability plot" },
@@ -116,21 +114,23 @@ export const reverseTranslateMetadata = {
       label: "Limits",
       collapsible: true,
       collapsed: true,
-      visibleWhen: { option: "outputFormat", value: "plot" },
       options: [
+        { id: "reverseInputLimit", type: "limit-value", label: "Input", value: `${limits.inputCharacters.toLocaleString()} characters; ${limits.records.toLocaleString()} records; ${limits.residues.toLocaleString()} residues`, detail: "Larger inputs are rejected; split them into smaller batches. Titles are limited to 500 characters." },
+        { id: "reverseTableLimit", type: "limit-value", label: "Codon choice table", value: `${limits.tableRows.toLocaleString()} rows`, detail: "Larger tables are rejected; choose FASTA or report, or split the input." },
+        { id: "reverseOutputLimit", type: "limit-value", label: "Selected output", value: `${limits.outputCharacters.toLocaleString()} characters`, detail: "Larger exports are rejected." },
         {
           id: "probabilityPlotLimitNote",
           type: "limit-value",
           label: "Codon base probability plot",
           value: "5,000 residues per protein record",
-          detail: "This is the maximum for the plot setting."
+          detail: "At most 5,000 residues total across at most 12 records. Excess residues are omitted with a warning; excess record counts are rejected."
         }
       ]
     },
     {
       id: "note",
       type: "note",
-      text: "Reverse translation is a deterministic construction, not a unique biological inference. FASTA titles and tables include the codon-choice policy and reference provenance."
+      text: "Raw or FASTA protein input is cleaned by removing gaps and unsupported characters. Positions count retained residues and stop symbols (*); B means D/N, J means I/L, Z means E/Q, X covers sense codons, and U/O use NNN with a warning. Codon assignments follow NCBI Genetic Codes. Reverse translation constructs candidate DNA; original DNA and expression efficiency cannot be inferred."
     }
   ]
 };

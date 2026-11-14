@@ -1,8 +1,11 @@
-import { formatFastaRecord, parseSequenceInput } from "../../core/fasta.js";
-import { getGeneticCode, getStartCodons, getStopCodons, makeCodonMap } from "../../core/genetic-code.js";
+import { exportDelimitedTable } from "../../core/table.js";
+import { normalizeOrfOptions, ORF_OUTPUT_FORMATS_BY_STREAM } from "../../core/orf-options.js";
+import { formatFastaRecord } from "../../core/fasta.js";
+import { findOrfs, createOrfBudget, ORF_LIMITS } from "../../core/orf.js";
+import { openCleanDnaRnaFastaSource } from "../../core/fasta-dna-record-source.js";
+export { findOrfs } from "../../core/orf.js";
 import { makeDnaViewerData, makeDnaViewerStream } from "../../core/dna-viewer-data.js";
 import { featureArrowHeadLength } from "../../core/directional-feature-geometry.js";
-import { cleanDnaRnaSequence, complementDnaRnaSequence } from "../../core/sequence.js";
 import { makeTableStream, makeTextStream, makeToolResult } from "../../core/workflow.js";
 
 export const LARGE_TEXT_ORF_THRESHOLD = 2000;
@@ -45,17 +48,6 @@ const ORF_OVERVIEW_STYLE = [
   `[data-sms3-plot="orf-overview"] .orf-overview-legend-note{font-size:10px;fill:#64748b}`
 ].join("");
 
-const FORWARD_FRAMES = [
-  { label: "+1", strand: "+", offset: 0 },
-  { label: "+2", strand: "+", offset: 1 },
-  { label: "+3", strand: "+", offset: 2 }
-];
-
-const REVERSE_FRAMES = [
-  { label: "-1", strand: "-", offset: 0 },
-  { label: "-2", strand: "-", offset: 1 },
-  { label: "-3", strand: "-", offset: 2 }
-];
 const FRAME_SLOT = new Map([
   ["+1", 0],
   ["+2", 1],
@@ -75,361 +67,9 @@ export const orfTableColumns = [
   { id: "aa_length", label: "Amino acid length", type: "number" },
   { id: "start_codon", label: "Start codon", type: "string" },
   { id: "stop_codon", label: "Stop codon", type: "string" },
-  { id: "complete", label: "Complete", type: "boolean" }
+  { id: "complete", label: "Complete", type: "boolean" },
+  { id: "record_index", label: "Record number", type: "number" }
 ];
-
-function reverseComplement(sequence) {
-  return Array.from(complementDnaRnaSequence(sequence, { preserveCase: false })).reverse().join("");
-}
-
-function normalizeSequence(sequence) {
-  return String(sequence ?? "").toUpperCase().replaceAll("U", "T");
-}
-
-function translateCodon(codon, codonMap) {
-  return codonMap.get(codon) ?? "X";
-}
-
-function getFrames(strandOption) {
-  if (strandOption === "forward") {
-    return FORWARD_FRAMES;
-  }
-  if (strandOption === "reverse") {
-    return REVERSE_FRAMES;
-  }
-  return [...FORWARD_FRAMES, ...REVERSE_FRAMES];
-}
-
-function mapCoordinates(sequenceLength, frame, startIndex, endExclusive) {
-  if (frame.strand === "+") {
-    return {
-      start: startIndex + 1,
-      end: endExclusive
-    };
-  }
-
-  return {
-    start: sequenceLength - endExclusive + 1,
-    end: sequenceLength - startIndex
-  };
-}
-
-function makeOrf({ sequence, sequenceLength, frame, startIndex, endExclusive, stopCodon, protein }) {
-  const coordinates = mapCoordinates(sequenceLength, frame, startIndex, endExclusive);
-  return {
-    frame: frame.label,
-    strand: frame.strand,
-    start: coordinates.start,
-    end: coordinates.end,
-    ntLength: endExclusive - startIndex,
-    aaLength: protein.length,
-    startCodon: sequence.slice(startIndex, startIndex + 3),
-    stopCodon,
-    complete: stopCodon !== "",
-    nucleotide: sequence.slice(startIndex, endExclusive),
-    protein
-  };
-}
-
-function findStartCodonOrfs(sequence, frame, context) {
-  const orfs = [];
-  let activeOrfs = [];
-
-  for (let index = frame.offset; index + 3 <= sequence.length; index += 3) {
-    const codon = sequence.slice(index, index + 3);
-
-    if (context.stopCodons.has(codon)) {
-      for (const active of activeOrfs) {
-        orfs.push(
-          makeOrf({
-            sequence,
-            sequenceLength: context.sequenceLength,
-            frame,
-            startIndex: active.startIndex,
-            endExclusive: index + 3,
-            stopCodon: codon,
-            protein: active.protein
-          })
-        );
-      }
-      activeOrfs = [];
-      continue;
-    }
-
-    for (const active of activeOrfs) {
-      if (index !== active.startIndex) {
-        active.protein += translateCodon(codon, context.codonMap);
-      }
-    }
-
-    if (context.startCodons.has(codon) && (context.nestedMode === "all-starts" || activeOrfs.length === 0)) {
-      activeOrfs.push({ startIndex: index, protein: "M" });
-    }
-  }
-
-  if (context.includePartial) {
-    for (const active of activeOrfs) {
-      orfs.push(
-        makeOrf({
-          sequence,
-          sequenceLength: context.sequenceLength,
-          frame,
-          startIndex: active.startIndex,
-          endExclusive: active.startIndex + active.protein.length * 3,
-          stopCodon: "",
-          protein: active.protein
-        })
-      );
-    }
-  }
-
-  return orfs;
-}
-
-function findAnyCodonOrfs(sequence, frame, context) {
-  const orfs = [];
-  let activeStart = frame.offset;
-  let protein = "";
-
-  for (let index = frame.offset; index + 3 <= sequence.length; index += 3) {
-    const codon = sequence.slice(index, index + 3);
-
-    if (context.stopCodons.has(codon)) {
-      orfs.push(
-        makeOrf({
-          sequence,
-          sequenceLength: context.sequenceLength,
-          frame,
-          startIndex: activeStart,
-          endExclusive: index + 3,
-          stopCodon: codon,
-          protein
-        })
-      );
-      activeStart = index + 3;
-      protein = "";
-      continue;
-    }
-
-    protein += translateCodon(codon, context.codonMap);
-  }
-
-  if (protein.length > 0 && context.includePartial) {
-    orfs.push(
-      makeOrf({
-        sequence,
-        sequenceLength: context.sequenceLength,
-        frame,
-        startIndex: activeStart,
-        endExclusive: activeStart + protein.length * 3,
-        stopCodon: "",
-        protein
-      })
-    );
-  }
-
-  return orfs;
-}
-
-async function findStartCodonOrfsWithContext(sequence, frame, context, workerContext = {}) {
-  const orfs = [];
-  let activeOrfs = [];
-
-  for (let index = frame.offset; index + 3 <= sequence.length; index += 3) {
-    if (index > frame.offset && index % 30000 === frame.offset) {
-      await workerContext.yieldIfNeeded?.();
-    } else {
-      workerContext.throwIfCancelled?.();
-    }
-
-    const codon = sequence.slice(index, index + 3);
-
-    if (context.stopCodons.has(codon)) {
-      for (const active of activeOrfs) {
-        orfs.push(
-          makeOrf({
-            sequence,
-            sequenceLength: context.sequenceLength,
-            frame,
-            startIndex: active.startIndex,
-            endExclusive: index + 3,
-            stopCodon: codon,
-            protein: active.protein
-          })
-        );
-      }
-      activeOrfs = [];
-      continue;
-    }
-
-    for (const active of activeOrfs) {
-      if (index !== active.startIndex) {
-        active.protein += translateCodon(codon, context.codonMap);
-      }
-    }
-
-    if (context.startCodons.has(codon) && (context.nestedMode === "all-starts" || activeOrfs.length === 0)) {
-      activeOrfs.push({ startIndex: index, protein: "M" });
-    }
-  }
-
-  if (context.includePartial) {
-    for (const active of activeOrfs) {
-      orfs.push(
-        makeOrf({
-          sequence,
-          sequenceLength: context.sequenceLength,
-          frame,
-          startIndex: active.startIndex,
-          endExclusive: active.startIndex + active.protein.length * 3,
-          stopCodon: "",
-          protein: active.protein
-        })
-      );
-    }
-  }
-
-  return orfs;
-}
-
-async function findAnyCodonOrfsWithContext(sequence, frame, context, workerContext = {}) {
-  const orfs = [];
-  let activeStart = frame.offset;
-  let protein = "";
-
-  for (let index = frame.offset; index + 3 <= sequence.length; index += 3) {
-    if (index > frame.offset && index % 30000 === frame.offset) {
-      await workerContext.yieldIfNeeded?.();
-    } else {
-      workerContext.throwIfCancelled?.();
-    }
-
-    const codon = sequence.slice(index, index + 3);
-
-    if (context.stopCodons.has(codon)) {
-      orfs.push(
-        makeOrf({
-          sequence,
-          sequenceLength: context.sequenceLength,
-          frame,
-          startIndex: activeStart,
-          endExclusive: index + 3,
-          stopCodon: codon,
-          protein
-        })
-      );
-      activeStart = index + 3;
-      protein = "";
-      continue;
-    }
-
-    protein += translateCodon(codon, context.codonMap);
-  }
-
-  if (protein.length > 0 && context.includePartial) {
-    orfs.push(
-      makeOrf({
-        sequence,
-        sequenceLength: context.sequenceLength,
-        frame,
-        startIndex: activeStart,
-        endExclusive: activeStart + protein.length * 3,
-        stopCodon: "",
-        protein
-      })
-    );
-  }
-
-  return orfs;
-}
-
-function sortOrfs(orfs, sortBy = "start") {
-  const byStart = (left, right) =>
-    left.start - right.start || left.end - right.end || left.frame.localeCompare(right.frame);
-  const byFrame = (left, right) =>
-    left.strand.localeCompare(right.strand) ||
-    left.frame.localeCompare(right.frame) ||
-    left.start - right.start ||
-    left.end - right.end;
-
-  return [...orfs].sort((left, right) => {
-    if (sortBy === "length-desc") {
-      return right.aaLength - left.aaLength || byStart(left, right);
-    }
-    if (sortBy === "frame") {
-      return byFrame(left, right);
-    }
-    if (sortBy === "complete") {
-      return Number(right.complete) - Number(left.complete) || byStart(left, right);
-    }
-    return byStart(left, right);
-  });
-}
-
-export function findOrfs(sequence, options = {}) {
-  const normalized = normalizeSequence(sequence);
-  const code = getGeneticCode(options.geneticCode ?? "1");
-  const context = {
-    codonMap: makeCodonMap(code),
-    startCodons: getStartCodons(code),
-    stopCodons: getStopCodons(code),
-    includePartial: options.includePartial !== false,
-    nestedMode: options.nestedMode === "all-starts" ? "all-starts" : "first-start",
-    sequenceLength: normalized.length
-  };
-  const frames = getFrames(options.strand);
-  const minimumAminoAcids = Math.max(1, Number.parseInt(options.minimumAminoAcids, 10) || 1);
-  const startMode = options.startMode === "any-codon" ? "any-codon" : "start-codon";
-  const orfs = [];
-
-  for (const frame of frames) {
-    const frameSequence = frame.strand === "-" ? reverseComplement(normalized) : normalized;
-    const frameOrfs =
-      startMode === "any-codon"
-        ? findAnyCodonOrfs(frameSequence, frame, context)
-        : findStartCodonOrfs(frameSequence, frame, context);
-
-    orfs.push(...frameOrfs.filter((orf) => orf.aaLength >= minimumAminoAcids));
-  }
-
-  return sortOrfs(orfs, options.sortBy);
-}
-
-async function findOrfsWithContext(sequence, options = {}, workerContext = {}) {
-  const normalized = normalizeSequence(sequence);
-  const code = getGeneticCode(options.geneticCode ?? "1");
-  const context = {
-    codonMap: makeCodonMap(code),
-    startCodons: getStartCodons(code),
-    stopCodons: getStopCodons(code),
-    includePartial: options.includePartial !== false,
-    nestedMode: options.nestedMode === "all-starts" ? "all-starts" : "first-start",
-    sequenceLength: normalized.length
-  };
-  const frames = getFrames(options.strand);
-  const minimumAminoAcids = Math.max(1, Number.parseInt(options.minimumAminoAcids, 10) || 1);
-  const startMode = options.startMode === "any-codon" ? "any-codon" : "start-codon";
-  const orfs = [];
-
-  for (const [index, frame] of frames.entries()) {
-    await workerContext.yieldIfNeeded?.();
-    const frameSequence = frame.strand === "-" ? reverseComplement(normalized) : normalized;
-    const frameOrfs =
-      startMode === "any-codon"
-        ? await findAnyCodonOrfsWithContext(frameSequence, frame, context, workerContext)
-        : await findStartCodonOrfsWithContext(frameSequence, frame, context, workerContext);
-
-    orfs.push(...frameOrfs.filter((orf) => orf.aaLength >= minimumAminoAcids));
-    workerContext.reportProgress?.({
-      phase: "scanning-frames",
-      progress: (index + 1) / frames.length,
-      framesProcessed: index + 1,
-      totalFrames: frames.length
-    });
-  }
-
-  return sortOrfs(orfs, options.sortBy);
-}
 
 function formatOrfRow(recordTitle, index, orf) {
   return [
@@ -447,37 +87,15 @@ function formatOrfRow(recordTitle, index, orf) {
   ];
 }
 
-function makeTsv(records) {
-  const rows = [
-    [
-      "record",
-      "orf",
-      "frame",
-      "strand",
-      "start",
-      "end",
-      "nt_length",
-      "aa_length",
-      "start_codon",
-      "stop_codon",
-      "complete"
-    ].join("\t")
-  ];
-
-  for (const record of records) {
-    record.orfs.forEach((orf, index) => {
-      rows.push(formatOrfRow(record.title, index + 1, orf).join("\t"));
-    });
-  }
-
-  return rows.join("\n");
+function makeTsv(rows) {
+  return exportDelimitedTable(orfTableColumns.map(column => ({ ...column, label: column.id })), rows, "\t");
 }
 
 function makeReport(records) {
   const lines = [];
 
   for (const record of records) {
-    lines.push(`${record.title} ORFs`);
+    lines.push(`Record ${record.recordIndex}: ${record.title} ORFs`);
     if (record.orfs.length === 0) {
       lines.push("No ORFs matched the selected options.");
       lines.push("");
@@ -501,7 +119,7 @@ function makeSummaryReport(records) {
     const completeCount = record.orfs.filter((orf) => orf.complete).length;
     const partialCount = record.orfs.length - completeCount;
     const longest = record.orfs.reduce((max, orf) => Math.max(max, orf.aaLength), 0);
-    lines.push(`${record.title} ORFs`);
+    lines.push(`Record ${record.recordIndex}: ${record.title} ORFs`);
     lines.push(`ORFs found: ${record.orfs.length}`);
     lines.push(`Complete ORFs: ${completeCount}`);
     lines.push(`Partial ORFs: ${partialCount}`);
@@ -513,8 +131,8 @@ function makeSummaryReport(records) {
   return lines.join("\n").trimEnd();
 }
 
-function makeFastaHeader(recordTitle, index, orf) {
-  return `record=${recordTitle} orf=${index} strand=${orf.strand} frame=${orf.frame} start=${orf.start} end=${orf.end} aa_length=${orf.aaLength} complete=${orf.complete ? "yes" : "no"}`;
+function makeFastaHeader(recordTitle, index, orf, recordIndex) {
+  return `record=${recordTitle} orf=${index} strand=${orf.strand} frame=${orf.frame} start=${orf.start} end=${orf.end} aa_length=${orf.aaLength} complete=${orf.complete ? "yes" : "no"} record_index=${recordIndex}`;
 }
 
 function makeNucleotideFasta(records) {
@@ -522,7 +140,7 @@ function makeNucleotideFasta(records) {
 
   for (const record of records) {
     record.orfs.forEach((orf, index) => {
-      outputParts.push(formatFastaRecord(makeFastaHeader(record.title, index + 1, orf), orf.nucleotide, 60));
+      outputParts.push(formatFastaRecord(makeFastaHeader(record.title, index + 1, orf, record.recordIndex), orf.nucleotide, 60));
     });
   }
 
@@ -535,7 +153,7 @@ function makeProteinFasta(records, includeStopInProtein = false) {
   for (const record of records) {
     record.orfs.forEach((orf, index) => {
       const protein = includeStopInProtein && orf.complete ? `${orf.protein}*` : orf.protein;
-      outputParts.push(formatFastaRecord(makeFastaHeader(record.title, index + 1, orf), protein, 60));
+      outputParts.push(formatFastaRecord(makeFastaHeader(record.title, index + 1, orf, record.recordIndex), protein, 60));
     });
   }
 
@@ -819,6 +437,7 @@ function sequenceEndpointFacts(label, sequence, flankLength) {
 function makeOrfOverviewInspection(record, orf, index, geneticCode, minimumWidthApplied) {
   return [
     `ORF ${index + 1}: ${record.title}`,
+    `record number: ${record.recordIndex}`,
     `frame: ${orf.frame}`,
     `coordinates: ${orf.start.toLocaleString()}–${orf.end.toLocaleString()}`,
     `strand: ${orf.strand}`,
@@ -865,7 +484,7 @@ function makeSvgOverview(records, options = {}, suppliedLayout = null) {
   for (const recordLayout of layout.records) {
     const { record, sequenceLength } = recordLayout;
     const orfCountLabel = `${record.orfs.length} ORF${record.orfs.length === 1 ? "" : "s"}`;
-    parts.push(`<text class="orf-overview-record-title" x="16" y="${recordLayout.titleY}">${escapeXml(record.title)} (${orfCountLabel})</text>`);
+    parts.push(`<text class="orf-overview-record-title" x="16" y="${recordLayout.titleY}">Record ${record.recordIndex}: ${escapeXml(record.title)} (${orfCountLabel})</text>`);
 
     for (const frameLayout of recordLayout.frameLayouts) {
       const { frame, y, frameHeight, frameCenter, packed } = frameLayout;
@@ -939,6 +558,7 @@ function makeOrfRows(records) {
   return records.flatMap((record) =>
     record.orfs.map((orf, index) => ({
       record: record.title,
+      record_index: record.recordIndex,
       orf: index + 1,
       frame: orf.frame,
       strand: orf.strand,
@@ -957,8 +577,9 @@ function makeOrfRecords(records) {
   return records.flatMap((record) =>
     record.orfs.map((orf, index) => ({
       record: record.title,
+      sourceRecordIndex: record.recordIndex,
       orf: index + 1,
-      header: makeFastaHeader(record.title, index + 1, orf),
+      header: makeFastaHeader(record.title, index + 1, orf, record.recordIndex),
       ...orf
     }))
   );
@@ -974,7 +595,7 @@ function getDownloadExtension(outputFormat) {
   if (outputFormat === "svg-overview") {
     return "svg";
   }
-  if (isInteractiveViewerFormat(outputFormat)) {
+  if (isInteractiveViewerFormat(outputFormat) || outputFormat === "orf-records") {
     return "json";
   }
   return "txt";
@@ -990,7 +611,7 @@ function getMimeType(outputFormat) {
   if (outputFormat === "nucleotide-fasta" || outputFormat === "protein-fasta") {
     return "text/x-fasta;charset=utf-8";
   }
-  if (isInteractiveViewerFormat(outputFormat)) {
+  if (isInteractiveViewerFormat(outputFormat) || outputFormat === "orf-records") {
     return "application/json;charset=utf-8";
   }
   return "text/plain;charset=utf-8";
@@ -1001,7 +622,7 @@ function isInteractiveViewerFormat(outputFormat) {
 }
 
 function normalizeOutputFormat(outputFormat) {
-  const outputFormats = new Set(["report", "tsv", "nucleotide-fasta", "protein-fasta", "svg-overview", "interactive-viewer", "interactive-circular-viewer"]);
+  const outputFormats = new Set(["report", "tsv", "nucleotide-fasta", "protein-fasta", "svg-overview", "interactive-viewer", "interactive-circular-viewer", "orf-records"]);
   return outputFormats.has(outputFormat) ? outputFormat : "svg-overview";
 }
 
@@ -1043,35 +664,37 @@ function makeOrfViewerData(records, options = {}) {
   });
 }
 
-function makeOrfFinderResult({ analyzedRecords, warnings, recordsProcessed, basesProcessed, charactersRemoved, options }) {
+function makeOrfFinderResult({ analyzedRecords, warnings, recordsProcessed, basesProcessed, charactersRemoved, options, formats }) {
   const outputFormat = normalizeOutputFormat(options.outputFormat);
   const totalOrfs = analyzedRecords.reduce((sum, record) => sum + record.orfs.length, 0);
   const useSummaryReport = totalOrfs > LARGE_TEXT_ORF_THRESHOLD;
-  if (useSummaryReport && outputFormat === "report") {
+  if (useSummaryReport && formats.has("report")) {
     warnings.push(
       `Detailed ORF report rows were summarized because this run found ${totalOrfs} ORFs. Use table output for the full hit table.`
     );
   }
-  const reportOutput = useSummaryReport ? makeSummaryReport(analyzedRecords) : makeReport(analyzedRecords);
-  const tsvOutput = outputFormat === "tsv" ? makeTsv(analyzedRecords) : "";
-  const nucleotideFastaOutput = outputFormat === "nucleotide-fasta" ? makeNucleotideFasta(analyzedRecords) : "";
-  const proteinFastaOutput = outputFormat === "protein-fasta"
+  const reportOutput = formats.has("report") ? (useSummaryReport ? makeSummaryReport(analyzedRecords) : makeReport(analyzedRecords)) : "";
+  const tableRows = formats.has("tsv") ? makeOrfRows(analyzedRecords) : null;
+  const tsvOutput = tableRows ? makeTsv(tableRows) : "";
+  const nucleotideFastaOutput = formats.has("nucleotide-fasta") ? makeNucleotideFasta(analyzedRecords) : "";
+  const proteinFastaOutput = formats.has("protein-fasta")
     ? makeProteinFasta(analyzedRecords, options.includeStopInProtein === true)
     : "";
   const withinOverviewSizeLimits = totalOrfs <= SVG_OVERVIEW_ORF_THRESHOLD &&
     basesProcessed <= SVG_OVERVIEW_BASE_THRESHOLD;
-  const overviewLayout = outputFormat === "svg-overview" && withinOverviewSizeLimits
+  const overviewLayout = formats.has("svg-overview") && withinOverviewSizeLimits
     ? makeOrfOverviewLayout(analyzedRecords)
     : null;
   const overviewLayoutTooTall = overviewLayout?.height > SVG_OVERVIEW_HEIGHT_THRESHOLD;
-  const shouldDrawSvg = outputFormat === "svg-overview" &&
+  const shouldDrawSvg = formats.has("svg-overview") &&
     withinOverviewSizeLimits &&
     !overviewLayoutTooTall;
   let svgOverviewOutput = "";
-  const viewer = isInteractiveViewerFormat(outputFormat) ? makeOrfViewerData(analyzedRecords, options) : null;
+  const viewer = [...formats].some(isInteractiveViewerFormat) ? makeOrfViewerData(analyzedRecords, options) : null;
+  const orfRecords = formats.has("orf-records") ? makeOrfRecords(analyzedRecords) : null;
   if (shouldDrawSvg) {
     svgOverviewOutput = makeSvgOverview(analyzedRecords, options, overviewLayout);
-  } else if (outputFormat === "svg-overview") {
+  } else if (formats.has("svg-overview")) {
     const layoutDetail = overviewLayoutTooTall
       ? ` The densest reading frame needs ${overviewLayout.maxFrameLaneCount.toLocaleString()} non-overlapping display lanes, which would make the plot ${overviewLayout.height.toLocaleString()} px tall.`
       : "";
@@ -1095,10 +718,11 @@ function makeOrfFinderResult({ analyzedRecords, warnings, recordsProcessed, base
         ? svgOverviewOutput
         : isInteractiveViewerFormat(outputFormat)
           ? JSON.stringify(viewer, null, 2)
-          : reportOutput;
+          : outputFormat === "orf-records" ? JSON.stringify(orfRecords) : reportOutput;
 
   return makeToolResult({
     output,
+    optionsUsed: options,
     visual: outputFormat === "svg-overview"
       ? { svg: output }
       : isInteractiveViewerFormat(outputFormat)
@@ -1113,135 +737,94 @@ function makeOrfFinderResult({ analyzedRecords, warnings, recordsProcessed, base
     basesProcessed,
     charactersRemoved,
     streams: {
-      ...(outputFormat === "report" ? { report: makeTextStream(reportOutput, "text/plain") } : {}),
-      ...(outputFormat === "tsv" ? { tsv: makeTextStream(tsvOutput, "text/tab-separated-values") } : {}),
-      table: makeTableStream(orfTableColumns, makeOrfRows(analyzedRecords), "orf-finder"),
-      ...(outputFormat === "nucleotide-fasta" ? { nucleotideFasta: makeTextStream(nucleotideFastaOutput, "text/x-fasta") } : {}),
-      ...(outputFormat === "protein-fasta" ? { proteinFasta: makeTextStream(proteinFastaOutput, "text/x-fasta") } : {}),
-      ...(outputFormat === "svg-overview" ? { overview: makeTextStream(svgOverviewOutput, "image/svg+xml") } : {}),
-      ...(isInteractiveViewerFormat(outputFormat) ? { viewer: makeDnaViewerStream(viewer) } : {}),
-      orfRecords: {
+      ...(formats.has("report") ? { report: makeTextStream(reportOutput, "text/plain") } : {}),
+      ...(formats.has("tsv") ? { tsv: makeTextStream(tsvOutput, "text/tab-separated-values") } : {}),
+      ...(formats.has("tsv") ? { table: makeTableStream(orfTableColumns, tableRows, "orf-finder") } : {}),
+      ...(formats.has("nucleotide-fasta") ? { nucleotideFasta: makeTextStream(nucleotideFastaOutput, "text/x-fasta") } : {}),
+      ...(formats.has("protein-fasta") ? { proteinFasta: makeTextStream(proteinFastaOutput, "text/x-fasta") } : {}),
+      ...(formats.has("svg-overview") ? { overview: makeTextStream(svgOverviewOutput, "image/svg+xml") } : {}),
+      ...(viewer ? { viewer: makeDnaViewerStream(viewer) } : {}),
+      ...(orfRecords ? { orfRecords: {
         kind: "orf-records",
         schema: "orf-finder",
-        records: makeOrfRecords(analyzedRecords)
+        records: orfRecords
+      } } : {})
+    }
+  });
+}
+
+export async function runOrfFinder(input, options = {}, executionContext = {}) {
+  const effectiveOptions = normalizeOrfOptions(options);
+  const formats = new Set([effectiveOptions.outputFormat]);
+  for (const stream of Array.isArray(options?.requestedOrfOutputs) ? options.requestedOrfOutputs : []) {
+    const format = Object.hasOwn(ORF_OUTPUT_FORMATS_BY_STREAM, stream) ? ORF_OUTPUT_FORMATS_BY_STREAM[stream] : null;
+    if (format) formats.add(format === "interactive-viewer" && effectiveOptions.outputFormat === "interactive-circular-viewer" ? effectiveOptions.outputFormat : format);
+  }
+  const materializeSequences = [...formats].some(format => !["report", "tsv"].includes(format));
+  // Many tiny records must not schedule a timer and UI update for each frame.
+  let lastYield = -Infinity;
+  let lastProgress = -Infinity;
+  const context = {
+    ...executionContext,
+    async yieldIfNeeded() {
+      executionContext.throwIfCancelled?.();
+      if (Date.now() - lastYield >= 8) {
+        await executionContext.yieldIfNeeded?.();
+        lastYield = Date.now();
+      }
+    },
+    reportProgress(detail) {
+      if (detail.phase === "parsing-input" || detail.phase === "building-output" || Date.now() - lastProgress >= 32) {
+        executionContext.reportProgress?.(detail);
+        lastProgress = Date.now();
       }
     }
-  });
-}
-
-export function runOrfFinder(input, options = {}) {
-  const records = parseSequenceInput(input, "sequence");
-  const warnings = [];
-
-  if (records.length === 0) {
-    return makeToolResult({
-      output: "",
-      warnings: ["No sequence input was provided."],
-      recordsProcessed: 0,
-      basesProcessed: 0,
-      charactersRemoved: 0
-    });
-  }
-
+  };
+  context.reportProgress({ phase: "parsing-input", progress: 0.03 });
+  await context.yieldIfNeeded();
+  const opened = await openCleanDnaRnaFastaSource(input, {
+    ...options, strictHeaders: true,
+    maxSourceBases: ORF_LIMITS.maxInputCharacters,
+    maxSourceRecords: 10_000, maxSourceBytes: 512 * 1024 * 1024, maxDecodedSourceBytes: 150 * 1024 * 1024,
+    maxFastaHeaderCharacters: 10_000, maxTotalFastaHeaderCharacters: 5_000_000, maxIndexBytes: 16 * 1024 * 1024
+  }, context);
+  const budget = createOrfBudget();
   const analyzedRecords = [];
+  const warnings = [];
   let basesProcessed = 0;
   let charactersRemoved = 0;
-
-  for (const record of records) {
-    const cleaned = cleanDnaRnaSequence(record.sequence, {
-      preserveCase: false,
-      keepGaps: false
-    });
-    basesProcessed += cleaned.sequence.length;
-    charactersRemoved += cleaned.removedCount;
-
-    if (cleaned.removedCount > 0) {
-      warnings.push(
-        `${record.title}: removed ${cleaned.removedCount} non-DNA/RNA character(s).`
-      );
+  let current;
+  for await (const event of opened.events()) {
+    context.throwIfCancelled?.();
+    if (event.type === "record-start") current = { title: event.title, chunks: [] };
+    else if (event.type === "sequence-chunk") current.chunks.push(event.text);
+    else if (event.type === "record-end") {
+      const sequence = current.chunks.join("");
+      basesProcessed += event.length;
+      charactersRemoved += event.removedCount;
+      if (event.removedCount > 0) warnings.push(`${current.title}: removed ${event.removedCount} non-DNA/RNA character(s).`);
+      if (!event.length) warnings.push(`${current.title}: no DNA/RNA sequence characters were found.`);
+      budget.setRecordTitle(current.title);
+      const orfs = await findOrfs(sequence, effectiveOptions, context, budget, materializeSequences);
+      analyzedRecords.push({ title: current.title, recordIndex: analyzedRecords.length + 1, sequence, orfs });
+      context.reportProgress({ phase: "scanning-records", recordsProcessed: analyzedRecords.length, basesProcessed });
+      current = null;
     }
-
-    if (cleaned.sequence.length === 0) {
-      warnings.push(`${record.title}: no DNA/RNA sequence characters were found.`);
-    }
-
-    analyzedRecords.push({
-      title: record.title,
-      sequence: cleaned.sequence,
-      orfs: findOrfs(cleaned.sequence, options)
-    });
   }
-
-  return makeOrfFinderResult({
-    analyzedRecords,
-    warnings,
-    recordsProcessed: records.length,
-    basesProcessed,
-    charactersRemoved,
-    options
+  warnings.push(...opened.warnings);
+  if (!analyzedRecords.length) return makeToolResult({
+    output: "", warnings: ["No sequence input was provided.", ...warnings],
+    recordsProcessed: 0, basesProcessed: 0, charactersRemoved, optionsUsed: effectiveOptions
   });
-}
-
-export async function runOrfFinderWorker(input, options = {}, context = {}) {
-  context.reportProgress?.({ phase: "parsing-input", progress: 0.03 });
-  const records = parseSequenceInput(input, "sequence");
-  const warnings = [];
-
-  if (records.length === 0) {
-    return makeToolResult({
-      output: "",
-      warnings: ["No sequence input was provided."],
-      recordsProcessed: 0,
-      basesProcessed: 0,
-      charactersRemoved: 0
-    });
-  }
-
-  const analyzedRecords = [];
-  let basesProcessed = 0;
-  let charactersRemoved = 0;
-
-  for (const [index, record] of records.entries()) {
-    await context.yieldIfNeeded?.();
-    const cleaned = cleanDnaRnaSequence(record.sequence, {
-      preserveCase: false,
-      keepGaps: false
-    });
-    basesProcessed += cleaned.sequence.length;
-    charactersRemoved += cleaned.removedCount;
-
-    if (cleaned.removedCount > 0) {
-      warnings.push(
-        `${record.title}: removed ${cleaned.removedCount} non-DNA/RNA character(s).`
-      );
-    }
-
-    if (cleaned.sequence.length === 0) {
-      warnings.push(`${record.title}: no DNA/RNA sequence characters were found.`);
-    }
-
-    const orfs = await findOrfsWithContext(cleaned.sequence, options, context);
-    analyzedRecords.push({
-      title: record.title,
-      sequence: cleaned.sequence,
-      orfs
-    });
-    context.reportProgress?.({
-      phase: "scanning-records",
-      progress: 0.03 + ((index + 1) / records.length) * 0.87,
-      recordsProcessed: index + 1,
-      totalRecords: records.length
-    });
-  }
-
-  context.reportProgress?.({ phase: "building-output", progress: 0.95 });
+  context.reportProgress({ phase: "building-output", progress: 0.95 });
   context.throwIfCancelled?.();
-  return makeOrfFinderResult({
-    analyzedRecords,
-    warnings,
-    recordsProcessed: records.length,
-    basesProcessed,
-    charactersRemoved,
-    options
-  });
+  const result = makeOrfFinderResult({ analyzedRecords, warnings, recordsProcessed: analyzedRecords.length,
+    basesProcessed, charactersRemoved, options: effectiveOptions, formats });
+  // Include the actual selected text and structured payload in the transport budget.
+  if (JSON.stringify(result).length > ORF_LIMITS.maxOutputCharacters) {
+    throw new Error(`ORF result exceeds the ${ORF_LIMITS.maxOutputCharacters.toLocaleString("en-US")}-character output limit. Use fewer records or stricter ORF filters.`);
+  }
+  return result;
 }
+
+export const runOrfFinderWorker = runOrfFinder;

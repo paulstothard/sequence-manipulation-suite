@@ -1,8 +1,9 @@
+import { makeTextMapRuler } from "./text-annotation-map.js";
+import { exportDelimitedTable } from "./table.js";
 import { formatFastaRecord, parseSequenceInput } from "./fasta.js";
 import { cleanDnaRnaSequence, complementDnaRnaSequence } from "./sequence.js";
-import { effectiveToolLimit } from "./tool-limit-policy.js";
-
-export const MAX_ASSEMBLY_RECORDS = 1000;
+import { normalizeAssemblyOptions, ASSEMBLY_LIMITS as limits } from "./lightweight-assembly-options.js";
+export { MAX_ASSEMBLY_RECORDS } from "./lightweight-assembly-options.js";
 
 export const lightweightAssemblyColumns = [
   { id: "contig", label: "Contig", type: "string" },
@@ -15,15 +16,12 @@ export const lightweightAssemblyColumns = [
   { id: "overlap_length", label: "Overlap length", type: "number" },
   { id: "mismatches", label: "Mismatches", type: "number" },
   { id: "mismatch_percent", label: "Mismatch percent", type: "number" },
-  { id: "contig_length_after", label: "Contig length after", type: "number" }
+  { id: "contig_length_after", label: "Contig length after", type: "number" },
+  { id: "source_index", label: "Input record", type: "number" }
 ];
 
 function reverseComplement(sequence) {
   return Array.from(complementDnaRnaSequence(sequence, { preserveCase: false })).reverse().join("");
-}
-
-function round(value, digits = 4) {
-  return Number.isFinite(value) ? Number(value.toFixed(digits)) : "";
 }
 
 function padLeft(value, width) {
@@ -41,18 +39,6 @@ function checkCancelled(context, counter = 0, interval = 256) {
   }
 }
 
-function normalizeOptions(options = {}) {
-  const minOverlap = Math.max(6, Math.min(10000, Number.parseInt(options.minOverlap ?? 20, 10) || 20));
-  const requestedMismatchPercent = Number.parseFloat(options.maxMismatchPercent ?? 5);
-  const maxMismatchPercent = Math.max(0, Math.min(40, Number.isFinite(requestedMismatchPercent) ? requestedMismatchPercent : 5));
-  return {
-    minOverlap,
-    maxMismatchPercent,
-    tryReverseComplement: options.tryReverseComplement !== false,
-    lineWidth: Math.max(10, Math.min(200, Number.parseInt(options.lineWidth, 10) || 60))
-  };
-}
-
 function consensusBase(left, right) {
   if (left === right) return left;
   if (left === "N") return right;
@@ -60,21 +46,22 @@ function consensusBase(left, right) {
   return "N";
 }
 
-function scoreOverlap(left, right, length) {
+function* scoreOverlap(left, right, length, options, context) {
   let mismatches = 0;
-  let consensus = "";
   for (let index = 0; index < length; index += 1) {
     const a = left[left.length - length + index];
     const b = right[index];
     if (a !== b && a !== "N" && b !== "N") {
       mismatches += 1;
     }
-    consensus += consensusBase(a, b);
+    if (++context.assemblyWork.comparisons > limits.comparisons) throw new Error(`Assembly exceeds the fixed ${limits.comparisons.toLocaleString()} base-comparison budget. Reduce the read set or increase minimum overlap.`);
+    if (context.assemblyWork.comparisons % 8192 === 0) { context.throwIfCancelled?.(); yield {phase:'assembling',comparisons:context.assemblyWork.comparisons}; }
+    if ((mismatches / length) * 100 > options.maxMismatchPercent) break;
   }
-  return { mismatches, mismatchPercent: (mismatches / length) * 100, consensus };
+  return { mismatches, mismatchPercent: (mismatches / length) * 100 };
 }
 
-function scoreAlignedSegment(container, query, offset) {
+function* scoreAlignedSegment(container, query, offset, options, context) {
   let mismatches = 0;
   for (let index = 0; index < query.length; index += 1) {
     const a = container[offset + index];
@@ -82,6 +69,9 @@ function scoreAlignedSegment(container, query, offset) {
     if (a !== b && a !== "N" && b !== "N") {
       mismatches += 1;
     }
+    if (++context.assemblyWork.comparisons > limits.comparisons) throw new Error(`Assembly exceeds the fixed ${limits.comparisons.toLocaleString()} base-comparison budget. Reduce the read set or increase minimum overlap.`);
+    if (context.assemblyWork.comparisons % 8192 === 0) { context.throwIfCancelled?.(); yield {phase:'assembling',comparisons:context.assemblyWork.comparisons}; }
+    if ((mismatches / query.length) * 100 > options.maxMismatchPercent) break;
   }
   return {
     mismatches,
@@ -89,7 +79,7 @@ function scoreAlignedSegment(container, query, offset) {
   };
 }
 
-function findContainedPlacement(container, query, options, context) {
+function* findContainedPlacement(container, query, options, context) {
   if (query.length > container.length || query.length < options.minOverlap) {
     return null;
   }
@@ -98,7 +88,7 @@ function findContainedPlacement(container, query, options, context) {
   const lastOffset = container.length - query.length;
   for (let offset = 0; offset <= lastOffset; offset += 1) {
     checkCancelled(context, offset);
-    const score = scoreAlignedSegment(container, query, offset);
+    const score = yield* scoreAlignedSegment(container, query, offset, options, context);
     if (score.mismatchPercent > options.maxMismatchPercent) {
       continue;
     }
@@ -119,29 +109,23 @@ function findContainedPlacement(container, query, options, context) {
   return best;
 }
 
-function findSuffixPrefixOverlap(left, right, options, context) {
+function* findSuffixPrefixOverlap(left, right, options, context) {
   const maxOverlap = Math.min(left.length, right.length);
-  let best = null;
-  for (let length = options.minOverlap; length <= maxOverlap; length += 1) {
+  for (let length = maxOverlap; length >= options.minOverlap; length -= 1) {
     checkCancelled(context, length);
-    const score = scoreOverlap(left, right, length);
+    const score = yield* scoreOverlap(left, right, length, options, context);
     if (score.mismatchPercent > options.maxMismatchPercent) {
       continue;
     }
-    const candidate = { length, ...score };
-    if (
-      !best ||
-      candidate.length > best.length ||
-      (candidate.length === best.length && candidate.mismatchPercent < best.mismatchPercent)
-    ) {
-      best = candidate;
-    }
+    // Longest qualifying overlap wins; shorter lengths cannot improve it.
+    return { length, ...score };
   }
-  return best;
+  return null;
 }
 
 function mergeAppend(left, right, overlap) {
-  return left.slice(0, left.length - overlap.length) + overlap.consensus + right.slice(overlap.length);
+  const consensus = Array.from({length:overlap.length}, (_,i)=>consensusBase(left[left.length-overlap.length+i],right[i])).join('');
+  return left.slice(0, left.length - overlap.length) + consensus + right.slice(overlap.length);
 }
 
 function isBetterPlacement(candidate, best, currentLength) {
@@ -157,7 +141,7 @@ function isBetterPlacement(candidate, best, currentLength) {
   return candidateExtension > bestExtension;
 }
 
-function findBestReadPlacement(contig, read, options, context) {
+function* findBestReadPlacement(contig, read, options, context) {
   const orientations = [
     { orientation: "forward", sequence: read.sequence }
   ];
@@ -167,7 +151,7 @@ function findBestReadPlacement(contig, read, options, context) {
 
   let best = null;
   for (const oriented of orientations) {
-    const contained = findContainedPlacement(contig.sequence, oriented.sequence, options, context);
+    const contained = yield* findContainedPlacement(contig.sequence, oriented.sequence, options, context);
     if (contained) {
       const candidate = {
         read,
@@ -185,7 +169,7 @@ function findBestReadPlacement(contig, read, options, context) {
       }
     }
 
-    const containsContig = findContainedPlacement(oriented.sequence, contig.sequence, options, context);
+    const containsContig = yield* findContainedPlacement(oriented.sequence, contig.sequence, options, context);
     if (containsContig && oriented.sequence.length > contig.sequence.length) {
       const candidate = {
         read,
@@ -203,7 +187,7 @@ function findBestReadPlacement(contig, read, options, context) {
       }
     }
 
-    const append = findSuffixPrefixOverlap(contig.sequence, oriented.sequence, options, context);
+    const append = yield* findSuffixPrefixOverlap(contig.sequence, oriented.sequence, options, context);
     if (append) {
       const candidate = {
         read,
@@ -220,7 +204,7 @@ function findBestReadPlacement(contig, read, options, context) {
         best = candidate;
       }
     }
-    const prepend = findSuffixPrefixOverlap(oriented.sequence, contig.sequence, options, context);
+    const prepend = yield* findSuffixPrefixOverlap(oriented.sequence, contig.sequence, options, context);
     if (prepend) {
       const candidate = {
         read,
@@ -241,25 +225,36 @@ function findBestReadPlacement(contig, read, options, context) {
   return best;
 }
 
-function parseReads(input, options, warnings, limitOptions = options) {
-  const parsed = parseSequenceInput(input, "sequence");
+function parseReads(input, options, warnings, notes) {
+  const source=String(input??'');
+  if(source.length>limits.inputCharacters)throw new Error(`Assembly input exceeds the fixed ${limits.inputCharacters.toLocaleString()}-character limit.`);
+  const parsed = parseSequenceInput(source, "sequence", { strictHeaders: true });
+  if(parsed.length>limits.inputRecords)throw new Error(`Assembly exceeds the fixed ${limits.inputRecords.toLocaleString()}-record limit.`);
   if (parsed.length === 0) {
     warnings.push("No DNA/RNA reads or contigs were provided.");
     return { reads: [], charactersRemoved: 0 };
   }
-  const maxAssemblyRecords = effectiveToolLimit(limitOptions, "maxAssemblyRecords", MAX_ASSEMBLY_RECORDS);
+  const maxAssemblyRecords = options.maxAssemblyRecords;
   if (parsed.length > maxAssemblyRecords) {
     throw new Error(`Assembly input has ${parsed.length.toLocaleString()} reads/contigs, above the supported maximum of ${maxAssemblyRecords.toLocaleString()}. Reduce the input to run the assembly.`);
   }
-  let charactersRemoved = 0;
+  let charactersRemoved = 0, totalBases = 0, gapsRemoved = 0, uracilsConverted = 0;
   const reads = parsed.map((record, index) => {
+    if(record.title.length>limits.titleCharacters)throw new Error(`Read ${index+1}: use a title of at most ${limits.titleCharacters} characters.`);
+    if(record.sequence.length>limits.readCharacters)throw new Error(`Read ${index+1} exceeds the fixed ${limits.readCharacters.toLocaleString()}-character limit.`);
     const cleaned = cleanDnaRnaSequence(record.sequence, { preserveCase: false, keepGaps: false });
+    if(cleaned.sequence.length>limits.readBases)throw new Error(`Read ${index+1} exceeds the fixed ${limits.readBases.toLocaleString()}-base limit.`);
+    totalBases+=cleaned.sequence.length;
+    if(totalBases>limits.totalBases)throw new Error(`Assembly exceeds the fixed ${limits.totalBases.toLocaleString()}-base total limit.`);
     charactersRemoved += cleaned.removedCount;
-    if (cleaned.removedCount > 0) {
-      warnings.push(`${record.title || `Read ${index + 1}`}: removed ${cleaned.removedCount} non-DNA/RNA character(s).`);
-    }
+    const gaps = (record.sequence.match(/[-.]/g) ?? []).length;
+    gapsRemoved += gaps;
+    uracilsConverted += (cleaned.sequence.match(/U/g) ?? []).length;
+    const invalid = cleaned.removedCount - gaps;
+    if (invalid > 0) warnings.push(`Input ${index + 1} (${record.title}): removed ${invalid} non-DNA/RNA character(s).`);
     return {
       title: record.title || `Read ${index + 1}`,
+      sourceIndex: index + 1,
       sequence: cleaned.sequence.replaceAll("U", "T")
     };
   }).filter((record) => {
@@ -269,12 +264,15 @@ function parseReads(input, options, warnings, limitOptions = options) {
     }
     return true;
   });
+  if (gapsRemoved) notes.push(`Removed ${gapsRemoved} alignment gap character(s) before ungapped assembly.`);
+  if (uracilsConverted) notes.push(`Converted ${uracilsConverted} uracil base(s) to thymine for DNA consensus.`);
   return { reads, charactersRemoved };
 }
 
 function makeSeedRead(seed) {
   return {
     title: seed.title,
+    sourceIndex: seed.sourceIndex,
     sequence: seed.sequence,
     readLength: seed.sequence.length,
     orientation: "forward",
@@ -289,6 +287,29 @@ function makeSeedRead(seed) {
 }
 
 function applyPlacement(contig, best) {
+  // Keep conflict evidence separately from unknown input Ns: later reads may
+  // resolve an unknown call, but must not erase an observed disagreement.
+  const conflicts = new Set([...contig.conflicts].map(position => position + best.shift));
+  let uncertain = false;
+  const consensus = Array.from(best.mergedSequence);
+  for (let index = 0; index < contig.sequence.length; index += 1) {
+    consensus[index + best.shift] = contig.sequence[index];
+  }
+  for (let index = 0; index < best.sequence.length; index += 1) {
+    const position = best.start - 1 + index;
+    const oldPosition = position - best.shift;
+    const base = best.sequence[index];
+    if (oldPosition < 0 || oldPosition >= contig.sequence.length) {
+      consensus[position] = base;
+      continue;
+    }
+    const previous = contig.sequence[oldPosition];
+    if (previous === "N" || base === "N") uncertain = true;
+    if (previous !== base && previous !== "N" && base !== "N") conflicts.add(position);
+    consensus[position] = conflicts.has(position) ? "N" : consensusBase(previous, base);
+  }
+  contig.conflicts = conflicts;
+  if (uncertain) contig.uncertainPlacements += 1;
   if (best.shift > 0) {
     for (const read of contig.reads) {
       read.start += best.shift;
@@ -296,9 +317,10 @@ function applyPlacement(contig, best) {
     }
   }
 
-  contig.sequence = best.mergedSequence;
+  contig.sequence = consensus.join("");
   contig.reads.push({
     title: best.read.title,
+    sourceIndex: best.read.sourceIndex,
     sequence: best.sequence,
     readLength: best.read.sequence.length,
     orientation: best.orientation,
@@ -307,7 +329,7 @@ function applyPlacement(contig, best) {
     end: best.end,
     overlapLength: best.overlap.length,
     mismatches: best.overlap.mismatches,
-    mismatchPercent: round(best.overlap.mismatchPercent, 3),
+    mismatchPercent: best.overlap.mismatchPercent,
     contigLengthAfter: contig.sequence.length
   });
 }
@@ -317,6 +339,7 @@ function makePlacementRows(contigs) {
     contig.reads.map((read) => ({
       contig: contig.id,
       read: read.title,
+      source_index: read.sourceIndex,
       read_length: read.readLength,
       orientation: read.orientation,
       placement: read.placement,
@@ -330,14 +353,16 @@ function makePlacementRows(contigs) {
   );
 }
 
-export function assembleLightweightSequences(input, options = {}, context = {}) {
-  const normalized = normalizeOptions(options);
-  const warnings = [];
-  const parsed = parseReads(input, normalized, warnings, options);
+export function* lightweightAssemblySteps(input, options = {}, context = {}) {
+  context={...context,assemblyWork:{comparisons:0,readTrials:0}};
+  context.throwIfCancelled?.();
+  const normalized = normalizeAssemblyOptions(options);
+  const warnings = [], notes = [];
+  const parsed = parseReads(input, normalized, warnings, notes);
   const reads = parsed.reads.sort((left, right) => right.sequence.length - left.sequence.length);
   const inputBasesProcessed = reads.reduce((sum, read) => sum + read.sequence.length, 0);
   const contigs = [];
-  let contigNumber = 0;
+  let contigNumber = 0, conflictPositions = 0, uncertainPlacements = 0;
 
   while (reads.length > 0) {
     context.throwIfCancelled?.();
@@ -347,6 +372,8 @@ export function assembleLightweightSequences(input, options = {}, context = {}) 
       id: `contig_${contigNumber}`,
       title: `contig_${contigNumber}`,
       sequence: seed.sequence,
+      conflicts: new Set(),
+      uncertainPlacements: 0,
       reads: [makeSeedRead(seed)]
     };
 
@@ -355,17 +382,22 @@ export function assembleLightweightSequences(input, options = {}, context = {}) 
       extended = false;
       let best = null;
       for (let index = 0; index < reads.length; index += 1) {
+        if(++context.assemblyWork.readTrials>limits.readTrials)throw new Error(`Assembly exceeds the fixed ${limits.readTrials.toLocaleString()} read-trial budget. Reduce the read set.`);
+        if(context.assemblyWork.readTrials % 256 === 0)yield {phase:'assembling',readTrials:context.assemblyWork.readTrials};
         checkCancelled(context, index);
         const read = reads[index];
         // Optional domain-specific compatibility (e.g. alternative Sanger
         // candidates sharing one observation). Ordinary assembly is unchanged.
         if (context.canCombineReads?.(contig.reads, read) === false) continue;
-        const candidate = findBestReadPlacement(contig, read, normalized, context);
+        const candidate = yield* findBestReadPlacement(contig, read, normalized, context);
         if (candidate && context.canPlaceRead?.(contig, candidate) === false) continue;
         if (
           candidate && isBetterPlacement(candidate, best, contig.sequence.length)
         ) {
           best = candidate;
+          // Remaining reads are no longer than this read. A full, exact overlap
+          // reaches the ranking upper bound; stable input order wins ties.
+          if(best.overlap.mismatches===0 && best.overlap.length===Math.min(contig.sequence.length,read.sequence.length))break;
         }
       }
       if (best) {
@@ -374,22 +406,46 @@ export function assembleLightweightSequences(input, options = {}, context = {}) 
         extended = true;
       }
     }
+    conflictPositions += contig.conflicts.size;
+    uncertainPlacements += contig.uncertainPlacements;
+    delete contig.conflicts;
+    delete contig.uncertainPlacements;
     contigs.push(contig);
   }
 
-  if (contigs.length > 1) {
-    warnings.push(`${contigs.length} contigs remain after greedy overlap assembly.`);
-  }
-  const placements = makePlacementRows(contigs);
+  if (conflictPositions) warnings.push(`${conflictPositions} consensus position(s) contain conflicting read calls. Inspect the read map before using the consensus.`);
+  if (uncertainPlacements) warnings.push(`${uncertainPlacements} accepted read placement(s) include N in the overlap; these positions do not establish base agreement.`);
+  const placements = context.includePlacementRows === false ? undefined : makePlacementRows(contigs);
   return {
     contigs,
+    work: {...context.assemblyWork},
     placements,
     warnings,
+    notes,
     options: normalized,
     readsProcessed: contigs.reduce((sum, contig) => sum + contig.reads.length, 0),
     inputBasesProcessed,
     charactersRemoved: parsed.charactersRemoved
   };
+}
+
+// Synchronous callers and native workers drain the same scientific generator.
+export function assembleLightweightSequences(input, options = {}, context = {}) {
+  const steps=lightweightAssemblySteps(input,options,context);
+  let step=steps.next();
+  while(!step.done){context.throwIfCancelled?.();step=steps.next();}
+  return step.value;
+}
+
+export async function assembleLightweightSequencesAsync(input, options = {}, context = {}) {
+  const steps=lightweightAssemblySteps(input,options,context);
+  let lastYield=performance.now(), step=steps.next();
+  while(!step.done){
+    context.throwIfCancelled?.();
+    if(performance.now()-lastYield>=8){context.reportProgress?.(step.value);await context.yieldIfNeeded?.();lastYield=performance.now();context.throwIfCancelled?.();}
+    step=steps.next();
+  }
+  return step.value;
 }
 
 export function makeAssemblyFasta(result, lineWidth = result.options?.lineWidth ?? 60) {
@@ -399,31 +455,7 @@ export function makeAssemblyFasta(result, lineWidth = result.options?.lineWidth 
 }
 
 export function makeAssemblyTsv(rows) {
-  const headers = lightweightAssemblyColumns.map((column) => column.id);
-  return [
-    headers.join("\t"),
-    ...rows.map((row) => headers.map((header) => String(row[header] ?? "").replace(/\t/g, " ")).join("\t"))
-  ].join("\n");
-}
-
-function makeCoordinateRuler(start, end, width) {
-  const ruler = Array.from({ length: width }, () => " ");
-  let lastWrittenEnd = -1;
-  for (let position = start; position <= end; position += 1) {
-    if (position !== start && position % 10 !== 0 && position !== end) {
-      continue;
-    }
-    const label = String(position);
-    const index = position - start;
-    if (index <= lastWrittenEnd + 1 || index + label.length > width) {
-      continue;
-    }
-    for (let offset = 0; offset < label.length; offset += 1) {
-      ruler[index + offset] = label[offset];
-    }
-    lastWrittenEnd = index + label.length - 1;
-  }
-  return ruler.join("");
+  return exportDelimitedTable(lightweightAssemblyColumns.map(column => ({...column, label:column.id})), rows);
 }
 
 function makeReadMapSegment(read, start, end) {
@@ -445,10 +477,12 @@ function makeReadMapSegment(read, start, end) {
 }
 
 export function makeAssemblyTextMap(result, lineWidth = result.options?.lineWidth ?? 80) {
+  if(result.contigs.reduce((sum,c)=>sum+c.sequence.length*c.reads.length,0)>limits.mapCells)throw new Error(`Assembly text map exceeds the fixed ${limits.mapCells.toLocaleString()} alignment-cell budget. Choose Consensus FASTA or Read placement table.`);
   const width = Math.max(40, Math.min(200, Number.parseInt(lineWidth, 10) || 80));
+  const labels = new Map(result.contigs.flatMap(contig => contig.reads.map((read,index) => [read, `r${read.sourceIndex ?? index+1}${/^[A-Za-z0-9_. -]+$/.test(read.title) ? ` ${read.title}` : ""}`])));
   const longestReadTitle = Math.max(
     "consensus".length,
-    ...result.contigs.flatMap((contig) => contig.reads.map((read) => read.title.length))
+    ...result.contigs.flatMap((contig) => contig.reads.map((read) => labels.get(read).length))
   );
   const labelWidth = Math.max(9, Math.min(30, longestReadTitle));
   const orientationWidth = 2;
@@ -461,10 +495,12 @@ export function makeAssemblyTextMap(result, lineWidth = result.options?.lineWidt
   for (const contig of result.contigs) {
     const numberWidth = Math.max(1, String(contig.sequence.length).length);
     lines.push(`${contig.title} (${contig.sequence.length} bp; ${contig.reads.length} read${contig.reads.length === 1 ? "" : "s"})`);
+    lines.push('Read key (input record numbers):');
+    contig.reads.forEach((read,index)=>lines.push(`r${read.sourceIndex ?? index+1} = ${JSON.stringify(read.title)}`));
     for (let start = 1; start <= contig.sequence.length; start += width) {
       const end = Math.min(contig.sequence.length, start + width - 1);
       const consensusSegment = contig.sequence.slice(start - 1, end);
-      const ruler = makeCoordinateRuler(start, end, end - start + 1);
+      const ruler = makeTextMapRuler(start, end);
       lines.push(`${padRight("pos", labelWidth)} ${" ".repeat(orientationWidth)} ${" ".repeat(numberWidth)} ${ruler}`.trimEnd());
       lines.push(`${padRight("consensus", labelWidth)} ${" ".repeat(orientationWidth)} ${padLeft(start, numberWidth)} ${consensusSegment} ${end}`);
       for (const read of contig.reads) {
@@ -473,7 +509,7 @@ export function makeAssemblyTextMap(result, lineWidth = result.options?.lineWidt
           continue;
         }
         const orientationMarker = read.orientation === "reverse-complement" ? "<-" : "->";
-        lines.push(`${padRight(read.title, labelWidth)} ${orientationMarker} ${padLeft(mapped.start, numberWidth)} ${mapped.sequence} ${mapped.end}`);
+        lines.push(`${padRight(labels.get(read), labelWidth)} ${orientationMarker} ${padLeft(mapped.start, numberWidth)} ${mapped.sequence} ${mapped.end}`);
       }
       lines.push("");
     }
@@ -494,8 +530,9 @@ export function makeAssemblyReport(result) {
   ];
   for (const contig of result.contigs) {
     lines.push(`${contig.title}: ${contig.sequence.length} bp from ${contig.reads.length} read(s)`);
-    lines.push(`  ${contig.reads.map((read) => `${read.title} (${read.orientation}, ${read.placement})`).join("; ")}`);
+    lines.push(`  ${contig.reads.map((read) => `${read.title} [input ${read.sourceIndex}] (${read.orientation}, ${read.placement})`).join("; ")}`);
   }
-  lines.push("", "Scope note: this is a small lab-scale greedy overlap assembler, not a whole-genome or NGS assembler.");
+  if (result.notes?.length) lines.push("", "Run notes", ...result.notes);
+  if (result.warnings.length) lines.push("", "Warnings", ...result.warnings);
   return lines.join("\n").trimEnd() + "\n";
 }

@@ -3,7 +3,7 @@
 export function createImageEditorNavigation(viewport, { image, width, zoom, redraw, editable, clearSelection, cancelEdit }) {
   const controller = new AbortController(), contacts = new Map();
   const listen = (target, type, fn, options = {}) => target.addEventListener(type, fn, { ...options, signal: controller.signal });
-  let navigation = null, safari = null;
+  let navigation = null, safari = null, pointer = null;
   const ignore = e => e.composedPath().some(n => n instanceof Element && n.matches('input,textarea,select,button,[contenteditable="true"],.image-color-sampler'));
   const stop = e => { e.preventDefault(); e.stopImmediatePropagation(); };
   const capture = id => { try { viewport.setPointerCapture(id); } catch { /* A cancelled contact may already be gone. */ } };
@@ -16,6 +16,7 @@ export function createImageEditorNavigation(viewport, { image, width, zoom, redr
     return { x: (p.x - r.left) / s, y: (p.y - r.top) / s };
   }
   function zoomAt(value, p, fixed = anchor(p)) {
+    if (Number.isNaN(value)) return;
     const next = Math.max(.1, Math.min(4, value));
     const key = String(Math.round(next * 10000) / 10000);
     if (![...zoom.options].some(option => option.value === key)) {
@@ -47,6 +48,7 @@ export function createImageEditorNavigation(viewport, { image, width, zoom, redr
   }
   listen(viewport, 'pointerdown', e => {
     if (e.button !== 0 || ignore(e) || !image()) return;
+    if (e.pointerType === 'touch' && safari) safari = { touch: true };
     contacts.set(e.pointerId, position(e));
     if (contacts.size > 1 || navigation) {
       cancelEdit(); beginNavigation(); stop(e);
@@ -56,6 +58,7 @@ export function createImageEditorNavigation(viewport, { image, width, zoom, redr
     }
   }, { capture: true });
   listen(viewport, 'pointermove', e => {
+    if (e.pointerType === 'mouse') pointer = position(e);
     if (!contacts.has(e.pointerId)) return;
     contacts.set(e.pointerId, position(e));
     if (!navigation) return;
@@ -77,11 +80,15 @@ export function createImageEditorNavigation(viewport, { image, width, zoom, redr
     if (!contacts.has(e.pointerId)) return;
     cancel(); stop(e);
   }, { capture: true });
-  listen(window, 'blur', cancel);
+  listen(viewport, 'pointerleave', () => { pointer = null; });
+  listen(window, 'blur', () => { pointer = null; cancel(); });
   listen(viewport, 'mousedown', e => { if (e.button === 0 && !ignore(e)) e.preventDefault(); });
   listen(viewport, 'wheel', e => {
     if (!(e.ctrlKey || e.metaKey) || ignore(e) || !image()) return;
     e.preventDefault();
+    // Safari can emit wheel alongside its gesture events. Touch navigation also
+    // owns its zoom until the contacts end; neither path should zoom twice.
+    if (safari || navigation?.type === 'pinch') return;
     cancel();
     const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? viewport.clientHeight : 1;
     zoomAt(scale() * Math.exp(-e.deltaY * unit * .002), position(e));
@@ -89,17 +96,22 @@ export function createImageEditorNavigation(viewport, { image, width, zoom, redr
   listen(viewport, 'gesturestart', e => {
     if (ignore(e) || !image()) return;
     e.preventDefault();
-    if (contacts.size >= 2) return;
-    cancelEdit();
+    if (contacts.size) { safari = { touch: true }; return; }
+    cancel();
     const r = viewport.getBoundingClientRect();
-    const p = { x: e.clientX || r.left + r.width / 2, y: e.clientY || r.top + r.height / 2 };
-    safari = { scale: scale(), point: p, anchor: anchor(p) };
+    const inside = p => p && Number.isFinite(p.x) && Number.isFinite(p.y)
+      && p.x >= r.left && p.x <= r.right && p.y >= r.top && p.y <= r.bottom;
+    const supplied = position(e);
+    const p = inside(supplied) ? supplied : inside(pointer) ? pointer : { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    safari = { scale: scale(), initialScale: Number.isFinite(e.scale) && e.scale > 0 ? e.scale : 1, point: p, anchor: anchor(p) };
   }, { passive: false });
   listen(viewport, 'gesturechange', e => {
     if (!safari) return;
-    e.preventDefault(); zoomAt(safari.scale * e.scale, safari.point, safari.anchor);
+    e.preventDefault();
+    if (safari.touch || contacts.size || !Number.isFinite(e.scale) || e.scale <= 0) return;
+    zoomAt(safari.scale * e.scale / safari.initialScale, safari.point, safari.anchor);
   }, { passive: false });
-  listen(viewport, 'gestureend', e => { if (safari) e.preventDefault(); safari = null; }, { passive: false });
+  listen(viewport.ownerDocument, 'gestureend', e => { if (safari) e.preventDefault(); safari = null; }, { passive: false });
   listen(zoom, 'change', cancel);
   return { dispose() { cancel(); controller.abort(); } };
 }

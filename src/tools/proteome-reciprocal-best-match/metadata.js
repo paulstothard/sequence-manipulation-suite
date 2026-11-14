@@ -1,3 +1,4 @@
+import { RECIPROCAL_DEFAULTS, RECIPROCAL_NUMBER_RULES, RECIPROCAL_RESOURCE_LIMITS as LIMITS } from "../../core/reciprocal-best-match-options.js";
 import {
   dnaRnaSequenceSetReciprocalBestMatchColumns,
   dnaRnaSequenceSetUnmatchedColumns,
@@ -14,41 +15,50 @@ function makeWorkflow({ tableSchema, unmatchedSchema, tableColumns, unmatchedCol
     ],
     outputs: [
       { id: "primary", kind: "text", mediaType: "text/plain" },
-      { id: "report", kind: "text", mediaType: "text/plain" },
+      { id: "report", label: "Summary report", outputFormat: "report", kind: "text", mediaType: "text/plain" },
       {
         id: "table",
+        label: "Reciprocal best-match table",
+        outputFormat: "reciprocal-tsv",
         kind: "table",
         schema: tableSchema,
         columns: tableColumns
       },
       {
         id: "unmatchedTable",
+        label: "Records without reciprocal matches",
+        outputFormat: "unmatched-tsv",
         kind: "table",
         schema: unmatchedSchema,
         columns: unmatchedColumns
       },
-      { id: "heatmap", kind: "text", mediaType: "image/svg+xml" },
+      { id: "heatmap", label: "Identity heatmap", outputFormat: "heatmap-svg", kind: "text", mediaType: "image/svg+xml" },
       { id: "warnings", kind: "warnings" }
     ]
   };
 }
 
-function makeOptions({ alphabet, kmerLabel, kmerDefault, kmerMin, kmerMax, sequenceCountLimitLabel, sequenceLimitLabel, sequenceLimitDefault, includeDnaScores = false }) {
+function makeOptions({ alphabet, kmerLabel, sequenceCountLimitLabel, sequenceLimitLabel, includeDnaScores = false }) {
+  const defaults = RECIPROCAL_DEFAULTS[alphabet];
+  const rules = RECIPROCAL_NUMBER_RULES[alphabet];
+  const applyRules = (option) => {
+    if (option.options) return { ...option, options: option.options.map(applyRules) };
+    if (!rules[option.id]) return option;
+    const [min, max] = rules[option.id];
+    return { ...option, defaultValue: defaults[option.id], min, max };
+  };
   return [
     {
       type: "group",
       label: "Candidate screening",
       help: "Shared k-mers are only used to decide which sequence pairs receive full pairwise alignment.",
       options: [
-        { id: "kmerSize", type: "number", label: kmerLabel, defaultValue: kmerDefault, min: kmerMin, max: kmerMax, step: 1 },
-        { id: "minSharedKmers", type: "number", label: "Minimum shared k-mers", defaultValue: 1, min: 0, step: 1 },
+        { id: "kmerSize", type: "number", label: kmerLabel, step: 1, help: "Counts distinct canonical words. A sequence shorter than k contributes its whole canonical sequence as one word; ambiguous words are excluded." },
+        { id: "minSharedKmers", type: "number", label: "Minimum shared k-mers", step: 1, help: "Zero admits pairs with no shared canonical word; the candidate-count selection still applies." },
         {
           id: "topCandidatesPerProtein",
           type: "number",
           label: "Candidates per sequence",
-          defaultValue: 5,
-          min: 1,
-          max: 50,
           step: 1,
           help: "Top candidates are selected from both A-to-B and B-to-A screens before alignment so reciprocal matches are not one-directional artifacts."
         }
@@ -62,18 +72,18 @@ function makeOptions({ alphabet, kmerLabel, kmerDefault, kmerMin, kmerMax, seque
           id: "verificationEngine",
           type: "radio",
           label: "Verification engine",
-          defaultValue: PAIRWISE_ALIGNMENT_ENGINES.seqAlign,
+          defaultValue: defaults.verificationEngine,
           choices: [
             { value: PAIRWISE_ALIGNMENT_ENGINES.seqAlign, label: "seq-align" },
             { value: PAIRWISE_ALIGNMENT_ENGINES.sms3, label: "SMS3 affine" }
           ],
-          help: "Browser runs use bundled local seq-align files for the seq-align engine. Select SMS3 affine when you want the JavaScript verification engine."
+          help: alphabet === "protein" ? "Both engines use BLOSUM62. seq-align uses integer gap penalties; SMS3 affine also supports fractional penalties. Both run locally." : "seq-align uses integer scores and canonical DNA/RNA. SMS3 affine also supports fractional scores and IUPAC-overlap scoring. Both engines run locally."
         },
         {
           id: "alignmentMode",
           type: "radio",
           label: "Pairwise alignment mode",
-          defaultValue: "local",
+          defaultValue: defaults.alignmentMode,
           choices: [
             { value: "local", label: "Local" },
             { value: "global", label: "Global" }
@@ -83,39 +93,34 @@ function makeOptions({ alphabet, kmerLabel, kmerDefault, kmerMin, kmerMax, seque
             : "Local scores one highest-scoring aligned region per sequence pair. Global aligns both complete sequences end to end. Use the coverage filter to require a minimum aligned fraction of each sequence."
         },
         ...(includeDnaScores ? [
-          { id: "matchScore", type: "number", label: "Match score", defaultValue: 5, min: -100, max: 100, step: 0.5 },
+          { id: "matchScore", type: "number", label: "Match score", step: 0.5 },
           {
             id: "similarScore",
             type: "number",
             label: "Ambiguous overlap score",
-            defaultValue: 1,
-            min: -100,
-            max: 100,
             step: 0.5,
             visibleWhen: { option: "verificationEngine", value: PAIRWISE_ALIGNMENT_ENGINES.sms3 },
             help: "Only the SMS3 affine engine scores overlapping IUPAC ambiguity symbols separately."
           },
-          { id: "mismatchScore", type: "number", label: "Mismatch score", defaultValue: -4, min: -100, max: 100, step: 0.5 }
+          { id: "mismatchScore", type: "number", label: "Mismatch score", step: 0.5 }
         ] : []),
-        { id: "gapOpen", type: "number", label: "Gap open penalty", defaultValue: 10, min: 1, max: 100, step: 1 },
-        { id: "gapExtend", type: "number", label: "Gap extend penalty", defaultValue: 1, min: 1, max: 50, step: 1 }
+        { id: "gapOpen", type: "number", label: "Gap open penalty", step: 1 },
+        { id: "gapExtend", type: "number", label: "Gap extend penalty", step: 1 }
       ]
     },
     {
       type: "group",
       label: "Reporting filters",
+      help: "Apply identity and coverage thresholds after ranking. Candidate tables and heatmaps retain verified comparisons; reciprocal tables and heatmap markers show passing reciprocal pairs.",
       options: [
-        { id: "minIdentityPercent", type: "number", label: "Minimum identity %", defaultValue: 0, min: 0, max: 100, step: 1 },
-        { id: "minCoveragePercent", type: "number", label: "Minimum coverage %", defaultValue: 0, min: 0, max: 100, step: 1 },
+        { id: "minIdentityPercent", type: "number", label: "Minimum identity %", step: 1 },
+        { id: "minCoveragePercent", type: "number", label: "Minimum coverage %", step: 1 },
         {
           id: "nearTiePercent",
           type: "number",
-          label: "Paralog warning threshold %",
-          defaultValue: 5,
-          min: 0,
-          max: 100,
+          label: "Near-tie warning threshold %",
           step: 1,
-          help: "Warns when a second verified candidate is close to the best score for a sequence."
+          help: "Warns about aligned alternatives within this percentage of the absolute best score. Exact ties are included, including zero or negative global scores."
         }
       ]
     },
@@ -127,7 +132,7 @@ function makeOptions({ alphabet, kmerLabel, kmerDefault, kmerMin, kmerMax, seque
           id: "outputFormat",
           type: "radio",
           label: "Output format",
-          defaultValue: "reciprocal-tsv",
+          defaultValue: defaults.outputFormat,
           choices: [
             { value: "report", label: "Summary report" },
             { value: "reciprocal-tsv", label: "Reciprocal best-match table" },
@@ -145,13 +150,14 @@ function makeOptions({ alphabet, kmerLabel, kmerDefault, kmerMin, kmerMax, seque
       collapsible: true,
       collapsed: true,
       options: [
-        { id: "maxProteinsPerProteome", type: "number", label: sequenceCountLimitLabel, defaultValue: 500, min: 1, max: 5000, step: 10 },
-        { id: "maxSequenceLength", type: "number", label: sequenceLimitLabel, defaultValue: sequenceLimitDefault, min: 10, max: 20000, step: 100 },
-        { id: "maxPairwiseAlignments", type: "number", label: "Maximum pairwise alignments", defaultValue: 500, min: 1, max: 10000, step: 10 },
+        { id: "maxProteinsPerProteome", type: "number", label: sequenceCountLimitLabel, step: 10 },
+        { id: "maxSequenceLength", type: "number", label: sequenceLimitLabel, step: 100 },
+        { id: "maxPairwiseAlignments", type: "number", label: "Maximum pairwise alignments", step: 10 },
+        { id: "fixedResourceLimits", type: "limit-value", label: "Fixed work budgets", value: `${LIMITS.inputCharacters.toLocaleString()} input characters; ${LIMITS.inputRecords.toLocaleString()} input records per set; ${LIMITS.pairCells.toLocaleString()} cells per alignment; ${LIMITS.totalCells.toLocaleString()} total alignment cells`, help: `Also limited to ${LIMITS.titleCharacters} characters per title, ${LIMITS.recordPairs.toLocaleString()} possible record pairs, ${LIMITS.kmerSymbols.toLocaleString()} k-mer symbols, ${LIMITS.screeningVisits.toLocaleString()} word-to-record visits, ${LIMITS.candidatePairs.toLocaleString()} eligible pairs, ${LIMITS.verifiedPairs.toLocaleString()} verified pairs and ${LIMITS.outputCharacters.toLocaleString()} output characters. These fixed budgets apply even when optional ceilings are disabled.` },
         { id: "heatmapRecordLimit", type: "limit-value", label: "Identity heatmap", value: `${MAX_HEATMAP_RECORDS} records from each set`, help: `When either set has more records, the heatmap shows only its first ${MAX_HEATMAP_RECORDS}. The verified-pair table still includes all processed pairs.` }
       ]
     }
-  ];
+  ].map(applyRules);
 }
 
 export const dnaRnaSequenceSetReciprocalBestMatchMetadata = {
@@ -159,7 +165,7 @@ export const dnaRnaSequenceSetReciprocalBestMatchMetadata = {
   name: "DNA/RNA Set Reciprocal Best Match",
   category: "Sequence Alignment & Assembly",
   tags: ["DNA", "RNA", "FASTA", "alignment", "search"],
-  summary: "Find candidate reciprocal best sequence matches between two DNA/RNA FASTA sets using k-mer screening followed by affine pairwise alignment.",
+  summary: "Find candidate reciprocal best matches between two DNA/RNA FASTA sets in their supplied orientation using k-mer screening and affine pairwise alignment.",
   whenToUse: "Compare two DNA/RNA sequence sets to identify candidate reciprocal best matches and sequences without a reciprocal partner.",
   inputType: "Two DNA/RNA FASTA sets",
   outputType: "Summary report, reciprocal best-match table, aligned candidate pair table, sequences without reciprocal matches, or identity heatmap",
@@ -183,18 +189,14 @@ export const dnaRnaSequenceSetReciprocalBestMatchMetadata = {
     ...makeOptions({
       alphabet: "dna-rna",
       kmerLabel: "DNA/RNA k-mer size",
-      kmerDefault: 11,
-      kmerMin: 4,
-      kmerMax: 100,
       sequenceCountLimitLabel: "Maximum sequences per set",
       sequenceLimitLabel: "Maximum sequence length",
-      sequenceLimitDefault: 10000,
       includeDnaScores: true
     }),
     {
       id: "methodNote",
       type: "note",
-      text: "This is a browser-local DNA/RNA set reciprocal-best-match screen. It is not a BLAST, minimap2, or whole-genome comparison replacement; k-mers narrow the candidates, then selected pairs are verified with affine pairwise alignment."
+      text: "Sequences are compared as provided; reverse complements are not searched, and U is compared as T. Reciprocity is relative to selected candidates. Exact score ties use shared k-mers and title order to select one partner; close alternatives are flagged for inspection."
     },
     {
       id: "citationNote",
@@ -233,17 +235,13 @@ export const proteomeReciprocalBestMatchMetadata = {
     ...makeOptions({
       alphabet: "protein",
       kmerLabel: "Protein k-mer size",
-      kmerDefault: 4,
-      kmerMin: 2,
-      kmerMax: 8,
       sequenceCountLimitLabel: "Maximum proteins per set",
       sequenceLimitLabel: "Maximum protein length",
-      sequenceLimitDefault: 1500
     }),
     {
       id: "methodNote",
       type: "note",
-      text: "This is a browser-local protein-set reciprocal-best-match screen. It is not a BLAST, DIAMOND, or MMseqs replacement; k-mers narrow the candidates, then selected pairs are verified with BLOSUM62 affine pairwise alignment."
+      text: "Canonical protein k-mers select candidates for BLOSUM62 affine alignment. Reciprocity is relative to selected candidates. Exact score ties use shared k-mers and title order to select one partner; close alternatives are flagged for inspection."
     },
     {
       id: "citationNote",

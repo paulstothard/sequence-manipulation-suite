@@ -31,10 +31,11 @@ export function createOutputSearchControls(label = 'Search output') {
   return parts;
 }
 
-export function updateOutputSearchControls(parts, matches = [], currentIndex = -1) {
+export function updateOutputSearchControls(parts, matches = [], currentIndex = -1, { scopeLabel = "" } = {}) {
   parts.count.textContent = getOutputSearchCountText({
     query: parts.input.value, matchCount: matches.length, currentIndex
   });
+  if (parts.input.value && scopeLabel) parts.count.textContent += ` in ${scopeLabel}`;
   parts.count.title = matches[currentIndex]?.trackLabel ?? '';
   parts.previous.disabled = parts.next.disabled = matches.length < 2;
 }

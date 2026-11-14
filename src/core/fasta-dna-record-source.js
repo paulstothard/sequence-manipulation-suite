@@ -31,7 +31,8 @@ export async function openCleanDnaRnaFastaSource(input, options = {}, context = 
           current = {
             cleanedLength: 0,
             removedCount: 0,
-            sourceLength: 0
+            sourceLength: 0,
+            trailingHighSurrogate: false
           };
           yield event;
           continue;
@@ -41,22 +42,37 @@ export async function openCleanDnaRnaFastaSource(input, options = {}, context = 
           if (!current) {
             throw new Error("FASTA sequence chunk was received outside a record.");
           }
+          if (options.strictHeaders === true && event.text.includes(">")) {
+            throw new Error("FASTA headers must start at the beginning of a line, with no sequence text before the first header.");
+          }
+          options.onSourceChunk?.(event.text);
           const cleaned = cleanDnaRnaSequence(event.text, {
-            preserveCase: false,
+            preserveCase: options.preserveCase === true,
             keepGaps: false
           });
+          // A supplementary code point is unsupported DNA/RNA, but counts as
+          // one removed character even when its UTF-16 halves span chunks.
+          // Both halves are discarded, so no sequence buffering is needed.
+          const firstCodeUnit = event.text.charCodeAt(0);
+          const removedCount = cleaned.removedCount - (
+            current.trailingHighSurrogate && firstCodeUnit >= 0xdc00 && firstCodeUnit <= 0xdfff ? 1 : 0
+          );
+          if (event.text.length) {
+            const lastCodeUnit = event.text.charCodeAt(event.text.length - 1);
+            current.trailingHighSurrogate = lastCodeUnit >= 0xd800 && lastCodeUnit <= 0xdbff;
+          }
           const sourceOffset = current.sourceLength;
           const cleanedOffset = current.cleanedLength;
           current.sourceLength += String(event.text ?? "").length;
           current.cleanedLength += cleaned.sequence.length;
-          current.removedCount += cleaned.removedCount;
+          current.removedCount += removedCount;
           if (cleaned.sequence) {
             yield {
               ...event,
               text: cleaned.sequence,
               sourceOffset,
               sequenceOffset: cleanedOffset,
-              removedCount: cleaned.removedCount
+              removedCount
             };
           }
           continue;

@@ -1,3 +1,5 @@
+import { exportDelimitedTable } from "./table.js";
+import { MUSCLE_RUNTIME } from "../vendor/biowasm/muscle-runtime.js";
 import {
   MULTIPLE_ALIGNMENT_ENGINES,
   alignMultipleCodingDna,
@@ -58,11 +60,7 @@ export async function alignPhylogenyInput(input, rawOptions = {}, context = {}) 
 }
 
 export function makePhylogenyDistanceTsv(distanceRows) {
-  const headers = phylogenyDistanceTableColumns.map((column) => column.id);
-  return [
-    headers.join("\t"),
-    ...distanceRows.map((row) => headers.map((header) => String(row[header] ?? "").replace(/\t/g, " ")).join("\t"))
-  ].join("\n");
+  return exportDelimitedTable(phylogenyDistanceTableColumns.map(column => ({ ...column, label: column.id })), distanceRows);
 }
 
 export function makePhylogenySummaryReport(prepared) {
@@ -83,7 +81,7 @@ export function makePhylogenySummaryReport(prepared) {
     "",
     `Sequences: ${alignment.titles.length}`,
     `Input type: ${alphabetLabel}`,
-    `Alignment engine: ${alignment.engine === MULTIPLE_ALIGNMENT_ENGINES.muscle ? `MUSCLE ${alignment.engineVersion || "5.1.0"}` : "SMS3 progressive"}`,
+    `Alignment engine: ${alignment.engine === MULTIPLE_ALIGNMENT_ENGINES.muscle ? `MUSCLE ${alignment.engineVersion || MUSCLE_RUNTIME.versionLabel}` : "SMS3 progressive"}`,
     `Tree method: neighbor joining from alignment-derived p-distance values`,
     ...(alignment.alphabet === PHYLOGENY_SEQUENCE_TYPES.codingDna
       ? [`Genetic code: ${alignment.geneticCode?.id ?? options?.geneticCode ?? "1"}. ${alignment.geneticCode?.name ?? "Standard"}`]

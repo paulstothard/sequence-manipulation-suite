@@ -1,15 +1,16 @@
 export function getToolOptionChoices(option, optionValues = {}) {
   const choices = option.choices ?? [];
   if (!option.dependsOn) return choices;
-  const parentValue = optionValues[option.dependsOn];
-  if (!parentValue || parentValue === "all") return choices;
-  return choices.filter((choice) =>
-    choice.always ||
-    (choice.value === option.defaultValue && !choice.dependsOnValue) ||
-    (Array.isArray(choice.dependsOnValue)
-      ? choice.dependsOnValue.includes(parentValue)
-      : choice.dependsOnValue === parentValue)
-  ).map((choice) => ({
+  const parents = Array.isArray(option.dependsOn) ? option.dependsOn : [option.dependsOn];
+  const filtered = choices.filter((choice) => parents.every((parent) => {
+    const parentValue = optionValues[parent];
+    if (!parentValue || parentValue === "all" || choice.always) return true;
+    const expected = choice.dependsOnValues?.[parent] ?? choice.dependsOnValue;
+    if (choice.value === option.defaultValue && expected == null) return true;
+    return Array.isArray(expected) ? expected.includes(parentValue) : expected === parentValue;
+  }));
+  const parentValue = optionValues[parents[0]];
+  return filtered.map((choice) => ({
     ...choice,
     label: choice.labelsByParentValue?.[parentValue] ?? choice.label
   }));
@@ -28,7 +29,7 @@ export function getToolOutputFormatOption(metadata) {
 export function getAvailableToolWorkflowOutputs(metadata, optionValues = {}) {
   const outputs = (metadata?.workflow?.outputs ?? []).map(output =>
     output.kind === 'viewer' && output.viewerType === 'dna-sequence-viewer' && optionValues.outputFormat === 'interactive-circular-viewer'
-      ? { ...output, layout: 'circular' } : output
+      ? { ...output, layout: 'circular', ...(output.outputFormat === 'interactive-viewer' ? { outputFormat: 'interactive-circular-viewer' } : {}) } : output
   );
   const options = flattenOptions(metadata?.options);
   const outputFormat = getToolOutputFormatOption(metadata);

@@ -1,12 +1,5 @@
-function getCaseMode(options = {}) {
-  if (["uppercase", "lowercase", "preserve"].includes(options.caseMode)) {
-    return options.caseMode;
-  }
-  return options.preserveCase === false ? "uppercase" : "preserve";
-}
-
 function applyCaseMode(sequence, options = {}) {
-  const caseMode = getCaseMode(options);
+  const caseMode = options.caseMode;
   if (caseMode === "uppercase") {
     return String(sequence ?? "").toUpperCase();
   }
@@ -44,15 +37,8 @@ function isUppercaseLetter(character) {
   return /[A-Z]/.test(character);
 }
 
-function getFilterPreset(alphabet, options = {}) {
-  if (options.filterPreset) {
-    return options.filterPreset;
-  }
-  return alphabet === "protein" ? "valid-protein-iupac" : options.filterPreset;
-}
-
 function shouldFilterCharacter(character, alphabet, options = {}) {
-  const preset = getFilterPreset(alphabet, options);
+  const preset = options.filterPreset;
 
   if (alphabet === "protein") {
     if (preset === "standard-protein") {
@@ -71,10 +57,10 @@ function shouldFilterCharacter(character, alphabet, options = {}) {
       return /[\s\d]/.test(character);
     }
     if (preset === "keep-lowercase-protein") {
-      return !(isProteinIupac(character) && isLowercaseLetter(character));
+      return !((isProteinIupac(character) && isLowercaseLetter(character)) || isAllowedGap(character, options));
     }
     if (preset === "keep-uppercase-protein") {
-      return !(isProteinIupac(character) && isUppercaseLetter(character));
+      return !((isProteinIupac(character) && isUppercaseLetter(character)) || isAllowedGap(character, options));
     }
     return !(isProteinIupac(character) || isAllowedGap(character, options));
   }

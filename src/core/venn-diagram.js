@@ -1,3 +1,4 @@
+import { isolateSvgStyles } from "./svg-style-scope.js";
 import "../vendor/d3/d3.min.js";
 import { escapeXml } from "./plot-renderer.js";
 import { makePublicationPlotStyle, publicationSvgAttributes, SMS3_PLOT_THEME } from "./publication-plot-style.js";
@@ -50,7 +51,7 @@ function regionLabelMetrics(region, setLabels, countMap, setCount, typography) {
   const count = countMap.get(key) ?? 0;
   const label = membershipLabel(region.membership, setLabels);
   const countText = formatCompactNumber(count);
-  const labelFontSize = region.compact ? typography.small * 0.92 : typography.small;
+  const labelFontSize = typography.small;
   const preferredCountFontSize = region.compact ? typography.body : typography.axisLabel;
   const maxWidth = regionMaxWidth(region.membership, setCount, label, countText, labelFontSize, preferredCountFontSize);
   const countFontSize = fittedFontSize(countText, preferredCountFontSize, maxWidth, typography.small);
@@ -58,6 +59,8 @@ function regionLabelMetrics(region, setLabels, countMap, setCount, typography) {
     estimateTextWidth(label, labelFontSize),
     estimateTextWidth(countText, countFontSize)
   ) + 14;
+  const boxHeight = labelFontSize * 1.2 + countFontSize * 1.2 + 11;
+  const labelOffset = -boxHeight / 2 + 4 + labelFontSize;
   return {
     key,
     count,
@@ -67,9 +70,9 @@ function regionLabelMetrics(region, setLabels, countMap, setCount, typography) {
     countFontSize,
     maxWidth,
     boxWidth,
-    boxHeight: region.compact ? 34 : 39,
-    labelOffset: region.compact ? -7 : -9,
-    countOffset: region.compact ? 13 : 15
+    boxHeight,
+    labelOffset,
+    countOffset: labelOffset + labelFontSize * 0.2 + 3 + countFontSize
   };
 }
 
@@ -245,7 +248,11 @@ function makeRegionLabel(region) {
   return `<g class="region-label" data-sms3-region-membership="${region.key}" data-sms3-inspection-text="${escapeXml(`${region.label}: ${region.count.toLocaleString()} distinct ${itemLabel}`)}" data-membership="${region.key}" data-max-width="${region.maxWidth}" data-label-box-width="${region.boxWidth.toFixed(1)}"><text class="region-name" x="${region.x}" y="${region.y + region.labelOffset}" text-anchor="middle" font-size="${region.labelFontSize}">${escapeXml(region.label)}</text><text class="region-count" x="${region.x}" y="${region.y + region.countOffset}" text-anchor="middle" font-size="${region.countFontSize}" data-count-font-size="${region.countFontSize}">${escapeXml(region.countText)}</text></g>`;
 }
 
-export function makeVennDiagramSvg({
+export function makeVennDiagramSvg(...args) {
+  return isolateSvgStyles(makeVennDiagramSvgUnscoped(...args));
+}
+
+function makeVennDiagramSvgUnscoped({
   title = "Venn diagram",
   setLabels = [],
   setSizes = [],

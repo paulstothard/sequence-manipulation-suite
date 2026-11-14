@@ -1,3 +1,4 @@
+import { preserveRenderHeight } from "./preserve-render-height.js";
 import { createEditorSession } from './editor-session.js';
 import { createEditorPanelTabs } from './editor-panel-tabs.js';
 import { formatFastaRecord } from "../core/fasta.js";
@@ -1172,52 +1173,55 @@ function renderSequenceEditorWorkspace(previousState = null) {
   }
   function showEditorViewerSequence(selection, { preserveExistingView = false, captureCurrent = true } = {}) {
     if (!prepared?.viewer || !selection) return;
-    if (captureCurrent) captureActiveViewerState();
-    activeViewerSequence = selection;
-    cleanupEditorViewer();
-    viewerContainer.textContent = "";
-    updateViewerSelectionState(null);
-    hideSequenceEditorContextMenu();
-    const selectedViewer = {
-      ...prepared.viewer,
-      records: [prepared.viewer.records[selection.index]]
-    };
-    const layout = viewerLayoutSelect.value === "circular" ? "circular" : "linear";
-    const savedState = viewerStates.get(viewerStateKey(selection, layout));
-    const initialState = preserveExistingView && savedState
-      ? savedState
-      : makeViewerSequenceInitialState(prepared.viewer, selection, savedState);
-    initialState.expandedTrackIds = expandedViewerTracks.get(selection.sequenceKey) ?? [];
-    const remapSelection = (payload) => remapViewerSelectionRecord(payload, selection.index);
-    const selectionOptions = {
-      initialState,
-      preserveState: false,
-      onSelectionChange: (payload) => updateViewerSelectionState(remapSelection(payload)),
-      onTargetContextMenu: (payload) => showSequenceEditorContextMenu(remapSelection(payload)),
-      showInspectorPanels: false,
-      showGeneticCodeControl: false,
-      onCoordinateSelectionReady: (select) => { selectViewerCoordinates = select; },
-      embedded: true,
-      showRecordTitle: false
-    };
-    if (layout === "circular") {
-      renderCircularDnaViewer(viewerContainer, selectedViewer, selectionOptions);
-    } else {
-      renderDnaViewer(viewerContainer, selectedViewer, selectionOptions);
-    }
-    renderedViewerLayout = layout;
-    // Move the actual renderer controls, preserving their handlers and export semantics.
-    viewerDisplayControls.replaceChildren();
-    for (const selector of [".dna-viewer-toggles", ".dna-viewer-menu-controls"]) {
-      const controls = viewerContainer.querySelector(selector);
-      if (controls) viewerDisplayControls.append(controls);
-    }
-    const figureDownloads = viewerContainer.querySelectorAll(".dna-viewer-export-button");
-    for (const button of figureDownloads) {
-      button.textContent = button.getAttribute("aria-label").replace(" current view as", "");
-    }
-    figureButtons.replaceChildren(...figureDownloads);
+    return preserveRenderHeight(viewerContainer, () => {
+      if (captureCurrent) captureActiveViewerState();
+      activeViewerSequence = selection;
+      cleanupEditorViewer();
+      viewerContainer.textContent = "";
+      updateViewerSelectionState(null);
+      hideSequenceEditorContextMenu();
+      const selectedViewer = {
+        ...prepared.viewer,
+        records: [prepared.viewer.records[selection.index]]
+      };
+      const layout = viewerLayoutSelect.value === "circular" ? "circular" : "linear";
+      const savedState = viewerStates.get(viewerStateKey(selection, layout));
+      const initialState = preserveExistingView && savedState
+        ? savedState
+        : makeViewerSequenceInitialState(prepared.viewer, selection, savedState);
+      initialState.expandedTrackIds = expandedViewerTracks.get(selection.sequenceKey) ?? [];
+      const remapSelection = (payload) => remapViewerSelectionRecord(payload, selection.index);
+      const selectionOptions = {
+        initialState,
+        preserveState: false,
+        onSelectionChange: (payload) => updateViewerSelectionState(remapSelection(payload)),
+        onTargetContextMenu: (payload) => showSequenceEditorContextMenu(remapSelection(payload)),
+        showInspectorPanels: false,
+        showGeneticCodeControl: false,
+        onCoordinateSelectionReady: (select) => { selectViewerCoordinates = select; },
+        embedded: true,
+        showRecordTitle: false
+      };
+      if (layout === "circular") {
+        renderCircularDnaViewer(viewerContainer, selectedViewer, selectionOptions);
+      } else {
+        renderDnaViewer(viewerContainer, selectedViewer, selectionOptions);
+      }
+      renderedViewerLayout = layout;
+      // Move the actual renderer controls, preserving their handlers and export semantics.
+      viewerDisplayControls.replaceChildren();
+      for (const selector of [".dna-viewer-toggles", ".dna-viewer-menu-controls"]) {
+        const controls = viewerContainer.querySelector(selector);
+        if (controls) viewerDisplayControls.append(controls);
+      }
+      const figureDownloads = viewerContainer.querySelectorAll(".dna-viewer-export-button");
+      for (const button of figureDownloads) {
+        button.textContent = button.getAttribute("aria-label").replace(" current view as", "");
+      }
+      figureButtons.replaceChildren(...figureDownloads);
+    });
   }
+
   function redrawViewer({ captureCurrent = true } = {}) {
     clearTimeout(debounceTimer);
     if (captureCurrent) captureActiveViewerState();

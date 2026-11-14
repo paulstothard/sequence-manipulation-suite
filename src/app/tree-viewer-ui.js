@@ -1,5 +1,4 @@
 import { createEditorSession } from './editor-session.js';
-import { getPngExportScale } from "./canvas-export.js";
 import { parseDelimitedTable } from "../core/table.js";
 import { readWorkbookFileAsDelimitedText } from "./input-file-readers.js";
 import { LIMITS } from "../../packages/tree-viewer/src/core/index.js";
@@ -144,7 +143,7 @@ async function readMetadataFile(file, host, signal) {
   });
 }
 
-export function renderTreeViewer(host, payload, editorDocument) {
+export function renderTreeViewer(host, payload, editorDocument, { preview = false } = {}) {
   const container = document.createElement("div");
   container.className = "sms3-tree-viewer";
   host.append(container);
@@ -171,7 +170,6 @@ export function renderTreeViewer(host, payload, editorDocument) {
         mode: "style",
         allowOpenTree: false,
         initialSettingsOpen: false,
-        figureExportDpi: 96 * getPngExportScale(),
         theme:
           document.documentElement.dataset.theme === "dark" ? "dark" : "light",
         strings: {
@@ -187,7 +185,7 @@ export function renderTreeViewer(host, payload, editorDocument) {
       recoveryBar.className = 'tree-viewer-recovery';
       recoveryBar.slot = 'status';
       container.append(recoveryBar);
-      session = createEditorSession({host:container, toolbar:recoveryBar, tool:'tree-viewer', source:payload, nativeHistory:true, download:false, initial:editorDocument?.state,
+      session = createEditorSession({host:container, toolbar:recoveryBar, tool:'tree-viewer', source:payload, nativeHistory:true, download:false, persist:!preview, initial:editorDocument?.state,
         read:() => ({document:viewer.getDocument()}), apply:() => {}
       });
       viewer.subscribe(event => {if (event.type === 'change') session.changed('Edit tree');});

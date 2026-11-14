@@ -11,7 +11,9 @@ export const sequenceStatsTsvColumns = [
   "ambiguous_symbols",
   "n_count",
   "x_count",
-  ...countColumns
+  ...countColumns,
+  "record_index",
+  "is_total"
 ];
 
 export const sequenceStatsTableColumns = [
@@ -27,5 +29,7 @@ export const sequenceStatsTableColumns = [
     id: column,
     label: column,
     type: "number"
-  }))
+  })),
+  { id: "record_index", label: "Record number", type: "number" },
+  { id: "is_total", label: "Combined total", type: "boolean" }
 ];

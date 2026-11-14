@@ -1,3 +1,4 @@
+import { validateFigureSetup } from "./figure-setup.js";
 import { LIMITS } from "./limits.js";
 const object = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 const need = (v, message) => {
@@ -97,6 +98,7 @@ export function validateBranch(branch) {
 const color = (v) => typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v);
 export function validatePresentation(p, ids, children) {
   need(object(p), "presentation");
+  if (p.figureSetup != null) validateFigureSetup(p.figureSetup);
   for (const [key, values] of Object.entries({
     layout: ["rectangular", "circular", "unrooted"],
     metric: ["auto", "cladogram", "phylogram"],
@@ -120,10 +122,10 @@ export function validatePresentation(p, ids, children) {
   for (const [key, min, max] of [["supportPrecision", 0, 6], ["supportSize", 6, 40], ["circularRotation", -360, 360], ["circularArc", 30, 360], ["legendSize", 6, 40]])
     if (p[key] !== undefined) need(Number.isFinite(p[key]) && p[key] >= min && p[key] <= max && (key !== "supportPrecision" || Number.isInteger(p[key])), `presentation ${key}`);
   need(p.supportMinimum == null || Number.isFinite(p.supportMinimum), "support minimum");
-  need(p.supportFilter === undefined || ["auto", "all", "minimum"].includes(p.supportFilter), "support filter");
+  need(p.supportFilter === undefined || ["auto", "all", "minimum", "below-maximum"].includes(p.supportFilter), "support filter");
   need(p.supportField === undefined || typeof p.supportField === "string", "support field");
   need(p.supportPosition === undefined || ["node", "branch"].includes(p.supportPosition), "support position");
-  for (const [key, values] of Object.entries({branchShape:["square","slanted","curved"],unrootedAlgorithm:["equal-angle","equal-daylight"],labelAlignment:["aligned","at-tip"],supportEncoding:["text","symbol","color"],supportSymbol:["circle","square","triangle"],legendPosition:["right","bottom"]}))
+  for (const [key, values] of Object.entries({branchShape:["square","slanted","curved"],unrootedAlgorithm:["equal-angle","equal-daylight"],unrootedLabels:["branch","horizontal"],labelAlignment:["aligned","at-tip"],supportEncoding:["text","symbol","color"],supportSymbol:["circle","square","triangle"],legendPosition:["right","bottom"]}))
     need(p[key] === undefined || values.includes(p[key]), `presentation ${key}`);
   for (const key of ["showLabelBackground","showBranchLengths"]) need(p[key] === undefined || typeof p[key] === "boolean", `presentation ${key}`);
   for (const key of ["labelBackground","supportColor"]) need(p[key] === undefined || color(p[key]), `presentation ${key}`);

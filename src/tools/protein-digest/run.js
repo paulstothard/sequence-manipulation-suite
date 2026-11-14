@@ -32,7 +32,16 @@ function makePeptideMap(analysis, enzyme) {
     features: record.peptides.map(peptide => ({
       start: peptide.start, end: peptide.end,
       className: `missed-${peptide.missed_cleavages}`,
-      label: `${peptide.peptide_id.split("-")[1]} · ${peptide.start}–${peptide.end}`
+      label: `${peptide.peptide_id.split("-")[1]} · ${peptide.start}–${peptide.end}`,
+      inspectionText: [
+        peptide.peptide_id,
+        `residues ${peptide.start}–${peptide.end} (1-based, inclusive)`,
+        `length ${peptide.length} aa`,
+        `${peptide.missed_cleavages} missed cleavage${peptide.missed_cleavages === 1 ? "" : "s"}`,
+        `neutral ${analysis.settings.massType} mass ${peptide.mass_da === null ? "unavailable (ambiguous or uncommon residues)" : `${peptide.mass_da} Da`}`,
+        enzyme.name,
+        `source R${record.record_index}: ${record.title.length > 70 ? `${record.title.slice(0, 67)}…` : record.title}`
+      ].join("; ")
     })),
     notes: [
       `${record.cuts.length} predicted cleavage sites · ${record.peptides.length} ${allowsMissedCleavages ? "possible peptides" : "peptides"} in the selected length range.`,
@@ -82,7 +91,7 @@ export async function runProteinDigest(input, options = {}, context = {}) {
     }
     context.throwIfCancelled?.();
     if (settings.outputFormat === "table") {
-      output = exportDelimitedTable(proteinDigestTableColumns, rows);
+      output = exportDelimitedTable(proteinDigestTableColumns.map(column => ({ ...column, label: column.id })), rows);
       streams.table = makeTableStream(proteinDigestTableColumns, rows, "protein-digest-peptides");
       download = { filename: `protein-digest-${settings.enzyme}.tsv`, mimeType: "text/tab-separated-values;charset=utf-8" };
     } else {
@@ -95,7 +104,7 @@ export async function runProteinDigest(input, options = {}, context = {}) {
   context.throwIfCancelled?.();
   context.reportProgress?.({ phase: "complete", progress: 1 });
   return makeToolResult({
-    output, download, visual, streams, warnings: analysis.warnings,
+    output, download, visual, streams, warnings: analysis.warnings, notes: analysis.notes,
     recordsProcessed: records.length, basesProcessed: analysis.totalResidues,
     processedUnitLabel: "residue", charactersRemoved: analysis.charactersRemoved,
     optionsUsed: { ...settings, enzymeName: enzyme.name, peptideCount: analysis.peptideCount, massConvention: "Neutral, unmodified linear peptide with free termini; residue masses plus one water." }

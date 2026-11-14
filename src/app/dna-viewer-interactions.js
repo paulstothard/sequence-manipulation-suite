@@ -1,3 +1,4 @@
+import { sequenceCoordinateUnit } from "../core/sequence-coordinate-unit.js";
 import { getViewerItemTypeKey, getViewerFeatureTypeColor } from '../core/viewer-feature-style.js';
 export { getViewerItemTypeKey } from '../core/viewer-feature-style.js';
 import { isViewerGeneratedCompositionTrack } from "./dna-viewer-composition-controls.js";
@@ -190,6 +191,20 @@ export function getViewerStableLaneMemory(track, state) {
     state.stableLaneMemory.set(track, memory);
   }
   return memory;
+}
+
+// Keep the current arrangement when rendering a detached export, without
+// letting its layout pass change the interactive viewer's lane memory.
+export function cloneViewerStableLaneMemory(record, state) {
+  const clone = new WeakMap();
+  for (const track of record.tracks ?? []) {
+    const memory = state.stableLaneMemory?.get(track);
+    if (!memory) continue;
+    const copy = new Map(memory);
+    copy.filterKey = memory.filterKey;
+    clone.set(track, copy);
+  }
+  return clone;
 }
 
 export function getViewerTrackItems(track, state) {
@@ -1026,7 +1041,7 @@ function formatNumber(value) {
 
 function formatLength(target) {
   if (!target.length) return "";
-  return `${formatNumber(target.length)} ${target.alphabet === "protein" ? "aa" : "bp"}`;
+  return `${formatNumber(target.length)} ${target.coordinateUnit || sequenceCoordinateUnit(target)}`;
 }
 
 function addAction(container, label, handler, enabled) {

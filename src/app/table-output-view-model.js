@@ -1,3 +1,4 @@
+import { formatFixedNumber } from "../core/number-display.js";
 import { TABLE_RESULT_RENDER_ROW_LIMIT, TABLE_RESULT_RENDER_CELL_LIMIT } from "../core/tool-limit-options.js";
 
 export const DEFAULT_TABLE_FULL_RENDER_ROW_LIMIT = TABLE_RESULT_RENDER_ROW_LIMIT;
@@ -21,7 +22,7 @@ export function formatTableCellValue(value, column = {}) {
 
   const displayDecimals = Number(column.displayDecimals);
   if (Number.isInteger(displayDecimals) && displayDecimals >= 0 && displayDecimals <= 20) {
-    return numericValue.toFixed(displayDecimals);
+    return formatFixedNumber(numericValue, displayDecimals, DEFAULT_TABLE_NUMBER_SIGNIFICANT_DIGITS);
   }
 
   if (Number.isInteger(numericValue)) {

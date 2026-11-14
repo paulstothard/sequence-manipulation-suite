@@ -1,11 +1,12 @@
-import { parseSequenceInput } from "../../core/fasta.js";
+import { exportDelimitedTable } from '../../core/table.js';
+import { normalizeVectorOptions } from '../../core/vector-contamination-options.js';
 import { openCleanDnaRnaFastaSource } from "../../core/fasta-dna-record-source.js";
 import { iterateFastaFixedWindowSegments } from "../../core/fasta-fixed-window-segments.js";
 import { makeDnaViewerData, makeDnaViewerStream } from "../../core/dna-viewer-data.js";
 import { renderSequenceMap } from "../../core/sequence-map-renderer.js";
 import { renderTextAnnotationMapFromItems } from "../../core/text-annotation-map.js";
 import {
-  scanVectorContaminationRecord,
+  scanVectorContaminationRecordAsync,
   deduplicateMergeAndSortRows,
   vectorContaminationTableColumns
 } from "../../core/vector-contamination-scanner.js";
@@ -19,14 +20,7 @@ const MAX_VECTOR_QUERY_WINDOWS = 5_000_000;
 const MAX_VECTOR_SEED_EXTENSIONS = 100_000;
 const MAX_VECTOR_CANDIDATE_ROWS = 20_000;
 const MAX_MATERIALIZED_OUTPUT_CHARACTERS = 25 * 1024 * 1024;
-const OUTPUT_FORMATS = new Set([
-  "report",
-  "tsv",
-  "text-map",
-  "svg-map",
-  "interactive-viewer",
-  "interactive-circular-viewer"
-]);
+
 
 let vectorReferenceDataPromise;
 
@@ -103,19 +97,19 @@ function formatReport({ rows, recordsProcessed, basesProcessed, summary, provena
   lines.push("Record summary:");
   for (const record of recordSummaries) {
     const capNote = record.hitsOmitted > 0 ? `; ${record.hitsOmitted} omitted by cap` : "";
-    lines.push(`${record.title}: ${record.sequenceLength} bases; ${record.hitsReported} hits reported${capNote}`);
+    lines.push(`Record ${record.recordIndex} (${record.title}): ${record.sequenceLength} bases; ${record.hitsReported} hits reported${capNote}`);
   }
 
   lines.push("");
   if (rows.length === 0) {
-    lines.push("No vector contamination hits found.");
+    lines.push("No candidate matches passed the selected thresholds.");
     return lines.join("\n");
   }
 
   lines.push("Hits:");
   for (const row of rows) {
     lines.push(
-      `${row.record}: ${makeVectorReferenceDetails(row)}; ${row.aligned_length} bases; ${row.confidence}; ${row.strand}:${row.query_start}-${row.query_end}; identity ${row.percent_identity}%`
+      `Record ${row.record_index} (${row.record}): ${makeVectorReferenceDetails(row)}; ${row.aligned_length} bases; ${row.confidence}; ${row.strand}:${row.query_start}-${row.query_end}; identity ${Number(row.percent_identity.toPrecision(6))}%`
     );
   }
 
@@ -123,11 +117,7 @@ function formatReport({ rows, recordsProcessed, basesProcessed, summary, provena
 }
 
 function formatTsv(rows) {
-  const columns = vectorContaminationTableColumns.map((column) => column.id);
-  return [
-    columns.join("\t"),
-    ...rows.map((row) => columns.map((column) => row[column] ?? "").join("\t"))
-  ].join("\n");
+  return exportDelimitedTable(vectorContaminationTableColumns.map(column => ({ ...column, label: column.id })), rows, "\t");
 }
 
 function makeTextMap(analyzedRecords) {
@@ -143,7 +133,8 @@ function makeTextMap(analyzedRecords) {
   })), {
     width: 60,
     alphabet: "dna-rna",
-    showSecondStrand: true
+    showSecondStrand: true,
+    headerPrefix: ""
   });
 }
 
@@ -172,9 +163,8 @@ function makeSvgMap(analyzedRecords, maxHits = VECTOR_CONTAMINATION_SVG_MAP_HIT_
       molecule: "dna",
       features,
       notes: [
-        record.hitsOmitted > 0
-          ? `${record.rows.length} hits shown; ${record.hitsOmitted} omitted by table cap.`
-          : `${record.rows.length} hits shown.`
+        `${features.length} hits shown; ${record.rows.length - features.length} omitted from map.` +
+        (record.hitsOmitted > 0 ? ` ${record.hitsOmitted} additional hits omitted by per-record cap.` : "")
       ]
     };
   });
@@ -238,156 +228,26 @@ function makeVectorViewerData(analyzedRecords, options = {}) {
   });
 }
 
-async function runStreamedVectorContaminationScanner(input, options, context, index, summary, provenance) {
-  const maxQueryWindows = effectiveToolLimit(options, "vectorWindows", MAX_VECTOR_QUERY_WINDOWS);
-  const maxSeedExtensions = effectiveToolLimit(options, "vectorSeedExtensions", MAX_VECTOR_SEED_EXTENSIONS);
-  const maxCandidateRows = effectiveToolLimit(options, "vectorCandidates", MAX_VECTOR_CANDIDATE_ROWS);
-  const maxOutputCharacters = effectiveToolLimit(options, "vectorOutput", MAX_MATERIALIZED_OUTPUT_CHARACTERS);
-  const outputFormat = OUTPUT_FORMATS.has(options.outputFormat) ? options.outputFormat : "svg-map";
-  if (!["report", "tsv", "svg-map"].includes(outputFormat)) throw new Error("Large FASTA vector scans support report, table, and linear map output. Text maps and sequence viewers require bounded pasted input.");
-  const maxReferenceLength = Math.max(1, ...index.records.map((record) => record.sequence.length));
-  if (maxReferenceLength + 20 > 65_536) throw new Error("Bundled vector references exceed the fixed-window scan length for large FASTA sources.");
-  const sourceOptions = applyDisabledFastaSourceLimits({ ...options, maxSourceBases: Math.min(MAX_STREAMED_VECTOR_BASES, Number(options.maxSourceBases) || MAX_STREAMED_VECTOR_BASES) }, {
-    maxSourceBases: "vectorSource",
-    maxSourceRecords: "vectorSource",
-    maxDecodedSourceBytes: "vectorSource",
-    maxSourceBytes: "vectorSource"
-  });
-  const opened = await openCleanDnaRnaFastaSource(input, sourceOptions, context);
-  const analyzedRecords = [];
-  const warnings = [];
-  const scanBudget = { queryWindows: 0, seedExtensions: 0, candidateRows: 0, maxQueryWindows, maxSeedExtensions, maxCandidateRows };
-  let current = null;
-  let basesProcessed = 0;
-  let charactersRemoved = 0;
-  let retainedRowCharacters = 0;
-  for await (const event of iterateFastaFixedWindowSegments(opened.events(), { maxWindowLength: maxReferenceLength + 20 })) {
-    if (event.type === "record-start") {
-      current = { title: event.title ?? `sequence ${analyzedRecords.length + 1}`, cleanedSequence: "", sequenceLength: 0, candidateRows: [] };
-      continue;
-    }
-    if (event.type === "scan-segment") {
-      const result = scanVectorContaminationRecord({ title: current.title, sequence: event.text }, index, { ...options, maxHitsPerRecord: maxCandidateRows }, { ...context, scanBudget });
-      for (const row of result.rows) {
-        const start0 = event.segmentStart0 + row.query_start - 1;
-        if (start0 < event.ownedStart0 || start0 >= event.ownedEnd0) continue;
-        const retained = { ...row, query_start: start0 + 1, query_end: event.segmentStart0 + row.query_end };
-        retainedRowCharacters += JSON.stringify(retained).length;
-        if (retainedRowCharacters > maxOutputCharacters) throw new Error("Vector candidate-hit table exceeds the materialized-output limit.");
-        current.candidateRows.push(retained);
-      }
-      await context.yieldIfNeeded?.();
-      continue;
-    }
-    if (event.type === "record-end" && current) {
-      current.sequenceLength = event.length;
-      basesProcessed += event.length;
-      charactersRemoved += event.removedCount;
-      if (event.removedCount) warnings.push(`${current.title}: removed ${event.removedCount} non-DNA/RNA character(s).`);
-      if (!event.length) warnings.push(`${current.title}: no DNA/RNA sequence characters were found.`);
-      const enforcedHitsPerRecord = Math.max(1, Math.min(1000, Number(options.maxHitsPerRecord) || 50));
-      const cappedHits = effectiveToolLimit(options, "maxHitsPerRecord", enforcedHitsPerRecord);
-      const merged = deduplicateMergeAndSortRows(current.candidateRows, cappedHits);
-      current.rows = merged.rows;
-      current.hitsOmitted = merged.hitsOmitted;
-      current.totalMergedRows = merged.totalMergedRows;
-      current.totalCandidateRows = merged.totalCandidateRows;
-      if (merged.hitsOmitted) warnings.push(`${current.title}: ${merged.hitsOmitted} hit(s) omitted by the per-record report cap.`);
-      delete current.candidateRows;
-      analyzedRecords.push(current);
-      current = null;
-      context.reportProgress?.({ phase: "scanning", recordsProcessed: analyzedRecords.length, progress: Math.min(0.95, 0.05 + basesProcessed / MAX_STREAMED_VECTOR_BASES * 0.9) });
-    }
-  }
-  warnings.push(...opened.warnings);
-  if (!analyzedRecords.length) return makeToolResult({ output: "", warnings: ["No DNA/RNA sequence input was provided.", ...warnings], recordsProcessed: 0, basesProcessed: 0, charactersRemoved: 0, streams: { table: makeTableStream(vectorContaminationTableColumns, [], "vector-contamination-scanner") } });
-  const rows = analyzedRecords.flatMap((record) => record.rows);
-  const report = formatReport({ rows, recordsProcessed: analyzedRecords.length, basesProcessed, summary, provenance, recordSummaries: analyzedRecords.map((record) => ({ title: record.title, sequenceLength: record.sequenceLength, hitsReported: record.rows.length, hitsOmitted: record.hitsOmitted })) });
-  const tsv = formatTsv(rows);
-  const svgMap = outputFormat === "svg-map" ? makeSvgMap(analyzedRecords) : "";
-  const output = outputFormat === "tsv" ? tsv : outputFormat === "svg-map" ? svgMap : report;
-  if (Math.max(output.length, report.length) > maxOutputCharacters) throw new Error("Vector-scan output exceeds the materialized-output limit.");
-  return makeToolResult({ output, download: { filename: `vector-contamination-scanner.${outputFormat === "tsv" ? "tsv" : outputFormat === "svg-map" ? "svg" : "txt"}`, mimeType: outputFormat === "tsv" ? "text/tab-separated-values" : outputFormat === "svg-map" ? "image/svg+xml" : "text/plain;charset=utf-8" }, warnings, recordsProcessed: analyzedRecords.length, basesProcessed, charactersRemoved, streams: { report: makeTextStream(report, "text/plain"), table: makeTableStream(vectorContaminationTableColumns, rows, "vector-contamination-scanner"), ...(svgMap ? { overview: makeTextStream(svgMap, "image/svg+xml") } : {}) }, visual: svgMap ? { svg: svgMap } : undefined });
-}
-
-export async function runVectorContaminationScanner(input, options = {}, context = {}) {
-  context.reportProgress?.({ phase: "loading-reference-data", progress: 0.05 });
-  const { index, summary, provenance } = await loadVectorReferenceData();
-  context.throwIfCancelled?.();
-  if (options.loadedFastaFile?.stream || ["indexed", "bgzf"].includes(options.sourceMode) || String(input ?? "").length > MAX_PASTED_FASTA_CHARACTERS_FOR_RICH_OUTPUTS) {
-    return runStreamedVectorContaminationScanner(input, options, context, index, summary, provenance);
-  }
-  const records = parseSequenceInput(input, "dna-rna");
-
-  if (records.length === 0) {
-    return makeToolResult({
-      output: "",
-      warnings: ["No DNA/RNA sequence input was provided."],
-      recordsProcessed: 0,
-      basesProcessed: 0,
-      charactersRemoved: 0,
-      streams: {
-        table: makeTableStream(vectorContaminationTableColumns, [], "vector-contamination-scanner")
-      }
-    });
-  }
-
-  const rows = [];
-  const analyzedRecords = [];
-  const warnings = [];
-  let basesProcessed = 0;
-  let charactersRemoved = 0;
-
-  for (const [recordIndex, record] of records.entries()) {
-    if (recordIndex > 0 && recordIndex % 25 === 0) {
-      await context.yieldIfNeeded?.();
-    } else {
-      context.throwIfCancelled?.();
-    }
-    const result = scanVectorContaminationRecord(record, index, options, context);
-    rows.push(...result.rows);
-    analyzedRecords.push({
-      title: record.title ?? `sequence ${recordIndex + 1}`,
-      cleanedSequence: result.cleanedSequence,
-      sequenceLength: result.sequenceLength,
-      rows: result.rows,
-      hitsOmitted: result.hitsOmitted ?? 0,
-      totalMergedRows: result.totalMergedRows ?? result.rows.length,
-      totalCandidateRows: result.totalCandidateRows ?? result.rows.length
-    });
-    warnings.push(...result.warnings);
-    if (result.hitsOmitted > 0) {
-      warnings.push(`${record.title ?? `sequence ${recordIndex + 1}`}: ${result.hitsOmitted} hit(s) omitted by the per-record report cap.`);
-    }
-    basesProcessed += result.sequenceLength;
-    charactersRemoved += result.charactersRemoved;
-    context.reportProgress?.({
-      phase: "scanning",
-      progress: 0.05 + ((recordIndex + 1) / records.length) * 0.9,
-      recordsProcessed: recordIndex + 1,
-      totalRecords: records.length
-    });
-  }
-  context.throwIfCancelled?.();
-  context.reportProgress?.({ phase: "building-output", progress: 0.98 });
-
-  const report = formatReport({
+function makeVectorResult({ analyzedRecords, options, warnings, notes, basesProcessed, charactersRemoved, summary, provenance }) {
+  const outputFormat = options.outputFormat;
+  const rows = analyzedRecords.flatMap(record => record.rows);
+  const report = outputFormat === "report" ? formatReport({
     rows,
-    recordsProcessed: records.length,
+    recordsProcessed: analyzedRecords.length,
     basesProcessed,
     summary,
     provenance,
-    recordSummaries: analyzedRecords.map((record) => ({
+    recordSummaries: analyzedRecords.map((record, index) => ({
+      recordIndex: index + 1,
       title: record.title,
       sequenceLength: record.sequenceLength,
       hitsReported: record.rows.length,
       hitsOmitted: record.hitsOmitted
     }))
-  });
-  const tsv = formatTsv(rows);
-  const outputFormat = OUTPUT_FORMATS.has(options.outputFormat) ? options.outputFormat : "svg-map";
+  }) : "";
+  const tsv = outputFormat === "tsv" ? formatTsv(rows) : "";
   if (outputFormat === "svg-map" && rows.length > VECTOR_CONTAMINATION_SVG_MAP_HIT_THRESHOLD) {
-    warnings.push(`Linear contamination map output is capped at ${VECTOR_CONTAMINATION_SVG_MAP_HIT_THRESHOLD.toLocaleString()} shown hits. Use the table for complete hit coordinates.`);
+    warnings.push(`Linear contamination map output is capped at ${VECTOR_CONTAMINATION_SVG_MAP_HIT_THRESHOLD.toLocaleString()} shown hits. Use the table for all retained hit coordinates.`);
   }
   const textMap = outputFormat === "text-map" ? makeTextMap(analyzedRecords) : "";
   const svgMap = outputFormat === "svg-map" ? makeSvgMap(analyzedRecords) : "";
@@ -405,7 +265,7 @@ export async function runVectorContaminationScanner(input, options = {}, context
   return makeToolResult({
     output,
     sequenceSearch: outputFormat === "text-map"
-      ? { format: "labelled-blocks", alphabet: "dna-rna" }
+      ? { format: "labelled-blocks", alphabet: "dna-rna", plainMapHeadings: true }
       : undefined,
     download: {
       filename: `vector-contamination-scanner.${outputFormat === "tsv" ? "tsv" : outputFormat === "svg-map" ? "svg" : viewer ? "json" : "txt"}`,
@@ -418,13 +278,14 @@ export async function runVectorContaminationScanner(input, options = {}, context
             : "text/plain;charset=utf-8"
     },
     warnings,
-    recordsProcessed: records.length,
+    notes,
+    recordsProcessed: analyzedRecords.length,
     basesProcessed,
     charactersRemoved,
     streams: {
-      report: makeTextStream(report, "text/plain"),
-      table: makeTableStream(vectorContaminationTableColumns, rows, "vector-contamination-scanner"),
-      ...(outputFormat === "text-map" ? { textMap: makeTextStream(textMap, "text/plain", { format: "labelled-blocks", alphabet: "dna-rna" }) } : {}),
+      ...(outputFormat === "report" ? { report: makeTextStream(report, "text/plain") } : {}),
+      ...(outputFormat === "tsv" ? { table: makeTableStream(vectorContaminationTableColumns, rows, "vector-contamination-scanner") } : {}),
+      ...(outputFormat === "text-map" ? { textMap: makeTextStream(textMap, "text/plain", { format: "labelled-blocks", alphabet: "dna-rna", plainMapHeadings: true }) } : {}),
       ...(outputFormat === "svg-map" ? { overview: makeTextStream(svgMap, "image/svg+xml") } : {}),
       ...(viewer ? { viewer: makeDnaViewerStream(viewer) } : {})
     },
@@ -434,4 +295,118 @@ export async function runVectorContaminationScanner(input, options = {}, context
         ? { viewer }
         : undefined
   });
+}
+
+async function runStreamedVectorContaminationScanner(input, options, context, index, summary, provenance) {
+  const maxQueryWindows = effectiveToolLimit(options, "vectorWindows", MAX_VECTOR_QUERY_WINDOWS);
+  const maxSeedExtensions = effectiveToolLimit(options, "vectorSeedExtensions", MAX_VECTOR_SEED_EXTENSIONS);
+  const maxCandidateRows = effectiveToolLimit(options, "vectorCandidates", MAX_VECTOR_CANDIDATE_ROWS);
+  const maxOutputCharacters = effectiveToolLimit(options, "vectorOutput", MAX_MATERIALIZED_OUTPUT_CHARACTERS);
+  const outputFormat = options.outputFormat;
+  const richOutput = !["report", "tsv", "svg-map"].includes(outputFormat);
+  if (richOutput && (options.loadedFastaFile?.stream || ["indexed", "bgzf"].includes(options.sourceMode) || String(input ?? "").length > MAX_PASTED_FASTA_CHARACTERS_FOR_RICH_OUTPUTS)) throw new Error("Large FASTA vector scans support report, table, and linear map output. Text maps and sequence viewers require bounded pasted input.");
+  const maxReferenceLength = Math.max(1, ...index.records.map((record) => record.sequence.length));
+  if (maxReferenceLength + 20 > 65_536) throw new Error("Bundled vector references exceed the fixed-window scan length for large FASTA sources.");
+  const sourceOptions = applyDisabledFastaSourceLimits({ ...options, sourceChunkSize: Math.min(65536, Number(options.sourceChunkSize) || 65536), maxSourceBases: Math.min(MAX_STREAMED_VECTOR_BASES, Number(options.maxSourceBases) || MAX_STREAMED_VECTOR_BASES) }, {
+    maxSourceBases: "vectorSource",
+    maxSourceRecords: "vectorSource",
+    maxDecodedSourceBytes: "vectorSource",
+    maxSourceBytes: "vectorSource"
+  });
+  let sourceGapCount = 0;
+  let containsUracil = false;
+  const opened = await openCleanDnaRnaFastaSource(input, {
+    ...sourceOptions, strictHeaders: true,
+    onSourceChunk: text => {
+      sourceGapCount += (text.match(/[-.]/g) ?? []).length;
+      containsUracil ||= /u/i.test(text);
+    }
+  }, context);
+  const analyzedRecords = [];
+  const warnings = [];
+  const notes = [
+    `Reference: ${summary.sourceName}, ${summary.sourceVersion}; ${summary.recordCount.toLocaleString("en-US")} sequences.`,
+    "Candidate screen: exact 11-base seeds and ungapped +1/-5 extension (X-drop 12); confidence tiers use alignment length and identity. Matches require review; absent hits do not establish absence of contamination."
+  ];
+  const scanBudget = { queryWindows: 0, seedExtensions: 0, candidateRows: 0, maxQueryWindows, maxSeedExtensions, maxCandidateRows };
+  let current = null;
+  let basesProcessed = 0;
+  let charactersRemoved = 0;
+  let retainedRowCharacters = 0;
+  async function* sourceEvents() {
+    for await (const event of opened.events()) {
+      if (event.type === "sequence-chunk" && richOutput && current) current.cleanedSequence += event.text;
+      yield event;
+    }
+  }
+  for await (const event of iterateFastaFixedWindowSegments(sourceEvents(), { maxWindowLength: maxReferenceLength + 20 })) {
+    if (event.type === "record-start") {
+      sourceGapCount = 0;
+      current = { title: event.title ?? `sequence ${analyzedRecords.length + 1}`, cleanedSequence: "", sequenceLength: 0, candidateRows: [] };
+      continue;
+    }
+    if (event.type === "scan-segment") {
+      context.reportProgress?.({ phase: "scanning", recordsProcessed: analyzedRecords.length, basesProcessed: basesProcessed + event.ownedEnd0 });
+      const result = await scanVectorContaminationRecordAsync({ title: current.title, sequence: event.text }, index, options, { ...context, scanBudget, maxRetainedHits: maxCandidateRows });
+      for (const row of result.rows) {
+        const start0 = event.segmentStart0 + row.query_start - 1;
+        if (start0 < event.ownedStart0 || start0 >= event.ownedEnd0) continue;
+        const retained = { ...row, query_start: start0 + 1, query_end: event.segmentStart0 + row.query_end };
+        retainedRowCharacters += JSON.stringify(retained).length;
+        if (retainedRowCharacters > maxOutputCharacters) throw new Error("Vector candidate-hit table exceeds the materialized-output limit.");
+        current.candidateRows.push(retained);
+      }
+      await context.yieldIfNeeded?.();
+      continue;
+    }
+    if (event.type === "record-end" && current) {
+      current.sequenceLength = event.length;
+      basesProcessed += event.length;
+      charactersRemoved += event.removedCount;
+      if (sourceGapCount) notes.push(`Record ${analyzedRecords.length + 1} (${current.title}): removed ${sourceGapCount} alignment gap character(s); coordinates refer to the cleaned sequence.`);
+      if (event.removedCount > sourceGapCount) warnings.push(`${current.title}: removed ${event.removedCount - sourceGapCount} non-DNA/RNA character(s); coordinates refer to the cleaned sequence.`);
+      if (!event.length) warnings.push(`${current.title}: no DNA/RNA sequence characters were found.`);
+      const enforcedHitsPerRecord = options.maxHitsPerRecord;
+      const cappedHits = effectiveToolLimit(options, "maxHitsPerRecord", enforcedHitsPerRecord);
+      const merged = deduplicateMergeAndSortRows(current.candidateRows, cappedHits);
+      current.rows = merged.rows;
+      for (const row of current.rows) row.record_index = analyzedRecords.length + 1;
+      current.hitsOmitted = merged.hitsOmitted;
+      current.totalMergedRows = merged.totalMergedRows;
+      current.totalCandidateRows = merged.totalCandidateRows;
+      if (merged.hitsOmitted) warnings.push(`${current.title}: ${merged.hitsOmitted} hit(s) omitted by the per-record report cap.`);
+      delete current.candidateRows;
+      analyzedRecords.push(current);
+      current = null;
+      context.reportProgress?.({ phase: "scanning", recordsProcessed: analyzedRecords.length, progress: Math.min(0.95, 0.05 + basesProcessed / MAX_STREAMED_VECTOR_BASES * 0.9) });
+    }
+  }
+  warnings.push(...opened.warnings);
+  if (!analyzedRecords.length) return makeToolResult({ output: "", warnings: ["No DNA/RNA sequence input was provided.", ...warnings], recordsProcessed: 0, basesProcessed: 0, charactersRemoved: 0, streams: options.outputFormat === "tsv" ? { table: makeTableStream(vectorContaminationTableColumns, [], "vector-contamination-scanner") } : {} });
+  context.throwIfCancelled?.();
+  context.reportProgress?.({ phase: "building-output", progress: 0.98 });
+  if (containsUracil) notes.push("U is compared as T; original U symbols are retained in sequence outputs.");
+  const result = makeVectorResult({ analyzedRecords, options, warnings, notes, basesProcessed, charactersRemoved, summary, provenance });
+  if (result.output.length > maxOutputCharacters || JSON.stringify(result).length > maxOutputCharacters) throw new Error("Vector-scan output exceeds the materialized-output limit.");
+  context.throwIfCancelled?.();
+  return { ...result, optionsUsed: { sourceMode: opened.sourceMode, limits: Object.fromEntries(Object.entries({ ...opened.source.limits, queryWindows: maxQueryWindows, seedExtensions: maxSeedExtensions, candidateRows: maxCandidateRows, outputCharacters: maxOutputCharacters }).map(([key, value]) => [key, value === Infinity ? "disabled" : value])) } };
+}
+
+async function runVectorContaminationScannerInternal(input, options, context) {
+  context.reportProgress?.({ phase: "loading-reference-data", progress: 0.05 });
+  const { index, summary, provenance } = await loadVectorReferenceData();
+  context.throwIfCancelled?.();
+  return runStreamedVectorContaminationScanner(input, options, context, index, summary, provenance);
+}
+
+export async function runVectorContaminationScanner(input, options = {}, context = {}) {
+  const optionsUsed = normalizeVectorOptions(options);
+  let lastYield = performance.now();
+  const pacedContext = { ...context, yieldIfNeeded: async () => {
+    context.throwIfCancelled?.();
+    if (performance.now() - lastYield >= 8) { await context.yieldIfNeeded?.(); lastYield = performance.now(); }
+    context.throwIfCancelled?.();
+  } };
+  const result = await runVectorContaminationScannerInternal(input, { ...options, ...optionsUsed }, pacedContext);
+  return { ...result, optionsUsed: { ...optionsUsed, ...result.optionsUsed } };
 }

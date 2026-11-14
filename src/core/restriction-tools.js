@@ -1,3 +1,4 @@
+import { isolateSvgStyles } from "./svg-style-scope.js";
 import { findPatternMatches } from "./pattern.js";
 import { colorForEnzyme } from "./restriction-line-map-renderer.js";
 import { complementDnaRnaSequence, makeSequenceContext } from "./sequence.js";
@@ -419,7 +420,11 @@ export function makeRestrictionLineMapSvg(records, options = {}) {
   });
 }
 
-export function makeRestrictionGelSvg(records, options = {}) {
+export function makeRestrictionGelSvg(...args) {
+  return isolateSvgStyles(makeRestrictionGelSvgUnscoped(...args));
+}
+
+function makeRestrictionGelSvgUnscoped(records, options = {}) {
   if (options.poolLinearMolecules && records.length) {
     if (options.topology === "circular") throw new Error("Pooling gel lanes requires linear molecules.");
     // Pool already-digested molecules, never concatenate their DNA sequences.

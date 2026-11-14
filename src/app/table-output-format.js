@@ -1,3 +1,5 @@
+import { exportDelimitedTable } from "../core/table.js";
+
 export function getBaseMimeType(mimeType = "") {
   return String(mimeType).split(";")[0].trim().toLowerCase();
 }
@@ -52,21 +54,11 @@ function getTableStreamColumns(stream) {
 }
 
 export function tableStreamToTsv(stream) {
-  const columnIds = stream?.columns?.length > 0
-    ? stream.columns.map((column) => column.id)
-    : Object.keys(stream?.rows?.[0] ?? {});
-  return [
-    columnIds.join("\t"),
-    ...(stream?.rows ?? []).map((row) => columnIds.map((columnId) => row[columnId] ?? "").join("\t"))
-  ].join("\n");
+  return tableRowsToTsv(getTableStreamColumns(stream), stream?.rows ?? []);
 }
 
 export function tableRowsToTsv(columns, rows) {
-  const columnIds = columns.map((column) => column.id);
-  return [
-    columnIds.join("\t"),
-    ...rows.map((row) => columnIds.map((columnId) => row[columnId] ?? "").join("\t"))
-  ].join("\n");
+  return exportDelimitedTable(columns.map(column => ({ ...column, label: column.id })), rows, "\t");
 }
 
 function escapeCsvCell(value) {

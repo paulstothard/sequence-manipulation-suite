@@ -1,3 +1,4 @@
+import { preserveRenderHeight } from "./preserve-render-height.js";
 import {renderGraphicEditor} from './graphic-editor-ui.js';
 import { renderTextTableImage } from './text-table-image-ui.js';
 import { renderFilePreview } from './file-preview-ui.js';
@@ -775,6 +776,7 @@ function renderOutputSearch(scope) {
   }
   const search = state.outputSearch[scope];
   const parts = getOutputSearchParts(scope);
+  parts.input.placeholder = "Search output";
   if (parts.textarea.dataset.visualOutput === "true") {
     search.matches = [];
     search.currentIndex = -1;
@@ -809,10 +811,6 @@ function queueOutputSearch(scope) {
   window.clearTimeout(state.outputSearch[scope].debounceTimer);
   state.outputSearch[scope].debounceTimer = window.setTimeout(() => {
     renderOutputSearch(scope);
-    getOutputSearchParts(scope).input.closest(".output-search-row")?.scrollIntoView({
-      block: "nearest",
-      inline: "nearest"
-    });
   }, 180);
 }
 
@@ -821,42 +819,23 @@ function moveOutputSearch(scope, direction) {
   if (search.matches.length === 0) {
     return;
   }
-  const scrollX = window.scrollX;
-  const scrollY = window.scrollY;
   search.currentIndex = getNextSearchIndex(search.currentIndex, search.matches.length, direction);
   const parts = getOutputSearchParts(scope);
-  updateOutputSearchControls(parts, search.matches, search.currentIndex);
+  updateOutputSearchControls(parts, search.matches, search.currentIndex, {
+    scopeLabel: isTableViewActive(scope) && parts.table.dataset.preview === "true" ? "preview" : ""
+  });
   if (isTableViewActive(scope)) {
     selectTableOutputMatch(scope);
-    window.scrollTo(scrollX, scrollY);
-    requestAnimationFrame(() => window.scrollTo(scrollX, scrollY));
     return;
   }
   renderOutputHighlight(scope);
   selectOutputMatch(scope);
-  window.scrollTo(scrollX, scrollY);
-  requestAnimationFrame(() => window.scrollTo(scrollX, scrollY));
-}
-
-function rememberPageScrollForOutputButton(event) {
-  const button = event.currentTarget;
-  button.dataset.pageScrollX = String(window.scrollX);
-  button.dataset.pageScrollY = String(window.scrollY);
-  event.preventDefault();
-}
-
-function restorePageScrollForOutputButton(event) {
-  const button = event.currentTarget;
-  const scrollX = Number.parseFloat(button.dataset.pageScrollX ?? String(window.scrollX));
-  const scrollY = Number.parseFloat(button.dataset.pageScrollY ?? String(window.scrollY));
-  window.scrollTo(scrollX, scrollY);
-  requestAnimationFrame(() => window.scrollTo(scrollX, scrollY));
-  window.setTimeout(() => window.scrollTo(scrollX, scrollY), 0);
 }
 
 function keepOutputSearchButtonFromScrollingPage(button) {
-  button.addEventListener("mousedown", rememberPageScrollForOutputButton);
-  button.addEventListener("click", restorePageScrollForOutputButton);
+  // Retain the search field's pointer focus. Keyboard activation keeps its
+  // normal focus path; neither needs a saved page position or a later scroll.
+  button.addEventListener("mousedown", event => event.preventDefault());
 }
 
 function resetToolOutputViewer(message = "Run this tool to generate the selected output.") {
@@ -1303,6 +1282,7 @@ function renderTableControls(scope, stream, columns, sortedRows, displayedRows, 
   columnDetails.className = "table-column-chooser";
   const columnSummary = document.createElement("summary");
   const hiddenCount = tableState.hiddenColumns.size;
+  columnSummary.dataset.tableControl = "columns";
   columnSummary.textContent = hiddenCount > 0
     ? `${columns.length - hiddenCount} of ${columns.length} columns`
     : `All ${columns.length} columns`;
@@ -1317,6 +1297,7 @@ function renderTableControls(scope, stream, columns, sortedRows, displayedRows, 
     presetLabel.textContent = "Column set";
     const presetSelect = document.createElement("select");
     presetSelect.className = "table-column-preset";
+    presetSelect.dataset.tableControl = "preset";
     for (const preset of presets) {
       const option = document.createElement("option");
       option.value = preset.id;
@@ -1328,7 +1309,7 @@ function renderTableControls(scope, stream, columns, sortedRows, displayedRows, 
       : "all";
     presetSelect.addEventListener("change", () => {
       applyTableColumnPreset(scope, columns, presetSelect.value);
-      renderTableOutputSearch(scope);
+      renderTableOutputSearch(scope, { scrollToMatch: false });
     });
     presetLabel.append(presetSelect);
     columnPanel.append(presetLabel);
@@ -1341,6 +1322,7 @@ function renderTableControls(scope, stream, columns, sortedRows, displayedRows, 
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
     checkbox.checked = !tableState.hiddenColumns.has(column.id);
+    checkbox.dataset.tableControl = `column:${column.id}`;
     checkbox.addEventListener("change", () => {
       if (checkbox.checked) {
         tableState.hiddenColumns.delete(column.id);
@@ -1348,7 +1330,7 @@ function renderTableControls(scope, stream, columns, sortedRows, displayedRows, 
         tableState.hiddenColumns.add(column.id);
       }
       tableState.columnPreset = "custom";
-      renderTableOutputSearch(scope);
+      renderTableOutputSearch(scope, { scrollToMatch: false });
     });
     columnLabel.append(checkbox, document.createTextNode(column.label ?? column.id));
     columnGrid.append(columnLabel);
@@ -1363,8 +1345,14 @@ function renderTableControls(scope, stream, columns, sortedRows, displayedRows, 
 
 function renderTableStream(scope, stream, query = "") {
   const parts = getOutputViewParts(scope);
-  parts.table.textContent = "";
+  const active = document.activeElement;
+  const focusKey = parts.table.contains(active) ? active.dataset.tableControl : null;
+  const chooserOpen = parts.table.querySelector('.table-column-chooser')?.open;
+  const scroll = { left: parts.table.scrollLeft, top: parts.table.scrollTop };
+  // Build off-screen so old controls and the scroll range survive preparation.
+  const content = document.createDocumentFragment();
   const { rows, columns, visibleColumns, sortedRows, displayedRows, isPreview, cellCount } = getTableViewData(scope, stream);
+  parts.table.dataset.preview = String(isPreview);
   const heading = document.createElement("h4");
   heading.className = "table-output-heading";
   heading.textContent = "Table";
@@ -1374,14 +1362,14 @@ function renderTableStream(scope, stream, query = "") {
   summary.textContent = `${isPreview ? `${displayedRows.length.toLocaleString()} displayed from ` : ""}${sortedRows.length.toLocaleString()} of ${pluralize(rows.length, "row")}, ${visibleColumns.length.toLocaleString()} of ${pluralize(columns.length, "column")}${
     sortColumn ? `; sorted by ${sortColumn.label ?? sortColumn.id} ${state.outputTable[scope].sortDirection}` : ""
   }`;
-  parts.table.append(heading, summary);
+  content.append(heading, summary);
   if (isPreview) {
     const warning = document.createElement("div");
     warning.className = "table-output-warning";
     warning.textContent = `Large table preview: rendering ${pluralize(displayedRows.length, "row")} from ${pluralize(sortedRows.length, "row")} (${cellCount.toLocaleString()} cells). Use Copy all rows or Download all ${getTableDelimitedFormatLabel(scope)} for the full visible-column data.`;
-    parts.table.append(warning);
+    content.append(warning);
   }
-  parts.table.append(renderTableControls(scope, stream, columns, sortedRows, displayedRows, isPreview));
+  content.append(renderTableControls(scope, stream, columns, sortedRows, displayedRows, isPreview));
   const table = document.createElement("table");
   table.className = "result-table";
   table.style.setProperty("--visible-table-columns", Math.max(1, visibleColumns.length));
@@ -1393,6 +1381,7 @@ function renderTableStream(scope, stream, query = "") {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "table-sort-button";
+    button.dataset.tableControl = `sort:${column.id}`;
     button.textContent = `${column.label ?? column.id}${getTableSortLabel(scope, column)}`;
     button.addEventListener("click", () => {
       if (state.outputTable[scope].sortColumn === column.id) {
@@ -1401,7 +1390,7 @@ function renderTableStream(scope, stream, query = "") {
         state.outputTable[scope].sortColumn = column.id;
         state.outputTable[scope].sortDirection = column.type === "number" ? "desc" : "asc";
       }
-      renderTableOutputSearch(scope);
+      renderTableOutputSearch(scope, { scrollToMatch: false });
     });
     th.append(button);
     headerRow.append(th);
@@ -1423,10 +1412,20 @@ function renderTableStream(scope, stream, query = "") {
     tbody.append(tr);
   }
   table.append(tbody);
-  parts.table.append(table);
+  content.append(table);
+  content.querySelector('.table-column-chooser').open = Boolean(chooserOpen);
+  preserveRenderHeight(parts.table, () => {
+    parts.table.replaceChildren(content);
+    if (focusKey) {
+      [...parts.table.querySelectorAll('[data-table-control]')]
+        .find(control => control.dataset.tableControl === focusKey)?.focus({ preventScroll: true });
+    }
+    parts.table.scrollLeft = scroll.left;
+    parts.table.scrollTop = scroll.top;
+  });
 }
 
-function renderTableOutputSearch(scope) {
+function renderTableOutputSearch(scope, { scrollToMatch = true } = {}) {
   const search = state.outputSearch[scope];
   const parts = getOutputSearchParts(scope);
   const query = parts.input.value;
@@ -1436,6 +1435,8 @@ function renderTableOutputSearch(scope) {
     return;
   }
   renderTableStream(scope, tableStream, query);
+  const isPreview = parts.table.dataset.preview === "true";
+  parts.input.placeholder = isPreview ? "Search preview" : "Search table";
   const matches = [...parts.table.querySelectorAll(".output-table-match")];
   search.matches = matches;
   search.currentIndex = query && matches.length > 0 ? 0 : -1;
@@ -1443,8 +1444,8 @@ function renderTableOutputSearch(scope) {
   if (summary && query) {
     summary.textContent += `; ${pluralize(matches.length, "matching cell")}`;
   }
-  updateOutputSearchControls(parts, matches, search.currentIndex);
-  selectTableOutputMatch(scope);
+  updateOutputSearchControls(parts, matches, search.currentIndex, { scopeLabel: isPreview ? "preview" : "" });
+  selectTableOutputMatch(scope, scrollToMatch);
 }
 
 function scrollElementInsideContainer(element, container) {
@@ -1454,7 +1455,7 @@ function scrollElementInsideContainer(element, container) {
   container.scrollLeft += elementRect.left - containerRect.left - container.clientWidth / 2 + elementRect.width / 2;
 }
 
-function selectTableOutputMatch(scope) {
+function selectTableOutputMatch(scope, scrollToMatch = true) {
   const search = state.outputSearch[scope];
   const matches = search.matches ?? [];
   for (const cell of matches) {
@@ -1465,7 +1466,7 @@ function selectTableOutputMatch(scope) {
   }
   const cell = matches[search.currentIndex];
   cell.classList.add("current-output-table-match");
-  scrollElementInsideContainer(cell, getOutputViewParts(scope).table);
+  if (scrollToMatch) scrollElementInsideContainer(cell, getOutputViewParts(scope).table);
 }
 
 function renderTableOutputForScope(scope, tableStream, preferTable = false) {
@@ -1623,7 +1624,7 @@ function renderSequenceViewerNavigation(container, heading, viewer) {
       : snapshotRenderedDnaViewer(viewerHost)[0];
     if (snapshot) savedStates.set(activeSelection.sequenceKey, snapshot);
   };
-  const showSelection = (selection) => {
+  const showSelection = (selection) => preserveRenderHeight(viewerHost, () => {
     captureCurrentState();
     activeSelection = selection;
     heading.textContent = formatViewerSequenceHeading(baseHeading, selection);
@@ -1648,7 +1649,7 @@ function renderSequenceViewerNavigation(container, heading, viewer) {
     } else {
       renderDnaViewer(viewerHost, selectedViewer, viewerOptions);
     }
-  };
+  });
 
   const navigation = renderViewerSequenceNavigation(container, viewer, {
     initialSelection: initial.selection,

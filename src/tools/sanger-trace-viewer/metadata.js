@@ -129,7 +129,7 @@ function assemblyGroup() {
         type: "checkbox",
         label: "Use ambiguous IUPAC consensus bases",
         defaultValue: false,
-        help: "Checked: combine A/C/G/T bases supported by placed reads into IUPAC codes, such as R for A/G. Unchecked: conflicting bases in joined overlaps become N; reads contained within a contig leave its existing consensus unchanged. Applies to consensus sequences and maps."
+        help: "Checked: combine A/C/G/T bases supported by placed reads into IUPAC codes, such as R for A/G. Unchecked: conflicting bases from all placed reads, including contained reads, remain N. Applies to consensus sequences and maps."
       }
     ]
   };

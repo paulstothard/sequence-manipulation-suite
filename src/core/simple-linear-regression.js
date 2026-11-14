@@ -1,3 +1,4 @@
+import { isolateSvgStyles } from "./svg-style-scope.js";
 import "../vendor/d3/d3.min.js";
 import { escapeXml } from "./plot-renderer.js";
 import { annotatePointCrowding, pointCrowdingFact } from "./point-plot-inspection.js";
@@ -111,7 +112,11 @@ function groupColor(group, groups) {
   return COLORS[Math.max(0, groups.indexOf(group)) % COLORS.length];
 }
 
-function renderRegressionSvg(result, options = {}) {
+function renderRegressionSvg(...args) {
+  return isolateSvgStyles(renderRegressionSvgUnscoped(...args));
+}
+
+function renderRegressionSvgUnscoped(result, options = {}) {
   const rows = result.fitRows ?? [];
   if (rows.length === 0) {
     const emptyStyle = makePublicationPlotStyle(900, 360);

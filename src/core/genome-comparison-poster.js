@@ -1,3 +1,4 @@
+import { isolateSvgStyles } from "./svg-style-scope.js";
 import { parseSequenceInput } from "./fasta.js";
 import { cleanDnaRnaSequence, complementDnaRnaSequence } from "./sequence.js";
 import { exportDelimitedTable } from "./table.js";
@@ -2173,7 +2174,11 @@ function renderLoomAxis(parts, { layout, x, y, width, placement, scaleLength = l
   }
 }
 
-export function renderGenomeComparisonPosterSvg({
+export function renderGenomeComparisonPosterSvg(...args) {
+  return isolateSvgStyles(renderGenomeComparisonPosterSvgUnscoped(...args));
+}
+
+function renderGenomeComparisonPosterSvgUnscoped({
   reference,
   comparisons,
   blocks,

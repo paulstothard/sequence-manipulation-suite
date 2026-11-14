@@ -551,23 +551,23 @@
     "alphabet": "protein",
     "class": "phospho-binding-motif",
     "syntax": "regex",
-    "pattern": "R..[ST]P",
+    "pattern": "R..[ST].P",
     "source": {
       "name": "SMS3 curated motif set",
-      "version": "2026-05 expanded protein motifs",
+      "version": "2026-11 14-3-3 spacing correction",
       "accessDate": "2026-05-22",
       "url": "https://doi.org/10.1016/S0092-8674(00)80487-0",
       "citation": "Yaffe MB et al. The structural basis for 14-3-3:phosphopeptide binding specificity. Cell. 1997;91:961-971.",
       "license": "Project-curated short consensus record from cited literature; not copied from a motif database."
     },
-    "description": "Candidate mode I 14-3-3 phosphopeptide motif.",
+    "description": "Broad mode I-like 14-3-3 candidate R-x(2)-S/T-x-P; phosphorylation and binding are not established.",
     "scope": "Protein sequences; phosphorylation-dependent candidate motif only.",
     "match": {
       "strand": "not-applicable",
       "coordinateSystem": "1-based inclusive",
       "overlappingDefault": true,
       "score": "not-applicable",
-      "assumptions": "Regular-expression match uses R-x-x-S/T-P but does not require phosphorylation or model 14-3-3 isoform specificity."
+      "assumptions": "Regular-expression match uses R-x-x-S/T-P but does not require phosphorylation or model 14-3-3 isoform specificity. Retains broad residues at positions 2–3; proline is two positions after the candidate phosphoacceptor. Sequence alone does not establish phosphorylation."
     },
     "database": "sms3-curated"
   },
@@ -733,23 +733,24 @@
     "alphabet": "protein",
     "class": "targeting-signal",
     "syntax": "regex",
-    "pattern": "^.{0,40}R[LI].{5}HL",
+    "pattern": "R[LI].{5}HL",
     "source": {
       "name": "SMS3 curated motif set",
-      "version": "2026-05 expanded protein motifs",
+      "version": "2026-11 PTS2 coordinate correction",
       "accessDate": "2026-05-22",
-      "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC453027/",
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC453050/",
       "citation": "Swinkels BW et al. A novel, cleavable peroxisomal targeting signal at the amino-terminus of the rat 3-ketoacyl-CoA thiolase. EMBO J. 1991;10:3255-3262.",
       "license": "Project-curated short consensus record from cited literature; not copied from a motif database."
     },
-    "description": "Broad candidate PTS2-like N-terminal peroxisomal targeting signal.",
+    "description": "Candidate R-L/I-x(5)-H-L PTS2-like nonapeptide starting within the first 41 positions of a peptide chain.",
     "scope": "Protein sequences; N-terminal candidate motif within the first 40 residues.",
     "match": {
       "strand": "not-applicable",
       "coordinateSystem": "1-based inclusive",
       "overlappingDefault": true,
       "score": "not-applicable",
-      "assumptions": "Regular-expression match requires an R-L/I-x5-HL pattern near the cleaned protein N terminus; cleavage and receptor specificity are not modeled."
+      "assumptions": "Regular-expression match requires an R-L/I-x5-HL pattern near the cleaned protein N terminus; cleavage and receptor specificity are not modeled. Report only the nine-residue motif; the preceding 0–40 positions constrain location and are not part of the hit.",
+      "maxStart": 41
     },
     "database": "sms3-curated"
   },

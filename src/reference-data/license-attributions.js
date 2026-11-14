@@ -1,4 +1,5 @@
 import externalResourceCatalogue from './external-resources/catalogue.js';
+import { MUSCLE_RUNTIME } from '../vendor/biowasm/muscle-runtime.js';
 
 export const softwareLicenseAttributions = [
   {category:"Runtime library",name:"CSSTree",version:"3.1.0",license:"MIT",sourceUrl:"https://github.com/csstree/csstree",bundledPath:"src/vendor/svg-parser/; src/vendor/svg-parser/css-tree-LICENSE.txt",notes:"Parses and validates SVG styles locally.",packageNames:["css-tree"]},
@@ -368,11 +369,11 @@ export const softwareLicenseAttributions = [
   {
     category: "Vendored runtime",
     name: "BioWasm MUSCLE",
-    version: "5.1.0",
+    version: MUSCLE_RUNTIME.versionLabel,
     license: "GPL-3.0 via upstream MUSCLE v5",
-    sourceUrl: "https://biowasm.com/cdn/v3/muscle/5.1.0",
+    sourceUrl: "https://github.com/rcedgar/muscle/tree/6c601163998616bb88991931e443c645858e162c",
     bundledPath: "src/vendor/biowasm/muscle/5.1.0/; src/vendor/biowasm/licenses/MUSCLE-5-GPL-3.0-LICENSE",
-    notes: "Aligns multiple DNA/RNA or protein sequences.",
+    notes: "Aligns multiple DNA/RNA or protein sequences. Rebuilt from the pinned source with BioWasm's browser port and SMS3's explicit molecule-selection patch; source, patches and build instructions are in scripts/vendor/muscle/README.md.",
     packageNames: []
   },
   {

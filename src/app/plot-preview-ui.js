@@ -1,3 +1,4 @@
+import { isolateSvgElementStyles } from "../core/svg-style-scope.js";
 import {
   HEATMAP_CELL_GUTTER_PX,
   HEATMAP_LEGEND_BAR_WIDTH,
@@ -471,6 +472,7 @@ function applyObservablePublicationStyle(svg, plotSpec, publicationStyle) {
   ].join("");
   svg.prepend(style);
   lockPlotSvgToLightCanvas(svg);
+  isolateSvgElementStyles(svg);
 }
 
 export function renderObservablePlotPreview(plotSpec) {
@@ -687,11 +689,12 @@ export function renderObservablePlotPreview(plotSpec) {
     const lineMark = window.Plot.lineY ?? window.Plot.line;
     const areaMark = window.Plot.areaY ?? window.Plot.area;
     const dotMark = window.Plot.dot ?? window.Plot.dotY;
-    const markerRows = rows.filter((row) =>
+    const inFrame = row => !plotSpec.clip || ((!plotSpec.xDomain || (row.x >= plotSpec.xDomain[0] && row.x <= plotSpec.xDomain[1])) && (!plotSpec.yDomain || (row.y >= plotSpec.yDomain[0] && row.y <= plotSpec.yDomain[1])));
+    const markerRows = rows.filter(inFrame).filter((row) =>
       shouldShowPointMarkersForSeries(plotSpec, plotSpec.series.find((series) => series.label === row.series))
     );
     const markerRowSet = new Set(markerRows);
-    const inspectionRows = rows.filter((row) => !markerRowSet.has(row));
+    const inspectionRows = rows.filter(inFrame).filter((row) => !markerRowSet.has(row));
     if (!lineMark || (bandRows.length > 0 && !areaMark) || !dotMark) {
       return null;
     }
@@ -715,7 +718,7 @@ export function renderObservablePlotPreview(plotSpec) {
       marginBottom: 64,
       marginLeft: 70,
       marginRight: sideLegend?.right ?? 34,
-      x: { label: null, grid: plotSpec.showGridLines === true },
+      x: { label: null, domain: plotSpec.xDomain, grid: plotSpec.showGridLines === true },
       y: {
         label: null,
         domain: plotSpec.yDomain,
@@ -726,6 +729,7 @@ export function renderObservablePlotPreview(plotSpec) {
         ...bands.map((band) => areaMark(
           bandRows.filter((row) => row.band === band.label),
           {
+            clip: plotSpec.clip,
             x: "x",
             y1: "y1",
             y2: "y2",
@@ -738,6 +742,7 @@ export function renderObservablePlotPreview(plotSpec) {
           const itemMarkerRows = markerRows.filter((row) => row.series === item.label);
           return itemMarkerRows.length > 0
             ? [dotMark(itemMarkerRows, {
+                clip: plotSpec.clip,
                 x: "x",
                 y: "y",
                 fill: item.color ?? "#2563eb",
@@ -750,6 +755,7 @@ export function renderObservablePlotPreview(plotSpec) {
         ...series.map((item) => lineMark(
           rows.filter((row) => row.series === item.label),
           {
+            clip: plotSpec.clip,
             x: "x",
             y: "y",
             stroke: item.color ?? "#2563eb",
@@ -761,6 +767,7 @@ export function renderObservablePlotPreview(plotSpec) {
         )),
         ...(inspectionRows.length > 0
           ? [dotMark(inspectionRows, {
+              clip: plotSpec.clip,
               x: "x",
               y: "y",
               fill: "transparent",

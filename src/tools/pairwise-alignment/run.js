@@ -1,3 +1,4 @@
+import { clustalIdentifierNotes } from "../../core/alignment-identifiers.js";
 import {
   codonAlignmentTableColumns,
   makeAlignedFasta,
@@ -94,6 +95,7 @@ async function runPairwiseAlignment(input, options = {}, alphabet, context = {})
 
   return makeToolResult({
     output: outputs[outputFormat],
+    notes: outputFormat === "clustal" ? clustalIdentifierNotes(prepared.records.map(record => record.title)) : [],
     sequenceSearch: outputFormat === "alignment-text"
       ? { format: "pairwise", alphabet }
       : outputFormat === "clustal"

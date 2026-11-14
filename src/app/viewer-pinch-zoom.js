@@ -1,3 +1,5 @@
+import { installCanvasTrackpadZoom } from './viewer-trackpad-zoom.js';
+
 function pinchPosition(touches) {
   if (touches.length !== 2) return null;
   const [first, second] = touches;
@@ -92,6 +94,11 @@ export function installCanvasPinchZoom(canvas, {
     event.stopImmediatePropagation();
   };
   const pointerDown = () => { if (!previous && !single) suppressClickUntil = 0; };
+  const cleanupTrackpad = installCanvasTrackpadZoom(canvas, {
+    onStart: () => { finishPan(true); finishPinch(); onContact?.(); onStart?.(); },
+    onChange,
+    onEnd: () => { onEnd?.(); suppressClick(); }
+  });
   canvas.addEventListener("click", click, true);
   canvas.addEventListener("pointerdown", pointerDown);
   canvas.addEventListener("touchstart", start, { passive: false });
@@ -99,6 +106,7 @@ export function installCanvasPinchZoom(canvas, {
   canvas.addEventListener("touchend", end, { passive: false });
   canvas.addEventListener("touchcancel", end);
   return () => {
+    cleanupTrackpad();
     finishPan(true);
     finishPinch();
     canvas.removeEventListener("click", click, true);

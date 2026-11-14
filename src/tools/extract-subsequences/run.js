@@ -1,3 +1,4 @@
+import { normalizeExtractSubsequencesOptions } from "../../core/extract-subsequences-options.js";
 import { formatFastaRecord, parseSequenceInput } from "../../core/fasta.js";
 import {
   cleanSequence,
@@ -32,28 +33,47 @@ function getToolName(alphabet) {
   return alphabet === "protein" ? "Extract Subsequences Protein" : "Extract Subsequences DNA/RNA";
 }
 
-function getAlphabetMismatchWarning(sequence, alphabet) {
-  const letters = String(sequence ?? "").replace(/[^A-Za-z*]/g, "");
-  if (letters.length < 12) {
-    return "";
-  }
+const SEQUENCE_CHUNK_SIZE = 100000;
+const SEGMENT_CHUNK_SIZE = 1000;
 
-  const upper = letters.toUpperCase();
-  const dnaLikeCount = Array.from(upper).filter((character) => /[ACGTUN]/.test(character)).length;
-  const dnaLikeFraction = dnaLikeCount / upper.length;
-
-  if (alphabet === "dna-rna" && /[EFILOPQZJ]/.test(upper)) {
-    return "input contains letters commonly found in protein sequences. If this is protein, use Extract Subsequences Protein.";
-  }
-
-  if (alphabet === "protein" && dnaLikeFraction >= 0.9) {
-    return "input looks nucleotide-rich. If this is DNA/RNA, use Extract Subsequences DNA/RNA.";
-  }
-
-  return "";
+async function checkpoint(context) {
+  context.throwIfCancelled?.();
+  await context.yieldIfNeeded?.();
+  context.throwIfCancelled?.();
 }
 
-export function parseCoordinateSpec(coordinates) {
+async function cleanRecord(sequence, options, context) {
+  const parts = [];
+  let removedCount = 0;
+  let gapsRemoved = 0;
+  let letterCount = 0;
+  let dnaLikeCount = 0;
+  let proteinLetters = false;
+  for (let start = 0; start < sequence.length;) {
+    await checkpoint(context);
+    let end = Math.min(sequence.length, start + SEQUENCE_CHUNK_SIZE);
+    // Never split a supplementary Unicode character before counting removals.
+    if (end < sequence.length && /[\uD800-\uDBFF]/.test(sequence[end - 1])) end += 1;
+    const chunk = sequence.slice(start, end);
+    const cleaned = cleanSequence(chunk, options);
+    parts.push(cleaned.sequence);
+    removedCount += cleaned.removedCount;
+    if (!options.keepGaps) gapsRemoved += chunk.replace(/[^.-]/g, "").length;
+    const letters = chunk.replace(/[^A-Za-z*]/g, "").toUpperCase();
+    letterCount += letters.length;
+    dnaLikeCount += letters.replace(/[^ACGTUN]/g, "").length;
+    proteinLetters ||= /[EFILOPQZJ]/.test(letters);
+    start = end;
+  }
+  let mismatchWarning = "";
+  if (letterCount >= 12) {
+    if (options.alphabet === "dna-rna" && proteinLetters) mismatchWarning = "input contains letters commonly found in protein sequences. If this is protein, use Extract Subsequences Protein.";
+    if (options.alphabet === "protein" && dnaLikeCount / letterCount >= 0.9) mismatchWarning = "input looks nucleotide-rich. If this is DNA/RNA, use Extract Subsequences DNA/RNA.";
+  }
+  return { sequence: parts.join(""), removedCount, gapsRemoved, mismatchWarning };
+}
+
+function* coordinateSteps(coordinates) {
   const text = String(coordinates ?? "").trim();
   if (!text) {
     return { regions: [], errors: ["No coordinates were provided."] };
@@ -66,22 +86,27 @@ export function parseCoordinateSpec(coordinates) {
     .map((token) => token.trim())
     .filter(Boolean);
 
-  tokens.forEach((token, index) => {
+  for (const [index, token] of tokens.entries()) {
+    if (index % SEGMENT_CHUNK_SIZE === 0) yield;
     const match = token.match(/^(\d+)(?:\s*(?:-|\.\.|:)\s*(\d+))?$/);
     if (!match) {
       errors.push(`Coordinate ${index + 1} "${token}" is not valid.`);
-      return;
+      continue;
     }
 
     const start = Number.parseInt(match[1], 10);
     const end = Number.parseInt(match[2] ?? match[1], 10);
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end)) {
+      errors.push(`Coordinate ${index + 1} "${token}" exceeds the largest exact integer position (${Number.MAX_SAFE_INTEGER}).`);
+      continue;
+    }
     if (start < 1 || end < 1) {
       errors.push(`Coordinate ${index + 1} "${token}" must use positive 1-based positions.`);
-      return;
+      continue;
     }
     if (start > end) {
       errors.push(`Coordinate ${index + 1} "${token}" has start greater than end.`);
-      return;
+      continue;
     }
 
     regions.push({
@@ -90,13 +115,30 @@ export function parseCoordinateSpec(coordinates) {
       requestedEnd: end,
       label: `${start}-${end}`
     });
-  });
+  }
 
   if (regions.length === 0 && errors.length === 0) {
     errors.push("No coordinates were provided.");
   }
 
   return { regions, errors };
+}
+
+export function parseCoordinateSpec(coordinates) {
+  const steps = coordinateSteps(coordinates);
+  let step = steps.next();
+  while (!step.done) step = steps.next();
+  return step.value;
+}
+
+async function parseCoordinatesCooperatively(coordinates, context) {
+  const steps = coordinateSteps(coordinates);
+  let step = steps.next();
+  while (!step.done) {
+    await checkpoint(context);
+    step = steps.next();
+  }
+  return step.value;
 }
 
 function clipRegion(region, sequenceLength) {
@@ -115,14 +157,15 @@ function clipRegion(region, sequenceLength) {
   };
 }
 
-function mergeSegments(segments) {
+async function mergeSegments(segments, context) {
   const sorted = [...segments].sort((left, right) => left.start - right.start || left.end - right.end);
   const merged = [];
-  for (const segment of sorted) {
+  for (const [index, segment] of sorted.entries()) {
+    if (index % SEGMENT_CHUNK_SIZE === 0) await checkpoint(context);
     const previous = merged.at(-1);
     if (previous && segment.start <= previous.end + 1) {
       previous.end = Math.max(previous.end, segment.end);
-      previous.requestedCoordinates.push(...segment.requestedCoordinates);
+      // Only the union endpoints are needed for exclusion.
     } else {
       merged.push({
         start: segment.start,
@@ -134,14 +177,15 @@ function mergeSegments(segments) {
   return merged;
 }
 
-function makeComplementSegments(selectedSegments, sequenceLength) {
+async function makeComplementSegments(selectedSegments, sequenceLength, context) {
   if (sequenceLength === 0) {
     return [];
   }
-  const merged = mergeSegments(selectedSegments);
+  const merged = await mergeSegments(selectedSegments, context);
   const segments = [];
   let cursor = 1;
-  for (const segment of merged) {
+  for (const [index, segment] of merged.entries()) {
+    if (index % SEGMENT_CHUNK_SIZE === 0) await checkpoint(context);
     if (cursor < segment.start) {
       segments.push({ start: cursor, end: segment.start - 1 });
     }
@@ -161,12 +205,17 @@ function segmentListLabel(segments) {
   return segments.map(segmentLabel).join("; ");
 }
 
-function reverseComplement(sequence, preserveCase) {
-  return Array.from(complementDnaRnaSequence(sequence, { preserveCase })).reverse().join("");
+async function reverseComplement(sequence, preserveCase, context) {
+  const parts = [];
+  for (let end = sequence.length; end > 0; end -= SEQUENCE_CHUNK_SIZE) {
+    await checkpoint(context);
+    parts.push(Array.from(complementDnaRnaSequence(sequence.slice(Math.max(0, end - SEQUENCE_CHUNK_SIZE), end), { preserveCase })).reverse().join(""));
+  }
+  return parts.join("");
 }
 
-function makeRows(extractedRecords) {
-  return extractedRecords.map((record) => ({
+function makeRow(record) {
+  return {
     record: record.sourceTitle,
     output_record: record.title,
     region: record.region,
@@ -178,23 +227,17 @@ function makeRows(extractedRecords) {
     length: record.sequence.length,
     strand: record.strand,
     sequence: record.sequence
-  }));
+  };
 }
 
 function escapeTsv(value) {
   return String(value ?? "").replace(/\t/g, " ").replace(/\r?\n/g, " ");
 }
 
-function makeTsv(rows) {
-  return [
-    TSV_COLUMNS.join("\t"),
-    ...rows.map((row) => TSV_COLUMNS.map((column) => escapeTsv(row[column])).join("\t"))
-  ].join("\n");
-}
-
-function selectedSegmentsForRecord(regions, sequenceLength, recordTitle, warnings) {
+async function selectedSegmentsForRecord(regions, sequenceLength, recordTitle, warnings, context) {
   const selectedSegments = [];
-  for (const region of regions) {
+  for (const [index, region] of regions.entries()) {
+    if (index % SEGMENT_CHUNK_SIZE === 0) await checkpoint(context);
     const clipped = clipRegion(region, sequenceLength);
     if (!clipped) {
       warnings.push(`${recordTitle}: coordinate ${region.label} has no overlap with sequence length ${sequenceLength}.`);
@@ -213,16 +256,22 @@ function selectedSegmentsForRecord(regions, sequenceLength, recordTitle, warning
   return selectedSegments;
 }
 
-function buildOutputRecord({ record, segments, region, mode, requestedCoordinates, reverseComplementOutput, preserveCase, grouping }) {
-  const sourceSegments = segments.map((segment) => record.cleanedSequence.slice(segment.start - 1, segment.end));
+async function buildOutputRecord({ record, segments, region, mode, requestedCoordinates, reverseComplementOutput, preserveCase, grouping }, context) {
+  const sourceSegments = [];
+  let start = Infinity;
+  let end = 0;
+  for (const [index, segment] of segments.entries()) {
+    if (segments.length > SEGMENT_CHUNK_SIZE && index % SEGMENT_CHUNK_SIZE === 0) await checkpoint(context);
+    sourceSegments.push(record.cleanedSequence.slice(segment.start - 1, segment.end));
+    start = Math.min(start, segment.start);
+    end = Math.max(end, segment.end);
+  }
   const sourceSequence = sourceSegments.join("");
   const sequence = reverseComplementOutput
-    ? reverseComplement(sourceSequence, preserveCase)
+    ? await reverseComplement(sourceSequence, preserveCase, context)
     : sourceSequence;
   const strand = reverseComplementOutput ? "-" : "+";
   const segmentSummary = segmentListLabel(segments);
-  const start = Math.min(...segments.map((segment) => segment.start));
-  const end = Math.max(...segments.map((segment) => segment.end));
   const title = grouping === "joined"
     ? `${record.title}:${mode === "outside-listed-ranges" ? "except listed ranges" : "joined selected ranges"}${reverseComplementOutput ? " reverse complement" : ""}`
     : mode === "outside-listed-ranges"
@@ -245,41 +294,49 @@ function buildOutputRecord({ record, segments, region, mode, requestedCoordinate
 }
 
 export async function runExtractSubsequences(input, options = {}, context = {}) {
+  options = normalizeExtractSubsequencesOptions(options);
   context.reportProgress?.({ phase: "parsing-input", progress: 0.05 });
   context.throwIfCancelled?.();
   await context.yieldIfNeeded?.();
 
-  const records = parseSequenceInput(input, "sequence");
+  const records = parseSequenceInput(input, "sequence", { strictHeaders: true });
   const warnings = [];
-  const alphabet = options.alphabet === "protein" ? "protein" : "dna-rna";
+  const notes = [];
+  const alphabet = options.alphabet;
   const alphabetLabel = getAlphabetLabel(alphabet);
-  const coordinateSpec = parseCoordinateSpec(options.coordinates);
-  const selectionMode = options.selectionMode === "exclude" ? "exclude" : "extract";
-  const resultGrouping = options.resultGrouping === "joined" ? "joined" : "separate";
+  // Protein coordinates include retained stop and gap symbols as well as residues.
+  const processedUnitLabel = alphabet === "protein" ? "character" : "base";
+  const coordinateSpec = await parseCoordinatesCooperatively(options.coordinates, context);
+  const selectionMode = options.selectionMode;
+  const resultGrouping = options.resultGrouping;
   const shouldReverseComplement = alphabet === "dna-rna" && options.reverseComplement === true;
-  const preserveCase = options.preserveCase !== false;
+  const preserveCase = options.preserveCase;
   const maxOutputRecords = effectiveToolLimit(options, "outputRecordLimitNote", EXTRACT_SUBSEQUENCES_MAX_OUTPUT_RECORDS);
 
   if (coordinateSpec.errors.length > 0) {
-    warnings.push(...coordinateSpec.errors);
+    for (const error of coordinateSpec.errors) warnings.push(error);
   }
 
   if (coordinateSpec.regions.length === 0) {
     return makeToolResult({
+      optionsUsed: options,
       output: "",
       warnings,
       recordsProcessed: 0,
       basesProcessed: 0,
+      processedUnitLabel,
       charactersRemoved: 0
     });
   }
 
   if (records.length === 0) {
     return makeToolResult({
+      optionsUsed: options,
       output: "",
       warnings: [...warnings, "No sequence input was provided."],
       recordsProcessed: 0,
       basesProcessed: 0,
+      processedUnitLabel,
       charactersRemoved: 0
     });
   }
@@ -293,21 +350,18 @@ export async function runExtractSubsequences(input, options = {}, context = {}) 
   context.reportProgress?.({ phase: "extracting-subsequences", progress: 0.1 });
   for (const [recordIndex, record] of records.entries()) {
     context.throwIfCancelled?.();
-    const mismatchWarning = getAlphabetMismatchWarning(record.sequence, alphabet);
-    if (mismatchWarning) {
-      warnings.push(`${record.title}: ${mismatchWarning}`);
-    }
+    const cleaned = await cleanRecord(record.sequence, options, context);
+    if (cleaned.mismatchWarning) warnings.push(`${record.title}: ${cleaned.mismatchWarning}`);
 
-    const cleaned = cleanSequence(record.sequence, {
-      alphabet,
-      preserveCase,
-      keepGaps: options.keepGaps
-    });
     basesProcessed += cleaned.sequence.length;
     charactersRemoved += cleaned.removedCount;
 
-    if (cleaned.removedCount > 0) {
-      warnings.push(`${record.title}: removed ${cleaned.removedCount} non-${alphabetLabel} character(s).`);
+    const unexpectedRemoved = cleaned.removedCount - cleaned.gapsRemoved;
+    if (unexpectedRemoved > 0) {
+      warnings.push(`${record.title}: removed ${unexpectedRemoved} non-${alphabetLabel} character(s).`);
+    }
+    if (cleaned.gapsRemoved > 0) {
+      notes.push(`${record.title}: removed ${cleaned.gapsRemoved} gap character(s) before applying coordinates, as selected.`);
     }
 
     if (cleaned.sequence.length === 0) {
@@ -319,10 +373,10 @@ export async function runExtractSubsequences(input, options = {}, context = {}) 
       cleanedSequence: cleaned.sequence,
       alphabet
     };
-    const selectedSegments = selectedSegmentsForRecord(coordinateSpec.regions, cleaned.sequence.length, record.title, warnings);
+    const selectedSegments = await selectedSegmentsForRecord(coordinateSpec.regions, cleaned.sequence.length, record.title, warnings, context);
     const requestedCoordinates = coordinateSpec.regions.map((region) => region.label).join("; ");
     const outputSegments = selectionMode === "exclude"
-      ? makeComplementSegments(selectedSegments, cleaned.sequence.length).map((segment, index) => ({
+      ? (await makeComplementSegments(selectedSegments, cleaned.sequence.length, context)).map((segment, index) => ({
         ...segment,
         index: index + 1,
         requestedCoordinates: [requestedCoordinates]
@@ -330,12 +384,12 @@ export async function runExtractSubsequences(input, options = {}, context = {}) 
       : selectedSegments;
 
     if (selectionMode === "exclude" && selectedSegments.length > 0 && outputSegments.length === 0 && cleaned.sequence.length > 0) {
-      warnings.push(`${record.title}: listed coordinates cover the entire sequence; no outside sequence remains.`);
+      notes.push(`${record.title}: listed coordinates cover the entire sequence; no outside sequence remains.`);
     }
 
     if (resultGrouping === "joined") {
       if (outputSegments.length > 0) {
-        const outputRecord = buildOutputRecord({
+        const outputRecord = await buildOutputRecord({
           record: cleanedRecord,
           segments: outputSegments,
           region: 1,
@@ -344,17 +398,18 @@ export async function runExtractSubsequences(input, options = {}, context = {}) 
           reverseComplementOutput: shouldReverseComplement,
           preserveCase,
           grouping: "joined"
-        });
+        }, context);
         extractedRecords.push(outputRecord);
         outputCharacters += outputRecord.sequence.length;
       }
     } else {
       for (const [segmentIndex, segment] of outputSegments.entries()) {
+        if (segmentIndex % SEGMENT_CHUNK_SIZE === 0) await checkpoint(context);
         if (extractedRecords.length >= maxOutputRecords) {
           outputLimitHit = true;
           continue;
         }
-        const outputRecord = buildOutputRecord({
+        const outputRecord = await buildOutputRecord({
           record: cleanedRecord,
           segments: [segment],
           region: segment.index ?? segmentIndex + 1,
@@ -363,7 +418,7 @@ export async function runExtractSubsequences(input, options = {}, context = {}) 
           reverseComplementOutput: shouldReverseComplement,
           preserveCase,
           grouping: "separate"
-        });
+        }, context);
         extractedRecords.push(outputRecord);
         outputCharacters += outputRecord.sequence.length;
       }
@@ -392,15 +447,39 @@ export async function runExtractSubsequences(input, options = {}, context = {}) 
   context.throwIfCancelled?.();
   await context.yieldIfNeeded?.();
 
-  const lineWidth = Number.parseInt(options.lineWidth, 10) || 60;
-  const fastaOutput = extractedRecords
-    .map((record) => formatFastaRecord(record.title, record.sequence, lineWidth))
-    .join("");
-  const tableRows = makeRows(extractedRecords);
-  const outputFormat = options.outputFormat === "tsv" ? "tsv" : "fasta";
-  const output = outputFormat === "tsv" ? makeTsv(tableRows) : fastaOutput;
+  const outputFormat = options.outputFormat;
+  const streams = {};
+  let output;
+  if (outputFormat === "tsv") {
+    const tableRows = [];
+    const lines = [TSV_COLUMNS.join("\t")];
+    for (const [index, record] of extractedRecords.entries()) {
+      if (index % SEGMENT_CHUNK_SIZE === 0) await checkpoint(context);
+      const row = makeRow(record);
+      tableRows.push(row);
+      lines.push(TSV_COLUMNS.map(column => escapeTsv(row[column])).join("\t"));
+    }
+    output = lines.join("\n");
+    streams.table = makeTableStream(extractSubsequencesTableColumns, tableRows, "extract-subsequences");
+  } else {
+    const parts = [];
+    for (const [index, record] of extractedRecords.entries()) {
+      if (index % SEGMENT_CHUNK_SIZE === 0) await checkpoint(context);
+      parts.push(formatFastaRecord(record.title, record.sequence, options.lineWidth));
+    }
+    output = parts.join("");
+    streams.fasta = makeTextStream(output, "text/x-fasta");
+    // These records back the FASTA output's Workspace save and typed handoffs.
+    streams.sequenceRecords = {
+      kind: "sequence-records",
+      schema: "extract-subsequences",
+      alphabet,
+      records: extractedRecords
+    };
+  }
 
   return makeToolResult({
+    optionsUsed: options,
     output,
     download: {
       filename: `${getToolName(alphabet).toLowerCase().replaceAll(" ", "-").replace("/", "-")}.${outputFormat === "tsv" ? "tsv" : "fasta"}`,
@@ -410,19 +489,12 @@ export async function runExtractSubsequences(input, options = {}, context = {}) 
           : "text/x-fasta;charset=utf-8"
     },
     warnings,
+    notes,
     recordsProcessed: records.length,
     basesProcessed,
+    processedUnitLabel,
     charactersRemoved,
-    streams: {
-      fasta: makeTextStream(fastaOutput, "text/x-fasta"),
-      table: makeTableStream(extractSubsequencesTableColumns, tableRows, "extract-subsequences"),
-      sequenceRecords: {
-        kind: "sequence-records",
-        schema: "extract-subsequences",
-        alphabet,
-        records: extractedRecords
-      }
-    }
+    streams
   });
 }
 

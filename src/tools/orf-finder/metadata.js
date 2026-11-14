@@ -1,3 +1,4 @@
+import { ORF_DEFAULTS } from "../../core/orf-options.js";
 import { geneticCodes } from "../../core/genetic-code.js";
 import {
   LARGE_TEXT_ORF_THRESHOLD,
@@ -14,26 +15,28 @@ export const orfFinderMetadata = {
   tags: ["DNA", "RNA", "raw", "ORF", "genetic code", "translation"],
   summary:
     "Find open reading frames on forward and reverse-complement strands with selectable genetic codes and length filters.",
+  whenToUse: "Locate candidate coding regions in DNA/RNA and export their coordinates or translations under a chosen genetic code.",
   inputType: "DNA/RNA sequence",
   outputType: "ORF report, table, FASTA, overview, or linear DNA sequence viewer",
   runInWorker: true,
   workerModule: "../tools/orf-finder/run.js",
   workerExport: "runOrfFinderWorker",
   workflow: {
+    requestedOutputStreamsOption: "requestedOrfOutputs",
     inputs: [
       { id: "input", kind: "text", mediaType: "text/plain" },
       { id: "sequenceRecords", kind: "sequence-records", alphabet: "dna-rna" }
     ],
     outputs: [
       { id: "primary", kind: "text", mediaType: "text/plain" },
-      { id: "report", kind: "text", mediaType: "text/plain" },
-      { id: "tsv", kind: "text", mediaType: "text/tab-separated-values" },
-      { id: "table", kind: "table", schema: "orf-finder", columns: orfTableColumns },
-      { id: "nucleotideFasta", kind: "text", mediaType: "text/x-fasta" },
-      { id: "proteinFasta", kind: "text", mediaType: "text/x-fasta" },
-      { id: "overview", kind: "text", mediaType: "image/svg+xml" },
-      { id: "viewer", kind: "viewer", viewerType: "dna-sequence-viewer" },
-      { id: "orfRecords", kind: "orf-records", schema: "orf-finder" },
+      { id: "report", outputFormat: "report", kind: "text", mediaType: "text/plain" },
+      { id: "tsv", outputFormat: "tsv", kind: "text", mediaType: "text/tab-separated-values" },
+      { id: "table", outputFormat: "tsv", kind: "table", schema: "orf-finder", columns: orfTableColumns },
+      { id: "nucleotideFasta", outputFormat: "nucleotide-fasta", kind: "text", mediaType: "text/x-fasta" },
+      { id: "proteinFasta", outputFormat: "protein-fasta", kind: "text", mediaType: "text/x-fasta" },
+      { id: "overview", outputFormat: "svg-overview", kind: "text", mediaType: "image/svg+xml" },
+      { id: "viewer", outputFormat: "interactive-viewer", kind: "viewer", viewerType: "dna-sequence-viewer" },
+      { id: "orfRecords", outputFormat: "orf-records", kind: "orf-records", schema: "orf-finder" },
       { id: "warnings", kind: "warnings" }
     ]
   },
@@ -43,7 +46,7 @@ export const orfFinderMetadata = {
       type: "radio",
       label: "Strand",
       help: "Reverse-complement hits are reported using coordinates on the original submitted sequence.",
-      defaultValue: "both",
+      defaultValue: ORF_DEFAULTS.strand,
       choices: [
         { value: "both", label: "Both strands" },
         { value: "forward", label: "Forward only" },
@@ -54,8 +57,8 @@ export const orfFinderMetadata = {
       id: "startMode",
       type: "radio",
       label: "ORF start",
-      help: "Require start codon looks for ORFs that begin with a start codon in the selected genetic code. Any codon to stop reports every stop-delimited coding segment.",
-      defaultValue: "start-codon",
+      help: "Require start codon uses the selected code’s initiators and translates the first codon as methionine. Any codon to stop reports stop-delimited segments using ordinary codon translation.",
+      defaultValue: ORF_DEFAULTS.startMode,
       choices: [
         { value: "start-codon", label: "Require start codon" },
         { value: "any-codon", label: "Any codon to stop" }
@@ -66,7 +69,7 @@ export const orfFinderMetadata = {
       type: "radio",
       label: "Genetic code",
       help: "Selects the codon table used to identify start codons, stop codons, and translated amino acids.",
-      defaultValue: "1",
+      defaultValue: ORF_DEFAULTS.geneticCode,
       choices: geneticCodes.map((code) => ({ value: code.id, label: `${code.id}. ${code.name}` }))
     },
     {
@@ -74,17 +77,17 @@ export const orfFinderMetadata = {
       type: "number",
       label: "Minimum amino acids",
       help: "Filters ORFs by translated protein length. Terminal stop symbols are not counted as amino acids.",
-      defaultValue: 30,
+      defaultValue: ORF_DEFAULTS.minimumAminoAcids,
       min: 1,
       max: 1000000
     },
-    { id: "includePartial", type: "checkbox", label: "Include ORFs without terminal stop", defaultValue: true, help: "Reports ORFs that reach the sequence end before a stop codon is found." },
+    { id: "includePartial", type: "checkbox", label: "Include ORFs without terminal stop", defaultValue: ORF_DEFAULTS.includePartial, help: "Reports ORFs that reach the sequence end before a stop codon is found." },
     {
       id: "nestedMode",
       type: "radio",
       label: "Nested ORFs",
       help: "When several start codons occur before the same stop codon, choose whether to report only the first start or every possible nested ORF.",
-      defaultValue: "first-start",
+      defaultValue: ORF_DEFAULTS.nestedMode,
       choices: [
         { value: "first-start", label: "First start codon per stop region" },
         { value: "all-starts", label: "All start codons to the next stop" }
@@ -95,7 +98,7 @@ export const orfFinderMetadata = {
       type: "radio",
       label: "Sort ORFs",
       help: "Changes the displayed ORF order and ORF numbering in reports, tables, FASTA, maps, and viewers. Coordinates and ORF sequences are not recalculated.",
-      defaultValue: "start",
+      defaultValue: ORF_DEFAULTS.sortBy,
       choices: [
         { value: "start", label: "Start coordinate" },
         { value: "length-desc", label: "Length descending" },
@@ -103,12 +106,12 @@ export const orfFinderMetadata = {
         { value: "complete", label: "Complete ORFs first" }
       ]
     },
-    { id: "includeStopInProtein", type: "checkbox", label: "Include stop symbol in protein FASTA", defaultValue: false, visibleWhen: { option: "outputFormat", value: "protein-fasta" }, help: "Adds an asterisk at the end of complete translated ORFs in protein FASTA output." },
+    { id: "includeStopInProtein", type: "checkbox", label: "Include stop symbol in protein FASTA", defaultValue: ORF_DEFAULTS.includeStopInProtein, visibleWhen: { option: "outputFormat", value: "protein-fasta" }, help: "Adds an asterisk at the end of complete translated ORFs in protein FASTA output." },
     {
       id: "outputFormat",
       type: "radio",
       label: "Output format",
-      defaultValue: "svg-overview",
+      defaultValue: ORF_DEFAULTS.outputFormat,
       choices: [
         { value: "report", label: "Summary report" },
         { value: "tsv", label: "Summary table", resultView: { kind: "table", streamId: "table" } },
@@ -122,15 +125,22 @@ export const orfFinderMetadata = {
     {
       id: "advancedLimits", type: "group", label: "Limits", collapsible: true, collapsed: true,
       options: [
-        { type: "limit-value", label: "Detailed text report", value: `${LARGE_TEXT_ORF_THRESHOLD.toLocaleString("en-US")} ORFs`, detail: "Larger results switch to a summary; the table retains all found ORFs." },
+        { type: "limit-value", label: "Sequence input", value: "5,000,000 non-whitespace characters; 10,000 records", detail: "The shared FASTA reader rejects larger inputs. Each cleaned record and the selected result are held in memory." },
+        { type: "limit-value", label: "FASTA source", value: "512 MiB source; 150 MiB decoded text", detail: "Header ceilings are 10,000 characters per record and 5,000,000 combined; indexed sidecars are limited to 16 MiB." },
+        { type: "limit-value", label: "ORF candidates", value: "100,000 ORFs per run", detail: "Larger candidate sets are rejected before sequence materialization." },
+        { type: "limit-value", label: "ORF sequences and output", value: "26,214,400 characters each", detail: "Rejects larger combined ORF nucleotide/protein sequence and record-title content or serialized result payloads; no partial result is returned." },
+        { type: "limit-value", label: "Detailed text report", value: `${LARGE_TEXT_ORF_THRESHOLD.toLocaleString("en-US")} ORFs`, detail: "Larger results switch to a summary; select Summary table to generate all found ORFs." },
         { type: "limit-value", label: "ORF overview plot", value: `${SVG_OVERVIEW_ORF_THRESHOLD.toLocaleString("en-US")} ORFs, ${SVG_OVERVIEW_BASE_THRESHOLD.toLocaleString("en-US")} bases, and ${SVG_OVERVIEW_HEIGHT_THRESHOLD.toLocaleString("en-US")} px planned height`, detail: "The plot is withheld above any bound after optimally packing the visible intervals into lanes." },
-        { type: "note", text: `Above ${LARGE_TEXT_ORF_THRESHOLD.toLocaleString("en-US")} ORFs, the text report switches to a summary; the ORF table retains all found ORFs. An overview that exceeds its ORF, base, or packed-height bound is replaced with an explanation; choose the table, first-start nested ORFs, or narrower filters to see a drawable overview.` }
+        { type: "note", text: `Above ${LARGE_TEXT_ORF_THRESHOLD.toLocaleString("en-US")} ORFs, the text report switches to a summary; select Summary table to generate all found ORFs. An overview that exceeds its ORF, base, or packed-height bound is replaced with an explanation; choose the table, first-start nested ORFs, or narrower filters to see a drawable overview.` }
       ]
     },
     {
       id: "cleaningNote",
       type: "note",
-      text: "Input is cleaned to DNA/RNA IUPAC symbols before ORFs are found. Ambiguous codons are translated as X and do not count as starts or stops."
-    }
+      text: "Input is cleaned to DNA/RNA IUPAC symbols with gaps removed. Ambiguous codons translate as X and do not define starts or stops. RNA U is treated as T for ORF detection and nucleotide FASTA."
+    },
+    { type: "note", text: "Coordinates are 1-based and inclusive on the cleaned input, with start ≤ end on both strands. Nucleotide ORFs include the terminal stop; amino-acid lengths exclude it. Complete means a terminal stop was found. Partial ORFs omit incomplete terminal codons." },
+    { type: "note", text: "Each record is scanned as a linear sequence; the circular viewer changes the display only. ORFs are candidate coding regions and do not establish genes or expression. Splicing, frameshifts and context-dependent recoding are not modeled." },
+    { type: "note", text: "References:\n\nGenetic codes and alternative initiators: NCBI Genetic Codes." }
   ]
 };

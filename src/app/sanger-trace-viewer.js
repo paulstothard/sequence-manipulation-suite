@@ -14,6 +14,7 @@ import {
 } from "./viewer-inertia.js";
 import { installCanvasVisualInspection } from "./visual-inspection.js";
 import { installCanvasPinchZoom } from "./viewer-pinch-zoom.js";
+import { preserveRenderHeight } from "./preserve-render-height.js";
 import { viewerWheelZoomFactor } from "./viewer-wheel-zoom.js";
 import { copyTextWithFeedback } from "./copy-feedback.js";
 
@@ -591,11 +592,10 @@ function drawClipHandles(context, state, calls, plot, xForPosition, theme) {
   drawHandle(state.clipEnd, "clip-end", 1);
 }
 
-function drawTrace(canvas, state) {
+function drawTrace(canvas, state, { scale, theme = getTraceCanvasTheme(canvas) } = {}) {
   const context = canvas.getContext("2d");
   const rect = canvas.getBoundingClientRect();
-  const theme = getTraceCanvasTheme(canvas);
-  const dpr = window.devicePixelRatio || 1;
+  const dpr = scale ?? (window.devicePixelRatio || 1);
   const width = Math.max(720, Math.floor(rect.width * dpr));
   const height = Math.max(360, Math.floor(rect.height * dpr));
   if (canvas.width !== width || canvas.height !== height) {
@@ -1290,7 +1290,7 @@ function renderSingleSangerTraceViewer(container, data, documentActions) {
     event.preventDefault();
     stopActiveInertia();
     inspection.hide();
-    canvas.focus();
+    canvas.focus({ preventScroll: true });
     const handle = findClipHandle(canvas, state, event);
     dragState = {
       type: handle?.type ?? "pan",
@@ -1420,9 +1420,13 @@ function renderSingleSangerTraceViewer(container, data, documentActions) {
     downloadText(getFastq(), `${exportTitle()}.fastq`, "text/x-fastq;charset=utf-8");
     setStatus(panel, `Downloaded FASTQ (${exportScope()}).`);
   }, listenerOptions);
-  downloadPng.addEventListener("click", () => {
-    downloadCanvasPng(canvas, `${sequenceTitle(state)}-trace.png`);
-    setStatus(panel, "Downloaded trace PNG.");
+  downloadPng.addEventListener("click", async () => {
+    try {
+      await downloadCanvasPng(canvas, `${sequenceTitle(state)}-trace.png`, {
+        drawSnapshot: (_context, target, { scale }) => drawTrace(target, state, { scale, theme: getTraceCanvasTheme(canvas) })
+      });
+      setStatus(panel, "Downloaded trace PNG.");
+    } catch (error) { setStatus(panel, error.message); }
   }, listenerOptions);
   downloadSvg.addEventListener("click", () => {
     downloadCanvasSvg(canvas, `${sequenceTitle(state)}-trace.svg`, {
@@ -1506,7 +1510,7 @@ function renderSangerTraceSetViewer(container, data, documentActions) {
 
   const traceStates = new Map(data.traceViews.map((trace,index)=>[index,{bases:trace.baseCalls.map(c=>c.base).join(""),clipStart:trace.clipStart??1,clipEnd:trace.clipEnd??trace.baseCalls.length,geneticCode:String(trace.geneticCode||'1'),showForwardTranslations:trace.showForwardTranslations===true,showReverseTranslations:trace.showReverseTranslations===true}]));
   let previousIndex = null;
-  const renderSelected = () => {
+  const renderSelected = () => preserveRenderHeight(traceHost, () => {
     if (previousIndex !== null && traceHost._sms3TraceState) traceStates.set(previousIndex,traceHost._sms3TraceState.read());
     traceHost._sms3VisualCleanup?.();
     traceHost.innerHTML = "";
@@ -1514,7 +1518,7 @@ function renderSangerTraceSetViewer(container, data, documentActions) {
     renderSingleSangerTraceViewer(traceHost, data.traceViews[index], documentActions);
     if (traceStates.has(index)) traceHost._sms3TraceState.apply(traceStates.get(index));
     previousIndex = index;
-  };
+  });
 
   selector.addEventListener("change", renderSelected, listenerOptions);
   container._sms3VisualCleanup = () => {

@@ -1,3 +1,19 @@
+export interface FigureSetup {
+  spacing?: number;
+  legendSize?: number;
+  active: boolean;
+  preset: "original" | "single" | "double" | "slide" | "poster" | "custom";
+  width: number;
+  height: number;
+  autoHeight: boolean;
+  text: number;
+  ticks: number;
+  title: number;
+  line: number;
+  showTitle?: boolean;
+  titleText?: string;
+}
+
 export type Scalar = string | number | boolean | null;
 export type RootInterpretation = "rooted" | "unrooted" | "unspecified";
 export interface TreeComment {
@@ -67,15 +83,17 @@ export interface Presentation {
   background: string;
   spacing: number;
   width: number;
+  figureSetup?: FigureSetup | null;
   showSupport: boolean;
-  supportFilter?: "auto" | "all" | "minimum";
   supportField?: string;
   supportMinimum?: number | null;
+  supportFilter?: "auto" | "all" | "minimum" | "below-maximum";
   supportPrecision?: number;
   supportSize?: number;
   supportPosition?: "node" | "branch";
   branchShape?: "square" | "slanted" | "curved";
   unrootedAlgorithm?: "equal-angle" | "equal-daylight";
+  unrootedLabels?: "branch" | "horizontal";
   labelAlignment?: "aligned" | "at-tip";
   labelBackground?: string;
   showLabelBackground?: boolean;

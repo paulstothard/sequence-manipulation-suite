@@ -3,15 +3,17 @@ import vectorSummary from "../../reference-data/vector-contamination/summary.js"
 import { VECTOR_CONTAMINATION_SVG_MAP_HIT_THRESHOLD } from "./run.js";
 import { makeFastaSourceInputOptions } from "../fasta-source-options.js";
 import { STREAMED_FASTA_SCAN_NOTE } from "../fasta-input-policy.js";
+import { VECTOR_INPUT_DEFAULTS as defaults, VECTOR_SENSITIVITY_PRESETS } from '../../core/vector-contamination-options.js';
 
 export const vectorContaminationScannerMetadata = {
   id: "vector-contamination-scanner",
   name: "Vector Contamination Scanner",
   category: "Sequence Analysis",
   tags: ["DNA", "RNA", "raw", "vector", "adapter", "contamination", "reference data"],
-  summary: "Screen DNA/RNA sequences for vector-like contamination using bundled indexed references.",
+  summary: "Locate candidate vector matches in DNA/RNA sequences against bundled UniVec_Core references.",
+  whenToUse: "Review candidate vector or adapter contamination in DNA/RNA records before deciding whether a matched region should be removed.",
   inputType: "DNA/RNA sequence, FASTA/FASTA.GZ, or indexed FASTA",
-  outputType: "Report, table, text annotation map, linear contamination map, or linear DNA sequence viewer",
+  outputType: "Report, table, text annotation map, linear contamination map, or linear/circular DNA sequence viewer",
   runInWorker: true,
   workerModule: "../tools/vector-contamination-scanner/run.js",
   workerExport: "runVectorContaminationScanner",
@@ -41,7 +43,8 @@ export const vectorContaminationScannerMetadata = {
       id: "sensitivity",
       type: "select",
       label: "Sensitivity",
-      defaultValue: "balanced",
+      defaultValue: defaults.sensitivity,
+      help: Object.entries(VECTOR_SENSITIVITY_PRESETS).map(([name, value]) => `${name}: ${value.minimumAlignedLength} bases, ${value.minimumPercentIdentity}% identity`).join('; ') + '. Explicit numeric thresholds override the preset. Confidence tiers are local heuristics: strong requires at least 30 bases and 95% identity; moderate requires 16 bases and 90%; remaining hits are low.',
       choices: [
         { value: "high-confidence", label: "High confidence" },
         { value: "balanced", label: "Balanced" },
@@ -52,7 +55,8 @@ export const vectorContaminationScannerMetadata = {
       id: "strand",
       type: "radio",
       label: "Strand",
-      defaultValue: "both",
+      help: "U is compared as T. Only equal A/C/G/T symbols count as matches; ambiguity symbols count as mismatches and retain their positions.",
+      defaultValue: defaults.strand,
       choices: [
         { value: "both", label: "Both strands" },
         { value: "forward", label: "Forward only" }
@@ -62,7 +66,9 @@ export const vectorContaminationScannerMetadata = {
       id: "minimumAlignedLength",
       type: "number",
       label: "Minimum aligned length",
-      defaultValue: 30,
+      defaultValue: defaults.minimumAlignedLength,
+      placeholder: "From sensitivity",
+      help: "Leave empty to use the selected sensitivity preset. Matches require an exact 11-base A/C/G/T seed.",
       min: 8,
       max: 500
     },
@@ -70,7 +76,10 @@ export const vectorContaminationScannerMetadata = {
       id: "minimumPercentIdentity",
       type: "number",
       label: "Minimum percent identity",
-      defaultValue: 90,
+      defaultValue: defaults.minimumPercentIdentity,
+      placeholder: "From sensitivity",
+      step: "any",
+      help: "Leave empty to use the selected sensitivity preset. The cutoff uses unrounded identity.",
       min: 70,
       max: 100
     },
@@ -78,7 +87,8 @@ export const vectorContaminationScannerMetadata = {
       id: "outputFormat",
       type: "radio",
       label: "Output format",
-      defaultValue: "svg-map",
+      help: "Scanning is linear, including for the circular viewer; origin-spanning hits are not searched. Overlapping hits to the same reference and strand are consolidated at 80% overlap of the shorter hit.",
+      defaultValue: defaults.outputFormat,
       choices: [
         { value: "report", label: "Summary report" },
         { value: "tsv", label: "Table", resultView: { kind: "table", streamId: "table" } },
@@ -95,26 +105,26 @@ export const vectorContaminationScannerMetadata = {
       collapsible: true,
       collapsed: true,
       options: [
-        { id: "vectorLargeSourceLimitNote", type: "note", text: "Large FASTA scans are capped at 10 million bases, 5 million A/C/G/T query windows, 100,000 seed extensions, 20,000 candidate hits, and 25 MiB of materialized output. Report, table, and linear map outputs are available; text maps and viewers require bounded pasted input." },
+        { id: "vectorLargeSourceLimitNote", type: "note", text: "Scans are capped at 10 million non-whitespace input characters, 10,000 records, 5 million A/C/G/T query windows, 100,000 seed extensions, 20,000 candidate hits, and 26,214,400 materialized-output characters. Report, table, and linear map outputs are available; text maps and viewers require bounded pasted input." },
         {
           id: "maxHitsPerRecord",
           type: "number",
           label: "Maximum hits per record",
-          defaultValue: 50,
+          defaultValue: defaults.maxHitsPerRecord,
           min: 1,
           max: 1000
         },
         {
           id: "vectorContaminationMapLimitNote",
           type: "note",
-          text: `Linear contamination map output is capped at ${VECTOR_CONTAMINATION_SVG_MAP_HIT_THRESHOLD.toLocaleString()} shown hits. Table output contains all hit coordinates. ${STREAMED_FASTA_SCAN_NOTE}`
+          text: `Linear contamination map output is capped at ${VECTOR_CONTAMINATION_SVG_MAP_HIT_THRESHOLD.toLocaleString()} shown hits. Table output contains all retained hit coordinates, subject to the per-record cap. ${STREAMED_FASTA_SCAN_NOTE}`
         }
       ]
     },
     {
       id: "databaseNote",
       type: "note",
-      text: `${vectorSummary.sourceName} ${vectorSummary.sourceVersion}; ${vectorSummary.recordCount} records and ${vectorSummary.totalBases.toLocaleString()} bases. SMS3 uses a browser-local ungapped scanner, not NCBI VecScreen BLAST.`
+      text: `${vectorSummary.sourceName} ${vectorSummary.sourceVersion}; ${vectorSummary.recordCount} records and ${vectorSummary.totalBases.toLocaleString()} bases. Candidates require an exact 11-base seed and ungapped extension (+1 match, -5 mismatch; X-drop 12). NCBI VecScreen classifications are not reproduced; indel-containing alignments can be missed.`
     }
   ]
 };

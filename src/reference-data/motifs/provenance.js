@@ -1,6 +1,6 @@
 export const motifProvenance = {
   "dataset": "SMS3 motif references",
-  "version": "2026-05 expanded motif references with JASPAR CORE",
+  "version": "2026-11 full-precision JASPAR 2024 CORE weights; protein PTS2 coordinates and 14-3-3 spacing",
   "accessDate": "2026-05-22",
   "description": "Bundled DNA/RNA and protein motif records for SMS3 motif scanners, including curated exact/IUPAC/regex records, expanded cited protein short-linear-motif records, and JASPAR CORE DNA transcription-factor PWM/PSSM profiles.",
   "license": "Mixed project-curated cited motif records and JASPAR CORE CC BY 4.0 derived PWM records. Protein databases with more restrictive terms are tracked as candidates and are not bundled wholesale.",

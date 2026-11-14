@@ -1,3 +1,6 @@
+import { DEFAULT_ALIGNMENT_SVG_CELL_LIMIT } from "../../core/alignment-svg.js";
+import { MUSCLE_RUNTIME } from "../../vendor/biowasm/muscle-runtime.js";
+import { MSA_DEFAULTS, MSA_STREAM_FORMATS } from "../../core/multiple-alignment-options.js";
 import { treeDocumentContract } from "../../core/tree-document-stream.js";
 import {
   MULTIPLE_ALIGNMENT_ENGINES,
@@ -29,13 +32,17 @@ function buildMetadata(alphabet) {
     category: "Sequence Alignment & Assembly",
     tags: [isProtein ? "protein" : "DNA", "FASTA", "alignment", ...(isCodingDna ? ["codon", "translation"] : [])],
     summary: isCodingDna
-      ? "Translate coding DNA/RNA, align the proteins with MUSCLE or the SMS3 progressive aligner, and project the alignment back to codons."
+      ? "Align coding DNA/RNA through translated proteins, project the alignment back to codons, and report nucleotide identities or build neighbor-joining trees."
       : `Align multiple ${isProtein ? "protein" : "DNA/RNA"} sequences supplied as FASTA or retrieved by ${isProtein ? "UniProt or NCBI protein" : "NCBI nucleotide"} accession, using MUSCLE or the SMS3 progressive aligner.`,
+    whenToUse: isCodingDna
+      ? "Compare homologous coding sequences supplied in the same orientation and reading frame while preserving whole codons."
+      : `Compare homologous ${isProtein ? "protein" : "DNA/RNA"} sequences by aligned positions, pairwise identity or an exploratory neighbor-joining tree.`,
     inputType: `${isCodingDna ? "Coding DNA/RNA" : isProtein ? "Protein" : "DNA/RNA"} FASTA records`,
     outputType: isCodingDna
       ? "Multiple alignment report, aligned codon FASTA, aligned translated protein FASTA, CLUSTAL-format text, table, colored alignment, coding-DNA sequence logo, or neighbor-joining tree in Tree Viewer"
       : "Multiple alignment report, aligned FASTA, CLUSTAL-format text, table, colored alignment, sequence logo, or neighbor-joining tree in Tree Viewer",
     workflow: {
+      requestedOutputStreamsOption: "requestedAlignmentOutputs",
       inputs: [
         { id: "input", kind: "text", mediaType: "text/plain" },
         { id: "sequenceRecords", kind: "sequence-records", alphabet: isProtein ? "protein" : "dna-rna", minRecords: 2 }
@@ -55,10 +62,11 @@ function buildMetadata(alphabet) {
         { id: "treeSvg", kind: "text", mediaType: "image/svg+xml" },
         { id: "distanceTable", kind: "table", schema: isCodingDna ? "multiple-alignment-coding-dna-distances" : isProtein ? "multiple-alignment-protein-distances" : "multiple-alignment-dna-rna-distances", columns: multipleAlignmentDistanceTableColumns },
         { id: "identityMatrix", kind: "text", mediaType: "text/tab-separated-values" },
+        { id: "identityMatrixTable", kind: "table", schema: `multiple-alignment-${alphabet}-identity-matrix`, dynamicColumns: true, label: "Identity matrix table" },
         { id: "identityPairs", kind: "table", schema: isCodingDna ? "multiple-alignment-coding-dna-identity" : isProtein ? "multiple-alignment-protein-identity" : "multiple-alignment-dna-rna-identity", columns: multipleAlignmentIdentityTableColumns },
         { id: "identityHeatmap", kind: "text", mediaType: "image/svg+xml" },
         { id: "warnings", kind: "warnings" }
-      ]
+      ].map(contract => ({ ...contract, ...(MSA_STREAM_FORMATS[contract.id] ? { outputFormat: MSA_STREAM_FORMATS[contract.id] } : {}) }))
     },
     runInWorker: true,
     workerModule: "../tools/multiple-sequence-alignment/run.js",
@@ -68,36 +76,36 @@ function buildMetadata(alphabet) {
         id: "alignmentEngine",
         type: "radio",
         label: "Alignment engine",
-        defaultValue: MULTIPLE_ALIGNMENT_ENGINES.muscle,
+        defaultValue: MSA_DEFAULTS.alignmentEngine,
         visibleWhen: { option: "outputFormat", value: alignmentOutputFormats },
         choices: [
           { value: MULTIPLE_ALIGNMENT_ENGINES.muscle, label: "MUSCLE" },
           { value: MULTIPLE_ALIGNMENT_ENGINES.sms3, label: "SMS3 progressive" }
         ],
-        help: "Browser runs use bundled local MUSCLE files for the MUSCLE engine. Select SMS3 progressive when you want the smaller deterministic teaching/review aligner."
+        help: "MUSCLE aligns the translated proteins for coding DNA/RNA and the submitted symbols for other sequence types. SMS3 progressive merges global alignments to a selected center sequence."
       },
       ...(isProtein || isCodingDna ? [] : [
-        { id: "matchScore", type: "number", label: "Match score", defaultValue: 5, step: 1, visibleWhen: pairwiseScoringVisibleWhen },
-        { id: "similarScore", type: "number", label: "Ambiguous overlap score", defaultValue: 1, step: 1, visibleWhen: pairwiseScoringVisibleWhen },
-        { id: "mismatchScore", type: "number", label: "Mismatch score", defaultValue: -4, step: 1, visibleWhen: pairwiseScoringVisibleWhen }
+        { id: "matchScore", type: "number", label: "Match score", defaultValue: MSA_DEFAULTS.matchScore, step: 1, visibleWhen: pairwiseScoringVisibleWhen },
+        { id: "similarScore", type: "number", label: "Ambiguous overlap score", defaultValue: MSA_DEFAULTS.similarScore, step: 1, visibleWhen: pairwiseScoringVisibleWhen },
+        { id: "mismatchScore", type: "number", label: "Mismatch score", defaultValue: MSA_DEFAULTS.mismatchScore, step: 1, visibleWhen: pairwiseScoringVisibleWhen }
       ]),
       ...(isCodingDna ? [
         {
           id: "geneticCode",
           type: "select",
           label: "Genetic code",
-          defaultValue: "1",
+          defaultValue: MSA_DEFAULTS.geneticCode,
           choices: geneticCodes.map((code) => ({ value: code.id, label: `${code.id}. ${code.name}` })),
           help: "Used to translate complete codons before the protein-guided alignment. Stop and ambiguous codons are scored as X."
         }
       ] : []),
-      { id: "gapOpen", type: "number", label: "Gap opening penalty", defaultValue: 10, min: 0, step: 1, visibleWhen: pairwiseScoringVisibleWhen },
-      { id: "gapExtend", type: "number", label: "Gap extension penalty", defaultValue: 1, min: 0, step: 1, visibleWhen: pairwiseScoringVisibleWhen },
+      { id: "gapOpen", type: "number", label: "Gap opening penalty", defaultValue: MSA_DEFAULTS.gapOpen, min: 0, step: 1, visibleWhen: pairwiseScoringVisibleWhen },
+      { id: "gapExtend", type: "number", label: "Gap extension penalty", defaultValue: MSA_DEFAULTS.gapExtend, min: 0, step: 1, visibleWhen: pairwiseScoringVisibleWhen },
       {
         id: "showConsensusLine",
         type: "checkbox",
         label: "Show consensus line",
-        defaultValue: true,
+        defaultValue: MSA_DEFAULTS.showConsensusLine,
         visibleWhen: { option: "outputFormat", value: "svg-color" },
         help: "Shows the per-column conservation symbols beneath each block of the colored alignment figure. This changes only the figure display; alignment data and other output formats are unchanged."
       },
@@ -105,7 +113,7 @@ function buildMetadata(alphabet) {
         id: "outputFormat",
         type: "radio",
         label: "Output format",
-        defaultValue: "svg-color",
+        defaultValue: MSA_DEFAULTS.outputFormat,
         choices: [
           { value: "clustal", label: "CLUSTAL-format text alignment" },
           { value: "aligned-fasta", label: isCodingDna ? "Aligned codon FASTA" : "Aligned FASTA" },
@@ -117,7 +125,7 @@ function buildMetadata(alphabet) {
           { value: "tree-viewer", label: "Tree Viewer" },
           { value: "nj-tree", label: "Neighbor-joining tree report" },
           { value: "nj-tree-svg", label: "Midpoint-rooted NJ tree" },
-          { value: "identity-matrix", label: "Identity matrix table" },
+          { value: "identity-matrix", label: "Identity matrix table", resultView: { kind: "table", streamId: "identityMatrixTable" } },
           { value: "identity-heatmap", label: "Identity heatmap" }
         ],
         help: "Tree outputs use the selected alignment engine. Identity matrix and heatmap outputs instead use all-vs-all SMS3 affine pairwise alignments with the scoring controls shown for those outputs."
@@ -129,6 +137,8 @@ function buildMetadata(alphabet) {
         collapsible: true,
         collapsed: true,
         options: [
+          { id: "coloredAlignmentCells", type: "limit-value", label: "Maximum colored alignment cells", value: DEFAULT_ALIGNMENT_SVG_CELL_LIMIT, visibleWhen: { option: "outputFormat", value: "svg-color" }, help: "Fixed display-density ceiling. Larger alignments remain available as FASTA or alignment tables." },
+          { id: "identityHeatmapCells", type: "limit-value", label: "Maximum identity heatmap cells", value: 900, visibleWhen: { option: "outputFormat", value: "identity-heatmap" }, help: "Fixed display-density ceiling (30 sequences). Use Identity matrix table for larger comparisons." },
           { id: "maxAlignmentRecords", type: "limit-value", label: "Maximum input records", value: MAX_MSA_SEQUENCES },
           {
             id: "maxTotalSymbols",
@@ -160,8 +170,8 @@ function buildMetadata(alphabet) {
         type: "note",
         visibleWhen: { option: "outputFormat", value: alignmentOutputFormats },
         text: isCodingDna
-          ? "Coding DNA/RNA is split into complete codons, translated, aligned in protein space, and projected back to codons. With the MUSCLE engine, SMS3 uses vendored BioWasm MUSCLE 5.1.0. Neighbor-joining and identity matrix distances are calculated from the projected nucleotide alignment to preserve synonymous-change resolution."
-          : `With the MUSCLE engine, SMS3 uses vendored BioWasm MUSCLE 5.1.0. The SMS3 progressive engine chooses a center sequence from pairwise global alignments, then merges center-to-sequence alignments. ${isProtein ? "SMS3 progressive protein scoring uses BLOSUM62." : "SMS3 progressive DNA/RNA scoring uses identity plus ambiguous IUPAC overlap."} Neighbor-joining tree output is built from an alignment-derived p-distance matrix and is intended for quick review. Identity matrix outputs use all-vs-all optimal pairwise alignments.`
+          ? "Supply homologous coding sequences in the same orientation and frame, starting at the first codon base. Complete codons are translated with the selected genetic code, aligned, and projected back to nucleotides; frameshifts are not inferred. Uracil becomes thymine and existing gaps are removed. Stop and ambiguous codons use X in the aligned protein output. Trees use nucleotide p-distance with pairwise gap deletion."
+          : `With the MUSCLE engine, SMS3 uses MUSCLE ${MUSCLE_RUNTIME.versionLabel}. The SMS3 progressive engine chooses a center sequence from pairwise global alignments, then merges center-to-sequence alignments. ${isProtein ? "SMS3 progressive protein scoring uses BLOSUM62." : "SMS3 progressive DNA/RNA scoring uses identity plus ambiguous IUPAC overlap."} Neighbor-joining tree output is built from an alignment-derived p-distance matrix and is intended for quick review. Identity matrix outputs use all-vs-all optimal pairwise alignments.`
       },
       {
         id: "citationNote",
@@ -173,7 +183,7 @@ function buildMetadata(alphabet) {
         id: "identityMethodNote",
         type: "note",
         visibleWhen: { option: "outputFormat", value: identityOutputFormats },
-        text: `Identity outputs use all-vs-all SMS3 affine global pairwise alignments. ${isCodingDna ? "Coding sequences are translated first and aligned in protein space before identity is measured on the projected nucleotides." : isProtein ? "Protein substitutions use BLOSUM62." : "DNA/RNA matches use identity and IUPAC ambiguity overlap scoring."} Gap columns are excluded from identity percentages. References: Needleman and Wunsch 1970; Gotoh 1982${isProtein || isCodingDna ? "; Henikoff and Henikoff 1992" : ""}.`
+        text: `Identity outputs use all-vs-all SMS3 affine global pairwise alignments. ${isCodingDna ? "Coding sequences are translated first and aligned in protein space before identity is measured on the projected nucleotides." : isProtein ? "Protein substitutions use BLOSUM62." : "DNA/RNA matches use identity and IUPAC ambiguity overlap scoring."} Gap columns are excluded from identity percentages; ambiguity symbols are compared literally. References: Needleman and Wunsch 1970; Gotoh 1982${isProtein || isCodingDna ? "; Henikoff and Henikoff 1992" : ""}.`
       }
     ]
   };

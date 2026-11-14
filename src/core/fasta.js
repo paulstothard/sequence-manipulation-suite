@@ -1,8 +1,16 @@
 import { assertPlainSequenceOrFasta } from "./sequence-input-format.js";
 
-export function parseSequenceInput(input, fallbackTitle = "sequence") {
+function assertFastaHeaderPlacement(text) {
+  const normalized = text.trimStart();
+  if (/\n[ \t]+>/.test(normalized) || (!normalized.startsWith(">") && /\n>/.test(normalized))) {
+    throw new Error("FASTA headers must start at the beginning of a line, with no sequence text before the first header.");
+  }
+}
+
+export function parseSequenceInput(input, fallbackTitle = "sequence", { strictHeaders = false } = {}) {
   const text = String(input ?? "").replace(/\r\n?/g, "\n").trim();
   assertPlainSequenceOrFasta(text);
+  if (strictHeaders) assertFastaHeaderPlacement(text);
   if (!text) {
     return [];
   }
@@ -40,9 +48,7 @@ export function parseFilterSequenceInput(input, fallbackTitle = "sequence") {
   }
 
   const normalized = text.trimStart();
-  if (/\n[ \t]+>/.test(normalized) || (!normalized.startsWith(">") && /\n>/.test(normalized))) {
-    throw new Error("FASTA headers must start at the beginning of a line, with no sequence text before the first header.");
-  }
+  assertFastaHeaderPlacement(normalized);
   if (!normalized.startsWith(">")) {
     return [
       {

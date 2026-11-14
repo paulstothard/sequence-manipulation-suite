@@ -1,3 +1,5 @@
+import { isolateSvgStyles } from "./svg-style-scope.js";
+import { sequenceCoordinateUnit } from "./sequence-coordinate-unit.js";
 import {
   makePublicationPlotStyle,
   publicationSvgAttributes,
@@ -696,7 +698,7 @@ function renderLinearRecord(record, rowTop, styles, classes, options = {}) {
   const hasRecordNotes = noteCount > 0 || (options.forceLinearCircularNote && record.topology === "circular");
   const rowHeight = segmentOffset + (hasRecordNotes ? 18 + Math.max(1, noteCount) * 18 : -10);
   const parts = [`<g class="map-record" transform="translate(0 ${rowTop})">`];
-  const unit = record.molecule === "protein" ? "aa" : "bp";
+  const unit = sequenceCoordinateUnit(record);
   const recordTitle = record.molecule === "protein"
     ? `${record.title} (${sequenceLength.toLocaleString()} ${unit})`
     : `${record.title} linear feature map (${sequenceLength.toLocaleString()} ${unit})`;
@@ -1099,7 +1101,11 @@ function renderCircularRecord(record, styles, classes, recordIndex) {
   return { svg: parts.join("\n"), height: hiddenLabels > 0 ? 780 : 736 };
 }
 
-export function renderSequenceMap({ title = "Feature map", records = [], styles = defaultFeatureStyles, layout = "auto" } = {}) {
+export function renderSequenceMap(...args) {
+  return isolateSvgStyles(renderSequenceMapUnscoped(...args));
+}
+
+function renderSequenceMapUnscoped({ title = "Feature map", records = [], styles = defaultFeatureStyles, layout = "auto" } = {}) {
   const drawableRecords = records.filter((record) => record.length > 0);
   if (drawableRecords.length === 0) {
     const emptyStyle = makePublicationPlotStyle(640, 130);

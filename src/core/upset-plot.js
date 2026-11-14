@@ -1,3 +1,4 @@
+import { isolateSvgStyles } from "./svg-style-scope.js";
 import "../vendor/d3/d3.min.js";
 import { makePublicationPlotStyle, publicationSvgAttributes, SMS3_PLOT_THEME } from "./publication-plot-style.js";
 
@@ -79,7 +80,11 @@ function makeBarScale(values, width, requested = "auto") {
   };
 }
 
-export function makeUpsetStyleSvg({
+export function makeUpsetStyleSvg(...args) {
+  return isolateSvgStyles(makeUpsetStyleSvgUnscoped(...args));
+}
+
+function makeUpsetStyleSvgUnscoped({
   title = "UpSet-style plot",
   subtitle = "Bars show distinct item counts for each intersection; dots show set membership.",
   setLabels = [],

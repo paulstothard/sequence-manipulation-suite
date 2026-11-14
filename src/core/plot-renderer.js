@@ -1,3 +1,4 @@
+import { isolateSvgStyles } from "./svg-style-scope.js";
 import "../vendor/d3/d3.min.js";
 import { annotatePointCrowding, pointCrowdingFact } from "./point-plot-inspection.js";
 import { fitSideLegendLabel, sideLegendLayout } from "./plot-side-legend.js";
@@ -75,7 +76,11 @@ export function escapeXml(value) {
     .replaceAll('"', "&quot;");
 }
 
-export function makePlaceholderSvg(title, lines, options = {}) {
+export function makePlaceholderSvg(...args) {
+  return isolateSvgStyles(makePlaceholderSvgUnscoped(...args));
+}
+
+function makePlaceholderSvgUnscoped(title, lines, options = {}) {
   const width = options.width ?? 760;
   const safeLines = lines.map((line) => escapeXml(line));
   const height = 120 + safeLines.length * 20;
@@ -98,7 +103,9 @@ export function makeLinePlotSpec({
   xLabel,
   yLabel,
   series,
+  xDomain,
   yDomain,
+  clip = false,
   width = 920,
   height,
   colors = DEFAULT_COLORS,
@@ -119,7 +126,9 @@ export function makeLinePlotSpec({
     yLabel,
     width,
     height,
+    xDomain,
     yDomain,
+    clip,
     colors,
     showLegend,
     pointMarkers,
@@ -376,7 +385,7 @@ export function makeObservablePlotConfig(spec) {
   );
   return {
     title: spec.title,
-    x: { label: spec.xLabel },
+    x: { label: spec.xLabel, domain: spec.xDomain },
     y: { label: spec.yLabel, domain: spec.yDomain },
     color: { legend: Boolean(spec.showLegend) },
     marks: [
@@ -384,19 +393,19 @@ export function makeObservablePlotConfig(spec) {
         ? [{
             type: "areaY",
             data: bandRows,
-            options: { x: "x", y1: "y1", y2: "y2", fill: "band", title: "title" }
+            options: { clip: spec.clip, x: "x", y1: "y1", y2: "y2", fill: "band", title: "title" }
           }]
         : []),
       {
         type: "line",
         data: rows,
-        options: { x: "x", y: "y", stroke: "series" }
+        options: { clip: spec.clip, x: "x", y: "y", stroke: "series" }
       },
       ...(markerRows.length > 0
         ? [{
             type: "dot",
             data: markerRows,
-            options: { x: "x", y: "y", fill: "series", title: "title", r: 2.5 }
+            options: { clip: spec.clip, x: "x", y: "y", fill: "series", title: "title", r: 2.5 }
           }]
         : [])
     ],
@@ -404,7 +413,11 @@ export function makeObservablePlotConfig(spec) {
   };
 }
 
-export function renderCategoricalBarPlotSvg(spec) {
+export function renderCategoricalBarPlotSvg(...args) {
+  return isolateSvgStyles(renderCategoricalBarPlotSvgUnscoped(...args));
+}
+
+function renderCategoricalBarPlotSvgUnscoped(spec) {
   const d3 = getD3();
   const width = spec.width ?? 1120;
   const noteLines = (spec.notes ?? []).flatMap((note) => wrapText(note, figureWrapCharacters(width)));
@@ -623,7 +636,11 @@ function interpolateColor(value, domain = [0, 100], colorScheme = "light-viridis
   return interpolateRgbStops(stops, t);
 }
 
-export function renderHeatmapPlotSvg(spec) {
+export function renderHeatmapPlotSvg(...args) {
+  return isolateSvgStyles(renderHeatmapPlotSvgUnscoped(...args));
+}
+
+function renderHeatmapPlotSvgUnscoped(spec) {
   const xCategories = spec.xCategories ?? [];
   const yCategories = spec.yCategories ?? [];
   const cellCount = xCategories.length * yCategories.length;
@@ -814,7 +831,11 @@ function figureHeaderLayout(width, subtitle = "", options = {}) {
   };
 }
 
-export function renderLinePlotSvg(spec) {
+export function renderLinePlotSvg(...args) {
+  return isolateSvgStyles(renderLinePlotSvgUnscoped(...args));
+}
+
+function renderLinePlotSvgUnscoped(spec) {
   const d3 = getD3();
   const series = spec.series.filter((item) => item.points.some((point) => point.y !== null && point.y !== undefined));
   const bands = (spec.bands ?? []).filter((item) =>
@@ -851,8 +872,8 @@ export function renderLinePlotSvg(spec) {
   ];
   const minX = Math.min(...allPoints.map((point) => point.x));
   const maxX = Math.max(...allPoints.map((point) => point.x));
-  const xMin = Number.isFinite(minX) ? minX : 1;
-  const xMax = Number.isFinite(maxX) ? maxX : 1;
+  const xMin = spec.xDomain?.[0] ?? (Number.isFinite(minX) ? minX : 1);
+  const xMax = spec.xDomain?.[1] ?? (Number.isFinite(maxX) ? maxX : 1);
   const [yMin, yMax] = spec.yDomain ?? [
     Math.min(0, ...allPoints.map((point) => point.y)),
     Math.max(1, ...allPoints.map((point) => point.y))
@@ -865,10 +886,10 @@ export function renderLinePlotSvg(spec) {
     : null;
   const scaleX = (x) => xScale
     ? xScale(x)
-    : margin.left + ((x - xMin) / Math.max(1, xMax - xMin)) * plotWidth;
+    : margin.left + ((x - xMin) / (xMax - xMin || 1)) * plotWidth;
   const scaleY = (y) => yScale
     ? yScale(y)
-    : margin.top + ((yMax - y) / Math.max(1, yMax - yMin)) * plotHeight;
+    : margin.top + ((yMax - y) / (yMax - yMin || 1)) * plotHeight;
   const inspectablePointGeometry = annotatePointCrowding(series.flatMap((item) => item.points
     .filter((point) => point.y !== null && point.y !== undefined)
     .map((point) => ({
@@ -879,7 +900,7 @@ export function renderLinePlotSvg(spec) {
   const geometryByPoint = new Map(inspectablePointGeometry.map((point) => [point.sourcePoint, point]));
   const yTicks = yScale
     ? yScale.ticks(yMin < 0 && yMax > 0 ? 5 : 4)
-    : yMin < 0 ? [yMin, yMin / 2, 0, yMax / 2, yMax] : [yMin, yMax * 0.25, yMax * 0.5, yMax * 0.75, yMax];
+    : Array.from({ length: 5 }, (_, index) => yMin + (yMax - yMin) * index / 4);
   const xTicks = xMax === xMin
     ? [xMin]
     : xScale
@@ -938,6 +959,10 @@ export function renderLinePlotSvg(spec) {
     parts.push(`<line class="zero" x1="${margin.left}" y1="${zeroY.toFixed(2)}" x2="${width - margin.right}" y2="${zeroY.toFixed(2)}"></line>`);
   }
 
+  if (spec.clip) {
+    const clipId = `line-clip-${width}-${height}-${margin.left}-${margin.top}-${margin.right}-${margin.bottom}`.replaceAll(".", "_");
+    parts.push(`<defs><clipPath id="${clipId}"><rect x="${margin.left}" y="${margin.top}" width="${plotWidth}" height="${plotHeight}"/></clipPath></defs><g clip-path="url(#${clipId})">`);
+  }
   for (const band of bands) {
     const pointRows = band.points
       .filter((point) => point.y0 !== null && point.y0 !== undefined && point.y1 !== null && point.y1 !== undefined)
@@ -952,9 +977,18 @@ export function renderLinePlotSvg(spec) {
   }
 
   for (const item of series) {
-    const pointRows = item.points.filter((point) => point.y !== null && point.y !== undefined);
-    const points = pointRows.map((point) => `${scaleX(point.x).toFixed(2)},${scaleY(point.y).toFixed(2)}`);
-    if (points.length > 1) {
+    // Undefined measurements separate contiguous runs in both fallback and live plots.
+    const runs = [];
+    let currentRun = [];
+    for (const point of item.points) {
+      if (point.y === null || point.y === undefined) {
+        if (currentRun.length) runs.push(currentRun);
+        currentRun = [];
+      } else currentRun.push(point);
+    }
+    if (currentRun.length) runs.push(currentRun);
+    for (const pointRows of runs.filter((run) => run.length > 1)) {
+      const points = pointRows.map((point) => `${scaleX(point.x).toFixed(2)},${scaleY(point.y).toFixed(2)}`);
       const linePath = d3?.line
         ? d3.line()
             .x((point) => scaleX(point.x))
@@ -966,7 +1000,7 @@ export function renderLinePlotSvg(spec) {
       );
     }
     const showPointMarkers = shouldShowPointMarkersForSeries(spec, item);
-    for (const point of item.points.filter((entry) => entry.y !== null && entry.y !== undefined)) {
+    for (const point of item.points.filter((entry) => entry.y !== null && entry.y !== undefined && (!spec.clip || (entry.x >= xMin && entry.x <= xMax && entry.y >= yMin && entry.y <= yMax)))) {
       const geometry = geometryByPoint.get(point);
       const details = [point.title ?? `${item.label}; ${spec.xLabel} ${point.x}; ${spec.yLabel} ${point.y}`];
       const crowdingFact = pointCrowdingFact(geometry);
@@ -981,6 +1015,7 @@ export function renderLinePlotSvg(spec) {
     }
   }
 
+  if (spec.clip) parts.push("</g>");
   if (allPoints.length === 0) {
     parts.push(`<text x="${margin.left}" y="${margin.top + 28}">No plottable windows.</text>`);
   }

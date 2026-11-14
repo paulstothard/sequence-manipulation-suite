@@ -1,3 +1,4 @@
+import { isolateSvgStyles } from "./svg-style-scope.js";
 import "../vendor/d3/d3.min.js";
 import { convertTableDataFormat } from "./table-data-format-converter.js";
 import { exportDelimitedTable, findColumn, parseDelimitedTable } from "./table.js";
@@ -468,7 +469,11 @@ function interpolateStops(stops, fraction) {
   return stops[Math.round(t * (stops.length - 1))];
 }
 
-function renderBaseSvg({ title, width = 980, height = 640, plot, xLabel, yLabel, subtitle = "", plotKind = "", plotVariant = "" }) {
+function renderBaseSvg(...args) {
+  return isolateSvgStyles(renderBaseSvgUnscoped(...args));
+}
+
+function renderBaseSvgUnscoped({ title, width = 980, height = 640, plot, xLabel, yLabel, subtitle = "", plotKind = "", plotVariant = "" }) {
   const style = makePublicationPlotStyle(width, height);
   const scope = '[data-sms3-column-comparison="true"]';
   return [

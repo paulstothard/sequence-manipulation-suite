@@ -2139,7 +2139,9 @@ textarea,
   width: auto;
 }
 
-.sequence-logo-range-notice {
+.sequence-logo-range-notice,
+.sequence-logo-export-status,
+.protein-figure-export-status {
   background: color-mix(in srgb, var(--warning) 13%, var(--viewer-surface));
   border: 1px solid color-mix(in srgb, var(--warning) 50%, var(--viewer-border));
   border-radius: 6px;
@@ -4893,13 +4895,15 @@ legend {
 }
 
 /* WebKit retains native select intrinsic overflow in grid/flex rows. Block flow
-   keeps long feature labels within the available options-panel width. */
+   keeps long option labels within the available options-panel width. */
+.tool-options .select-row,
 [data-option-id="featureTargeting"] .select-row,
 .workflow-option-grid .select-row {
   display: block;
   min-width: 0;
 }
 
+.tool-options .select-row select,
 select[name="targetFeature"],
 select[name="featureTargetMode"] {
   margin-top: 0.35rem;
@@ -8140,6 +8144,8 @@ select[name="featureTargetMode"] {
 }
 
 .viewer-choice-toggle {
+  display: grid;
+  place-items: center;
   background: var(--app-output-button-gradient);
   border: 1px solid var(--viewer-border, var(--app-output-border-strong));
   border-left: 0;
@@ -8149,6 +8155,17 @@ select[name="featureTargetMode"] {
   min-height: 1.95rem;
   min-width: 1.9rem;
   padding: 0 0.4rem;
+}
+
+.viewer-choice-toggle svg {
+  width: 1rem;
+  height: 1rem;
+  background: transparent;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .alignment-viewer-region-field .viewer-choice-combobox input:focus-visible,
@@ -11674,7 +11691,13 @@ select[name="featureTargetMode"] {
 }
 
 .table-column-chooser[open] {
+  width: 100%;
   z-index: 5;
+}
+
+.table-output-options:has(.table-column-chooser[open]) {
+  flex-basis: 100%;
+  min-width: 0;
 }
 
 .table-column-chooser summary {
@@ -11690,9 +11713,9 @@ select[name="featureTargetMode"] {
 }
 
 .table-column-panel {
-  position: absolute;
-  right: 0;
-  z-index: 4;
+  position: relative;
+  box-sizing: border-box;
+  width: min(44rem, 100%);
   margin-top: 0.45rem;
   padding: 0.55rem;
   border: 1px solid var(--border);
@@ -11707,9 +11730,9 @@ select[name="featureTargetMode"] {
 
 .table-column-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(12rem, 100%), 1fr));
   gap: 0.35rem 0.7rem;
-  width: min(44rem, calc(100vw - 4rem));
+  width: 100%;
 }
 
 .result-table {

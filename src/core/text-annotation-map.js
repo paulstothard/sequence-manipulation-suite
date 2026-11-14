@@ -99,6 +99,9 @@ function placeRulerLabel(line, text, startIndex, width, spacing = 1) {
 
 function makeRuler(start, end) {
   const width = end - start + 1;
+  if (width < String(start).length + 1 + String(end).length) {
+    return start === end ? String(start) : `${start}-${end}`;
+  }
   const line = makeBlank(width);
   const step = chooseRulerStep(start, end, width);
   placeRulerLabel(line, String(start), 0, width, 1);
@@ -175,7 +178,7 @@ export function renderTextAnnotationMap(records, options = {}) {
         end: Number(annotation.end)
       }))
       .sort((left, right) => left.start - right.start || left.end - right.end);
-    const lines = [`>${record.title ?? "sequence"} text annotation map`, `length ${sequence.length}`];
+    const lines = [`${options.headerPrefix ?? ">"}${record.title ?? "sequence"} text annotation map`, `length ${sequence.length}`];
     for (let start = 1; start <= sequence.length; start += width) {
       const end = Math.min(sequence.length, start + width - 1);
       lines.push("", renderBlock(sequence, annotations, start, end, options));
@@ -235,3 +238,5 @@ export function renderTextAnnotationMapFromItems(records, options = {}) {
     })
   ), options);
 }
+
+export { makeRuler as makeTextMapRuler };

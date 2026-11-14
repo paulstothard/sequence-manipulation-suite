@@ -1,3 +1,4 @@
+import { TECHNICAL_SEQUENCE_DEFAULTS as defaults } from "../../core/technical-sequence-options.js";
 import {
   TECHNICAL_SEQUENCE_SVG_MAX_HITS_PER_RECORD,
   TECHNICAL_SEQUENCE_SVG_MAX_RECORDS,
@@ -40,8 +41,9 @@ export const technicalSequenceScannerMetadata = {
   category: "Sequence Analysis",
   tags: ["DNA", "RNA", "raw", "technical sequence", "adapter", "primer", "contamination", "reference data"],
   summary: "Scan DNA/RNA sequences for bundled or custom primers, adapters, and other technical sequences.",
+  whenToUse: "Locate known primer or adapter sequences and terminal fragments in DNA/RNA records before reviewing contamination or preparing downstream analysis.",
   inputType: "DNA/RNA sequence, FASTA/FASTA.GZ, or indexed FASTA",
-  outputType: "Report, table, text annotation map, linear technical-sequence map, or linear DNA sequence viewer",
+  outputType: "Report, table, text annotation map, linear technical-sequence map, or linear/circular DNA sequence viewer",
   runInWorker: true,
   workerModule: "../tools/technical-sequence-scanner/run.js",
   workerExport: "runTechnicalSequenceScanner",
@@ -52,12 +54,13 @@ export const technicalSequenceScannerMetadata = {
     ],
     outputs: [
       { id: "primary", kind: "text", mediaType: "text/plain" },
-      { id: "report", kind: "text", mediaType: "text/plain" },
-      { id: "textMap", kind: "text", mediaType: "text/plain" },
-      { id: "overview", kind: "text", mediaType: "image/svg+xml" },
-      { id: "viewer", kind: "viewer", viewerType: "dna-sequence-viewer" },
+      { id: "report", outputFormat: "report", kind: "text", mediaType: "text/plain" },
+      { id: "textMap", outputFormat: "text-map", kind: "text", mediaType: "text/plain" },
+      { id: "overview", outputFormat: "svg-map", kind: "text", mediaType: "image/svg+xml" },
+      { id: "viewer", outputFormat: "interactive-viewer", kind: "viewer", viewerType: "dna-sequence-viewer" },
       {
         id: "table",
+        outputFormat: "tsv",
         kind: "table",
         schema: "technical-sequence-scanner",
         columns: technicalSequenceTableColumns
@@ -71,14 +74,14 @@ export const technicalSequenceScannerMetadata = {
       id: "sequenceClass",
       type: "select",
       label: "Sequence class",
-      defaultValue: "all",
+      defaultValue: defaults.sequenceClass,
       choices: makeClassChoices(technicalSequenceSummary)
     },
     {
       id: "sequenceId",
       type: "select",
       label: "Bundled sequence",
-      defaultValue: "all",
+      defaultValue: defaults.sequenceId,
       dependsOn: "sequenceClass",
       visibleWhen: { option: "sequenceClass", value: makeBundledClassValues(technicalSequenceSummary) },
       choices: makeSequenceChoices(technicalSequenceSummary)
@@ -87,7 +90,7 @@ export const technicalSequenceScannerMetadata = {
       id: "strand",
       type: "radio",
       label: "Strand",
-      defaultValue: "both",
+      defaultValue: defaults.strand,
       choices: [
         { value: "both", label: "Both strands" },
         { value: "forward", label: "Forward only" }
@@ -97,20 +100,20 @@ export const technicalSequenceScannerMetadata = {
       id: "matchMode",
       type: "select",
       label: "Match mode",
-      defaultValue: "full",
+      defaultValue: defaults.matchMode,
       choices: [
         { value: "full", label: "Full sequence only" },
         { value: "mismatch-tolerant", label: "Mismatch-tolerant full sequence" },
         { value: "partial-ends", label: "Partial at sequence ends" },
         { value: "full-or-partial", label: "Full or partial" }
       ],
-      help: "Mismatch-tolerant mode scans ungapped full-length technical sequences in FASTA records and reports mismatch positions. Partial-end matching remains exact/IUPAC at sequence ends."
+      help: "Full/partial modes match bundled sequences literally and custom IUPAC sequences by compatible base sets. Mismatch mode uses IUPAC compatibility (X as N); identity counts compatible positions and mismatch positions follow the technical sequence 5' to 3'. All modes treat U and T equivalently."
     },
     {
       id: "maxMismatches",
       type: "number",
       label: "Maximum mismatches",
-      defaultValue: 1,
+      defaultValue: defaults.maxMismatches,
       min: 0,
       max: 10,
       step: 1,
@@ -121,15 +124,15 @@ export const technicalSequenceScannerMetadata = {
       id: "requireExactThreePrime",
       type: "checkbox",
       label: "Require exact 3' end",
-      defaultValue: false,
+      defaultValue: defaults.requireExactThreePrime,
       visibleWhen: { option: "matchMode", value: "mismatch-tolerant" },
-      help: "Used only for mismatch-tolerant matching. Rejects hits with mismatches in the selected number of 3' bases of the technical sequence."
+      help: "Used only for mismatch-tolerant matching. Requires IUPAC-compatible bases in the selected 3' tail of the technical sequence."
     },
     {
       id: "exactThreePrimeBases",
       type: "number",
       label: "Exact 3' bases",
-      defaultValue: 3,
+      defaultValue: defaults.exactThreePrimeBases,
       min: 1,
       max: 20,
       step: 1,
@@ -142,7 +145,7 @@ export const technicalSequenceScannerMetadata = {
       id: "minimumPartialLength",
       type: "number",
       label: "Minimum partial length",
-      defaultValue: 12,
+      defaultValue: defaults.minimumPartialLength,
       min: 4,
       max: 100,
       visibleWhen: { option: "matchMode", value: ["partial-ends", "full-or-partial"] }
@@ -151,7 +154,7 @@ export const technicalSequenceScannerMetadata = {
       id: "customSequences",
       type: "textarea",
       label: "Custom technical sequences",
-      defaultValue: "",
+      defaultValue: defaults.customSequences,
       rows: 6,
       visibleWhen: { option: "sequenceClass", value: "custom" },
       help: "Paste FASTA records or one sequence per line/comma. Select Sequence class: Custom technical sequences to scan these records."
@@ -160,13 +163,13 @@ export const technicalSequenceScannerMetadata = {
       id: "allowOverlaps",
       type: "checkbox",
       label: "Allow overlapping matches",
-      defaultValue: true
+      defaultValue: defaults.allowOverlaps
     },
     {
       id: "outputFormat",
       type: "radio",
       label: "Output format",
-      defaultValue: "svg-map",
+      defaultValue: defaults.outputFormat,
       choices: [
         { value: "report", label: "Summary report" },
         { value: "tsv", label: "Summary table", resultView: { kind: "table", streamId: "table" } },
@@ -186,40 +189,41 @@ export const technicalSequenceScannerMetadata = {
         {
           id: "technicalLargeSourceLimitNote",
           type: "limit-value",
-          label: "Large FASTA scan source",
-          value: "50 million bases",
-          detail: "Applies to streamed FASTA scans."
+          label: "Scan source",
+          value: "50 million non-whitespace input characters",
+          detail: "All sources: 50 million non-whitespace input characters, 10,000 records; 150 MiB decoded text and 512 MiB source file. Fixed metadata bounds: 10,000 characters per header, 5 million total header characters, 16 MiB sidecar indexes."
         },
         {
           id: "technicalComparisonLimits",
           type: "limit-value",
-          label: "Large FASTA scan work",
+          label: "Scan work",
           value: "500M full-match · 200M mismatch · 20M terminal comparisons",
           detail: "The matching mode determines which comparison budget applies."
         },
         {
           id: "technicalCandidateHitLimit",
           type: "limit-value",
-          label: "Large FASTA candidate hits",
+          label: "Candidate hits",
           value: "50,000 hits"
         },
         {
           id: "technicalOutputLimit",
           type: "limit-value",
-          label: "Large FASTA materialized output",
-          value: "26,214,400 characters (25 MiB)"
+          label: "Materialized result",
+          value: "26,214,400 serialized characters"
         },
         {
           id: "technicalPatternLimit",
           type: "limit-value",
-          label: "Selected pattern in large FASTA scans",
-          value: "32,000 bases"
+          label: "Selected technical sequences",
+          value: "32,000 bases per pattern · 1,000 patterns",
+          detail: "Custom source text is limited to 1,000,000 characters."
         },
         {
           id: "technicalTextMapViewerSource",
           type: "limit-value",
           label: "Text maps and sequence viewers",
-          value: "Bounded pasted input",
+          value: "Pasted input up to 1,000,000 characters",
           detail: "Large FASTA file scans offer report, table, and linear map output."
         },
         {
@@ -241,7 +245,7 @@ export const technicalSequenceScannerMetadata = {
     {
       id: "databaseNote",
       type: "note",
-      text: `Bundled database: ${technicalSequenceSummary.length} cited primer/adaptor records. Partial matching checks sequence ends only. Mismatch-tolerant matching is ungapped FASTA sequence scanning, not alignment with insertions or deletions.`
+      text: `Bundled reference: ${technicalSequenceSummary.length} cited primer/adapter sequences. Hits are candidate technical sequences. Coordinates are 1-based on the cleaned input strand; partial mode keeps the longest qualifying match at each oriented end. Scans are linear and ungapped, including when displayed in a circular viewer.`
     }
   ]
 };

@@ -1,3 +1,4 @@
+import { isolateSvgStyles } from "./svg-style-scope.js";
 import "../vendor/d3/d3.min.js";
 import {
   HEATMAP_LEGEND_BAR_WIDTH,
@@ -1551,7 +1552,11 @@ function applyPlotHeaderLayout({ width, height, margin, subtitle = "", publicati
   };
 }
 
-function renderBaseSvg({ title, width = 900, height = 560, xLabel, yLabel, plot, subtitle = "", notes = [], inspectionHighlight = "", plotKind = "", publicationWidthMm, showTitle = true, showGridLines = false }) {
+function renderBaseSvg(...args) {
+  return isolateSvgStyles(renderBaseSvgUnscoped(...args));
+}
+
+function renderBaseSvgUnscoped({ title, width = 900, height = 560, xLabel, yLabel, plot, subtitle = "", notes = [], inspectionHighlight = "", plotKind = "", publicationWidthMm, showTitle = true, showGridLines = false }) {
   const header = plotHeaderLayout(width, subtitle, { publicationWidthMm, showTitle });
   const { subtitleLines, style, titleY, subtitleFirstY, textLineHeight } = header;
   style.heightMm = Number((style.widthMm * height / width).toFixed(3));
@@ -2493,3 +2498,6 @@ export function plotRowsToTsv(columns, rows) {
     ...rows.map((row) => columns.map((column) => String(row[column.id] ?? "").replace(/\t/g, " ")).join("\t"))
   ].join("\n");
 }
+
+// Reuse the existing numeric-axis rules in sequence profile plots.
+export { extent as plotNumericExtent, applyAxisLimits };

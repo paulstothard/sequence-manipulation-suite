@@ -1,3 +1,4 @@
+import { isolateSvgStyles } from "./svg-style-scope.js";
 import { streamTextLines } from "./compressed-text-reader.js";
 
 export const samAlignmentColumns = [
@@ -1024,7 +1025,11 @@ function formatCoverageDepth(value) {
   return value.toFixed(1);
 }
 
-export function renderSamRegionSvg(result, options = {}) {
+export function renderSamRegionSvg(...args) {
+  return isolateSvgStyles(renderSamRegionSvgUnscoped(...args));
+}
+
+function renderSamRegionSvgUnscoped(result, options = {}) {
   const region = result.region ?? { reference: "", start: 1, end: 1 };
   const rows = result.regionRows ?? [];
   const left = 205;

@@ -1,3 +1,7 @@
+import { figurePngSize, PNG_EXPORT_DPI, CSS_PIXELS_PER_INCH } from "../core/figure-export.js";
+import { setPngDpi } from "../core/png-resolution.js";
+import { downloadBlob } from "./file-download.js";
+
 export function makeSafeFileStem(value, fallback) {
   return String(value || fallback)
     .toLowerCase()
@@ -30,15 +34,10 @@ export function addTimestampToFilename(filename, date = new Date()) {
   return `${clean}-${timestamp}`;
 }
 
-export const PNG_300_DPI_SCALE = 300 / 96;
-export const MAX_PNG_EXPORT_SCALE = 4;
+export const PNG_EXPORT_SCALE = PNG_EXPORT_DPI / CSS_PIXELS_PER_INCH;
 
-export function getPngExportScale(scale = MAX_PNG_EXPORT_SCALE) {
-  const requestedScale = Number(scale);
-  return Math.max(
-    PNG_300_DPI_SCALE,
-    Math.min(MAX_PNG_EXPORT_SCALE, Number.isFinite(requestedScale) ? requestedScale : MAX_PNG_EXPORT_SCALE)
-  );
+export function getPngExportScale() {
+  return PNG_EXPORT_SCALE;
 }
 
 function escapeXml(value) {
@@ -82,20 +81,13 @@ function makeExportRect(width, height) {
   };
 }
 
-export function getPngExportDimensions(width, height, requestedScale) {
-  // Expanded feature stacks can exceed browser bitmap limits at export DPI.
-  // Preserve the whole figure by reducing resolution, never cropping rows.
-  const scale = Math.min(getPngExportScale(requestedScale), 16384 / Math.max(width, height),
-    Math.sqrt(16777216 / (width * height)));
-  return { scale, width: Math.max(1, Math.floor(width * scale)), height: Math.max(1, Math.floor(height * scale)) };
+export function getPngExportDimensions(width, height) {
+  return figurePngSize(width, height);
 }
 
 export function makeCanvasPngExportCanvas(canvas, options = {}) {
   const display = canvasDisplayDimensions(canvas);
-  const requestedScale = getPngExportScale(options.scale);
-  const { width, height, scale } = options.boundBitmap
-    ? getPngExportDimensions(display.width, display.height, requestedScale)
-    : { width: Math.max(1, Math.round(display.width * requestedScale)), height: Math.max(1, Math.round(display.height * requestedScale)), scale: requestedScale };
+  const { width, height, scale } = getPngExportDimensions(display.width, display.height);
   const exportCanvas = document.createElement("canvas");
   exportCanvas.width = width;
   exportCanvas.height = height;
@@ -115,12 +107,12 @@ export function makeCanvasPngExportCanvas(canvas, options = {}) {
   return exportCanvas;
 }
 
-export function downloadCanvasPng(canvas, filename, options = {}) {
-  const link = document.createElement("a");
+export async function downloadCanvasPng(canvas, filename, options = {}) {
   const exportCanvas = makeCanvasPngExportCanvas(canvas, options);
-  link.href = exportCanvas.toDataURL("image/png");
-  link.download = addTimestampToFilename(filename);
-  link.click();
+  const blob = await new Promise(resolve => exportCanvas.toBlob(resolve, "image/png"));
+  if (!blob) throw new Error("Could not create PNG output.");
+  const bytes = setPngDpi(new Uint8Array(await blob.arrayBuffer()), PNG_EXPORT_DPI);
+  downloadBlob(new Blob([bytes], { type: "image/png" }), filename);
 }
 
 export function makeCanvasSvgSnapshot(canvas, options = {}) {

@@ -1,3 +1,4 @@
+import { isolateSvgStyles } from "./svg-style-scope.js";
 import { normalizeSangerTrimOptions } from './sanger-trimming.js';
 import { formatFastaRecord, parseSequenceInput } from "./fasta.js";
 import {
@@ -1556,7 +1557,11 @@ function relationForAlignedPair(referenceBase, queryBase) {
   return "mismatch";
 }
 
-export function makeSangerReferenceAlignmentSvg(session, options = {}) {
+export function makeSangerReferenceAlignmentSvg(...args) {
+  return isolateSvgStyles(makeSangerReferenceAlignmentSvgUnscoped(...args));
+}
+
+function makeSangerReferenceAlignmentSvgUnscoped(session, options = {}) {
   const alignments = session.referenceAlignments ?? [];
   const width = Math.max(760, Number.parseInt(options.width, 10) || 1040);
   const requestedLineWidth = Math.max(40, Math.min(120, Number.parseInt(options.lineWidth, 10) || 80));
@@ -1874,7 +1879,11 @@ ${makePositionedMonospaceText(text, { x, y, charWidth, fill: textFill, boldIndex
 </g>`;
 }
 
-export function makeSangerDifferenceReviewSvg(session, options = {}) {
+export function makeSangerDifferenceReviewSvg(...args) {
+  return isolateSvgStyles(makeSangerDifferenceReviewSvgUnscoped(...args));
+}
+
+function makeSangerDifferenceReviewSvgUnscoped(session, options = {}) {
   const allRows = session.referenceDifferences ?? [];
   const maxRows = Math.max(1, Math.min(160, Number.parseInt(options.maxRows, 10) || 60));
   const rows = allRows.slice(0, maxRows);
@@ -2420,7 +2429,11 @@ function makeReferenceMiniTraceRowSvg({ traceResult, placement, segment, chunk, 
   return parts.join("");
 }
 
-export function makeSangerReferenceTraceMapSvg(session, options = {}) {
+export function makeSangerReferenceTraceMapSvg(...args) {
+  return isolateSvgStyles(makeSangerReferenceTraceMapSvgUnscoped(...args));
+}
+
+function makeSangerReferenceTraceMapSvgUnscoped(session, options = {}) {
   const reference = session.reference;
   const translationFrames = selectedSangerTranslationFrames(reference?.sequence ?? "", options);
   const translationHeight = translationFrames.length * SANGER_TRANSLATION_ROW_HEIGHT;
@@ -2558,7 +2571,11 @@ export function makeSangerReferenceTraceMapSvg(session, options = {}) {
   return parts.join("");
 }
 
-export function makeSangerAssemblyTraceMapSvg(session, options = {}) {
+export function makeSangerAssemblyTraceMapSvg(...args) {
+  return isolateSvgStyles(makeSangerAssemblyTraceMapSvgUnscoped(...args));
+}
+
+function makeSangerAssemblyTraceMapSvgUnscoped(session, options = {}) {
   const width = Math.max(980, Number.parseInt(options.width, 10) || 1240);
   const basesPerRow = Math.max(28, Math.min(72, Number.parseInt(options.basesPerRow, 10) || 56));
   const left = 28;
@@ -3070,7 +3087,11 @@ ${rows.join("\n")}
 </svg>`;
 }
 
-export function makeSangerTraceSvg(result, options = {}) {
+export function makeSangerTraceSvg(...args) {
+  return isolateSvgStyles(makeSangerTraceSvgUnscoped(...args));
+}
+
+function makeSangerTraceSvgUnscoped(result, options = {}) {
   const view = result.view;
   // An explicit row density also wraps short reads, so source evidence panels
   // use the same scale instead of squeezing an entire read into one line.
@@ -3183,7 +3204,11 @@ ${inspectionTargets}
 </svg>`;
 }
 
-export function makeSangerCollectionTraceSvg(collection, options = {}) {
+export function makeSangerCollectionTraceSvg(...args) {
+  return isolateSvgStyles(makeSangerCollectionTraceSvgUnscoped(...args));
+}
+
+function makeSangerCollectionTraceSvgUnscoped(collection, options = {}) {
   if (collection.traces.length === 1) {
     return makeSangerTraceSvg(collection.traces[0], options);
   }
@@ -3192,17 +3217,12 @@ export function makeSangerCollectionTraceSvg(collection, options = {}) {
   let nextChildY = 70;
   const childBlocks = childSvgs.map((svg) => {
     const heightMatch = svg.match(/height="(\d+)"/);
-    const viewBoxMatch = svg.match(/viewBox="([^"]+)"/);
     const childHeight = Number.parseInt(heightMatch?.[1] ?? "440", 10) || 440;
-    const viewBox = viewBoxMatch?.[1] ?? `0 0 ${width} ${childHeight}`;
-    const inner = svg
-      .replace(/^<svg\b([^>]*)>/, "")
-      .replace(/<\/svg>\s*$/, "");
     const y = nextChildY;
     nextChildY += childHeight + 24;
     return {
       height: childHeight,
-      markup: `<svg x="0" y="${y}" width="${width}" height="${childHeight}" viewBox="${escapeXml(viewBox)}" overflow="visible">${inner}</svg>`
+      markup: svg.replace(/^<svg\b/, `<svg x="0" y="${y}" overflow="visible"`)
     };
   });
   const height = nextChildY + 20;

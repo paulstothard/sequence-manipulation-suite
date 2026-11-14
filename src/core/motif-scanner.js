@@ -1,4 +1,5 @@
-import { findPatternMatches } from "./pattern.js";
+import { normalizePwmThreshold } from "./motif-scanner-options.js";
+import { findPatternMatchSteps } from "./pattern.js";
 import { cleanSequence, complementDnaRnaSequence, makeSequenceContext } from "./sequence.js";
 
 const SUPPORTED_SYNTAXES = new Set(["exact", "iupac", "regex", "pwm"]);
@@ -19,7 +20,8 @@ export const motifMatchTableColumns = [
   { id: "right_context", label: "Right context", type: "string" },
   { id: "context_sequence", label: "Context sequence", type: "string" },
   { id: "score", label: "Score", type: "number" },
-  { id: "description", label: "Description", type: "string" }
+  { id: "description", label: "Description", type: "string" },
+  { id: "record_index", label: "Record number", type: "number" }
 ];
 
 function reverseComplement(sequence) {
@@ -39,6 +41,7 @@ function getPatternMode(syntax) {
 function makeMatchRow(recordTitle, sequence, motif, match, strand = "+") {
   return {
     record: recordTitle,
+    record_index: 1,
     motif_id: motif.id,
     motif_name: motif.name,
     motif_class: motif.class,
@@ -57,14 +60,6 @@ function makeMatchRow(recordTitle, sequence, motif, match, strand = "+") {
 function normalizePwmBase(base) {
   const upper = String(base ?? "").toUpperCase();
   return upper === "U" ? "T" : upper;
-}
-
-function normalizePwmThreshold(value, fallback = 85) {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) {
-    return fallback;
-  }
-  return Math.min(100, Math.max(0, parsed));
 }
 
 function scorePwmWindow(sequence, startIndex, motif) {
@@ -117,7 +112,7 @@ function findPwmMatches(sequence, motif, options = {}, context = {}) {
       end: index + length,
       length,
       matchedText: sequence.slice(index, index + length),
-      score: Number(score.relativeScore.toFixed(2))
+      score: score.relativeScore
     });
     if (Number.isFinite(options.maxMatches) && matches.length > options.maxMatches) {
       throw new Error(`PWM matches exceed the ${options.maxMatches.toLocaleString()}-hit scan limit.`);
@@ -139,7 +134,7 @@ function shouldScanReverse(motif, options = {}) {
   return motif.match?.strand === "both" || options.strand === "both";
 }
 
-function scanMotif(recordTitle, sequence, motif, options = {}, context = {}) {
+function* scanMotif(recordTitle, sequence, motif, options = {}, context = {}) {
   const warnings = [];
 
   if (!SUPPORTED_SYNTAXES.has(motif.syntax)) {
@@ -154,47 +149,41 @@ function scanMotif(recordTitle, sequence, motif, options = {}, context = {}) {
     patternMode: getPatternMode(motif.syntax),
     allowOverlaps: options.allowOverlaps ?? motif.match?.overlappingDefault ?? true,
     caseInsensitive: true,
-    ...(Number.isFinite(options.maxMatches) ? { maxMatches: options.maxMatches } : {})
+    ...(Number.isFinite(options.maxMatches) ? { maxMatches: options.maxMatches } : {}),
+    ...(Number.isFinite(options.maxMatchedCharacters) ? { maxMatchedCharacters: options.maxMatchedCharacters } : {})
   };
   const rows = [];
   const matchFinder = motif.syntax === "pwm"
-    ? (sourceSequence) => findPwmMatches(sourceSequence, motif, options, context)
-    : (sourceSequence) => findPatternMatches(sourceSequence, motif.pattern, patternOptions, context);
+    ? function* (sourceSequence) { return findPwmMatches(sourceSequence, motif, options, context); }
+    : (sourceSequence) => findPatternMatchSteps(
+        motif.alphabet === "dna-rna" && motif.syntax === "exact" ? sourceSequence.replaceAll("U", "T") : sourceSequence,
+        motif.alphabet === "dna-rna" && motif.syntax === "exact" ? motif.pattern.replaceAll("U", "T") : motif.pattern,
+        patternOptions,
+        context
+      );
 
-  try {
-    rows.push(
-      ...matchFinder(sequence).map((match) =>
-        makeMatchRow(recordTitle, sequence, motif, match, "+")
-      )
-    );
-  } catch (error) {
-    if (options.failOnLimit && /scan limit/.test(error.message)) throw error;
-    warnings.push(`${motif.id}: ${error.message}`);
+  // A translation stop separates peptide chains. Keep its source position, but
+  // never let regex wildcards consume it; terminal anchors apply to each chain.
+  let offset = 0;
+  for (const chain of motif.alphabet === "protein" ? sequence.split("*") : [sequence]) {
+    if (chain) for (const match of yield* matchFinder(chain)) {
+      if (Number.isFinite(motif.match?.maxStart) && match.start > motif.match.maxStart) continue;
+      rows.push(makeMatchRow(recordTitle, sequence, motif, {
+        ...match, start: match.start + offset, end: match.end + offset
+      }, "+"));
+    }
+    offset += chain.length + 1;
   }
 
   if (shouldScanReverse(motif, options)) {
     const reverseSequence = reverseComplement(sequence);
-    try {
-      rows.push(
-        ...matchFinder(reverseSequence).map((match) =>
-          makeMatchRow(
-            recordTitle,
-            sequence,
-            motif,
-            {
-              start: sequence.length - match.end + 1,
-              end: sequence.length - match.start + 1,
-              length: match.length,
-              matchedText: match.matchedText,
-              score: match.score
-            },
-            "-"
-          )
-        )
-      );
-    } catch (error) {
-      if (options.failOnLimit && /scan limit/.test(error.message)) throw error;
-      warnings.push(`${motif.id} reverse strand: ${error.message}`);
+    for (const match of yield* matchFinder(reverseSequence)) {
+      rows.push(makeMatchRow(recordTitle, sequence, motif, {
+        start: sequence.length - match.end + 1,
+        end: sequence.length - match.start + 1,
+        length: match.length,
+        score: match.score
+      }, "-"));
     }
   }
 
@@ -208,7 +197,7 @@ function scanMotif(recordTitle, sequence, motif, options = {}, context = {}) {
   return { rows, warnings };
 }
 
-export function scanMotifRecords(record, motifs, options = {}) {
+function* scanMotifRecordSteps(record, motifs, options = {}, context = {}) {
   const alphabet = options.alphabet === "protein" ? "protein" : "dna-rna";
   const title = record.title ?? "sequence";
   const cleaned = cleanSequence(record.sequence ?? "", {
@@ -217,76 +206,31 @@ export function scanMotifRecords(record, motifs, options = {}) {
     keepGaps: false
   });
   const warnings = [];
+  const notes = [];
+  const gapCount = alphabet === "protein" ? (String(record.sequence ?? "").match(/[-.]/g) ?? []).length : 0;
+  if (gapCount) notes.push(`${title}: removed ${gapCount} alignment gap character(s); coordinates refer to the cleaned sequence.`);
 
-  if (cleaned.removedCount > 0) {
-    warnings.push(`${title}: removed ${cleaned.removedCount} non-${alphabet === "protein" ? "protein" : "DNA/RNA"} character(s).`);
+  if (cleaned.removedCount > gapCount) {
+    warnings.push(`${title}: removed ${cleaned.removedCount - gapCount} non-${alphabet === "protein" ? "protein" : "DNA/RNA"} character(s).`);
   }
 
   if (cleaned.sequence.length === 0) {
     warnings.push(`${title}: no ${alphabet === "protein" ? "protein" : "DNA/RNA"} sequence characters were found.`);
     return {
       rows: [],
-      warnings,
+      warnings, notes,
       charactersRemoved: cleaned.removedCount,
-      sequenceLength: 0
-    };
-  }
-
-  const rows = [];
-  for (const motif of motifs) {
-    if (motif.alphabet !== alphabet) {
-      continue;
-    }
-    if (options.classes?.length > 0 && !options.classes.includes(motif.class)) {
-      continue;
-    }
-    if (options.motifIds?.length > 0 && !options.motifIds.includes(motif.id)) {
-      continue;
-    }
-
-    const result = scanMotif(title, cleaned.sequence, motif, options);
-    rows.push(...result.rows);
-    warnings.push(...result.warnings);
-  }
-
-  return {
-    rows,
-    warnings,
-    charactersRemoved: cleaned.removedCount,
-    sequenceLength: cleaned.sequence.length,
-    sequence: cleaned.sequence
-  };
-}
-
-export async function scanMotifRecordsWithContext(record, motifs, options = {}, context = {}) {
-  const alphabet = options.alphabet === "protein" ? "protein" : "dna-rna";
-  const title = record.title ?? "sequence";
-  const cleaned = cleanSequence(record.sequence ?? "", {
-    alphabet,
-    preserveCase: false,
-    keepGaps: false
-  });
-  const warnings = [];
-
-  if (cleaned.removedCount > 0) {
-    warnings.push(`${title}: removed ${cleaned.removedCount} non-${alphabet === "protein" ? "protein" : "DNA/RNA"} character(s).`);
-  }
-
-  if (cleaned.sequence.length === 0) {
-    warnings.push(`${title}: no ${alphabet === "protein" ? "protein" : "DNA/RNA"} sequence characters were found.`);
-    return {
-      rows: [],
-      warnings,
-      charactersRemoved: cleaned.removedCount,
-      sequenceLength: 0
+      sequenceLength: 0,
+      sequence: ""
     };
   }
 
   const rows = [];
   let motifsScanned = 0;
+  let retainedCharacters = 0;
   for (const motif of motifs) {
     if (motifsScanned > 0 && motifsScanned % 25 === 0) {
-      await context.yieldIfNeeded?.();
+      yield;
     } else {
       context.throwIfCancelled?.();
     }
@@ -302,16 +246,43 @@ export async function scanMotifRecordsWithContext(record, motifs, options = {}, 
       continue;
     }
 
-    const result = scanMotif(title, cleaned.sequence, motif, options, context);
-    rows.push(...result.rows);
+    const result = yield* scanMotif(title, cleaned.sequence, motif, {
+      ...options,
+      maxMatches: Number.isFinite(options.maxMatches) ? options.maxMatches - rows.length : undefined,
+      maxMatchedCharacters: Number.isFinite(options.maxMatchedCharacters) ? options.maxMatchedCharacters - retainedCharacters : undefined
+    }, context);
+    for (const row of result.rows) {
+      rows.push(row);
+      retainedCharacters += row.matched_text.length;
+      if (Number.isFinite(options.maxMatches) && rows.length > options.maxMatches) throw new Error("Motif scan exceeds the candidate-hit limit.");
+      if (Number.isFinite(options.maxMatchedCharacters) && retainedCharacters > options.maxMatchedCharacters) throw new Error("Motif matched sequence exceeds the character retention limit.");
+    }
     warnings.push(...result.warnings);
   }
 
+  if (alphabet === "protein" && rows.some(row => /[BJXZ]/.test(row.matched_text))) warnings.push(`${title}: motif hits include ambiguous B/J/X/Z symbols; wildcard or negated-class matches may be uncertain.`);
   return {
     rows,
-    warnings,
+    warnings, notes,
     charactersRemoved: cleaned.removedCount,
     sequenceLength: cleaned.sequence.length,
     sequence: cleaned.sequence
   };
+}
+
+export function scanMotifRecords(record, motifs, options = {}) {
+  const steps = scanMotifRecordSteps(record, motifs, options);
+  let step = steps.next();
+  while (!step.done) step = steps.next();
+  return step.value;
+}
+
+export async function scanMotifRecordsWithContext(record, motifs, options = {}, context = {}) {
+  const steps = scanMotifRecordSteps(record, motifs, options, context);
+  let step = steps.next();
+  while (!step.done) {
+    await context.yieldIfNeeded?.();
+    step = steps.next();
+  }
+  return step.value;
 }

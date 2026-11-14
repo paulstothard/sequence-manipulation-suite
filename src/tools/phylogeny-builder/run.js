@@ -66,6 +66,8 @@ export async function runPhylogenyBuilder(input, options = {}, context = {}) {
     return makeToolResult({
       output: "",
       warnings: prepared.warnings,
+      notes: prepared.notes,
+      processedUnitLabel: prepared.options.alphabet === "protein" ? "residue" : "base",
       recordsProcessed: prepared.records.length,
       basesProcessed: prepared.totalSymbols,
       charactersRemoved: prepared.charactersRemoved
@@ -79,7 +81,7 @@ export async function runPhylogenyBuilder(input, options = {}, context = {}) {
   context.reportProgress?.({ phase: "building-tree", progress: 0.85 });
   context.throwIfCancelled?.();
   const artifacts = makePhylogenyArtifacts(prepared);
-  const newick = buildNeighborJoiningTree(prepared.alignment);
+  const newick = buildNeighborJoiningTree(prepared.alignment, { warnings: prepared.warnings });
   const { document } = await parseTreeDocument(newick, { sourceName: "Phylogeny Builder" }, context);
   const treeDocument = makeTreeDocumentStream(document);
   context.reportProgress?.({ phase: "finished", progress: 1 });
@@ -88,6 +90,8 @@ export async function runPhylogenyBuilder(input, options = {}, context = {}) {
     output: selectedOutput(artifacts, outputFormat),
     download: downloadMetadata(outputFormat),
     warnings: prepared.warnings,
+    notes: prepared.notes,
+    processedUnitLabel: prepared.alignment.alphabet === "protein" ? "residue" : "base",
     recordsProcessed: prepared.records.length,
     basesProcessed: prepared.totalSymbols,
     charactersRemoved: prepared.charactersRemoved,

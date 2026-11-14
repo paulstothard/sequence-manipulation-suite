@@ -4,10 +4,11 @@ import { makeTreeDocumentStream, TREE_DOCUMENT_MEDIA_TYPE } from "./tree-documen
 import { makeTextStream, makeToolResult } from "./workflow.js";
 
 /** Materialize the computed NJ tree directly, without building static figures. */
-export async function makeAlignmentTreeViewerResult(prepared, sourceName, context = {}) {
+export async function makeAlignmentTreeViewerResult(prepared, sourceName, context = {}, newick) {
   context.throwIfCancelled?.();
   context.reportProgress?.({ phase: "building-tree", progress: 0.85 });
-  const newick = buildNeighborJoiningTree(prepared.alignment);
+  const treeWarnings = [];
+  newick ??= buildNeighborJoiningTree(prepared.alignment, { warnings: treeWarnings });
   const { document, diagnostics } = await parseTreeDocument(newick, { sourceName }, context);
   for (const tree of document.trees) {
     document.presentation[tree.id].layout = "unrooted";
@@ -20,7 +21,9 @@ export async function makeAlignmentTreeViewerResult(prepared, sourceName, contex
   return makeToolResult({
     output: treeDocument.items[0].text,
     download: { filename: "alignment-tree.json", mimeType: TREE_DOCUMENT_MEDIA_TYPE },
-    warnings: [...prepared.warnings, ...diagnostics.map((item) => item.message)],
+    warnings: [...prepared.warnings, ...treeWarnings, ...diagnostics.map((item) => item.message)],
+    notes: prepared.notes,
+    processedUnitLabel: prepared.alignment.alphabet === "protein" ? "residue" : "base",
     recordsProcessed: prepared.records.length,
     basesProcessed: prepared.totalSymbols,
     charactersRemoved: prepared.charactersRemoved,

@@ -1,3 +1,5 @@
+import { isolateSvgStyles } from "./svg-style-scope.js";
+import { REVERSE_TRANSLATE_DEFAULTS as defaults } from "./reverse-translate-options.js";
 import "../vendor/d3/d3.min.js";
 import { getCodonsForCode } from "./genetic-code.js";
 import { escapeXml } from "./plot-renderer.js";
@@ -33,6 +35,7 @@ const AMBIGUOUS_PROTEIN_RESIDUES = {
 };
 
 export const reverseTranslateTableColumns = [
+  { id: "record_index", label: "Record index", type: "number" },
   { id: "record", label: "Record", type: "string" },
   { id: "reference_id", label: "Reference ID", type: "string" },
   { id: "reference_name", label: "Reference", type: "string" },
@@ -126,6 +129,15 @@ function makeDegenerateCodon(candidateCodons) {
   return positions.join("");
 }
 
+// A positional IUPAC union is a Cartesian product; it can contain codons
+// outside the synonymous family. NCBI assignments: https://www.ncbi.nlm.nih.gov/Taxonomy/Utils/wprintgc.cgi
+function additionalUnionCodons(candidateCodons, degenerate, codeId) {
+  const bases = new Map([...DNA_IUPAC_BY_BASES].map(([letters, symbol]) => [symbol, letters]));
+  const intended = new Set(candidateCodons.map(candidate => candidate.codon));
+  return getCodonsForCode(codeId).filter(item => !intended.has(item.codon) &&
+    [...degenerate].every((symbol, index) => bases.get(symbol)?.includes(item.codon[index])));
+}
+
 function getCandidateWeights(candidateCodons, mode) {
   if (candidateCodons.length === 0) {
     return [];
@@ -184,78 +196,76 @@ function makeBaseProbabilities(candidateCodons, mode) {
   });
 }
 
-export function reverseTranslateProteinSequence(sequence, reference, options = {}) {
-  const mode = options.mode === "degenerate" ? "degenerate" : "most-likely";
+function* reverseTranslateSteps(sequence, reference, options) {
+  const mode = options.mode ?? defaults.mode;
   const codeId = reference?.geneticCode?.id ?? "1";
   const codonsByAminoAcid = getCodonsByAminoAcid(reference);
-  const dnaParts = [];
-  const rows = [];
-  const warnings = [];
-  const residues = String(sequence ?? "").toUpperCase();
-
-  for (const [index, residue] of Array.from(residues).entries()) {
-    let note = "";
-    const candidateCodons = getCandidateCodons(residue, codonsByAminoAcid);
-    const degenerateCodon = makeDegenerateCodon(candidateCodons);
-    const baseProbabilities = makeBaseProbabilities(candidateCodons, mode);
-    const fixedBases = baseProbabilities.filter((item) => item.fixedBase).length;
-
-    if (candidateCodons.length === 0) {
-      dnaParts.push("NNN");
-      note = "No codon candidates";
-      warnings.push(`Position ${index + 1}: no codon candidates for residue ${residue}; used NNN.`);
-      rows.push({
-        position: index + 1,
-        residue,
-        codon: "NNN",
-        candidate_codons: "",
-        candidate_count: 0,
-        degenerate_codon: "NNN",
-        fixed_bases: 0,
-        base_probabilities: baseProbabilities,
-        reference_fraction: 0,
-        reference_per_1000: 0,
-        mode,
-        note
-      });
-      continue;
-    }
-
-    if (Object.hasOwn(AMBIGUOUS_PROTEIN_RESIDUES, residue)) {
-      if (residue === "X") {
-        note = "Ambiguous residue X";
-        warnings.push(`Position ${index + 1}: residue X was reverse translated as ${mode === "degenerate" ? "NNN" : "the highest-scoring available codon"}.`);
-      } else {
+  const cache = new Map(), warningCounts = new Map();
+  const dnaParts = [], rows = [];
+  const residues = String(sequence ?? "").replace(/[a-z]/g, letter => letter.toUpperCase());
+  for (let index = 0; index < residues.length; index++) {
+    if (index % 4096 === 0) yield { phase: "reverse-translating", progress: index / Math.max(1,residues.length) };
+    const residue = residues[index];
+    if (!cache.has(residue)) {
+      const candidates = getCandidateCodons(residue, codonsByAminoAcid);
+      const degenerate = makeDegenerateCodon(candidates);
+      const probabilities = makeBaseProbabilities(candidates, mode);
+      const codon = mode === "degenerate" ? degenerate : chooseMostLikelyCodon(candidates, codeId)?.codon ?? "NNN";
+      const selected = candidates.find(candidate => candidate.codon === codon);
+      let warning = "", note = "";
+      if (!candidates.length) {
+        note = "No codon candidates";
+        warning = `no codon candidates for residue ${residue}; used NNN.`;
+      } else if (Object.hasOwn(AMBIGUOUS_PROTEIN_RESIDUES,residue)) {
         note = `Ambiguous residue ${residue}`;
-        warnings.push(`Position ${index + 1}: residue ${residue} was interpreted as ${AMBIGUOUS_PROTEIN_RESIDUES[residue].join(" or ")}.`);
+        warning = residue === "X"
+          ? `residue X was reverse translated as ${mode === "degenerate" ? "NNN" : "the highest-scoring available codon"}.`
+          : `residue ${residue} was interpreted as ${AMBIGUOUS_PROTEIN_RESIDUES[residue].join(" or ")}.`;
       }
+      if (candidates.length) {
+        const extra = additionalUnionCodons(candidates, degenerate, codeId);
+        if (extra.length) {
+          const unionNote = `IUPAC ${degenerate} also encodes ${extra.map(item => `${item.codon}=${item.aa === "*" ? "stop" : item.aa}`).join(", ")}.`;
+          note = [note, unionNote].filter(Boolean).join("; ");
+          if (mode === "degenerate") warning = [warning, unionNote].filter(Boolean).join(" ");
+        }
+      }
+      cache.set(residue, { warning, row: {
+        residue, codon, candidate_codons: candidates.map(candidate => candidate.codon).sort(sortCodonsByGeneticCodeOrder(codeId)).join(","),
+        candidate_count: candidates.length, degenerate_codon: degenerate,
+        fixed_bases: probabilities.filter(item => item.fixedBase).length, base_probabilities: probabilities,
+        reference_fraction: selected?.referenceFraction ?? 0, reference_per_1000: selected?.referencePer1000 ?? 0, mode, note
+      }});
     }
-
-    const codon =
-      mode === "degenerate" ? degenerateCodon : chooseMostLikelyCodon(candidateCodons, codeId)?.codon ?? "NNN";
-    const selectedCodon = candidateCodons.find((candidate) => candidate.codon === codon);
-    dnaParts.push(codon);
-    rows.push({
-      position: index + 1,
-      residue,
-      codon,
-      candidate_codons: candidateCodons.map((candidate) => candidate.codon).sort(sortCodonsByGeneticCodeOrder(codeId)).join(","),
-      candidate_count: candidateCodons.length,
-      degenerate_codon: degenerateCodon,
-      fixed_bases: fixedBases,
-      base_probabilities: baseProbabilities,
-      reference_fraction: selectedCodon?.referenceFraction ?? 0,
-      reference_per_1000: selectedCodon?.referencePer1000 ?? 0,
-      mode,
-      note
-    });
+    const {row,warning} = cache.get(residue);
+    if (warning) {
+      const previous = warningCounts.get(warning) ?? { count: 0, first: index + 1 };
+      previous.count++; warningCounts.set(warning,previous);
+    }
+    if (options.includeDna !== false) dnaParts.push(row.codon);
+    if (index < (options.rowLimit ?? Infinity)) rows.push({position:index+1,...row});
   }
+  return { dna: dnaParts.join(""), rows, warnings: [...warningCounts].map(([message,{count,first}]) => `Position ${first}: ${message}${count > 1 ? ` (${count} positions; first position shown.)` : ""}`) };
+}
 
-  return {
-    dna: dnaParts.join(""),
-    rows,
-    warnings
-  };
+export function reverseTranslateProteinSequence(sequence, reference, options = {}) {
+  const steps = reverseTranslateSteps(sequence,reference,options);
+  let step = steps.next();
+  while (!step.done) step = steps.next();
+  return step.value;
+}
+
+export async function reverseTranslateProteinSequenceWithContext(sequence, reference, options = {}, context = {}) {
+  const steps = reverseTranslateSteps(sequence,reference,options);
+  let step = steps.next();
+  while (!step.done) {
+    context.throwIfCancelled?.();
+    context.reportProgress?.(step.value);
+    await context.yieldIfNeeded?.();
+    context.throwIfCancelled?.();
+    step = steps.next();
+  }
+  return step.value;
 }
 
 function formatProbability(value) {
@@ -295,18 +305,23 @@ function nicePositionTickStep(columnCount) {
   return niceStep * magnitude;
 }
 
-export function renderReverseTranslateProbabilitySvg(records, options = {}) {
+export function renderReverseTranslateProbabilitySvg(...args) {
+  return isolateSvgStyles(renderReverseTranslateProbabilitySvgUnscoped(...args));
+}
+
+function renderReverseTranslateProbabilitySvgUnscoped(records, options = {}) {
   const title = options.title ?? "Reverse translation codon base probability plot";
-  const residuesPerRow = clampInteger(options.residuesPerRow, 30, 20, 40);
-  const maxResidues = clampInteger(options.maxResidues, 1000, 10, 5000);
-  const visibleRecords = (records ?? []).map((record) => {
+  const residuesPerRow = clampInteger(options.residuesPerRow, defaults.plotResiduesPerRow, 20, 40);
+  const maxResidues = clampInteger(options.maxResidues, defaults.plotMaxResidues, 10, 5000);
+  const visibleRecords = (records ?? []).map((record, recordIndex) => {
     const sourceRows = record.rows ?? [];
     const rows = sourceRows.slice(0, maxResidues);
     return {
       ...record,
+      inspectionLabel: `R${recordIndex + 1}`,
       rows,
       chunks: chunkRows(rows, residuesPerRow),
-      omittedRows: Math.max(0, sourceRows.length - maxResidues)
+      omittedRows: (record.omittedRows ?? 0) + Math.max(0, sourceRows.length - maxResidues)
     };
   });
   const maxVisibleResidues = Math.max(
@@ -338,18 +353,26 @@ export function renderReverseTranslateProbabilitySvg(records, options = {}) {
   const top = 104;
   const bottom = 74;
   const width = Math.max(900, Math.ceil(left + maxVisibleResidues * residueWidth + right));
+  const labelStyle = makePublicationPlotStyle(width, 260, options);
+  const labelCharacters = Math.max(1, Math.floor((width - 56) / (labelStyle.bodyFontSize * 1.2)));
+  const labelLineHeight = labelStyle.bodyFontSize * 1.5;
   const layout = [];
   let cursorY = top;
   for (const record of visibleRecords) {
+    const characters = [...record.title];
+    record.titleLines = [];
+    for (let offset = 0; offset < characters.length; offset += labelCharacters) record.titleLines.push(characters.slice(offset, offset + labelCharacters).join(""));
+    const labelExtra = Math.max(0, record.titleLines.length - 1) * labelLineHeight;
     record.chunks.forEach((chunk, chunkIndex) => {
       const isFirstChunk = chunkIndex === 0;
       const isLastChunk = chunkIndex === record.chunks.length - 1;
-      const barTop = cursorY + (isFirstChunk ? firstChunkTopGap : continuationTopGap);
+      const barTop = cursorY + (isFirstChunk ? firstChunkTopGap + labelExtra : continuationTopGap);
       const axisY = barTop + barHeight;
       const textBottom = axisY + (showCodons ? 40 : 25);
       const omitY = isLastChunk && record.omittedRows > 0 ? textBottom + 16 : null;
       layout.push({
         record,
+        labelExtra,
         chunk,
         chunkIndex,
         isFirstChunk,
@@ -377,7 +400,7 @@ export function renderReverseTranslateProbabilitySvg(records, options = {}) {
     `<rect width="${width}" height="${height}" fill="#ffffff"></rect>`,
     `<text class="title" x="28" y="34">${escapeXml(title)}</text>`,
     `<text class="subtitle" x="28" y="56">${escapeXml(methodLabel)}</text>`,
-    `<text class="note" x="28" y="78">Each residue column contains three codon-position bars. Long records wrap across plot rows.</text>`
+    `<text class="note" x="28" y="78">Candidate-codon marginal probabilities; each residue has three codon-position bars.</text>`
   ];
 
   BASE_ORDER.forEach((base, index) => {
@@ -387,18 +410,19 @@ export function renderReverseTranslateProbabilitySvg(records, options = {}) {
   });
 
   for (const item of layout) {
-    const { record, chunk, isFirstChunk, isLastChunk, segmentTop, labelY, barTop, axisY, omitY } = item;
+    const { record, labelExtra, chunk, isFirstChunk, isLastChunk, segmentTop, labelY, barTop, axisY, omitY } = item;
     const fixedBaseCount = record.rows.reduce((sum, row) => sum + (row.fixed_bases ?? 0), 0);
     const totalBaseCount = Math.max(1, record.rows.length * 3);
     const fixedFraction = fixedBaseCount / totalBaseCount;
-    const summary = `${record.rows.length}${record.omittedRows ? ` of ${record.rows.length + record.omittedRows}` : ""} residues plotted in ${record.chunks.length} row${record.chunks.length === 1 ? "" : "s"}; ${formatPercent(fixedFraction)} fixed bases`;
+    const positionUnit = record.hasStops || record.rows.some(row => row.residue === "*") ? "positions" : "residues";
+    const summary = `${record.rows.length}${record.omittedRows ? ` of ${record.rows.length + record.omittedRows}` : ""} ${positionUnit} plotted in ${record.chunks.length} row${record.chunks.length === 1 ? "" : "s"}; ${formatPercent(fixedFraction)} fixed bases`;
     if (isFirstChunk) {
-      parts.push(`<text class="record" x="28" y="${segmentTop + 18}">${escapeXml(record.title)}</text>`);
-      parts.push(`<text class="note" x="28" y="${segmentTop + 38}">${escapeXml(summary)}</text>`);
+      parts.push(`<text class="record" x="28" y="${segmentTop + 18}">${record.titleLines.map((line, index) => `<tspan x="28" dy="${index ? labelLineHeight : 0}">${escapeXml(line)}</tspan>`).join("")}</text>`);
+      parts.push(`<text class="note" x="28" y="${segmentTop + 38 + labelExtra}">${escapeXml(summary)}</text>`);
     }
     const firstPosition = chunk.rows[0]?.position ?? 0;
     const lastPosition = chunk.rows.at(-1)?.position ?? 0;
-    const rowLabel = chunk.rows.length > 0 ? `Residues ${firstPosition}-${lastPosition}` : "No residues to plot";
+    const rowLabel = chunk.rows.length > 0 ? `${positionUnit === "positions" ? "Positions" : "Residues"} ${firstPosition}-${lastPosition}` : "No residues to plot";
     parts.push(`<text class="row-label" x="${left}" y="${labelY}">${escapeXml(rowLabel)}</text>`);
 
     const plotWidth = Math.max(1, chunk.rows.length * residueWidth);
@@ -438,12 +462,11 @@ export function renderReverseTranslateProbabilitySvg(records, options = {}) {
           const segmentHeight = Math.max(0.5, probabilityScale ? probabilityScale(probability) : probability * barHeight);
           currentY -= segmentHeight;
           const inspectionText = [
-            `Residue ${row.position} (${row.residue})`,
-            `Base: ${base}`,
-            `Probability: ${formatProbability(probability)} (${formatPercent(probability)})`,
+            `${positionUnit === "positions" ? "Position" : "Residue"} ${row.position} (${row.residue})`,
+            `${base} probability: ${formatProbability(probability)}`,
             `Codon position: ${positionIndex + 1} of 3`,
-            `Output codon: ${row.codon}`,
-            record.title
+            `Codon: ${row.codon}`,
+            record.inspectionLabel
           ].join("; ");
           parts.push(
             `<rect class="bar" x="${barX.toFixed(2)}" y="${currentY.toFixed(2)}" width="${barWidth.toFixed(2)}" height="${segmentHeight.toFixed(2)}" fill="${BASE_COLORS[base]}"><title>${escapeXml(inspectionText)}</title></rect>`
@@ -454,12 +477,12 @@ export function renderReverseTranslateProbabilitySvg(records, options = {}) {
     });
 
     if (isLastChunk && record.omittedRows > 0) {
-      parts.push(`<text class="omit" x="${left}" y="${omitY}">${record.omittedRows.toLocaleString()} residues not shown. Increase the maximum plotted residues to show more.</text>`);
+      parts.push(`<text class="omit" x="${left}" y="${omitY}">${record.omittedRows.toLocaleString()} ${positionUnit} not shown. Select fewer records or increase the per-record setting within the total plot limit.</text>`);
     }
   }
 
   parts.push(`<text class="note" x="28" y="${height - 40}">Fixed bases are codon positions where one nucleotide has probability 1.0; the percent is calculated from the residues shown here.</text>`);
-  parts.push(`<text class="note" x="28" y="${height - 22}">Use the codon choice table for exact candidates and reference values.</text>`);
+  parts.push(`<text class="note" x="28" y="${height - 22}">${options.mode === "degenerate" ? "Equal candidate weights; IUPAC unions can also encode other residues or stops." : "Reference-weighted candidates; bars describe the candidate family, not the single chosen codon."}</text>`);
   parts.push("</svg>");
   return parts.join("");
 }

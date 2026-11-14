@@ -1,3 +1,5 @@
+import { MUSCLE_RUNTIME } from './muscle-runtime.js';
+
 export const biowasmToolManifest = [
   {
     id: "aioli",
@@ -38,18 +40,20 @@ export const biowasmToolManifest = [
     id: "muscle",
     tool: "muscle",
     program: "muscle",
-    biowasmVersion: "5.1.0",
-    upstreamVersion: "5.1.0",
+    biowasmVersion: MUSCLE_RUNTIME.packageVersion,
+    upstreamVersion: MUSCLE_RUNTIME.reportedVersion,
+    sourceRevision: MUSCLE_RUNTIME.sourceRevision,
+    buildRevision: MUSCLE_RUNTIME.buildRevision,
     assetPaths: [
       "src/vendor/biowasm/muscle/5.1.0/muscle.js",
       "src/vendor/biowasm/muscle/5.1.0/muscle.wasm"
     ],
     license: "GPL-3.0 via upstream MUSCLE v5",
     licensePath: "src/vendor/biowasm/licenses/MUSCLE-5-GPL-3.0-LICENSE",
-    sourceUrl: "https://biowasm.com/cdn/v3/muscle/5.1.0",
-    accessDate: "2026-05-16",
-    commandSyntax: "muscle -align <input.fasta> -output <output.afa>",
-    sms3Tools: ["Multiple Align DNA/RNA", "Multiple Align Protein", "Multiple Align Coding DNA"]
+    sourceUrl: "https://github.com/rcedgar/muscle/tree/6c601163998616bb88991931e443c645858e162c",
+    accessDate: "2026-11-13",
+    commandSyntax: "muscle -align <input.fasta> -output <output.afa> <-nt|-amino> (SMS3 molecule fix 1)",
+    sms3Tools: ["Multiple Align DNA/RNA", "Multiple Align Protein", "Multiple Align Coding DNA", "Phylogeny Builder", "Protein Conservation Structure Viewer"]
   },
   {
     id: "seq-align",

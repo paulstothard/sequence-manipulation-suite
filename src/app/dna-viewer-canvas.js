@@ -1,3 +1,4 @@
+import { sequenceCoordinateUnit } from "../core/sequence-coordinate-unit.js";
 import { viewerViewportHeight, allocateViewerLanes, viewerDensityDecision } from '../core/viewer-viewport-layout.js';
 import { VIEWER_VISIBILITY_FOOTER_HEIGHT } from '../core/viewer-feature-visibility.js';
 import { drawViewerFeatureVisibility } from './viewer-feature-visibility.js';
@@ -41,6 +42,7 @@ import {
   getSelectionTranslation,
   getViewerTrackItems,
   getViewerStableLaneMemory,
+  cloneViewerStableLaneMemory,
   getViewerTargetClientPosition,
   getVisibleViewerTracks,
   getViewerTrackDisplayMode,
@@ -303,7 +305,7 @@ function isProteinRecord(record) {
 }
 
 function coordinateUnit(record) {
-  return isProteinRecord(record) ? "aa" : "bp";
+  return sequenceCoordinateUnit(record);
 }
 
 function getLinearPlotBounds(width) {
@@ -970,6 +972,7 @@ function drawViewer(ctx, canvas, status, record, state, theme = getViewerCanvasT
   const span = state.viewEnd - state.viewStart;
   const pxPerBp = (plotRight - plotLeft) / span;
   const proteinViewer = isProteinRecord(record);
+  const unit = coordinateUnit(record);
   const showSecondStrand = !proteinViewer && state.showSecondStrand;
   const showForwardTranslations = !proteinViewer && state.showForwardTranslations;
   const showReverseTranslations = !proteinViewer && state.showReverseTranslations;
@@ -1146,6 +1149,7 @@ function drawViewer(ctx, canvas, status, record, state, theme = getViewerCanvasT
           frame: item.frame,
           topology: item.topology,
           parts: item.parts,
+          coordinateUnit: unit,
           alphabet: proteinViewer ? "protein" : "dna-rna"
         };
         const hitPadding = track.focusOnSelect === true ? 3 : 0;
@@ -1262,6 +1266,7 @@ function drawViewer(ctx, canvas, status, record, state, theme = getViewerCanvasT
             frame: item.frame,
             topology: item.topology,
             parts: item.parts,
+            coordinateUnit: unit,
             alphabet: proteinViewer ? "protein" : "dna-rna"
           };
           addRectHit(state, { x1, y1: trackY - 12, x2, y2: trackY + 12 }, target);
@@ -1352,12 +1357,13 @@ function drawViewer(ctx, canvas, status, record, state, theme = getViewerCanvasT
       const base = record.sequence[index];
       const target = {
         kind: "base",
-        type: proteinViewer ? "Residue" : "Base",
+        type: proteinViewer ? base === "*" ? "Stop symbol" : "Residue" : "Base",
         position: index + 1,
         start: index + 1,
         end: index + 1,
         strand: "+",
         base,
+        coordinateUnit: unit,
         alphabet: proteinViewer ? "protein" : "dna-rna"
       };
       addRectHit(state, { x1: x - pxPerBp / 2, y1: dnaTopY - baseHitHalfHeight, x2: x + pxPerBp / 2, y2: dnaTopY + baseHitHalfHeight }, target);
@@ -1457,7 +1463,6 @@ function drawViewer(ctx, canvas, status, record, state, theme = getViewerCanvasT
   status.textContent = "";
   const rangeLine = document.createElement("span");
   const scaleLine = document.createElement("span");
-  const unit = coordinateUnit(record);
   rangeLine.textContent = `${Math.floor(state.viewStart + 1).toLocaleString()}-${Math.ceil(state.viewEnd).toLocaleString()} ${unit}`;
   scaleLine.textContent = `${Math.round(span).toLocaleString()} ${unit} span · ${pxPerBp.toFixed(2)} px/${unit}`;
   status.append(rangeLine, scaleLine);
@@ -1792,7 +1797,7 @@ function viewerInitialStateForRecord(viewerOptions, previousSnapshots, index) {
   return index === 0 ? provided : null;
 }
 
-function cloneViewerStateForExport(state) {
+function cloneViewerStateForExport(state, record) {
   return {
     ...state,
     rangeAnchors: Array.isArray(state.rangeAnchors) ? state.rangeAnchors.map((anchor) => ({ ...anchor })) : [],
@@ -1808,7 +1813,7 @@ function cloneViewerStateForExport(state) {
     ),
     trackDisplayModes: new Map(state.trackDisplayModes || []),
     trackLayoutCache: new WeakMap(),
-    stableLaneMemory: new WeakMap(),
+    stableLaneMemory: cloneViewerStableLaneMemory(record, state),
     densityMemory: new Map(state.densityMemory)
   };
 }
@@ -1816,6 +1821,7 @@ function cloneViewerStateForExport(state) {
 function installViewer(panel, record, options = {}) {
   const preserved = reusableLinearViewerSnapshot(options.initialState, record);
   const proteinViewer = isProteinRecord(record);
+  const unit = coordinateUnit(record);
   const hideSequenceInterpretationControls = record.hideSequenceInterpretationControls === true;
   const hideDnaInterpretationControls = proteinViewer || hideSequenceInterpretationControls;
   const toolbar = document.createElement("div");
@@ -2158,6 +2164,7 @@ function installViewer(panel, record, options = {}) {
       frame: item.frame,
       topology: item.topology,
       parts: item.parts,
+      coordinateUnit: unit,
       alphabet: proteinViewer ? "protein" : "dna-rna"
     };
     return { ...target, key: makeTargetKey(target) };
@@ -2287,7 +2294,7 @@ function installViewer(panel, record, options = {}) {
         state.useOppositeRangePath = !state.useOppositeRangePath;
         renderCurrentRange({ redraw: true });
       },
-      unitLabel: coordinateUnit(record),
+      unitLabel: unit,
       copySequenceLabel: proteinViewer ? "Copy protein sequence" : "Copy forward DNA",
       showReverseComplement: !proteinViewer,
       showTranslation: !proteinViewer,
@@ -2343,19 +2350,22 @@ function installViewer(panel, record, options = {}) {
     state.viewEnd = record.length;
     resize();
   });
-  camera.addEventListener("click", () => {
+  camera.addEventListener("click", async () => {
     const safeTitle = makeSafeFileStem(record.title, proteinViewer ? "protein-viewer" : "dna-viewer");
-    downloadCanvasPng(canvas, `${safeTitle}-viewer.png`, {
-      boundBitmap: true,
-      drawSnapshot: (exportContext, exportCanvas) => {
-        // The detached export canvas does not inherit the viewer's CSS colours.
-        drawViewer(exportContext, exportCanvas, document.createElement("div"), record, cloneViewerStateForExport(state), getViewerCanvasTheme(canvas));
-      }
-    });
+    try {
+      await downloadCanvasPng(canvas, `${safeTitle}-viewer.png`, {
+        drawSnapshot: (exportContext, exportCanvas) => {
+          // The detached export canvas does not inherit the viewer's CSS colours.
+          drawViewer(exportContext, exportCanvas, document.createElement("div"), record, cloneViewerStateForExport(state, record), getViewerCanvasTheme(canvas));
+        }
+      });
+    } catch (error) {
+      status.textContent = error.message;
+    }
   });
   svgDownload.addEventListener("click", () => {
     const safeTitle = makeSafeFileStem(record.title, proteinViewer ? "protein-viewer" : "dna-viewer");
-    drawViewer(ctx, canvas, document.createElement("div"), record, cloneViewerStateForExport(state));
+    drawViewer(ctx, canvas, document.createElement("div"), record, cloneViewerStateForExport(state, record));
     try {
       downloadCanvasSvg(canvas, `${safeTitle}-viewer.svg`, {
         title: `${record.title || (proteinViewer ? "Protein sequence" : "DNA sequence")} linear viewer`,

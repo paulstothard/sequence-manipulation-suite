@@ -605,7 +605,7 @@ async function renderShowcaseCard(card, item, token, context) {
       sharedInspection = true;
     } else if (result.visual?.treeViewer) {
       preview.classList.add("showcase-preview-viewer");
-      renderTreeViewer(preview, await makeShowcaseTreeViewerPreset(item, result.visual.treeViewer));
+      renderTreeViewer(preview, await makeShowcaseTreeViewerPreset(item, result.visual.treeViewer), undefined, { preview: true });
     } else if (plotPreview) {
       preview.append(plotPreview);
       preview.querySelectorAll("svg").forEach(normalizeShowcaseSvg);

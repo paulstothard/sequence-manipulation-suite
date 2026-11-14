@@ -1,3 +1,4 @@
+import { isolateSvgStyles } from "./svg-style-scope.js";
 import { fitSideLegendLabel, sideLegendLayout } from "./plot-side-legend.js";
 import {
   makePlotAxisLabel,
@@ -71,7 +72,11 @@ export function makeLinePlotSpec({
   };
 }
 
-export function renderLinePlotSpecToSvg(spec, options = {}) {
+export function renderLinePlotSpecToSvg(...args) {
+  return isolateSvgStyles(renderLinePlotSpecToSvgUnscoped(...args));
+}
+
+function renderLinePlotSpecToSvgUnscoped(spec, options = {}) {
   if (spec?.kind !== "plot-spec" || spec.mark !== "line") {
     throw new Error("Only line plot specs are supported by the prototype SVG renderer.");
   }

@@ -1,3 +1,4 @@
+import { setUiText } from './set-ui-text.js';
 import {validateGraphicDocument} from '../core/graphic-editor.js';
 import { validateImageState, IMAGE_EDITOR_TOOLS, imageToolId } from '../core/text-table-image.js';
 import { downloadText } from "./file-download.js";
@@ -170,7 +171,7 @@ function createEditorSession({ host, toolbar, downloadHost, tool, source, read, 
       parseEditorDocument(JSON.stringify(doc));
       downloadText(JSON.stringify(doc, null, 2), `${tool}.sms3.json`, "application/json");
     } catch (error) {
-      status.textContent = error.message;
+      setUiText(status, error.message);
     }
   }) : null;
   if (downloadHost && documentDownload) downloadHost.append(documentDownload);
@@ -191,7 +192,10 @@ function createEditorSession({ host, toolbar, downloadHost, tool, source, read, 
   popover.setAttribute("popover", "auto");
   popover.setAttribute("role", "note");
   popover.setAttribute("aria-label", "Browser recovery");
-  popover.textContent = "SMS3 automatically saves the latest document for this tool in this browser’s site storage on this device. It restores when you return or reload. It is not synced to other browsers or devices. A new run replaces this tool’s recovery copy; clearing site data removes it. " +
+  popover.textContent = (tool === "tree-viewer"
+    ? "SMS3 automatically saves the latest Tree Viewer document in this browser’s site storage on this device. Open or reload Tree Viewer to restore it. Tree outputs from analysis tools share this recovery copy. "
+    : "SMS3 automatically saves the latest document for this tool in this browser’s site storage on this device. It restores when you return or reload. ") +
+    "It is not synced to other browsers or devices. A new run replaces this tool’s recovery copy; clearing site data removes it. " +
     (tool === "tree-viewer" ? "Use Export → Tree document (JSON)" : "Use Download document") +
     " to keep a separate copy or reopen it elsewhere through Choose file.";
   help.setAttribute("aria-controls", popover.id);
@@ -254,7 +258,7 @@ function createEditorSession({ host, toolbar, downloadHost, tool, source, read, 
   window.addEventListener("scroll", positionHelp, {capture:true, passive:true, signal:controller.signal});
   recovery.append(status);
   if (persist) recovery.append(help);
-  else status.textContent = "Preview changes are temporary";
+  else setUiText(status, "Preview changes are temporary");
   ui.append(recovery, popover);
   toolbar.append(ui);
   function getDocument() {
@@ -285,14 +289,14 @@ function createEditorSession({ host, toolbar, downloadHost, tool, source, read, 
       doc = getDocument();
       parseEditorDocument(JSON.stringify(doc));
     } catch (error) {
-      status.textContent = `Browser recovery unavailable: ${error.message}`;
+      setUiText(status, `Browser recovery unavailable: ${error.message}`);
       return pendingWrite;
     }
     pendingWrite = (recoveryWrites.get(tool) || Promise.resolve()).catch(() => {
     }).then(() => store(tool, doc)).then(() => {
-      if (!dirty && JSON.stringify(doc.state) === current) status.textContent = "Saved in this browser";
+      if (!dirty && JSON.stringify(doc.state) === current) setUiText(status, "Saved in this browser");
     }, () => {
-      status.textContent = "Browser recovery unavailable. Download a document to keep your changes.";
+      setUiText(status, "Browser recovery unavailable. Download a document to keep your changes.");
     });
     recoveryWrites.set(tool, pendingWrite);
     return pendingWrite;
@@ -309,7 +313,7 @@ function createEditorSession({ host, toolbar, downloadHost, tool, source, read, 
     current = next;
     future = [];
     dirty = true;
-    status.textContent = persist ? "Saving in this browser…" : "Preview changes are temporary";
+    setUiText(status, persist ? "Saving in this browser…" : "Preview changes are temporary");
     update();
     clearTimeout(timer);
     timer = setTimeout(flush, 350);
@@ -330,7 +334,7 @@ function createEditorSession({ host, toolbar, downloadHost, tool, source, read, 
     }
     groupAt = 0;
     dirty = true;
-    status.textContent = persist ? "Saving in this browser…" : "Preview changes are temporary";
+    setUiText(status, persist ? "Saving in this browser…" : "Preview changes are temporary");
     update();
     flush();
   }

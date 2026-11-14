@@ -1,3 +1,4 @@
+import { RECIPROCAL_RESOURCE_LIMITS } from "../../core/reciprocal-best-match-options.js";
 import {
   compareDnaRnaSequenceSetReciprocalBestMatches,
   compareProteomeReciprocalBestMatches,
@@ -12,41 +13,41 @@ import {
 } from "../../core/proteome-reciprocal-best-match.js";
 import { makeTableStream, makeTextStream, makeToolResult } from "../../core/workflow.js";
 
-const OUTPUT_FORMATS = new Set(["report", "reciprocal-tsv", "candidates-tsv", "unmatched-tsv", "heatmap-svg"]);
-
-function normalizeOutputFormat(value) {
-  return OUTPUT_FORMATS.has(value) ? value : "reciprocal-tsv";
-}
-
 async function runSequenceSetReciprocalBestMatch(input, options = {}, context = {}, config) {
   context.reportProgress?.({ phase: "starting", progress: 0.02 });
   context.throwIfCancelled?.();
   await context.yieldIfNeeded?.();
 
   const result = await config.compare(input, options, context);
-  const outputFormat = normalizeOutputFormat(options.outputFormat);
+  const outputFormat = result.options.outputFormat;
 
   context.reportProgress?.({ phase: "building-output", progress: 0.92 });
   context.throwIfCancelled?.();
   await context.yieldIfNeeded?.();
 
-  const report = makeSequenceSetBestMatchReport(result);
-  const reciprocalTsv = makeSequenceSetBestMatchTsv(result.reciprocalRows, config.alphabet);
-  const candidatesTsv = makeSequenceSetBestMatchTsv(result.rows, config.alphabet);
-  const unmatchedTsv = makeSequenceSetUnmatchedTsv(result.unmatchedRows, config.alphabet);
-  const heatmap = outputFormat === "heatmap-svg" ? makeSequenceSetBestMatchHeatmapSvg(result) : "";
-  const outputs = {
-    report,
-    "reciprocal-tsv": reciprocalTsv,
-    "candidates-tsv": candidatesTsv,
-    "unmatched-tsv": unmatchedTsv,
-    "heatmap-svg": heatmap
-  };
+  let output;
+  let streams;
+  if (outputFormat === "report") {
+    output = makeSequenceSetBestMatchReport(result);
+    streams = { report: makeTextStream(output, "text/plain") };
+  } else if (outputFormat === "heatmap-svg") {
+    output = makeSequenceSetBestMatchHeatmapSvg(result);
+    streams = { heatmap: makeTextStream(output, "image/svg+xml") };
+  } else if (outputFormat === "unmatched-tsv") {
+    output = makeSequenceSetUnmatchedTsv(result.unmatchedRows, config.alphabet);
+    streams = { unmatchedTable: makeTableStream(config.unmatchedColumns, result.unmatchedRows, config.unmatchedSchema) };
+  } else {
+    const rows = outputFormat === "reciprocal-tsv" ? result.reciprocalRows : result.rows;
+    output = makeSequenceSetBestMatchTsv(rows, config.alphabet);
+    streams = { table: makeTableStream(config.tableColumns, rows, config.tableSchema) };
+  }
 
+  if (output.length > RECIPROCAL_RESOURCE_LIMITS.outputCharacters) throw new Error(`Selected output exceeds ${RECIPROCAL_RESOURCE_LIMITS.outputCharacters.toLocaleString()} characters. Reduce input or select a summary report.`);
   context.reportProgress?.({ phase: "finished", progress: 1 });
 
   return makeToolResult({
-    output: outputs[outputFormat],
+    output,
+    optionsUsed: result.options,
     download: {
       filename: outputFormat === "reciprocal-tsv"
         ? `${config.filenamePrefix}-reciprocal-best-matches.tsv`
@@ -64,19 +65,13 @@ async function runSequenceSetReciprocalBestMatch(input, options = {}, context = 
           : "text/plain;charset=utf-8"
     },
     warnings: result.warnings,
+    notes: result.notes,
     recordsProcessed: result.recordsA.length + result.recordsB.length,
     basesProcessed: result.recordsA.reduce((sum, record) => sum + record.length, 0) + result.recordsB.reduce((sum, record) => sum + record.length, 0),
     processedUnitLabel: config.processedUnitLabel,
     charactersRemoved: result.charactersRemoved,
-    streams: {
-      report: makeTextStream(report, "text/plain"),
-      ...(outputFormat === "unmatched-tsv" ? {} : {
-        table: makeTableStream(config.tableColumns, outputFormat === "reciprocal-tsv" ? result.reciprocalRows : result.rows, config.tableSchema)
-      }),
-      unmatchedTable: makeTableStream(config.unmatchedColumns, result.unmatchedRows, config.unmatchedSchema),
-      ...(outputFormat === "heatmap-svg" ? { heatmap: makeTextStream(heatmap, "image/svg+xml") } : {})
-    },
-    visual: outputFormat === "heatmap-svg" ? { svg: heatmap, pngDownload: true } : undefined
+    streams,
+    visual: outputFormat === "heatmap-svg" ? { svg: output, pngDownload: true } : undefined
   });
 }
 

@@ -1,3 +1,4 @@
+import { isolateSvgStyles } from "./svg-style-scope.js";
 import "../vendor/d3/d3.min.js";
 import { fCdf, twoTailedPValue } from "./hypothesis-tests.js";
 import { escapeXml } from "./plot-renderer.js";
@@ -194,7 +195,11 @@ function makeTicks(min, max, count = 5) {
   return Array.from({ length: count }, (_, index) => min + ((max - min) * index) / (count - 1));
 }
 
-export function renderMultipleRegressionResidualSvg(result, options = {}) {
+export function renderMultipleRegressionResidualSvg(...args) {
+  return isolateSvgStyles(renderMultipleRegressionResidualSvgUnscoped(...args));
+}
+
+function renderMultipleRegressionResidualSvgUnscoped(result, options = {}) {
   const rows = result.fitRows ?? [];
   const width = 900;
   const height = 480;

@@ -1129,7 +1129,7 @@ export function createToolOptionsController({
 
     for (const option of flatOptions) {
       if (
-        dependentOptions.some((dependent) => dependent.dependsOn === option.id) ||
+        dependentOptions.some((dependent) => (Array.isArray(dependent.dependsOn) ? dependent.dependsOn.includes(option.id) : dependent.dependsOn === option.id)) ||
         visibilityParentIds.has(option.id)
       ) {
         for (const root of [elements.toolOptions, elements.inputPanel]) {

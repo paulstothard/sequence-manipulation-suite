@@ -52,7 +52,7 @@ export function createSearchableViewerChoiceCombobox({
   input.setAttribute("aria-controls", `viewerChoiceList${controlNumber}`);
   toggle.type = "button";
   toggle.className = "viewer-choice-toggle";
-  toggle.textContent = "▾";
+  toggle.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="m4 6 4 4 4-4"/></svg>';
   toggle.setAttribute("aria-label", toggleLabel);
   toggle.setAttribute("aria-controls", `viewerChoiceList${controlNumber}`);
   list.id = `viewerChoiceList${controlNumber}`;
@@ -87,7 +87,13 @@ export function createSearchableViewerChoiceCombobox({
       option.setAttribute("aria-selected", String(active));
       if (active) {
         input.setAttribute("aria-activedescendant", option.id);
-        option.scrollIntoView({ block: "nearest" });
+        // Scroll only the choices, never the page containing this popup.
+        const optionBox = option.getBoundingClientRect();
+        const listBox = list.getBoundingClientRect();
+        const top = listBox.top + list.clientTop;
+        const bottom = top + list.clientHeight;
+        if (optionBox.top < top) list.scrollTop += optionBox.top - top;
+        else if (optionBox.bottom > bottom) list.scrollTop += optionBox.bottom - bottom;
       }
     }
   };
@@ -156,7 +162,7 @@ export function createSearchableViewerChoiceCombobox({
   toggle.addEventListener("click", () => {
     if (list.hidden) {
       open({ showAll: true });
-      input.focus();
+      input.focus({ preventScroll: true });
     } else {
       close();
     }

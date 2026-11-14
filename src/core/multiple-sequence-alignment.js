@@ -1,12 +1,18 @@
+import { makeMultipleAlignmentContext } from "./multiple-alignment-context.js";
+import { MUSCLE_RUNTIME } from "../vendor/biowasm/muscle-runtime.js";
+import { exportDelimitedTable } from "./table.js";
 import { formatFastaRecord, parseSequenceInput } from "./fasta.js";
+import { makeClustalIdentifiers } from "./alignment-identifiers.js";
+import { makeClustalConsensus } from "./clustal-consensus.js";
 import { getGeneticCode, makeCodonMap } from "./genetic-code.js";
-import { alignPairwiseAffine, pairwiseAlignmentDefaultLimits } from "./pairwise-alignment.js";
+import { alignPairwiseAffine } from "./pairwise-alignment.js";
 import { makeAlignmentSvg } from "./alignment-svg.js";
 import { createBioWasmCli, requireBioWasmRuntime } from "./biowasm-runner.js";
 import { makeHeatmapPlotSpec, makeObservablePlotConfig, renderHeatmapPlotSvg } from "./plot-renderer.js";
 import { renderPhylogramSvg } from "./tree-svg.js";
 import { cleanDnaRnaSequence, cleanProteinSequence } from "./sequence.js";
-import { effectiveToolLimit } from "./tool-limit-policy.js";
+import { MULTIPLE_ALIGNMENT_ENGINES, MAX_MSA_SEQUENCES, multipleAlignmentDefaultLimits, normalizeMultipleAlignmentOptions as normalizeOptions } from "./multiple-alignment-options.js";
+export { MULTIPLE_ALIGNMENT_ENGINES, MAX_MSA_SEQUENCES, multipleAlignmentDefaultLimits };
 
 export const multipleAlignmentTableColumns = [
   { id: "alignment_position", label: "Alignment position", type: "number" },
@@ -46,66 +52,11 @@ export const multipleAlignmentIdentityTableColumns = [
   { id: "distance_space", label: "Distance space", type: "string" }
 ];
 
-export const multipleAlignmentDefaultLimits = Object.freeze({
-  maxTotalSymbols: 250000
-});
-export const MAX_MSA_SEQUENCES = 1000;
-const MAX_MSA_TOTAL_SYMBOLS_OPTION = 1000000;
-export const MULTIPLE_ALIGNMENT_ENGINES = {
-  muscle: "muscle",
-  sms3: "sms3-progressive"
-};
-const BIOWASM_MUSCLE_VERSION = "5.1.0";
 let muscleRunCounter = 0;
 
 function cleanForAlphabet(record, alphabet) {
   const cleaner = alphabet === "protein" ? cleanProteinSequence : cleanDnaRnaSequence;
   return cleaner(record.sequence, { preserveCase: false, keepGaps: false });
-}
-
-function normalizeLimitInteger(value, fallback, min, max) {
-  if (value === Infinity) return Infinity;
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed)) {
-    return fallback;
-  }
-  return Math.max(min, Math.min(max, parsed));
-}
-
-function normalizeOptions(options = {}) {
-  const score = (value, fallback) => {
-    const parsed = Number.parseFloat(value);
-    return Number.isFinite(parsed) ? parsed : fallback;
-  };
-  return {
-    alphabet: options.alphabet === "protein" ? "protein" : "dna-rna",
-    alignmentEngine: options.alignmentEngine === MULTIPLE_ALIGNMENT_ENGINES.sms3
-      ? MULTIPLE_ALIGNMENT_ENGINES.sms3
-      : MULTIPLE_ALIGNMENT_ENGINES.muscle,
-    gapOpen: score(options.gapOpen, 10),
-    gapExtend: score(options.gapExtend, 1),
-    matchScore: score(options.matchScore, 5),
-    mismatchScore: score(options.mismatchScore, -4),
-    similarScore: score(options.similarScore, 1),
-    lineWidth: Math.max(20, Math.min(120, Number.parseInt(options.lineWidth, 10) || 60)),
-    maxAlignmentRecords: effectiveToolLimit(
-      options,
-      "maxAlignmentRecords",
-      options.maxAlignmentRecords === Infinity ? Infinity : MAX_MSA_SEQUENCES
-    ),
-    maxTotalSymbols: effectiveToolLimit(options, "maxTotalSymbols", normalizeLimitInteger(
-      options.maxTotalSymbols,
-      multipleAlignmentDefaultLimits.maxTotalSymbols,
-      1000,
-      MAX_MSA_TOTAL_SYMBOLS_OPTION
-    )),
-    maxAlignmentCells: effectiveToolLimit(options, "maxAlignmentCells", normalizeLimitInteger(
-      options.maxAlignmentCells,
-      pairwiseAlignmentDefaultLimits.maxAlignmentCells,
-      1000,
-      pairwiseAlignmentDefaultLimits.maxAlignmentCells * 10
-    ))
-  };
 }
 
 async function getBioWasmMuscleCli() {
@@ -114,7 +65,7 @@ async function getBioWasmMuscleCli() {
   return createBioWasmCli({
     tool: "muscle",
     program: "muscle",
-    version: BIOWASM_MUSCLE_VERSION,
+    version: MUSCLE_RUNTIME.packageVersion,
     assetPath: "../vendor/biowasm/muscle/5.1.0"
   });
 }
@@ -153,9 +104,20 @@ function translateCodonsForAlignment(codons, codonMap) {
   return { protein, ambiguousCodons, stopCodons };
 }
 
+function cleanAlignmentRecord(record, title, alphabet, warnings, notes) {
+  const cleaned = cleanForAlphabet(record, alphabet);
+  const gaps = (record.sequence.match(/[.-]/g) ?? []).length;
+  const unexpected = cleaned.removedCount - gaps;
+  if (gaps) notes.push(`${title}: removed ${gaps} pre-existing gap character(s) before realignment.`);
+  if (unexpected) warnings.push(`${title}: removed ${unexpected} character(s) outside the ${alphabet === "protein" ? "protein" : "DNA/RNA"} alphabet.${alphabet === "coding-dna" ? " Check the reading frame after cleanup." : ""}`);
+  return cleaned;
+}
+
 function prepareRecords(input, alphabet, options = {}) {
   const warnings = [];
-  const parsed = parseSequenceInput(input, "sequence");
+  const notes = [];
+  const parsed = parseSequenceInput(input, "sequence", { strictHeaders: true });
+  if (parsed.length > options.maxAlignmentRecords) throw new Error(`Multiple alignment input has ${parsed.length.toLocaleString()} records, above the supported maximum of ${options.maxAlignmentRecords.toLocaleString()}. Remove records or disable this resource limit explicitly.`);
   let charactersRemoved = 0;
   const seenTitles = new Map();
   const reservedTitles = new Set(parsed.map(record => record.title));
@@ -165,11 +127,9 @@ function prepareRecords(input, alphabet, options = {}) {
     if (title !== rawTitle) {
       warnings.push(`Duplicate FASTA title "${rawTitle}" was renamed to "${title}" for alignment output.`);
     }
-    const cleaned = cleanForAlphabet(record, alphabet);
+    const cleaned = cleanAlignmentRecord(record, title, alphabet, warnings, notes);
     charactersRemoved += cleaned.removedCount;
-    if (cleaned.removedCount > 0) {
-      warnings.push(`${title}: removed ${cleaned.removedCount} character(s) outside the selected alphabet.`);
-    }
+    if (!cleaned.sequence.length) warnings.push(`${title}: skipped a record with no sequence symbols after cleanup.`);
     return {
       title,
       sequence: cleaned.sequence
@@ -186,7 +146,7 @@ function prepareRecords(input, alphabet, options = {}) {
   if (totalSymbols > options.maxTotalSymbols) {
     throw new Error(`Multiple alignment input has ${totalSymbols.toLocaleString()} symbols, which exceeds the ${options.maxTotalSymbols.toLocaleString()}-symbol browser-local alignment limit. Reduce the number or length of sequences.`);
   }
-  return { records, warnings, charactersRemoved, totalSymbols };
+  return { records, warnings, notes, charactersRemoved, totalSymbols };
 }
 
 function uniquePreparedTitle(title, seenTitles, reservedTitles) {
@@ -216,13 +176,18 @@ function pairwiseOptions(options) {
 
 async function chooseCenterRecord(records, options, context = {}) {
   const scores = new Array(records.length).fill(0);
+  const totalPairs = records.length * (records.length - 1) / 2;
+  let completedPairs = 0;
   for (let i = 0; i < records.length; i += 1) {
     for (let j = i + 1; j < records.length; j += 1) {
       context.throwIfCancelled?.();
+      await context.yieldIfNeeded?.();
       const alignment = await alignPairwiseAffine(records[i].sequence, records[j].sequence, pairwiseOptions(options), context);
       const score = alignment.identityPercent - alignment.gapOpenings * 2;
       scores[i] += score;
       scores[j] += score;
+      completedPairs += 1;
+      context.reportProgress?.({ phase: "choosing-center", progress: 0.1 + 0.25 * completedPairs / totalPairs, completedPairs, totalPairs });
     }
   }
   let bestIndex = 0;
@@ -321,7 +286,7 @@ function summarizeMsa(records, titles, aligned, centerIndex, centerScores, optio
       gapColumns += 1;
     }
     consensus.push(consensusSymbol);
-    rows.push({
+    if (options.materializeAlignmentRows !== false) rows.push({
       alignment_position: index + 1,
       consensus: consensusSymbol,
       gap_count: gapCount,
@@ -425,7 +390,7 @@ function parseMuscleAlignedFasta(alignedFasta, internalRecords, options) {
     null,
     [],
     options,
-    { engine: MULTIPLE_ALIGNMENT_ENGINES.muscle, engineVersion: BIOWASM_MUSCLE_VERSION }
+    { engine: MULTIPLE_ALIGNMENT_ENGINES.muscle, engineVersion: MUSCLE_RUNTIME.versionLabel }
   );
 }
 
@@ -457,7 +422,7 @@ async function alignPreparedMultipleSequencesWithMuscle(prepared, options, conte
   context.throwIfCancelled?.();
 
   context.reportProgress?.({ phase: "running-muscle", progress: 0.35 });
-  const result = await cli.exec("muscle", ["-align", inputPath, "-output", outputPath]);
+  const result = await cli.exec("muscle", ["-align", inputPath, "-output", outputPath, options.alphabet === "protein" ? "-amino" : "-nt"]);
   context.throwIfCancelled?.();
 
   const alignedFasta = await cli.cat(outputPath);
@@ -470,6 +435,8 @@ async function alignPreparedMultipleSequencesWithMuscle(prepared, options, conte
 }
 
 export async function alignMultipleSequences(input, rawOptions = {}, context = {}) {
+  context = makeMultipleAlignmentContext(context);
+  context.throwIfCancelled?.();
   const options = normalizeOptions(rawOptions);
   const prepared = prepareRecords(input, options.alphabet, options);
   if (options.alignmentEngine === MULTIPLE_ALIGNMENT_ENGINES.muscle) {
@@ -481,9 +448,11 @@ export async function alignMultipleSequences(input, rawOptions = {}, context = {
 function prepareCodingDnaRecords(input, rawOptions = {}) {
   const options = normalizeOptions(rawOptions);
   const warnings = [];
-  const code = getGeneticCode(rawOptions.geneticCode ?? "1");
+  const notes = [];
+  const code = getGeneticCode(options.geneticCode);
   const codonMap = makeCodonMap(code);
-  const parsed = parseSequenceInput(input, "sequence");
+  const parsed = parseSequenceInput(input, "sequence", { strictHeaders: true });
+  if (parsed.length > options.maxAlignmentRecords) throw new Error(`Multiple alignment input has ${parsed.length.toLocaleString()} records, above the supported maximum of ${options.maxAlignmentRecords.toLocaleString()}. Remove records or disable this resource limit explicitly.`);
   let charactersRemoved = 0;
   const seenTitles = new Map();
   const reservedTitles = new Set(parsed.map(record => record.title));
@@ -493,15 +462,15 @@ function prepareCodingDnaRecords(input, rawOptions = {}) {
     if (title !== rawTitle) {
       warnings.push(`Duplicate FASTA title "${rawTitle}" was renamed to "${title}" for alignment output.`);
     }
-    const cleaned = cleanDnaRnaSequence(record.sequence, { preserveCase: false, keepGaps: false });
+    const cleaned = cleanAlignmentRecord(record, title, "coding-dna", warnings, notes);
     charactersRemoved += cleaned.removedCount;
-    if (cleaned.removedCount > 0) {
-      warnings.push(`${title}: removed ${cleaned.removedCount} non-DNA/RNA character(s).`);
-    }
+    const uracils = (cleaned.sequence.match(/U/g) ?? []).length;
+    if (uracils) notes.push(`${title}: converted ${uracils} uracil base(s) to thymine for codon alignment.`);
     const split = splitCompleteCodons(cleaned.sequence);
     if (split.trailingBases > 0) {
       warnings.push(`${title}: ignored ${split.trailingBases} trailing base(s) outside a complete codon.`);
     }
+    if (!split.codons.length) warnings.push(`${title}: skipped a record with no complete codons after cleanup.`);
     const translated = translateCodonsForAlignment(split.codons, codonMap);
     if (translated.ambiguousCodons > 0) {
       warnings.push(`${title}: translated ${translated.ambiguousCodons} ambiguous codon(s) as X for protein-guided alignment scoring.`);
@@ -529,7 +498,7 @@ function prepareCodingDnaRecords(input, rawOptions = {}) {
   if (totalSymbols > options.maxTotalSymbols) {
     throw new Error(`Multiple coding DNA alignment input has ${totalSymbols.toLocaleString()} bases in complete codons, which exceeds the ${options.maxTotalSymbols.toLocaleString()}-symbol browser-local alignment limit. Reduce the number or length of sequences.`);
   }
-  return { records, warnings, charactersRemoved, totalSymbols, geneticCode: code };
+  return { records, warnings, notes, charactersRemoved, totalSymbols, geneticCode: code };
 }
 
 function projectProteinMsaToCodons(prepared, proteinAlignment, options) {
@@ -568,7 +537,7 @@ function projectProteinMsaToCodons(prepared, proteinAlignment, options) {
     }
     codonConsensus.push(consensusSymbol);
     expandedConsensus.push(consensusSymbol, consensusSymbol, consensusSymbol);
-    rows.push({
+    if (options.materializeAlignmentRows !== false) rows.push({
       alignment_position: columnIndex + 1,
       consensus: consensusSymbol,
       gap_count: gapCount,
@@ -612,9 +581,11 @@ function projectProteinMsaToCodons(prepared, proteinAlignment, options) {
 }
 
 export async function alignMultipleCodingDna(input, rawOptions = {}, context = {}) {
+  context = makeMultipleAlignmentContext(context);
+  context.throwIfCancelled?.();
   const options = {
     ...normalizeOptions({ ...rawOptions, alphabet: "protein" }),
-    geneticCode: rawOptions.geneticCode ?? "1",
+    geneticCode: normalizeOptions(rawOptions).geneticCode,
     alphabet: "coding-dna"
   };
   const prepared = prepareCodingDnaRecords(input, rawOptions);
@@ -663,9 +634,9 @@ function summarizePairwiseIdentity(alignment, labelA, labelB, distanceSpace) {
     matches,
     mismatches,
     gap_columns: gapColumns,
-    alignment_score: Number(alignment.score.toFixed?.(3) ?? alignment.score),
-    identity_percent: compared.length === 0 ? 0 : Number(((matches / compared.length) * 100).toFixed(3)),
-    similarity_percent: compared.length === 0 ? 0 : Number((((matches + similar) / compared.length) * 100).toFixed(3)),
+    alignment_score: alignment.score,
+    identity_percent: compared.length === 0 ? null : (matches / compared.length) * 100,
+    similarity_percent: compared.length === 0 ? null : ((matches + similar) / compared.length) * 100,
     distance_space: distanceSpace
   };
 }
@@ -714,9 +685,9 @@ function summarizeCodingPairwiseIdentity(recordA, recordB, labelA, labelB, prote
     matches,
     mismatches,
     gap_columns: gapColumns,
-    alignment_score: Number(proteinAlignment.score.toFixed?.(3) ?? proteinAlignment.score),
-    identity_percent: compared === 0 ? 0 : Number(((matches / compared) * 100).toFixed(3)),
-    similarity_percent: proteinCompared.length === 0 ? 0 : Number(((proteinSimilar / proteinCompared.length) * 100).toFixed(3)),
+    alignment_score: proteinAlignment.score,
+    identity_percent: compared === 0 ? null : (matches / compared) * 100,
+    similarity_percent: proteinCompared.length === 0 ? null : (proteinSimilar / proteinCompared.length) * 100,
     distance_space: "projected nucleotide"
   };
 }
@@ -737,13 +708,16 @@ function diagonalIdentityRow(label, length, distanceSpace) {
 }
 
 export async function makeMultipleAlignmentIdentityMatrix(input, rawOptions = {}, alphabet = "dna-rna", context = {}) {
+  context = makeMultipleAlignmentContext(context);
+  context.throwIfCancelled?.();
   const options = alphabet === "coding-dna"
     ? {
         ...normalizeOptions({ ...rawOptions, alphabet: "protein" }),
         alphabet: "coding-dna",
-        geneticCode: rawOptions.geneticCode ?? "1"
+        geneticCode: normalizeOptions(rawOptions).geneticCode
       }
     : normalizeOptions({ ...rawOptions, alphabet });
+  options.alignmentEngine = MULTIPLE_ALIGNMENT_ENGINES.sms3;
   const prepared = alphabet === "coding-dna"
     ? prepareCodingDnaRecords(input, rawOptions)
     : prepareRecords(input, options.alphabet, options);
@@ -754,6 +728,9 @@ export async function makeMultipleAlignmentIdentityMatrix(input, rawOptions = {}
   const labels = uniqueLabels(prepared.records);
   const rows = [];
   const cellRows = [];
+  let undefinedPairs = 0;
+  const totalPairs = prepared.records.length * (prepared.records.length - 1) / 2;
+  let completedPairs = 0;
   for (let i = 0; i < prepared.records.length; i += 1) {
     context.throwIfCancelled?.();
     await context.yieldIfNeeded?.();
@@ -762,10 +739,11 @@ export async function makeMultipleAlignmentIdentityMatrix(input, rawOptions = {}
     rows.push(diagonal);
     cellRows.push({ x: labels[i], y: labels[i], value: 100, title: `${labels[i]} vs ${labels[i]}: 100% identity` });
     for (let j = i + 1; j < prepared.records.length; j += 1) {
+      await context.yieldIfNeeded?.();
       let row;
       if (alphabet === "coding-dna") {
         const proteinAlignment = await alignPairwiseAffine(prepared.records[i].protein, prepared.records[j].protein, {
-          ...rawOptions,
+          ...pairwiseOptions(options),
           alphabet: "protein",
           scoringMatrix: "blosum62"
         }, context);
@@ -774,13 +752,17 @@ export async function makeMultipleAlignmentIdentityMatrix(input, rawOptions = {}
         const alignment = await alignPairwiseAffine(prepared.records[i].sequence, prepared.records[j].sequence, pairwiseOptions(options), context);
         row = summarizePairwiseIdentity(alignment, labels[i], labels[j], alphabet);
       }
+      completedPairs += 1;
+      context.reportProgress?.({ phase: "identity-matrix", progress: completedPairs / totalPairs, completedPairs, totalPairs });
+      if (row.identity_percent === null) undefinedPairs += 1;
       rows.push(row);
       rows.push({ ...row, sequence_a: row.sequence_b, sequence_b: row.sequence_a });
-      cellRows.push({ x: labels[i], y: labels[j], value: row.identity_percent, title: `${labels[i]} vs ${labels[j]}: ${row.identity_percent}% identity` });
-      cellRows.push({ x: labels[j], y: labels[i], value: row.identity_percent, title: `${labels[j]} vs ${labels[i]}: ${row.identity_percent}% identity` });
+      cellRows.push({ x: labels[i], y: labels[j], value: row.identity_percent, title: `${labels[i]} vs ${labels[j]}: ${row.identity_percent === null ? "Identity unavailable: no compared ungapped columns" : `${row.identity_percent}% identity`}` });
+      cellRows.push({ x: labels[j], y: labels[i], value: row.identity_percent, title: `${labels[j]} vs ${labels[i]}: ${row.identity_percent === null ? "Identity unavailable: no compared ungapped columns" : `${row.identity_percent}% identity`}` });
     }
-    context.reportProgress?.({ phase: "identity-matrix", progress: (i + 1) / prepared.records.length });
   }
+
+  if (undefinedPairs) prepared.warnings.push(`${undefinedPairs} pair(s) have no compared ungapped columns; identity and similarity percentages are unavailable. Matrix cells are blank and heatmap cells use the missing-value color.`);
 
   return {
     ...prepared,
@@ -819,7 +801,7 @@ export function makeMultipleAlignmentReport(result) {
     `Alphabet: ${options.alphabet === "coding-dna" ? "coding DNA/RNA" : options.alphabet === "protein" ? "protein" : "DNA/RNA"}`,
     `Method: ${method}`,
     ...(usesMuscle ? [
-      `Engine: MUSCLE ${alignment.engineVersion || BIOWASM_MUSCLE_VERSION} via vendored BioWasm/Aioli`
+      `Engine: MUSCLE ${alignment.engineVersion || MUSCLE_RUNTIME.versionLabel} via vendored BioWasm/Aioli`
     ] : [
       `Center sequence: ${alignment.centerTitle}`,
       `Scoring: ${options.alphabet === "protein" || options.alphabet === "coding-dna" ? "BLOSUM62" : `match ${options.matchScore}, similar ${options.similarScore}, mismatch ${options.mismatchScore}`}, gap open ${options.gapOpen}, gap extend ${options.gapExtend}`
@@ -845,14 +827,15 @@ export function makeMultipleAlignmentFasta(alignment, lineWidth = 60) {
 
 export function makeMultipleAlignmentClustal(alignment, lineWidth = 60) {
   const width = Math.max(20, Math.min(120, Number.parseInt(lineWidth, 10) || 60));
-  const names = alignment.titles.map((title) => title.replace(/\s+/g, "_").slice(0, 24) || "sequence");
+  const names = makeClustalIdentifiers(alignment.titles);
   const labelWidth = Math.max(12, ...names.map((name) => name.length));
+  const consensus = makeClustalConsensus(alignment.aligned, alignment.alphabet);
   const lines = ["CLUSTAL multiple sequence alignment", ""];
   for (let index = 0; index < alignment.alignmentLength; index += width) {
     names.forEach((name, rowIndex) => {
       lines.push(`${name.padEnd(labelWidth)} ${alignment.aligned[rowIndex].slice(index, index + width)}`);
     });
-    lines.push(`${"".padEnd(labelWidth)} ${alignment.consensus.slice(index, index + width)}`);
+    lines.push(`${"".padEnd(labelWidth)} ${consensus.slice(index, index + width)}`);
     lines.push("");
   }
   return lines.join("\n").trimEnd();
@@ -860,11 +843,7 @@ export function makeMultipleAlignmentClustal(alignment, lineWidth = 60) {
 
 export function makeMultipleAlignmentTsv(alignment) {
   const columns = alignment.alphabet === "coding-dna" ? multipleCodingDnaAlignmentTableColumns : multipleAlignmentTableColumns;
-  const headers = columns.map((column) => column.id);
-  return [
-    headers.join("\t"),
-    ...alignment.rows.map((row) => headers.map((header) => row[header]).join("\t"))
-  ].join("\n");
+  return exportDelimitedTable(columns.map(column => ({ ...column, label: column.id })), alignment.rows);
 }
 
 export function makeMultipleCodingDnaProteinFasta(alignment, lineWidth = 60) {
@@ -908,7 +887,7 @@ function pairDistance(left, right) {
     compared_columns: compared,
     matches,
     mismatches,
-    identity_percent: compared === 0 ? null : Number(((matches / compared) * 100).toFixed(3)),
+    identity_percent: compared === 0 ? null : (matches / compared) * 100,
     p_distance: pDistance
   };
 }
@@ -947,7 +926,13 @@ function setClusterDistance(distances, left, right, value) {
   distances.set(`${right}\t${left}`, value);
 }
 
-export function buildNeighborJoiningTree(alignment) {
+export function buildNeighborJoiningTree(alignment, { warnings = [] } = {}) {
+  let negativeBranches = 0;
+  const nonnegativeLimb = value => {
+    // Ignore numerical noise, but disclose genuine negative inferred limbs.
+    if (value < -1e-12) negativeBranches += 1;
+    return Math.max(0, value);
+  };
   const titles = alignment.titles;
   if (titles.length < 2) {
     return "";
@@ -996,8 +981,9 @@ export function buildNeighborJoiningTree(alignment) {
     const rightCluster = clusters.get(right);
     const pairDistanceValue = getClusterDistance(distances, left, right);
     const delta = (totals.get(left) - totals.get(right)) / (n - 2);
-    const leftLength = Math.max(0, 0.5 * (pairDistanceValue + delta));
-    const rightLength = Math.max(0, pairDistanceValue - leftLength);
+    const rawLeftLength = 0.5 * (pairDistanceValue + delta);
+    const leftLength = nonnegativeLimb(rawLeftLength);
+    const rightLength = nonnegativeLimb(pairDistanceValue - rawLeftLength);
     const mergedId = internalIndex;
     internalIndex += 1;
     clusters.set(mergedId, {
@@ -1021,41 +1007,44 @@ export function buildNeighborJoiningTree(alignment) {
   const firstSecond = getClusterDistance(distances, first, second);
   const firstThird = getClusterDistance(distances, first, third);
   const secondThird = getClusterDistance(distances, second, third);
-  const firstLength = Math.max(0, (firstSecond + firstThird - secondThird) / 2);
-  const secondLength = Math.max(0, (firstSecond + secondThird - firstThird) / 2);
-  const thirdLength = Math.max(0, (firstThird + secondThird - firstSecond) / 2);
+  const firstLength = nonnegativeLimb((firstSecond + firstThird - secondThird) / 2);
+  const secondLength = nonnegativeLimb((firstSecond + secondThird - firstThird) / 2);
+  const thirdLength = nonnegativeLimb((firstThird + secondThird - firstSecond) / 2);
+  if (negativeBranches) warnings.push(`${negativeBranches} negative neighbor-joining branch length(s) were set to zero. Tree path lengths can differ from the pairwise p-distance matrix; review alignment coverage and the distance table.`);
   return `[&U](${clusters.get(first).newick}:${formatBranchLength(firstLength)},${clusters.get(second).newick}:${formatBranchLength(secondLength)},${clusters.get(third).newick}:${formatBranchLength(thirdLength)});`;
 }
 
 function makeDistanceTsv(distanceRows) {
-  const headers = multipleAlignmentDistanceTableColumns.map((column) => column.id);
-  return [
-    headers.join("\t"),
-    ...distanceRows.map((row) => headers.map((header) => row[header]).join("\t"))
-  ].join("\n");
+  return exportDelimitedTable(multipleAlignmentDistanceTableColumns.map(column => ({ ...column, label: column.id })), distanceRows);
+}
+
+export function makeIdentityMatrixTable(identity) {
+  const values = new Map(identity.labels.map(label => [label, new Map()]));
+  for (const row of identity.rows) values.get(row.sequence_a).set(row.sequence_b, row.identity_percent);
+  let recordColumn = "record";
+  for (let suffix = 2; identity.labels.includes(recordColumn); suffix += 1) recordColumn = `record_${suffix}`;
+  const columns = [
+    { id: recordColumn, label: recordColumn, type: "string" },
+    ...identity.labels.map(label => ({ id: label, label, type: "number" }))
+  ];
+  const rows = identity.labels.map(label => Object.fromEntries([
+    [recordColumn, label], ...identity.labels.map(other => [other, values.get(label).get(other) ?? null])
+  ]));
+  return { columns, rows };
 }
 
 export function makeIdentityMatrixTsv(identity) {
-  const valueByPair = new Map(identity.rows.map((row) => [`${row.sequence_a}\t${row.sequence_b}`, row.identity_percent]));
-  return [
-    ["record", ...identity.labels].join("\t"),
-    ...identity.labels.map((rowLabel) => [
-      rowLabel,
-      ...identity.labels.map((columnLabel) => valueByPair.get(`${rowLabel}\t${columnLabel}`) ?? "")
-    ].join("\t"))
-  ].join("\n");
+  const { columns, rows } = makeIdentityMatrixTable(identity);
+  return exportDelimitedTable(columns, rows);
 }
 
 export function makeIdentityPairsTsv(identity) {
-  const headers = multipleAlignmentIdentityTableColumns.map((column) => column.id);
-  return [
-    headers.join("\t"),
-    ...identity.rows.map((row) => headers.map((header) => String(row[header] ?? "").replace(/\t/g, " ")).join("\t"))
-  ].join("\n");
+  return exportDelimitedTable(multipleAlignmentIdentityTableColumns.map(column => ({ ...column, label: column.id })), identity.rows);
 }
 
 export function makeIdentityHeatmapSvg(identity) {
-  const categories = identity.labels.map((label) => ({ id: label, label }));
+  const categories = identity.labels.map((label, index) => ({ id: `sequence-${index + 1}`, label }));
+  const idByLabel = new Map(categories.map(category => [category.label, category.id]));
   const spec = makeHeatmapPlotSpec({
     title: "Pairwise identity matrix",
     xLabel: "Sequence",
@@ -1063,12 +1052,14 @@ export function makeIdentityHeatmapSvg(identity) {
     valueLabel: "Identity percent",
     xCategories: categories,
     yCategories: categories,
-    cells: identity.cellRows,
+    cells: identity.cellRows.map(cell => ({ ...cell, x: idByLabel.get(cell.x), y: idByLabel.get(cell.y) })),
     valueDomain: [0, 100],
     notes: [
       identity.alphabet === "coding-dna"
         ? "Values use all-vs-all protein-guided pairwise alignments projected back to nucleotide codons."
-        : "Values use all-vs-all pairwise global alignments; gap columns are excluded from identity percent."
+        : "Values use all-vs-all pairwise global alignments; gap columns are excluded from identity percent.",
+      ...(identity.rows.some(row => row.identity_percent === null)
+        ? ["Blank gray cells: identity unavailable because no ungapped columns were compared."] : [])
     ]
   });
   return {
@@ -1078,9 +1069,9 @@ export function makeIdentityHeatmapSvg(identity) {
   };
 }
 
-export function makeMultipleAlignmentTreeReport(alignment) {
-  const distanceRows = makeMultipleAlignmentDistanceRows(alignment);
-  const newick = buildNeighborJoiningTree(alignment);
+export function makeMultipleAlignmentTreeReport(alignment, tree = {}) {
+  const distanceRows = tree.distanceRows ?? makeMultipleAlignmentDistanceRows(alignment);
+  const newick = tree.newick ?? buildNeighborJoiningTree(alignment);
   return [
     "Neighbor-joining tree",
     "",
@@ -1088,6 +1079,7 @@ export function makeMultipleAlignmentTreeReport(alignment) {
     alignment.alphabet === "coding-dna"
       ? "Distance policy: distances are calculated in nucleotide space from the projected codon alignment. Columns with a gap in either sequence are ignored; p-distance is mismatches divided by compared ungapped nucleotide columns."
       : "Distance policy: columns with a gap in either sequence are ignored; p-distance is mismatches divided by compared ungapped columns.",
+    "Negative inferred branch lengths are set to zero; tree path lengths can differ from the pairwise distance matrix.",
     "Use this as a quick teaching/review tree, not a replacement for a model-based phylogenetic workflow.",
     "",
     "Newick:",
@@ -1119,19 +1111,19 @@ export function makeMultipleAlignmentSvg(alignment, options = {}) {
     summary: isCodingDna
       ? "Protein-guided codon alignment; displayed sequence and coordinates are nucleotide-space."
       : showConsensusLine
-        ? "Consensus: * fully conserved, : majority conserved, . variable."
+        ? "Consensus: * fully conserved, : majority conserved, blank variable."
         : "",
     ariaLabel: "Colored multiple sequence alignment"
   });
 }
 
-export function makeMultipleAlignmentTreeSvg(alignment) {
-  return renderPhylogramSvg(buildNeighborJoiningTree(alignment), {
+export function makeMultipleAlignmentTreeSvg(alignment, newick = buildNeighborJoiningTree(alignment)) {
+  return renderPhylogramSvg(newick, {
     title: "Neighbor-joining tree",
     scaleLabel: "p-distance",
     note: alignment.alphabet === "coding-dna"
-      ? "Midpoint-rooted. Branch lengths use nucleotide p-distance from projected codon alignment; pairwise gap columns ignored."
-      : "Midpoint-rooted for display. Branch lengths use alignment p-distance; columns with gaps in either sequence are ignored.",
+      ? "Midpoint-rooted. Nucleotide p-distance from projected codons; pairwise gap columns ignored. Negative NJ branches set to zero."
+      : "Midpoint-rooted for display. Alignment p-distance; pairwise gap columns ignored. Negative NJ branches set to zero.",
     rooting: "midpoint"
   });
 }

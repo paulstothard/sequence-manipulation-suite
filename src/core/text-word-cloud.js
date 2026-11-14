@@ -1,3 +1,4 @@
+import { isolateSvgStyles } from "./svg-style-scope.js";
 import "../vendor/d3/d3.min.js";
 import { escapeXml } from "./plot-renderer.js";
 import { makePublicationPlotStyle, publicationSvgAttributes, SMS3_PLOT_THEME } from "./publication-plot-style.js";
@@ -158,7 +159,11 @@ export function makeWordCloud(input, options = {}) {
   return { rows, warnings, svg, totalWords: total, uniqueWords: counts.size };
 }
 
-export function renderWordCloudSvg(rows, warnings = [], options = {}) {
+export function renderWordCloudSvg(...args) {
+  return isolateSvgStyles(renderWordCloudSvgUnscoped(...args));
+}
+
+function renderWordCloudSvgUnscoped(rows, warnings = [], options = {}) {
   const title = String(options.title ?? "Word cloud");
   const { placed, omitted, width, height } = placeWords(rows, options);
   const style = makePublicationPlotStyle(width, height, options);

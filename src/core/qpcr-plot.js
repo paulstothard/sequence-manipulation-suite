@@ -1,3 +1,4 @@
+import { isolateSvgStyles } from "./svg-style-scope.js";
 import "../vendor/d3/d3.min.js";
 import { escapeXml } from "./plot-renderer.js";
 import { QPCR_LIMITS } from "./qpcr-analysis.js";
@@ -12,7 +13,11 @@ const short = (s, max) => s.length > max ? `${s.slice(0, max - 1)}…` : s;
 
 // D3 scales/ticks/symbols, serialized SVG for the shared worker/figure shell.
 // Horizontal panels keep biological points, means and comparison CIs distinct.
-export function renderQpcrPlot(analysis) {
+export function renderQpcrPlot(...args) {
+  return isolateSvgStyles(renderQpcrPlotUnscoped(...args));
+}
+
+function renderQpcrPlotUnscoped(analysis) {
   const { settings, groupRows, sampleRows } = analysis, d3 = globalThis.d3;
   const targets = settings.plotTarget ? analysis.targets.filter(t => t === settings.plotTarget) : analysis.targets;
   if (!targets.length) throw new Error(`Plot target ${settings.plotTarget} was not found among target genes.`);

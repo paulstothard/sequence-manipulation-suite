@@ -48,7 +48,9 @@ function glyphMetrics(ctx, letter) {
   // A middle text baseline centers the font's em box, not the visible capital
   // letter. Center its ink instead, in local coordinates before any rotation.
   const offset = (metrics.actualBoundingBoxAscent - metrics.actualBoundingBoxDescent) / 2;
-  return { halfWidth: metrics.width / 2, offset: Number.isFinite(offset) ? offset : 0 };
+  return { halfWidth: metrics.width / 2, offset: Number.isFinite(offset) ? offset : 0,
+    inkHalfWidth: Math.max(metrics.actualBoundingBoxLeft, metrics.actualBoundingBoxRight),
+    inkHalfHeight: (metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent) / 2 };
 }
 
 export function drawLinearCdsTranslation(ctx, record, item, state, placement, target, { toX, y, height, pxPerBase, ink, clipShape }) {
@@ -64,11 +66,13 @@ export function drawLinearCdsTranslation(ctx, record, item, state, placement, ta
     const x1 = toX(piece.start), x2 = toX(piece.end), x = toX(piece.labelPosition);
     ctx.fillStyle = piece.codon.index % 2 ? 'rgba(0,0,0,0.14)' : 'rgba(255,255,255,0.06)';
     ctx.fillRect(x1, y - height / 2, x2 - x1, height);
-    addRectHit(state, { x1, x2, y1: y - height / 2, y2: y + height / 2 }, codonTarget(target, piece.codon));
-    const { halfWidth: half, offset } = glyphMetrics(ctx, piece.codon.aminoAcid);
+    const { halfWidth: half, offset, inkHalfWidth, inkHalfHeight } = glyphMetrics(ctx, piece.codon.aminoAcid);
     if (piece.label && x - half >= x1 + .5 && x + half <= x2 - .5) {
       ctx.fillStyle = ink;
       ctx.fillText(piece.codon.aminoAcid, x, y + offset);
+      // Leave the rest of the codon block available for whole-CDS inspection.
+      addRectHit(state, { x1: x - inkHalfWidth, x2: x + inkHalfWidth,
+        y1: y - inkHalfHeight, y2: y + inkHalfHeight }, codonTarget(target, piece.codon));
     }
   }
   ctx.restore();
@@ -88,13 +92,16 @@ export function drawCircularCdsTranslation(ctx, record, item, state, placement, 
     ctx.arc(cx, cy, innerRadius, endAngle, startAngle, true);
     ctx.closePath();
     ctx.fillStyle = piece.codon.index % 2 ? 'rgba(0,0,0,0.14)' : 'rgba(255,255,255,0.06)'; ctx.fill();
-    addPolarHit(state, { cx, cy, innerRadius, outerRadius, startAngle, endAngle }, codonTarget(target, piece.codon));
-    const { halfWidth: half, offset } = glyphMetrics(ctx, piece.codon.aminoAcid);
+    const { halfWidth: half, offset, inkHalfWidth, inkHalfHeight } = glyphMetrics(ctx, piece.codon.aminoAcid);
     if (piece.label && (angle - startAngle) * radius > half + .5 && (endAngle - angle) * radius > half + .5) {
       ctx.save(); ctx.translate(cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius);
       let rotation = angle + Math.PI / 2;
       if (Math.cos(rotation) < 0) rotation += Math.PI;
       ctx.rotate(rotation); ctx.fillStyle = ink; ctx.fillText(piece.codon.aminoAcid, 0, offset); ctx.restore();
+      // A letter-sized sector follows the tangent text around the ring.
+      const halfAngle = inkHalfWidth / radius;
+      addPolarHit(state, { cx, cy, innerRadius: radius - inkHalfHeight, outerRadius: radius + inkHalfHeight,
+        startAngle: angle - halfAngle, endAngle: angle + halfAngle }, codonTarget(target, piece.codon));
     }
   }
   ctx.restore();

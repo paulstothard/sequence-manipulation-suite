@@ -1,8 +1,8 @@
+import { proteinFilterOptions, proteinOutputOption, CLEAN_FILTER_PROTEIN_DEFAULTS as proteinDefaults } from "../../core/clean-filter-protein-options.js";
 import { dnaRnaFilterOptions, dnaRnaOutputOption, CLEAN_FILTER_DNA_RNA_DEFAULTS as defaults } from "../../core/clean-filter-dna-rna-options.js";
 
 const cleanFilterBaseOptions = [
-  { id: "keepGaps", type: "checkbox", label: "Keep gap characters (. and -)", defaultValue: false },
-  { id: "formatFasta", type: "checkbox", label: "Return FASTA records", defaultValue: true }
+  { id: "keepGaps", type: "checkbox", label: "Keep gap characters (. and -)" }
 ];
 
 const dnaRnaTextFastaFileInput = {
@@ -30,52 +30,6 @@ function makeCleanFilterWorkflow(alphabet) {
   };
 }
 
-const proteinFilterOptions = [
-  {
-    id: "filterPreset",
-    type: "select",
-    label: "Filter",
-    defaultValue: "standard-protein",
-    help: "Choose which characters are removed or replaced. Normal filtering changes are expected and are reported in result counts rather than warnings.",
-    choices: [
-      { value: "standard-protein", label: "Keep standard amino acids" },
-      { value: "standard-protein-stop", label: "Keep standard amino acids and *" },
-      { value: "valid-protein-iupac", label: "Keep protein IUPAC symbols" },
-      { value: "whitespace", label: "Remove whitespace" },
-      { value: "digits", label: "Remove digits" },
-      { value: "digits-whitespace", label: "Remove digits and whitespace" },
-      { value: "keep-lowercase-protein", label: "Keep lowercase protein symbols" },
-      { value: "keep-uppercase-protein", label: "Keep uppercase protein symbols" }
-    ]
-  },
-  {
-    id: "replacement",
-    type: "select",
-    label: "Replace filtered characters with",
-    defaultValue: "",
-    choices: [
-      { value: "", label: "Nothing" },
-      { value: "n", label: "n" },
-      { value: "N", label: "N" },
-      { value: "x", label: "x" },
-      { value: "X", label: "X" },
-      { value: "-", label: "-" },
-      { value: "?", label: "?" },
-      { value: "*", label: "*" }
-    ]
-  },
-  {
-    id: "caseMode",
-    type: "radio",
-    label: "Case",
-    defaultValue: "preserve",
-    choices: [
-      { value: "uppercase", label: "Uppercase" },
-      { value: "lowercase", label: "Lowercase" },
-      { value: "preserve", label: "Preserve input case" }
-    ]
-  }
-];
 
 export const cleanFilterDnaRnaMetadata = {
   id: "clean-filter-dna-rna",
@@ -106,6 +60,7 @@ export const cleanFilterProteinMetadata = {
   category: "Sequence Utilities",
   tags: ["protein", "raw", "FASTA", "cleaning"],
   summary: "Remove or replace selected characters from protein text using common filtering presets.",
+  whenToUse: "Clean pasted protein text, select residue symbols or letter case, or replace specified characters before sequence analysis.",
   inputType: "Protein sequence",
   outputType: "Filtered protein sequence",
   fileInput: proteinTextFastaFileInput,
@@ -115,7 +70,9 @@ export const cleanFilterProteinMetadata = {
   workflow: makeCleanFilterWorkflow("protein"),
   options: [
     ...proteinFilterOptions,
-    ...cleanFilterBaseOptions,
+    { ...cleanFilterBaseOptions[0], defaultValue: proteinDefaults.keepGaps,
+      help: "Keep dot and dash gaps with residue and case-selective filters. Other presets remove only the characters named in the filter." },
+    proteinOutputOption,
     {
       id: "cleaningNote",
       type: "note",

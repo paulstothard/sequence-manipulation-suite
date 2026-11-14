@@ -4,6 +4,8 @@ import { makeTextStream, makeToolResult } from "../../core/workflow.js";
 import { applySequenceCharacterFilter } from "../../core/sequence-character-filter.js";
 import { normalizeCleanFilterDnaRnaOptions } from "../../core/clean-filter-dna-rna-options.js";
 
+import { normalizeCleanFilterProteinOptions } from "../../core/clean-filter-protein-options.js";
+
 const WORKER_CHUNK_SIZE = 100_000;
 
 function getAlphabetLabel(alphabet) {
@@ -67,21 +69,20 @@ function buildCleanFilterResult(processedRecords, warnings, options = {}) {
   const sequenceRecords = [];
   let basesProcessed = 0;
   let charactersFiltered = 0;
-  const removed = count => dna && options.replacement ? 0 : count;
+  const removed = count => options.replacement ? 0 : count;
+  const invalidSymbols = dna ? /[^ACGTURYSWKMBDHVNX.\-\s]/i : /[^A-Z*.\-\s]/i;
 
   for (const record of processedRecords) {
-    if (dna && formatFasta && /[^ACGTURYSWKMBDHVNX.\-\s]/i.test(record.sequence)) {
-      throw new Error(`${record.title}: filtered output contains non-nucleotide characters. Choose Filtered text to retain them, or change the filter/replacement for FASTA output.`);
+    if (formatFasta && invalidSymbols.test(record.sequence)) {
+      throw new Error(`${record.title}: filtered output contains ${dna ? "non-nucleotide" : "non-protein"} characters. Choose Filtered text to retain them, or change the filter/replacement for FASTA output.`);
     }
-    if (dna) {
-      for (const character of record.sequence) basesProcessed += 1;
-    } else basesProcessed += record.sequence.length;
+    for (const character of record.sequence) basesProcessed += 1;
     charactersFiltered += record.filteredCount;
     // FASTA's structured records support the existing Workspace save action.
     // Plain text has no secondary FASTA or sequence-record materialization.
-    if (!dna || formatFasta) sequenceRecords.push({
+    if (formatFasta) sequenceRecords.push({
       title: `${record.title} filtered`,
-      sequence: dna ? record.sequence.replace(/\s+/g, "") : record.sequence,
+      sequence: record.sequence.replace(/\s+/g, ""),
       sourceTitle: record.title,
       alphabet: record.alphabet,
       charactersRemoved: removed(record.filteredCount),
@@ -92,41 +93,36 @@ function buildCleanFilterResult(processedRecords, warnings, options = {}) {
       : record.sequence);
   }
 
-  const output = outputParts.join(dna && !formatFasta ? "\n\n" : "\n");
-  let sequenceSearch;
-  if (dna) {
-    sequenceSearch = false;
-    if (formatFasta) sequenceSearch = { format: "fasta", alphabet: "dna-rna" };
-    else if (processedRecords.every(record => !/[^ACGTURYSWKMBDHVNX.\-\s]/i.test(record.sequence))) {
-      let offset = 0;
-      sequenceSearch = { format: "plain", alphabet: "dna-rna", recordRanges: outputParts.map((text, index) => {
-        const range = { start: offset, end: offset + text.length, title: processedRecords[index].title };
-        offset = range.end + 2;
-        return range;
-      }) };
-    }
+  const output = outputParts.join(!formatFasta ? "\n\n" : "\n");
+  let sequenceSearch = false;
+  if (formatFasta) sequenceSearch = { format: "fasta", alphabet: options.alphabet };
+  else if (processedRecords.every(record => !invalidSymbols.test(record.sequence))) {
+    let offset = 0;
+    sequenceSearch = { format: "plain", alphabet: options.alphabet, recordRanges: outputParts.map((text, index) => {
+      const range = { start: offset, end: offset + text.length, title: processedRecords[index].title };
+      offset = range.end + 2;
+      return range;
+    }) };
   }
-  const fastaOutput = formatFasta ? output : !dna
-    ? sequenceRecords.map(record => formatFastaRecord(record.title, record.sequence, lineWidth)).join("\n")
-    : undefined;
+  const fastaOutput = formatFasta ? output : undefined;
   return makeToolResult({
     output,
     sequenceSearch,
-    optionsUsed: dna ? normalizeCleanFilterDnaRnaOptions(options) : undefined,
+    optionsUsed: dna ? normalizeCleanFilterDnaRnaOptions(options) : normalizeCleanFilterProteinOptions(options),
     download: {
       filename: `clean-filter-sequence.${formatFasta ? "fasta" : "txt"}`,
-      mimeType: dna && formatFasta ? "text/x-fasta;charset=utf-8" : "text/plain;charset=utf-8"
+      mimeType: formatFasta ? "text/x-fasta;charset=utf-8" : "text/plain;charset=utf-8"
     },
     warnings,
-    notes: dna && charactersFiltered > 0 && options.replacement
+    notes: charactersFiltered > 0 && options.replacement
       ? [`${charactersFiltered} character(s) replaced by the selected filter.`] : [],
     recordsProcessed: processedRecords.length,
     basesProcessed,
-    processedUnitLabel: dna ? "character" : "base",
+    processedUnitLabel: "character",
     charactersRemoved: removed(charactersFiltered),
     streams: {
       ...(fastaOutput !== undefined ? { fasta: makeTextStream(fastaOutput, "text/x-fasta", sequenceSearch) } : {}),
-      ...(!dna || formatFasta ? { sequenceRecords: {
+      ...(formatFasta ? { sequenceRecords: {
         kind: "sequence-records",
         schema: "clean-filter-sequence",
         alphabet: processedRecords[0]?.alphabet ?? "dna-rna",
@@ -138,7 +134,7 @@ function buildCleanFilterResult(processedRecords, warnings, options = {}) {
 
 function* computeCleanFilterSequence(input, options = {}, context = {}) {
   const alphabet = options?.alphabet === "protein" ? "protein" : "dna-rna";
-  if (alphabet === "dna-rna") options = { ...normalizeCleanFilterDnaRnaOptions(options), alphabet };
+  options = { ...(alphabet === "dna-rna" ? normalizeCleanFilterDnaRnaOptions(options) : normalizeCleanFilterProteinOptions(options)), alphabet };
   context.reportProgress?.({ phase: "parsing-input", progress: 0.05 });
   context.throwIfCancelled?.();
   const records = parseFilterSequenceInput(input, "sequence");
@@ -150,10 +146,11 @@ function* computeCleanFilterSequence(input, options = {}, context = {}) {
   if (records.length === 0) {
     return makeToolResult({
       output: "",
-      optionsUsed: alphabet === "dna-rna" ? normalizeCleanFilterDnaRnaOptions(options) : undefined,
+      optionsUsed: alphabet === "dna-rna" ? normalizeCleanFilterDnaRnaOptions(options) : normalizeCleanFilterProteinOptions(options),
       warnings: ["No sequence input was provided."],
       recordsProcessed: 0,
       basesProcessed: 0,
+      processedUnitLabel: "character",
       charactersRemoved: 0,
       charactersFiltered: 0
     });

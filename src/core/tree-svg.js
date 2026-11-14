@@ -1,3 +1,4 @@
+import { isolateSvgStyles } from "./svg-style-scope.js";
 import {
   makePublicationPlotStyle,
   publicationPlotCss,
@@ -261,7 +262,11 @@ function setDepths(node, depth = 0, depths = new Map()) {
   return depths;
 }
 
-export function renderPhylogramSvg(newick, {
+export function renderPhylogramSvg(...args) {
+  return isolateSvgStyles(renderPhylogramSvgUnscoped(...args));
+}
+
+function renderPhylogramSvgUnscoped(newick, {
   title = "Neighbor-joining tree",
   scaleLabel = "p-distance",
   note = "Branch lengths are derived from the alignment distance matrix.",

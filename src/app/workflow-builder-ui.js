@@ -1991,11 +1991,13 @@ export function createWorkflowBuilderController({
         }
         input.value = step.options[option.id] ?? option.defaultValue;
         input.addEventListener("change", () => {
+          const raw = input.value.trim();
+          const numeric = raw === "" ? NaN : Number(raw);
           updateSelectedWorkflowStep(
             (selectedStep) => {
               selectedStep.options = {
                 ...(selectedStep.options ?? {}),
-                [option.id]: Number.parseInt(input.value, 10) || option.defaultValue
+                [option.id]: Number.isFinite(numeric) ? numeric : option.defaultValue
               };
             },
             `Updated ${step.id} option ${option.label}.`

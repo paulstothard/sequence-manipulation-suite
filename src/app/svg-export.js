@@ -1,5 +1,19 @@
-import { getPngExportScale } from "./canvas-export.js";
+import { figurePngSize, PNG_EXPORT_DPI, CSS_PIXELS_PER_INCH } from "../core/figure-export.js";
 import { downloadBlob } from "./file-download.js";
+import { setPngDpi } from "../core/png-resolution.js";
+
+export function svgPhysicalSize(svg) {
+  const millimetres = value => {
+    const match = /^\s*(\d+(?:\.\d+)?|\.\d+)\s*(mm|cm|in|pt|pc)\s*$/i.exec(value ?? "");
+    return match ? Number(match[1]) * ({ mm: 1, cm: 10, in: 25.4, pt: 25.4 / 72, pc: 25.4 / 6 })[match[2].toLowerCase()] : null;
+  };
+  let widthMm = millimetres(svg.getAttribute("width"));
+  let heightMm = millimetres(svg.getAttribute("height"));
+  const box = svg.getAttribute("viewBox")?.trim().split(/[\s,]+/).map(Number) ?? [];
+  if (widthMm && !heightMm && box[2] > 0 && box[3] > 0) heightMm = widthMm * box[3] / box[2];
+  if (heightMm && !widthMm && box[2] > 0 && box[3] > 0) widthMm = heightMm * box[2] / box[3];
+  return widthMm > 0 && heightMm > 0 ? { widthMm, heightMm } : null;
+}
 
 export function getPngFilename(filename = "sms3-plot.svg") {
   return String(filename).replace(/\.[^.]+$/, "") + ".png";
@@ -53,14 +67,23 @@ export function serializeSvgElement(svgElement) {
   return new XMLSerializer().serializeToString(clone);
 }
 
-// Keep large vector figures exportable within practical browser canvas bounds.
-// SVG downloads retain their full vector dimensions.
-export function getSvgPngExportSize(width, height, requestedScale = getPngExportScale()) {
-  const scale = Math.min(requestedScale, 16384 / Math.max(width, height), Math.sqrt(32000000 / (width * height)));
-  return {scale, width: Math.max(1, Math.floor(width * scale)), height: Math.max(1, Math.floor(height * scale))};
+export function getSvgPngExportSize(width, height, physicalSize) {
+  return figurePngSize(width, height, physicalSize);
 }
 
 export async function downloadSvgAsPng(svg, filename = "sms3-plot.png", { background = "#ffffff" } = {}) {
+  const documentSvg = new DOMParser().parseFromString(svg, "image/svg+xml").documentElement;
+  const viewBox = documentSvg.getAttribute("viewBox")?.trim().split(/[\s,]+/).map(Number) ?? [];
+  const physicalSize = svgPhysicalSize(documentSvg);
+  const width = viewBox[2] || (physicalSize && physicalSize.widthMm * CSS_PIXELS_PER_INCH / 25.4) || parseFloat(documentSvg.getAttribute('width')) || 920;
+  const height = viewBox[3] || (physicalSize && physicalSize.heightMm * CSS_PIXELS_PER_INCH / 25.4) || parseFloat(documentSvg.getAttribute('height')) || 420;
+  const size = getSvgPngExportSize(width, height, physicalSize);
+  if (!viewBox.length) documentSvg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  // Rasterize the vector at the target resolution instead of resizing a
+  // screen-resolution image. Keep viewBox geometry and text unchanged.
+  documentSvg.setAttribute('width', String(size.width));
+  documentSvg.setAttribute('height', String(size.height));
+  svg = new XMLSerializer().serializeToString(documentSvg);
   const svgBlob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
   const url = URL.createObjectURL(svgBlob);
   try {
@@ -71,28 +94,20 @@ export async function downloadSvgAsPng(svg, filename = "sms3-plot.png", { backgr
     });
     image.src = url;
     await loaded;
-    const parser = new DOMParser();
-    const documentSvg = parser.parseFromString(svg, "image/svg+xml").documentElement;
-    const viewBox = documentSvg.getAttribute("viewBox")?.split(/\s+/).map(Number) ?? [];
-    const width = Math.max(1, Math.round(viewBox[2] || image.naturalWidth || 920));
-    const height = Math.max(1, Math.round(viewBox[3] || image.naturalHeight || 420));
-    const size = getSvgPngExportSize(width, height);
-    const exportScale = size.scale;
     const canvas = document.createElement("canvas");
     canvas.width = size.width;
     canvas.height = size.height;
     const context = canvas.getContext("2d");
-    context.setTransform(exportScale, 0, 0, exportScale, 0, 0);
     if (background !== null) {
       context.fillStyle = background;
-      context.fillRect(0, 0, width, height);
+      context.fillRect(0, 0, size.width, size.height);
     }
-    context.drawImage(image, 0, 0, width, height);
+    context.drawImage(image, 0, 0, size.width, size.height);
     const pngBlob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
     if (!pngBlob) {
       throw new Error("Could not create PNG output.");
     }
-    downloadBlob(pngBlob, filename);
+    downloadBlob(new Blob([setPngDpi(new Uint8Array(await pngBlob.arrayBuffer()), PNG_EXPORT_DPI)], { type: "image/png" }), filename);
   } finally {
     URL.revokeObjectURL(url);
   }

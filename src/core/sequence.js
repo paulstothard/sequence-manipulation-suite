@@ -1,3 +1,7 @@
+import { PROTEIN_STATS_DEFAULTS } from "./protein-stats-options.js";
+import { normalizeProteinHydropathyOptions } from "./protein-hydropathy-options.js";
+import { normalizeGroupNumberOptions } from "./group-number-options.js";
+
 const DNA_RNA_IUPAC = /[ACGTURYSWKMBDHVNX]/i;
 const DNA_RNA_GAP = /[.-]/;
 const PROTEIN_IUPAC = /[ABCDEFGHIKLMNPQRSTUVWYZXJO*]/i;
@@ -170,26 +174,28 @@ export function complementDnaRnaSequence(sequence, options = {}) {
 }
 
 export function getGroupedSequenceNumberWidth(sequence, options = {}) {
+  options = normalizeGroupNumberOptions(options);
   const sourceLength = String(sequence ?? "").length;
-  const groupSize = Math.max(1, Number.parseInt(options.groupSize, 10) || 10);
-  const groupsPerLine = Math.max(1, Number.parseInt(options.groupsPerLine, 10) || 6);
-  const startPosition = Number.parseInt(options.startPosition, 10) || 1;
+  const { groupSize, groupsPerLine } = options;
+  const { startPosition } = options;
   const lineSize = groupSize * groupsPerLine;
   const lastLineStart = sourceLength > 0
     ? startPosition + Math.floor((sourceLength - 1) / lineSize) * lineSize
     : startPosition;
+  if (options.showPositionNumbers && !Number.isSafeInteger(lastLineStart)) {
+    throw new Error("Displayed coordinates exceed the largest exact integer position.");
+  }
   return Math.max(8, String(startPosition).length, String(lastLineStart).length);
 }
 
-export function groupSequence(sequence, options = {}) {
+export function* groupSequenceLines(sequence, options = {}) {
+  options = normalizeGroupNumberOptions(options);
   const source = String(sequence ?? "");
-  const groupSize = Math.max(1, Number.parseInt(options.groupSize, 10) || 10);
-  const groupsPerLine = Math.max(1, Number.parseInt(options.groupsPerLine, 10) || 6);
+  const { groupSize, groupsPerLine } = options;
   const showPositionNumbers = options.showPositionNumbers === true;
-  const startPosition = Number.parseInt(options.startPosition, 10) || 1;
+  const { startPosition } = options;
   const lineSize = groupSize * groupsPerLine;
   const numberWidth = getGroupedSequenceNumberWidth(source, options);
-  const lines = [];
 
   for (let index = 0; index < source.length; index += lineSize) {
     const chunk = source.slice(index, index + lineSize);
@@ -202,13 +208,16 @@ export function groupSequence(sequence, options = {}) {
     const grouped = groups.join(" ");
     if (showPositionNumbers) {
       const position = startPosition + index;
-      lines.push(`${String(position).padStart(numberWidth, " ")} ${grouped}`);
+      yield { text: `${String(position).padStart(numberWidth, " ")} ${grouped}`, grouped, numberWidth };
     } else {
-      lines.push(grouped);
+      yield { text: grouped, grouped, numberWidth };
     }
   }
 
-  return lines.join("\n");
+}
+
+export function groupSequence(sequence, options = {}) {
+  return Array.from(groupSequenceLines(sequence, options), line => line.text).join("\n");
 }
 
 export function getDnaRnaStats(sequence) {
@@ -327,12 +336,10 @@ export function getProteinIsoelectricPoint(counts, options = {}) {
   return (low + high) / 2;
 }
 
-export function getProteinStats(sequence, options = {}) {
-  const counts = Object.fromEntries(
-    [...STANDARD_AMINO_ACIDS, ...AMBIGUOUS_AMINO_ACIDS, ...UNCOMMON_AMINO_ACIDS].map((residue) => [residue, 0])
+export function countProteinSymbols(sequence, counts = null) {
+  counts ??= Object.fromEntries(
+    [...STANDARD_AMINO_ACIDS, ...AMBIGUOUS_AMINO_ACIDS, ...UNCOMMON_AMINO_ACIDS, "stop", "gaps"].map((residue) => [residue, 0])
   );
-  counts.stop = 0;
-  counts.gaps = 0;
 
   for (const character of String(sequence ?? "").toUpperCase()) {
     if (character === "." || character === "-") {
@@ -344,6 +351,14 @@ export function getProteinStats(sequence, options = {}) {
     }
   }
 
+  return counts;
+}
+
+export function getProteinStats(sequence, options = {}) {
+  return { ...getProteinStatsFromCounts(countProteinSymbols(sequence), options), length: String(sequence ?? "").length };
+}
+
+export function getProteinStatsFromCounts(counts, options = {}) {
   const standardResidues = STANDARD_AMINO_ACIDS.reduce((sum, residue) => sum + counts[residue], 0);
   const ambiguousResidues = AMBIGUOUS_AMINO_ACIDS.reduce((sum, residue) => sum + counts[residue], 0);
   const uncommonResidues = UNCOMMON_AMINO_ACIDS.reduce((sum, residue) => sum + counts[residue], 0);
@@ -352,7 +367,7 @@ export function getProteinStats(sequence, options = {}) {
     0
   );
   const molecularWeight = standardResidues > 0 ? residueMass + PROTEIN_MASS_WATER : 0;
-  const chargePh = Number.isFinite(Number(options.chargePh)) ? Number(options.chargePh) : 7;
+  const chargePh = Number.isFinite(Number(options.chargePh)) ? Number(options.chargePh) : PROTEIN_STATS_DEFAULTS.chargePh;
   const charge = standardResidues > 0
     ? getProteinChargeAtPh(counts, chargePh, { includeTermini: options.includeTermini })
     : null;
@@ -361,7 +376,7 @@ export function getProteinStats(sequence, options = {}) {
   });
 
   return {
-    length: String(sequence ?? "").length,
+    length: standardResidues + ambiguousResidues + uncommonResidues + counts.stop + counts.gaps,
     counts,
     standardResidues,
     ambiguousResidues,
@@ -393,48 +408,52 @@ export function getProteinGravy(sequence, scale = KYTE_DOOLITTLE_HYDROPATHY) {
   };
 }
 
-export function getProteinHydropathyProfile(sequence, options = {}) {
+export function* proteinHydropathyProfileSteps(sequence, options = {}, context = {}) {
   const source = String(sequence ?? "").toUpperCase();
   const scale = options.scale ?? KYTE_DOOLITTLE_HYDROPATHY;
-  const requestedWindowSize = Math.max(1, Number.parseInt(options.windowSize, 10) || 9);
+  // The published Kyte-Doolittle constants have one decimal place. Integer
+  // tenths prevent rolling-add/subtract drift without rounding output means.
+  const factor = scale === KYTE_DOOLITTLE_HYDROPATHY ? 10 : 1;
+  const weight = character => Object.hasOwn(scale, character) ? scale[character] * factor : null;
+  const requestedWindowSize = normalizeProteinHydropathyOptions(options).windowSize;
   const windowSize = source.length > 0 ? Math.min(requestedWindowSize, source.length) : requestedWindowSize;
   const rows = [];
-
-  if (source.length === 0) {
-    return {
-      requestedWindowSize,
-      windowSize,
-      rows
-    };
-  }
-
-  for (let start = 0; start + windowSize <= source.length; start += 1) {
-    const end = start + windowSize;
-    const window = source.slice(start, end);
-    let total = 0;
-    let standardResidues = 0;
-
-    for (const character of window) {
-      if (Object.hasOwn(scale, character)) {
-        total += scale[character];
-        standardResidues += 1;
-      }
+  let windowCount = 0;
+  const summary = { min: null, max: null };
+  const maxRetainedRows = options.retainRows === false ? 0 : (options.maxRetainedRows ?? Infinity);
+  let total = 0, standardResidues = 0, globalTotal = 0, globalCount = 0;
+  for (let index = 0; index < source.length; index += 1) {
+    if ((index & 0x3fff) === 0) { context.throwIfCancelled?.(); yield; }
+    const incoming = weight(source[index]);
+    if (incoming !== null) { total += incoming; standardResidues += 1; globalTotal += incoming; globalCount += 1; }
+    if (index >= windowSize) {
+      const outgoing = weight(source[index - windowSize]);
+      if (outgoing !== null) { total -= outgoing; standardResidues -= 1; }
     }
-
-    rows.push({
+    if (index + 1 < windowSize) continue;
+    const end = index + 1, start = end - windowSize;
+    const row = {
       position: (start + 1 + end) / 2,
-      windowStart: start + 1,
-      windowEnd: end,
-      windowSize,
-      standardResidues,
-      excludedSymbols: window.length - standardResidues,
-      hydropathy: standardResidues > 0 ? total / standardResidues : null
-    });
+      windowStart: start + 1, windowEnd: end, windowSize, standardResidues,
+      excludedSymbols: windowSize - standardResidues,
+      hydropathy: standardResidues > 0 ? total / (factor * standardResidues) : null
+    };
+    windowCount += 1;
+    if (windowCount <= maxRetainedRows) rows.push(row);
+    else if (rows.length) rows.length = 0;
+    if (row.hydropathy !== null) {
+      if (!summary.min || row.hydropathy < summary.min.hydropathy) summary.min = row;
+      if (!summary.max || row.hydropathy > summary.max.hydropathy) summary.max = row;
+    }
   }
+  return { requestedWindowSize, windowSize, rows, windowCount, summary,
+    gravy: { value: globalCount ? globalTotal / (factor * globalCount) : null, residueCount: globalCount } };
+}
 
-  return {
-    requestedWindowSize,
-    windowSize,
-    rows
-  };
+// Synchronous core callers drain the same computation used by worker scheduling.
+export function getProteinHydropathyProfile(sequence, options = {}) {
+  const steps = proteinHydropathyProfileSteps(sequence, options);
+  let step = steps.next();
+  while (!step.done) step = steps.next();
+  return step.value;
 }

@@ -1,5 +1,14 @@
+import { makeAxisLimitsGroup } from "../plot-axis-options.js";
+import { BASE_COMPOSITION_DEFAULTS } from "../../core/base-composition-options.js";
+
+const axisLimits = makeAxisLimitsGroup();
+axisLimits.visibleWhen = { option: "outputFormat", value: "plot" };
+axisLimits.help = "Optional display limits. X uses the selected sequence-position or relative-percent axis; Y uses the selected metric. Leave blank for automatic scaling.";
+axisLimits.options = axisLimits.options.map(option => ({ ...option, defaultValue: BASE_COMPOSITION_DEFAULTS[option.id] }));
+
 const TABLE_COLUMNS = [
   { id: "record", label: "Record", type: "string" },
+  { id: "record_index", label: "Record number", type: "number" },
   { id: "window_start", label: "Window start", type: "number" },
   { id: "window_end", label: "Window end", type: "number" },
   { id: "position", label: "Position", type: "number" },
@@ -23,6 +32,7 @@ export const baseCompositionPlotMetadata = {
   category: "Sequence Analysis",
   tags: ["DNA", "RNA", "raw", "GC", "composition", "plot"],
   summary: "Plot sliding-window DNA/RNA base composition, GC/AT content, and skew metrics.",
+  whenToUse: "Compare regional GC/AT content, skew, or ambiguity across DNA/RNA sequences using sliding windows.",
   inputType: "DNA/RNA sequence, FASTA/FASTA.GZ, or indexed FASTA",
   outputType: "Base composition plot, report, table",
   runInWorker: true,
@@ -47,7 +57,7 @@ export const baseCompositionPlotMetadata = {
       id: "windowMode",
       type: "radio",
       label: "Window settings",
-      defaultValue: "auto",
+      defaultValue: BASE_COMPOSITION_DEFAULTS.windowMode,
       choices: [
         { value: "auto", label: "Auto window and step" },
         { value: "custom", label: "Custom window and step" }
@@ -58,27 +68,29 @@ export const baseCompositionPlotMetadata = {
       id: "windowSize",
       type: "number",
       label: "Window size",
-      defaultValue: 100,
+      defaultValue: BASE_COMPOSITION_DEFAULTS.windowSize,
       min: 1,
       max: 1000000,
       step: 1,
+      help: "Number of cleaned bases per window. A shorter record uses its full length.",
       visibleWhen: { option: "windowMode", value: "custom" }
     },
     {
       id: "stepSize",
       type: "number",
       label: "Step size",
-      defaultValue: 25,
+      defaultValue: BASE_COMPOSITION_DEFAULTS.stepSize,
       min: 1,
       max: 1000000,
       step: 1,
+      help: "Distance between window starts in cleaned bases. Incomplete trailing windows are omitted.",
       visibleWhen: { option: "windowMode", value: "custom" }
     },
     {
       id: "metric",
       type: "radio",
       label: "Metric",
-      defaultValue: "gc_percent",
+      defaultValue: BASE_COMPOSITION_DEFAULTS.metric,
       choices: [
         { value: "gc_percent", label: "GC percent" },
         { value: "at_percent", label: "AT percent" },
@@ -91,7 +103,7 @@ export const baseCompositionPlotMetadata = {
       id: "positionAxis",
       type: "radio",
       label: "Position axis",
-      defaultValue: "auto",
+      defaultValue: BASE_COMPOSITION_DEFAULTS.positionAxis,
       visibleWhen: { option: "outputFormat", value: "plot" },
       choices: [
         { value: "auto", label: "Auto" },
@@ -104,14 +116,14 @@ export const baseCompositionPlotMetadata = {
       id: "showLegend",
       type: "checkbox",
       label: "Show plot legend",
-      defaultValue: true,
+      defaultValue: BASE_COMPOSITION_DEFAULTS.showLegend,
       visibleWhen: { option: "outputFormat", value: "plot" }
     },
     {
       id: "pointMarkers",
       type: "radio",
       label: "Point markers",
-      defaultValue: "auto",
+      defaultValue: BASE_COMPOSITION_DEFAULTS.pointMarkers,
       visibleWhen: { option: "outputFormat", value: "plot" },
       choices: [
         { value: "auto", label: "Auto" },
@@ -120,11 +132,12 @@ export const baseCompositionPlotMetadata = {
       ],
       help: "Auto hides markers on dense line plots but keeps them for sparse series and single-window records."
     },
+    axisLimits,
     {
       id: "outputFormat",
       type: "radio",
       label: "Output format",
-      defaultValue: "plot",
+      defaultValue: BASE_COMPOSITION_DEFAULTS.outputFormat,
       choices: [
         { value: "report", label: "Summary report" },
         { value: "tsv", label: "Table", resultView: { kind: "table", streamId: "table" } },
@@ -139,13 +152,13 @@ export const baseCompositionPlotMetadata = {
       options: [{
         id: "streamingLimitsNote",
         type: "note",
-        text: "Runs accept up to 100 million accepted FASTA bases and 10,000 records. A run may produce at most 50,000 windows and 25 MiB of materialized output; plots show at most 5,000 windows. Increase the step size or select fewer records when a limit is reached."
+        text: "Runs accept up to 100 million accepted FASTA bases and 10,000 records. A run may produce at most 50,000 windows and 26,214,400 characters of materialized output; exceeding either ceiling rejects the run. Plots show at most 5,000 windows. Increase the step size or select fewer records when a limit is reached."
       }]
     },
     {
       id: "methodNote",
       type: "note",
-      text: `Percent metrics use A+C+G+T+U as the denominator. Skew metrics return n/a when their denominator is zero. ${STREAMED_FASTA_SCAN_NOTE}`
+      text: `GC/AT percentages use A+C+G+T+U; ambiguity percentage uses all accepted symbols. T and U share a count. GC skew is (G−C)/(G+C); AT skew is (A−T−U)/(A+T+U). Zero denominators give n/a. Positions are 1-based in the cleaned sequence. ${STREAMED_FASTA_SCAN_NOTE}`
     }
   ]
 };

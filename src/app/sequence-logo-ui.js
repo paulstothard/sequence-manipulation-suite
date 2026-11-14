@@ -155,7 +155,7 @@ function toolbarButton(label, onClick, options = {}) {
   return button;
 }
 
-function exportButton(format, onClick) {
+function exportButton(format, onClick, onError) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "dna-viewer-export-button";
@@ -171,6 +171,8 @@ function exportButton(format, onClick) {
     button.disabled = true;
     try {
       await onClick();
+    } catch (error) {
+      onError(error);
     } finally {
       button.disabled = false;
     }
@@ -645,12 +647,25 @@ export function renderSequenceLogo(container, logo) {
   const notice = document.createElement("div");
   notice.className = "sequence-logo-range-notice";
   notice.hidden = true;
+  const noticeText = document.createTextNode("");
+  notice.append(noticeText);
   paper.append(notice, host);
   const panel = document.createElement("aside");
   panel.className = "sequence-logo-panel";
   panel.hidden = true;
   body.append(paper, panel);
 
+  const exportStatus = document.createElement("div");
+  exportStatus.className = "sequence-logo-export-status";
+  exportStatus.setAttribute("role", "status");
+  exportStatus.setAttribute("aria-label", "Logo export status");
+  exportStatus.hidden = true;
+  paper.prepend(exportStatus);
+  const clearExportStatus = () => { exportStatus.textContent = ""; exportStatus.hidden = true; };
+  const showExportError = error => {
+    exportStatus.textContent = error?.message || "Could not download the logo.";
+    exportStatus.hidden = false;
+  };
   const filename = () => `${makeSafeFileStem(state.title || logo.title, "sequence-logo")}`;
   const downloads = document.createElement("div");
   downloads.className = "dna-viewer-buttons sequence-logo-toolbar-actions";
@@ -658,11 +673,13 @@ export function renderSequenceLogo(container, logo) {
   downloads.setAttribute("aria-label", "Logo downloads");
   downloads.append(
     exportButton("PNG", async () => {
+      clearExportStatus();
       if (currentSvg) await downloadSvgAsPng(serializeSvgElement(currentSvg), `${filename()}.png`);
-    }),
+    }, showExportError),
     exportButton("SVG", () => {
+      clearExportStatus();
       if (currentSvg) downloadText(serializeSvgElement(currentSvg), `${filename()}.svg`, "image/svg+xml;charset=utf-8");
-    })
+    }, showExportError)
   );
   const settingsButton = toolbarButton("Settings", () => {
     state.panelOpen = !state.panelOpen;
@@ -685,17 +702,17 @@ export function renderSequenceLogo(container, logo) {
     const selected = rangeColumns(logo, state);
     if (selected.length > MAX_VISIBLE_COLUMNS) {
       notice.hidden = false;
-      notice.textContent = `Choose a range of ${MAX_VISIBLE_COLUMNS.toLocaleString()} columns or fewer. The Data tab and TSV export retain all ${logo.columns.length.toLocaleString()} columns.`;
+      noticeText.data = `Choose a range of ${MAX_VISIBLE_COLUMNS.toLocaleString()} columns or fewer. The Data tab and TSV export retain all ${logo.columns.length.toLocaleString()} columns.`;
       return false;
     }
     if (selected.length === 0) {
       notice.hidden = false;
-      notice.textContent = "The selected coordinate range does not contain a logo column.";
+      noticeText.data = "The selected coordinate range does not contain a logo column.";
       return false;
     }
     notice.hidden = selected.length === logo.columns.length;
     if (!notice.hidden) {
-      notice.textContent = `Showing positions ${selected[0].position.toLocaleString()}–${selected.at(-1).position.toLocaleString()} (${selected.length.toLocaleString()} of ${logo.columns.length.toLocaleString()} columns). Use Layout to choose another range; the Data tab and TSV retain all columns.`;
+      noticeText.data = `Showing positions ${selected[0].position.toLocaleString()}–${selected.at(-1).position.toLocaleString()} (${selected.length.toLocaleString()} of ${logo.columns.length.toLocaleString()} columns). Use Layout to choose another range; the Data tab and TSV retain all columns.`;
     }
     return true;
   }
@@ -706,8 +723,16 @@ export function renderSequenceLogo(container, logo) {
       host.replaceChildren();
       return;
     }
-    currentSvg = buildLogoSvg(logo, state);
-    host.replaceChildren(currentSvg);
+    const nextSvg = buildLogoSvg(logo, state);
+    if (currentSvg?.isConnected) {
+      // Retain the figure's layout box. Removing the SVG root can make WebKit
+      // clamp page scroll against the temporarily shorter document.
+      for (const attribute of nextSvg.attributes) currentSvg.setAttribute(attribute.name, attribute.value);
+      currentSvg.replaceChildren(...nextSvg.childNodes);
+    } else {
+      currentSvg = nextSvg;
+      host.replaceChildren(currentSvg);
+    }
     if (state.panelOpen && state.panelTab === "data") renderPanel();
   }
   function queueRender() {

@@ -1,3 +1,4 @@
+import { PLASMID_FEATURE_DEFAULTS } from "../../core/plasmid-common-feature-options.js";
 import { plasmidCommonFeatureRecords, plasmidCommonFeatureProvenance } from "../../reference-data/plasmid-common-features/records.js";
 import { plasmidCommonFeatureMatchColumns } from "../../core/plasmid-common-feature-scanner.js";
 import {
@@ -47,24 +48,27 @@ export const plasmidCommonFeatureScannerMetadata = {
   category: "Sequence Analysis",
   tags: ["DNA", "raw", "FASTA", "primer", "annotation", "plasmid", "search", "reference data"],
   summary: "Scan plasmid or vector DNA for common promoter, primer, and operator sequences from bundled references.",
+  whenToUse: "Locate candidate promoter, sequencing-primer and operator sites in plasmid or vector sequences using bundled signatures.",
   inputType: "DNA/RNA sequence or FASTA",
-  outputType: "Report, table, text annotation map, linear feature map, or linear DNA sequence viewer",
+  outputType: "Report, table, text annotation map, linear feature map, or linear/circular DNA sequence viewer",
   runInWorker: true,
   workerModule: "../tools/plasmid-common-feature-scanner/run.js",
   workerExport: "runPlasmidCommonFeatureScanner",
   workflow: {
+    requestedOutputStreamsOption: "requestedPlasmidOutputs",
     inputs: [
       { id: "input", kind: "text", mediaType: "text/plain" },
       { id: "sequenceRecords", kind: "sequence-records", alphabet: "dna-rna" }
     ],
     outputs: [
       { id: "primary", kind: "text", mediaType: "text/plain" },
-      { id: "report", kind: "text", mediaType: "text/plain" },
-      { id: "textMap", kind: "text", mediaType: "text/plain" },
-      { id: "overview", kind: "text", mediaType: "image/svg+xml" },
-      { id: "viewer", kind: "viewer", viewerType: "dna-sequence-viewer" },
+      { id: "report", outputFormat: "report", kind: "text", mediaType: "text/plain" },
+      { id: "textMap", outputFormat: "text-map", kind: "text", mediaType: "text/plain" },
+      { id: "overview", outputFormat: "svg-map", kind: "text", mediaType: "image/svg+xml" },
+      { id: "viewer", outputFormat: "interactive-viewer", kind: "viewer", viewerType: "dna-sequence-viewer" },
       {
         id: "table",
+        outputFormat: "tsv",
         kind: "table",
         schema: "plasmid-common-feature-scanner",
         columns: plasmidCommonFeatureMatchColumns
@@ -81,7 +85,7 @@ export const plasmidCommonFeatureScannerMetadata = {
           id: "featureType",
           type: "select",
           label: "Feature type",
-          defaultValue: "all",
+          defaultValue: PLASMID_FEATURE_DEFAULTS.featureType,
           choices: [
             { value: "all", label: `All bundled feature types (${plasmidCommonFeatureRecords.length})` },
             ...featureTypes.map((type) => ({
@@ -95,7 +99,7 @@ export const plasmidCommonFeatureScannerMetadata = {
           type: "select",
           label: "Feature",
           help: "Choose one bundled signature to look for in your input DNA, or use All signatures in selected type to search for every signature in the selected feature type.",
-          defaultValue: "all",
+          defaultValue: PLASMID_FEATURE_DEFAULTS.featureId,
           dependsOn: "featureType",
           choices: featureChoices
         },
@@ -103,17 +107,18 @@ export const plasmidCommonFeatureScannerMetadata = {
           id: "maxMismatches",
           type: "number",
           label: "Maximum mismatches",
-          defaultValue: 1,
+          defaultValue: PLASMID_FEATURE_DEFAULTS.maxMismatches,
           min: 0,
           max: 10,
           step: 1,
-          help: "Uses ungapped exact or near-exact matching against bundled common-feature signatures. Indels and partial local-alignment verification remain planned for a larger future database."
+          help: "Maximum unequal positions in a full-length ungapped signature. A hit must also meet Minimum identity %."
         },
         {
           id: "minIdentityPercent",
           type: "number",
           label: "Minimum identity %",
-          defaultValue: 95,
+          help: "Equal positions divided by signature length, multiplied by 100. Both matching thresholds must pass.",
+          defaultValue: PLASMID_FEATURE_DEFAULTS.minIdentityPercent,
           min: 50,
           max: 100,
           step: 0.5
@@ -141,7 +146,7 @@ export const plasmidCommonFeatureScannerMetadata = {
       id: "outputFormat",
       type: "radio",
       label: "Output format",
-      defaultValue: "svg-map",
+      defaultValue: PLASMID_FEATURE_DEFAULTS.outputFormat,
       choices: [
         { value: "report", label: "Summary report" },
         { value: "tsv", label: "Table", resultView: { kind: "table", streamId: "table" } },
@@ -159,6 +164,10 @@ export const plasmidCommonFeatureScannerMetadata = {
       collapsed: true,
       options: [
         {
+          id: "plasmidScanLimitNote", type: "note",
+          text: "Scans support 5,000,000 non-whitespace input characters, 10,000 records, 500,000,000 symbol comparisons and 100,000 hits. Retained hit text and the serialized result are each limited to 26,214,400 characters. Text maps support 1,000,000 bases and 10,000 hits. Source limits: 512 MiB file, 150 MiB decoded text, 10,000 characters per header and 5,000,000 header characters total. These limits remain fixed."
+        },
+        {
           id: "plasmidFeatureMapLimitNote",
           type: "note",
           text: `Linear feature maps show up to ${PLASMID_FEATURE_SVG_MAX_RECORDS.toLocaleString()} records, ${PLASMID_FEATURE_SVG_MAX_TOTAL_HITS.toLocaleString()} hits total, and ${PLASMID_FEATURE_SVG_MAX_HITS_PER_RECORD.toLocaleString()} hits per record. Table output contains all hit coordinates.`
@@ -168,7 +177,15 @@ export const plasmidCommonFeatureScannerMetadata = {
     {
       id: "databaseNote",
       type: "note",
-      text: `Bundled reference set: ${plasmidCommonFeatureRecords.length} provenance-bearing common-feature signatures (${plasmidCommonFeatureProvenance.version}). The collection is visible above. This is a focused local scanner, not a complete PlasMapper-style annotation database.`
+      text: `Bundled reference set: ${plasmidCommonFeatureRecords.length} common-feature signatures (${plasmidCommonFeatureProvenance.version}). A hit identifies a candidate signature; biological function requires additional evidence. Different signatures can identify the same site.`
+    },
+    {
+      id: "methodNote", type: "note",
+      text: "Scans complete ungapped signatures on both strands and includes overlapping hits. Coordinates are 1-based inclusive on cleaned forward DNA; RNA U is treated as T. Ambiguous bases count as mismatches. Identity is the percentage of equal positions; score is identity minus mismatches. Only linear boundaries are scanned; circular viewers change the display."
+    },
+    {
+      id: "referencesNote", type: "note",
+      text: "References:\n\nSequencing-primer signatures: Addgene Sequencing Primers.\n\nOther signatures: SMS3 curated plasmid seed references."
     }
   ],
   examples: [

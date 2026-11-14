@@ -6,6 +6,7 @@ import { labWorkflowOperations, validateLabOperation, runLabOperation } from "./
 import { readTreeDocumentStream } from "./tree-document-stream.js";
 import { exportDelimitedTable } from "./table.js";
 import { formatFastaRecord, parseSequenceInput } from "./fasta.js";
+import { cleanDnaRnaSequence } from "./sequence.js";
 import { isWorkflowStreamCompatible } from "./workflow-contracts.js";
 import { makeCollectionStream, makeTableStream, makeTextStream } from "./workflow.js";
 import { applyFixedToolLimits } from "./tool-limit-options.js";
@@ -111,17 +112,19 @@ function inferOutputFormatForStream(tool, streamName = "primary") {
 function makeToolOptionsForSelectedStream(tool, step) {
   const options = applyFixedToolLimits(tool?.metadata, step.options ?? {});
   const formatId = getToolOutputFormatOption(tool?.metadata)?.id ?? "outputFormat";
-  if (!Object.hasOwn(options, formatId)) {
+  if (!Object.hasOwn(options, formatId) || (tool.metadata.workflow?.requestedOutputStreamsOption && step.selectStream && step.selectStream !== "primary")) {
     const inferred = inferOutputFormatForStream(tool, step.selectStream ?? "primary");
     if (inferred) {
-      options[formatId] = inferred;
+      if (!(step.selectStream === "viewer" && options[formatId] === "interactive-circular-viewer")) options[formatId] = inferred;
     }
   }
   return options;
 }
 
-function makeToolOptionsForInput(tool, step, inputValue) {
+function makeToolOptionsForInput(tool, step, inputValue, context) {
   const options = makeToolOptionsForSelectedStream(tool, step);
+  const requestedOption = tool.metadata.workflow?.requestedOutputStreamsOption;
+  if (requestedOption) options[requestedOption] = [...(context.requestedOutputs.get(step.id) ?? [])];
   // Never reuse a serialized sidecar from saved options against new input.
   delete options.workflowSequenceRecords;
   if (tool.metadata.workflow?.sequenceRecordInput && inputValue?.kind === "sequence-records") {
@@ -206,9 +209,15 @@ function makeOrfGff3Attributes(orf, orfIndex, recordTitle) {
 }
 
 function makeOrfGff3FastaBundle(sequenceValue, orfValue) {
-  const sequenceRecords = parseSequenceInput(streamToToolInput(sequenceValue), "sequence");
-  const orfRecords = orfValue?.kind === "orf-records" ? (orfValue.records ?? []) : [];
   const warnings = [];
+  // ORF coordinates refer to the cleaned, gap-free sequence. Bundle that exact
+  // coordinate system, preserving RNA U and record order from the source.
+  const sequenceRecords = parseSequenceInput(streamToToolInput(sequenceValue), "sequence", { strictHeaders: true }).map(record => {
+    const cleaned = cleanDnaRnaSequence(record.sequence, { preserveCase: false, keepGaps: false });
+    if (cleaned.removedCount) warnings.push(`${record.title}: annotation FASTA removed ${cleaned.removedCount} non-DNA/RNA character(s) to match ORF coordinates.`);
+    return { ...record, sequence: cleaned.sequence };
+  });
+  const orfRecords = orfValue?.kind === "orf-records" ? (orfValue.records ?? []) : [];
 
   if (sequenceRecords.length === 0) {
     warnings.push("No sequence records were available for the ORF annotation bundle.");
@@ -222,17 +231,28 @@ function makeOrfGff3FastaBundle(sequenceValue, orfValue) {
 
   const usedSeqIds = new Set();
   const recordSeqIds = new Map();
+  const indexedSeqIds = [];
   const fastaRecords = sequenceRecords.map((record, index) => {
     const seqId = makeUniqueGff3SeqId(record.title, index, usedSeqIds);
-    recordSeqIds.set(record.title, seqId);
+    indexedSeqIds.push(seqId);
+    const ids = recordSeqIds.get(record.title) ?? [];
+    ids.push(seqId);
+    recordSeqIds.set(record.title, ids);
     return formatFastaRecord(seqId, record.sequence, 60);
   });
 
-  const singleSeqId = sequenceRecords.length === 1 ? recordSeqIds.get(sequenceRecords[0].title) : "";
+  const singleSeqId = sequenceRecords.length === 1 ? indexedSeqIds[0] : "";
   const gffRows = [];
   let unmatchedOrfs = 0;
   for (const [index, orf] of orfRecords.entries()) {
-    const seqId = recordSeqIds.get(orf.record) ?? singleSeqId;
+    const sourceIndex = Number(orf.sourceRecordIndex);
+    const indexedRecord = Number.isSafeInteger(sourceIndex) && sourceIndex >= 1 ? sequenceRecords[sourceIndex - 1] : null;
+    const titleMatches = recordSeqIds.get(orf.record) ?? [];
+    // New ORF streams retain original record order. Legacy streams may use a
+    // unique title, but duplicate titles must never silently select a record.
+    const seqId = orf.sourceRecordIndex != null
+      ? (indexedRecord && indexedRecord.title === orf.record ? indexedSeqIds[sourceIndex - 1] : "")
+      : (titleMatches.length === 1 ? titleMatches[0] : !orf.record ? singleSeqId : "");
     if (!seqId) {
       unmatchedOrfs += 1;
       continue;
@@ -802,7 +822,7 @@ async function runToolStep(step, value, context) {
   }
 
   const inputValue = resolveStepInput(step, value, context);
-  const result = await runWorkflowTool(tool, streamToToolInput(inputValue), makeToolOptionsForInput(tool, step, inputValue), context);
+  const result = await runWorkflowTool(tool, streamToToolInput(inputValue), makeToolOptionsForInput(tool, step, inputValue, context), context);
   context.lastToolResult = result;
   return selectToolResultStream(step, result);
 }
@@ -822,7 +842,7 @@ async function runMapToolStep(step, value, context) {
   const items = [];
   for (const [index, item] of inputValue.items.entries()) {
     throwIfAborted(context.signal);
-    const result = await runWorkflowTool(tool, streamToToolInput(item), makeToolOptionsForInput(tool, step, item), context);
+    const result = await runWorkflowTool(tool, streamToToolInput(item), makeToolOptionsForInput(tool, step, item, context), context);
     toolResults.push(result);
     const streamName = step.selectStream ?? "primary";
     const selected = getStream(result, streamName);
@@ -1160,7 +1180,25 @@ export function validateWorkflowDefinition(workflow, options = {}) {
 
 export async function runWorkflow(workflow, options = {}) {
   const steps = workflow?.steps ?? [];
+  // Opt-in tools can materialize just the outputs actually referenced by the
+  // recipe, preserving saved branches without eagerly allocating every output.
+  const requestedOutputs = new Map();
+  const request = (id, stream) => {
+    if (!id || !stream || stream === "primary") return;
+    if (!requestedOutputs.has(id)) requestedOutputs.set(id, new Set());
+    requestedOutputs.get(id).add(stream);
+  };
+  let lastToolId;
+  for (const [index, step] of steps.entries()) {
+    const id = step.id ?? `step-${index + 1}`;
+    if (["tool", "map"].includes(step.type)) { lastToolId = id; request(id, step.selectStream); }
+    for (const binding of Object.values(step)) {
+      if (binding && typeof binding === "object" && !Array.isArray(binding)) request(binding.from, binding.stream);
+    }
+    if (step.type === "select-stream") request(step.fromStep ?? lastToolId, step.stream);
+  }
   const context = {
+    requestedOutputs,
     toolMap: makeToolMap(options.tools ?? []),
     runTool: options.runTool ?? ((tool, input, toolOptions, context) => tool.run(input, toolOptions, context)),
     signal: options.signal,

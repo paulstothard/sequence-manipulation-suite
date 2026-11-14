@@ -5031,11 +5031,12 @@ function setAlignmentViewerRegionOptions({ reference, start, end }) {
 function captureAlignmentViewerViewport() {
   const output = elements.visualOutput;
   const snapshot = {
-    top: output.getBoundingClientRect().top,
     minHeight: output.style.minHeight,
     ariaBusy: output.getAttribute("aria-busy")
   };
   output.style.minHeight = `${output.offsetHeight}px`;
+  // Commit the reservation before result installation can empty the output.
+  output.getBoundingClientRect();
   output.setAttribute("aria-busy", "true");
   return snapshot;
 }
@@ -5043,17 +5044,12 @@ function captureAlignmentViewerViewport() {
 function restoreAlignmentViewerViewport(snapshot) {
   if (!snapshot) return;
   const output = elements.visualOutput;
-  const restoreScroll = () => {
-    const delta = output.getBoundingClientRect().top - snapshot.top;
-    if (Math.abs(delta) > 0.5) window.scrollTo(window.scrollX, window.scrollY + delta);
-  };
-  restoreScroll();
+  // The user may have scrolled while the worker was loading. Release only the
+  // layout reservation; never return them to the position at request time.
   requestAnimationFrame(() => {
     output.style.minHeight = snapshot.minHeight;
     if (snapshot.ariaBusy === null) output.removeAttribute("aria-busy");
     else output.setAttribute("aria-busy", snapshot.ariaBusy);
-    restoreScroll();
-    requestAnimationFrame(restoreScroll);
   });
 }
 
@@ -6453,6 +6449,8 @@ elements.downloadPngOutput.addEventListener("click", async () => {
   elements.downloadPngOutput.disabled = true;
   try {
     await downloadSvgAsPng(svg, getPngFilename(elements.toolOutput.dataset.filename || "sms3-output.svg"));
+  } catch (error) {
+    addMessage(error.message, "warning");
   } finally {
     elements.downloadPngOutput.disabled = false;
   }

@@ -1,3 +1,4 @@
+import { isolateSvgStyles } from "./svg-style-scope.js";
 import "../vendor/d3/d3.min.js";
 import { escapeXml } from "./plot-renderer.js";
 import { annotatePointCrowding, pointCrowdingFact } from "./point-plot-inspection.js";
@@ -316,7 +317,11 @@ function jitterOffset(seedText, limit) {
   return ((hash % 1000) / 999 - 0.5) * 2 * limit;
 }
 
-export function renderOutlierDiagnosticsSvg(result, options = {}) {
+export function renderOutlierDiagnosticsSvg(...args) {
+  return isolateSvgStyles(renderOutlierDiagnosticsSvgUnscoped(...args));
+}
+
+function renderOutlierDiagnosticsSvgUnscoped(result, options = {}) {
   if (result.rows.length === 0) {
     const emptyStyle = makePublicationPlotStyle(760, 160);
     return [

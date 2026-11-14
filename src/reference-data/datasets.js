@@ -34,7 +34,7 @@ export default {
         "src/reference-data/motifs/provenance.json"
       ],
       "validationTest": "test/reference-data-motifs.test.js",
-      "notes": "Builds curated motif records and, when the ignored JASPAR source cache is present, bundled JASPAR 2024 CORE PWM-ready DNA profiles. Larger protein databases need source-specific redistribution review before bundling."
+      "notes": "Builds curated motif records, including the 2026-11 protein PTS2 location and 14-3-3 spacing corrections, and, when the ignored JASPAR source cache is present, bundled JASPAR 2024 CORE PWM-ready DNA profiles. Larger protein databases need source-specific redistribution review before bundling."
     },
     {
       "id": "technical-sequences",

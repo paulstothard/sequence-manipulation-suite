@@ -1,3 +1,4 @@
+import { isolateSvgStyles } from "./svg-style-scope.js";
 import { resolveRandom, randomInteger } from "./random-sequence.js";
 import { findColumn, parseDelimitedTable } from "./table.js";
 import { escapeXml } from "./plot-renderer.js";
@@ -139,7 +140,11 @@ function countAxis(maxCount) {
   return { upper: niceUpper, ticks };
 }
 
-function makeHistogram(values, observed, title = "Permutation null distribution") {
+function makeHistogram(...args) {
+  return isolateSvgStyles(makeHistogramUnscoped(...args));
+}
+
+function makeHistogramUnscoped(values, observed, title = "Permutation null distribution") {
   const width = 760;
   const height = 450;
   const margin = { top: 94, right: 34, bottom: 66, left: 78 };

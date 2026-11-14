@@ -1,7 +1,9 @@
+import { isolateSvgElementStyles } from "../core/svg-style-scope.js";
+import { setUiText } from './set-ui-text.js';
+import { preserveRenderHeight } from "./preserve-render-height.js";
 import { createEditorSession } from './editor-session.js';
 import {
   addTimestampToFilename,
-  getPngExportScale,
   makeSafeFileStem
 } from "./canvas-export.js";
 import {
@@ -12,7 +14,7 @@ import {
 import { createStackedIntervalLayout } from "../core/viewer-track-layout.js";
 import { featureArrowHeadLength, featureArrowTerminalVisible, linearFeaturePolygon } from "../core/directional-feature-geometry.js";
 import { createSearchableViewerChoiceCombobox } from "./searchable-viewer-choice-ui.js";
-import { serializeSvgElement } from "./svg-export.js";
+import { serializeSvgElement, downloadSvgAsPng } from "./svg-export.js";
 import {
   makePublicationPlotStyle,
   publicationSvgAttributeMap,
@@ -23,10 +25,21 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 const TAU = Math.PI * 2;
 const GENOME_FIGURE_PUBLICATION_STYLE = makePublicationPlotStyle(1400, 1400);
 
+export function genomeFigureLabelMetrics(width = 1400) {
+  const style = makePublicationPlotStyle(width, width);
+  const fontSize = style.smallFontSize;
+  const boxHeight = Math.ceil(fontSize + 6);
+  return {
+    fontSize,
+    font: `${fontSize}px ${style.fontFamily}`,
+    boxHeight,
+    lanes: Array.from({ length: 6 }, (_, index) => 78 - index * (boxHeight + 3))
+  };
+}
+const DEFAULT_LABEL_METRICS = genomeFigureLabelMetrics();
+
 const LABEL_FONT_SIZE = GENOME_FIGURE_PUBLICATION_STYLE.smallFontSize;
 const LABEL_BOX_HEIGHT = Math.ceil(LABEL_FONT_SIZE + 6);
-const LABEL_VERTICAL_GAP = LABEL_BOX_HEIGHT + 3;
-const LINEAR_LABEL_LANES = Array.from({ length: 6 }, (_, index) => 78 - index * LABEL_VERTICAL_GAP);
 const DEFAULT_FEATURE_TRACK_WIDTH = 21;
 const DEFAULT_PLOT_BAND_WIDTH = 56;
 const MAX_PLOT_BAND_WIDTH = 120;
@@ -50,8 +63,6 @@ const LABEL_VISUAL_PADDING = 2;
 const CIRCULAR_LABEL_LEADER_GAP = 28;
 const CIRCULAR_LABEL_MARGIN = 16;
 const INSIDE_FEATURE_LABEL_FONT_SIZE = GENOME_FIGURE_PUBLICATION_STYLE.smallFontSize;
-const INSIDE_FEATURE_LABEL_HEIGHT = Math.ceil(INSIDE_FEATURE_LABEL_FONT_SIZE);
-const MIN_INSIDE_FEATURE_LABEL_TRACK_WIDTH = INSIDE_FEATURE_LABEL_HEIGHT + 1;
 const INSIDE_FEATURE_LABEL_PADDING = 18;
 const INSIDE_FEATURE_LABEL_LETTER_SPACING = 0.55;
 const CIRCULAR_INSIDE_LABEL_OPTICAL_OFFSET = 3.2;
@@ -462,7 +473,7 @@ function appendFigureStyles(svg, palette, publicationStyle = GENOME_FIGURE_PUBLI
     }
     .genome-figure-inside-label {
       fill: var(--genome-figure-ink);
-      font: 500 ${INSIDE_FEATURE_LABEL_FONT_SIZE}px ${publicationStyle.fontFamily};
+      font: 500 ${publicationStyle.smallFontSize}px ${publicationStyle.fontFamily};
       letter-spacing: ${INSIDE_FEATURE_LABEL_LETTER_SPACING}px;
       paint-order: stroke;
       pointer-events: none;
@@ -898,15 +909,15 @@ function measuredTextWidth(text, font = LABEL_FONT) {
       // Fall back to a deterministic estimate when canvas text metrics are unavailable.
     }
   }
-  return estimateTextWidth(value, LABEL_FONT_SIZE);
+  return estimateTextWidth(value, Number(/([\d.]+)px/.exec(font)?.[1]) || LABEL_FONT_SIZE);
 }
 
-function labelInkWidth(text) {
-  return Math.max(6, Math.min(LABEL_MAX_WIDTH, measuredTextWidth(text)));
+function labelInkWidth(text, metrics = DEFAULT_LABEL_METRICS) {
+  return Math.max(6, measuredTextWidth(text, metrics.font));
 }
 
-function labelTextWidth(text) {
-  return Math.max(LABEL_MIN_WIDTH, Math.min(LABEL_MAX_WIDTH, labelInkWidth(text) + 14));
+function labelTextWidth(text, metrics = DEFAULT_LABEL_METRICS) {
+  return Math.max(LABEL_MIN_WIDTH, labelInkWidth(text, metrics) + 14);
 }
 
 function clamp(value, min, max) {
@@ -1244,12 +1255,12 @@ function labelBoxesOverlap(left, right, padding = 0) {
   );
 }
 
-function makeCenteredLabelBox(x, y, width) {
+function makeCenteredLabelBox(x, y, width, height = LABEL_BOX_HEIGHT) {
   return {
     left: x - width / 2,
     right: x + width / 2,
-    top: y - LABEL_BOX_HEIGHT / 2,
-    bottom: y + LABEL_BOX_HEIGHT / 2
+    top: y - height / 2,
+    bottom: y + height / 2
   };
 }
 
@@ -1314,9 +1325,9 @@ function radialConnectorForLabel(label, x, y, visualBox) {
   };
 }
 
-function labelGeometry(label, x = label.x, y = label.y) {
-  const hitWidth = labelTextWidth(label.text);
-  const visualWidth = Math.max(12, Math.min(hitWidth, Number(label.visualWidth) || labelInkWidth(label.text) + LABEL_VISUAL_PADDING * 2));
+function labelGeometry(label, x = label.x, y = label.y, metrics = DEFAULT_LABEL_METRICS) {
+  const hitWidth = labelTextWidth(label.text, metrics);
+  const visualWidth = Math.max(12, Math.min(hitWidth, Number(label.visualWidth) || labelInkWidth(label.text, metrics) + LABEL_VISUAL_PADDING * 2));
   const align = label.align || "middle";
   const hitLeft = align === "end" ? x - hitWidth : align === "middle" ? x - hitWidth / 2 : x;
   const textX = align === "end" ? x - 9 : align === "middle" ? x : x + 9;
@@ -1328,8 +1339,8 @@ function labelGeometry(label, x = label.x, y = label.y) {
   const visualBox = {
     left: visualLeft,
     right: visualLeft + visualWidth,
-    top: y - LABEL_BOX_HEIGHT / 2,
-    bottom: y + LABEL_BOX_HEIGHT / 2
+    top: y - metrics.boxHeight / 2,
+    bottom: y + metrics.boxHeight / 2
   };
   const hitBox = {
     left: Math.min(hitLeft - 4, visualBox.left),
@@ -1349,17 +1360,17 @@ function labelGeometry(label, x = label.x, y = label.y) {
   return { hitBox, visualBox, connector, textX, visualWidth };
 }
 
-function buildLinearLabels(record, rows, palette, paletteName, density, excludeIds = new Set(), colorMode = "type") {
+function buildLinearLabels(record, rows, palette, paletteName, density, excludeIds = new Set(), colorMode = "type", metrics = DEFAULT_LABEL_METRICS) {
   const labels = [];
   const features = chooseLabelFeatures(record, density, excludeIds, record.forceLabelIds);
-  const laneCount = density === "low" ? 2 : density === "high" ? LINEAR_LABEL_LANES.length : 4;
+  const laneCount = density === "low" ? 2 : density === "high" ? metrics.lanes.length : 4;
   const padding = density === "high" ? 5 : 8;
   const maxShift = density === "low" ? 48 : density === "high" ? 180 : 110;
   for (const row of rows) {
     const rowFeatures = features.filter((feature) => feature.end >= row.start && feature.start <= row.end);
     const laneLeftBound = row.x - LINEAR_WRAP_EDGE_LABEL_BLEED;
     const laneRightBound = row.x + row.width + LINEAR_WRAP_EDGE_LABEL_BLEED;
-    const lanes = LINEAR_LABEL_LANES.slice(0, laneCount).map((offset) => ({
+    const lanes = metrics.lanes.slice(0, laneCount).map((offset) => ({
       y: row.y + offset,
       items: []
     }));
@@ -1375,8 +1386,8 @@ function buildLinearLabels(record, rows, palette, paletteName, density, excludeI
       const anchorX = rowX(row, mid);
       const anchorY = row.y + LINEAR_AXIS_Y;
       const text = feature.label || feature.type;
-      const width = labelTextWidth(text) + 8;
-      const visualWidth = labelInkWidth(text) + LABEL_VISUAL_PADDING * 2;
+      const width = labelTextWidth(text, metrics) + 8;
+      const visualWidth = labelInkWidth(text, metrics) + LABEL_VISUAL_PADDING * 2;
       const forced = record.forceLabelIds?.has(feature.id);
       const nearLeftEdge = anchorX < row.x + LINEAR_WRAP_EDGE_LABEL_ZONE;
       const nearRightEdge = anchorX > row.x + row.width - LINEAR_WRAP_EDGE_LABEL_ZONE;
@@ -1447,7 +1458,7 @@ function buildInsideLabelCandidates(record, density) {
   return new Set(chooseLabelFeatures(record, density, new Set(), record.forceLabelIds).map((feature) => feature.id));
 }
 
-function buildCircularLabels(record, geometry, palette, paletteName, density, excludeIds = new Set(), colorMode = "type") {
+function buildCircularLabels(record, geometry, palette, paletteName, density, excludeIds = new Set(), colorMode = "type", metrics = DEFAULT_LABEL_METRICS) {
   const selected = chooseLabelFeatures(record, density, excludeIds, record.forceLabelIds)
     .map((feature) => {
       const angle = circularAngleFor(record, featureMidpoint(feature));
@@ -1468,8 +1479,8 @@ function buildCircularLabels(record, geometry, palette, paletteName, density, ex
         forced: record.forceLabelIds?.has(feature.id),
         labelLength: String(text).length,
         color: colorForFeatureDisplay(feature, palette, paletteName, colorMode),
-        width: labelTextWidth(text) + 8,
-        visualWidth: labelInkWidth(text) + LABEL_VISUAL_PADDING * 2,
+        width: labelTextWidth(text, metrics) + 8,
+        visualWidth: labelInkWidth(text, metrics) + LABEL_VISUAL_PADDING * 2,
         connectorMode: "radial"
       };
     });
@@ -1477,8 +1488,8 @@ function buildCircularLabels(record, geometry, palette, paletteName, density, ex
   const placedBoxes = [];
   const minCenterX = CIRCULAR_LABEL_MARGIN;
   const maxCenterX = geometry.width - CIRCULAR_LABEL_MARGIN;
-  const minCenterY = geometry.top + LABEL_BOX_HEIGHT / 2;
-  const maxCenterY = geometry.height - LABEL_BOX_HEIGHT / 2 - 18;
+  const minCenterY = geometry.top + metrics.boxHeight / 2;
+  const maxCenterY = geometry.height - metrics.boxHeight / 2 - 18;
   const baseRadius = geometry.axisRadius + CIRCULAR_LABEL_LEADER_GAP;
   const radiusStep = density === "high" ? 12 : 16;
   const padding = density === "high" ? 4 : 6;
@@ -1501,12 +1512,12 @@ function buildCircularLabels(record, geometry, palette, paletteName, density, ex
     if (!Number.isFinite(maxRadius) || maxRadius < baseRadius) continue;
 
     let placed = null;
-    const radialBoxHalfExtent = Math.abs(item.ux) * item.width / 2 + Math.abs(item.uy) * LABEL_BOX_HEIGHT / 2;
+    const radialBoxHalfExtent = Math.abs(item.ux) * item.width / 2 + Math.abs(item.uy) * metrics.boxHeight / 2;
     const itemBaseRadius = Math.max(baseRadius, geometry.axisRadius + radialBoxHalfExtent + 10);
     for (let radius = itemBaseRadius; radius <= maxRadius + 0.1; radius += radiusStep) {
       const x = geometry.cx + item.ux * radius;
       const y = geometry.cy + item.uy * radius;
-      const box = makeCenteredLabelBox(x, y, item.width);
+      const box = makeCenteredLabelBox(x, y, item.width, metrics.boxHeight);
       if (placedBoxes.some((existing) => labelBoxesOverlap(box, existing, padding))) continue;
       placed = { x, y, box, radius };
       break;
@@ -1525,11 +1536,12 @@ function buildCircularLabels(record, geometry, palette, paletteName, density, ex
 }
 
 function drawLabel(svg, label, state) {
+  const metrics = genomeFigureLabelMetrics(state.figure.width);
   const group = svgEl("g", {
     class: `genome-figure-label${state.selectedLabelId === label.id ? " selected" : ""}`,
     "data-label-id": label.id
   });
-  const { hitBox, visualBox, connector, textX, visualWidth } = labelGeometry(label);
+  const { hitBox, visualBox, connector, textX, visualWidth } = labelGeometry(label, label.x, label.y, metrics);
   let connectorLayer = svg.querySelector("[data-label-connector-layer='true']");
   if (!connectorLayer) {
     connectorLayer = svgEl("g", {
@@ -1543,7 +1555,7 @@ function drawLabel(svg, label, state) {
     x: hitBox.left.toFixed(1),
     y: hitBox.top.toFixed(1),
     width: (hitBox.right - hitBox.left).toFixed(1),
-    height: LABEL_BOX_HEIGHT,
+    height: metrics.boxHeight,
     fill: "transparent",
     "pointer-events": "all"
   }));
@@ -1571,16 +1583,16 @@ function drawLabel(svg, label, state) {
   if (state.labelBoxes) {
     group.append(svgEl("rect", {
       x: visualBox.left.toFixed(1),
-      y: (label.y - LABEL_BOX_HEIGHT / 2).toFixed(1),
+      y: (label.y - metrics.boxHeight / 2).toFixed(1),
       width: visualWidth.toFixed(1),
-      height: LABEL_BOX_HEIGHT,
+      height: metrics.boxHeight,
       fill: state.palette.legendPanel || state.palette.paper,
       stroke: state.selectedLabelId === label.id ? (state.palette.selection || "#60a5fa") : state.palette.grid
     }));
   }
   group.append(textEl(label.text, {
     x: textX.toFixed(1),
-    y: (label.y + 4).toFixed(1),
+    y: (label.y + metrics.fontSize * 0.28).toFixed(1),
     "text-anchor": label.align,
     class: `genome-figure-label-text${state.labelBoxes ? "" : " genome-figure-label-text-bare"}`
   }));
@@ -1660,11 +1672,11 @@ function safeSvgIdPart(value) {
   return safe || "item";
 }
 
-export function getCircularInsideFeatureLabelPlacement({ cx, cy, radius, slotWidth, startAngle, endAngle, text }) {
+export function getCircularInsideFeatureLabelPlacement({ cx, cy, radius, slotWidth, startAngle, endAngle, text, fontSize = INSIDE_FEATURE_LABEL_FONT_SIZE }) {
   const label = String(text || "").trim();
   if (!label) return null;
   const bandHeight = Math.max(0, Number(slotWidth) || 0);
-  if (bandHeight < MIN_INSIDE_FEATURE_LABEL_TRACK_WIDTH) return null;
+  if (bandHeight < Math.ceil(fontSize) + 1) return null;
   const adjustedStart = Number(startAngle);
   let adjustedEnd = Number(endAngle);
   const centerRadius = Number(radius);
@@ -1674,7 +1686,7 @@ export function getCircularInsideFeatureLabelPlacement({ cx, cy, radius, slotWid
   const reverse = Math.sin(midAngle) > 0;
   const pathRadius = centerRadius + (reverse ? CIRCULAR_INSIDE_LABEL_OPTICAL_OFFSET : -CIRCULAR_INSIDE_LABEL_OPTICAL_OFFSET);
   const arcWidth = Math.abs(adjustedEnd - adjustedStart) * centerRadius;
-  const textWidth = measuredTextWidth(label, `500 ${INSIDE_FEATURE_LABEL_FONT_SIZE}px ${GENOME_FIGURE_PUBLICATION_STYLE.fontFamily}`)
+  const textWidth = measuredTextWidth(label, `500 ${fontSize}px ${GENOME_FIGURE_PUBLICATION_STYLE.fontFamily}`)
     + Math.max(0, label.length - 1) * INSIDE_FEATURE_LABEL_LETTER_SPACING;
   const requiredWidth = textWidth + INSIDE_FEATURE_LABEL_PADDING;
   const availableHalfPathSpan = (adjustedEnd - adjustedStart) / 2 - CIRCULAR_INSIDE_LABEL_END_INSET;
@@ -2574,7 +2586,8 @@ function drawCircularContigBoundaries(svg, record, geometry, palette) {
 }
 
 function drawCircularRulerLabel(svg, text, geometry, angle, radius, id) {
-  const textWidth = estimateTextWidth(text, 12) + 8;
+  const fontSize = makePublicationPlotStyle(svg.viewBox.baseVal.width, svg.viewBox.baseVal.height).smallFontSize;
+  const textWidth = estimateTextWidth(text, fontSize) + 8;
   const halfSpan = Math.max(0.035, Math.min(0.18, (textWidth / Math.max(1, radius)) / 2));
   const reverse = Math.sin(angle) > 0;
   const startAngle = reverse ? angle + halfSpan : angle - halfSpan;
@@ -2605,6 +2618,7 @@ function drawCircularRulerLabel(svg, text, geometry, angle, radius, id) {
 
 function renderCircularRecord(record, state) {
   const width = state.figure.width || 1400;
+  const metrics = genomeFigureLabelMetrics(width);
   const height = width;
   const publicationStyle = makePublicationPlotStyle(width, height);
   const palette = state.palette;
@@ -2811,7 +2825,8 @@ function renderCircularRecord(record, state) {
         slotWidth: thickness,
         startAngle,
         endAngle,
-        text: feature.label
+        text: feature.label,
+        fontSize: metrics.fontSize
       });
       if (shouldUseInsideLabel(feature, labelCandidateIds, insideLabelIds)
         && labelPlacement
@@ -2843,7 +2858,7 @@ function renderCircularRecord(record, state) {
         labelRadius,
         axisRadius,
         top: 132
-      }, palette, state.paletteName, state.labelDensity, externalLabelExcludes, state.featureColorMode)
+      }, palette, state.paletteName, state.labelDensity, externalLabelExcludes, state.featureColorMode, metrics)
     ];
   }
   for (const label of state.labels.filter((item) => isLabelVisible(item, state) && isLabelInCurrentFeatureSet(item, state))) drawLabel(svg, label, state);
@@ -2866,7 +2881,7 @@ function renderCircularRecord(record, state) {
     renderPlotLegend(svg, plots, width - 400, legendY, state);
     renderGeneModelKey(svg, features, width / 2 - 240, height - 36, state);
   }
-  return svg;
+  return isolateSvgElementStyles(svg);
 }
 
 function linearLegendBottom(slotGroups, features, plots, state) {
@@ -2883,13 +2898,15 @@ function linearLegendBottom(slotGroups, features, plots, state) {
 }
 
 function linearFirstRowY(slotGroups, features, plots, state) {
-  const laneCount = state.labelDensity === "low" ? 2 : state.labelDensity === "high" ? LINEAR_LABEL_LANES.length : 4;
-  const topLabelOffset = Math.min(...LINEAR_LABEL_LANES.slice(0, laneCount));
+  const metrics = genomeFigureLabelMetrics(state.figure.width);
+  const laneCount = state.labelDensity === "low" ? 2 : state.labelDensity === "high" ? metrics.lanes.length : 4;
+  const topLabelOffset = Math.min(...metrics.lanes.slice(0, laneCount));
   return Math.max(215, linearLegendBottom(slotGroups, features, plots, state) + 28 - topLabelOffset);
 }
 
 function renderLinearRecord(record, state) {
   const width = state.figure.width || 1400;
+  const metrics = genomeFigureLabelMetrics(width);
   const palette = state.palette;
   const features = getVisibleFeatures(record, state);
   state.currentVisibleFeatureIds = new Set(features.map((feature) => feature.id));
@@ -3001,7 +3018,7 @@ function renderLinearRecord(record, state) {
         const color = modelPartColor(feature, part, state);
         const featureSlotWidth = modelPartThickness(feature, part, state.slotWidth ?? DEFAULT_FEATURE_TRACK_WIDTH);
         drawLinearFeatureGlyph(svg, feature, left, y, widthPx, featureSlotWidth, color, state, part);
-        if (shouldUseInsideLabel(feature, labelCandidateIds, insideLabelIds) && featureSlotWidth >= MIN_INSIDE_FEATURE_LABEL_TRACK_WIDTH && widthPx > estimateTextWidth(feature.label, INSIDE_FEATURE_LABEL_FONT_SIZE) + INSIDE_FEATURE_LABEL_PADDING) {
+        if (shouldUseInsideLabel(feature, labelCandidateIds, insideLabelIds) && featureSlotWidth >= Math.ceil(metrics.fontSize) + 1 && widthPx > estimateTextWidth(feature.label, metrics.fontSize) + INSIDE_FEATURE_LABEL_PADDING) {
           insideLabelDraws.push({ label: feature.label, x: left + widthPx / 2, y, options: { featureFill: color } });
           insideLabelIds.add(feature.id);
         }
@@ -3016,7 +3033,7 @@ function renderLinearRecord(record, state) {
     const externalLabelExcludes = new Set([...insideLabelIds, ...manuallyPlacedFeatureLabelIds(state.labels)]);
     state.labels = [
       ...state.labels,
-      ...buildLinearLabels({ ...record, features, forceLabelIds: state.forceLabelIds }, rows, palette, state.paletteName, state.labelDensity, externalLabelExcludes, state.featureColorMode)
+      ...buildLinearLabels({ ...record, features, forceLabelIds: state.forceLabelIds }, rows, palette, state.paletteName, state.labelDensity, externalLabelExcludes, state.featureColorMode, metrics)
     ];
   }
   for (const label of state.labels.filter((item) => isLabelVisible(item, state) && isLabelInCurrentFeatureSet(item, state))) drawLabel(svg, label, state);
@@ -3040,7 +3057,7 @@ function renderLinearRecord(record, state) {
     renderPlotLegend(svg, plots, width - 405, legendY, state);
     renderGeneModelKey(svg, features, 82, 125, state);
   }
-  return svg;
+  return isolateSvgElementStyles(svg);
 }
 
 function serializeSvg(svg) {
@@ -3061,26 +3078,8 @@ function downloadSvg(svg, filename) {
   downloadText(serializeSvg(svg), filename, "image/svg+xml;charset=utf-8");
 }
 
-function downloadPng(svg, filename, scale) {
-  const serialized = serializeSvg(svg);
-  const image = new Image();
-  const url = URL.createObjectURL(new Blob([serialized], { type: "image/svg+xml;charset=utf-8" }));
-  image.onload = () => {
-    const canvas = document.createElement("canvas");
-    const exportScale = getPngExportScale(scale);
-    canvas.width = Math.max(1, Math.round(svg.viewBox.baseVal.width * exportScale));
-    canvas.height = Math.max(1, Math.round(svg.viewBox.baseVal.height * exportScale));
-    const ctx = canvas.getContext("2d");
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-    const link = document.createElement("a");
-    link.href = canvas.toDataURL("image/png");
-    link.download = addTimestampToFilename(filename);
-    link.click();
-    URL.revokeObjectURL(url);
-  };
-  image.src = url;
+function downloadPng(svg, filename) {
+  return downloadSvgAsPng(serializeSvg(svg), filename);
 }
 
 function makeButton(html, label) {
@@ -3630,7 +3629,7 @@ function installFigureEditor(panel, sourceRecords, figure, editorDocument) {
     state.plotWindowSize,
     " bp"
   );
-  plotWindowControl.valueLabel.textContent = `${formatWindowSize(state.plotWindowSize)}${plotWindowControl.unit}`;
+  setUiText(plotWindowControl.valueLabel, `${formatWindowSize(state.plotWindowSize)}${plotWindowControl.unit}`);
   const plotWidthControl = makeRangeControl("Plot width", 24, MAX_PLOT_BAND_WIDTH, state.plotBandWidth, " px");
   const featureTypeControl = makeFeatureTypeControl(featureTypes, state.visibleFeatureTypes);
   const contigOrderControl = makeSelect("Sequence order", [
@@ -3707,9 +3706,9 @@ function installFigureEditor(panel, sourceRecords, figure, editorDocument) {
     textInput.disabled = !label;
     applyText.disabled = !label;
     deleteLabel.disabled = !label;
-    status.textContent = label
+    setUiText(status, label
       ? "Drag the selected label or edit its text. Right-click the figure to add a label."
-      : "Right-click the figure to add a label. Click a label to edit or drag it.";
+      : "Right-click the figure to add a label. Click a label to edit or drag it.");
   }
 
   function currentDisplayRecord() {
@@ -3743,15 +3742,14 @@ function installFigureEditor(panel, sourceRecords, figure, editorDocument) {
     regionControl.endInput.value = state.regionRecordKey === "all" ? "" : String(state.viewRangeEnd);
     regionControl.startInput.placeholder = state.regionRecordKey === "all" ? "Full" : "1";
     regionControl.endInput.placeholder = state.regionRecordKey === "all" ? "Full" : maximum.toLocaleString();
-    regionControl.summary.textContent = state.regionRecordKey === "all"
+    setUiText(regionControl.summary, state.regionRecordKey === "all"
       ? `${state.visibleRecordKeys.size.toLocaleString()} sequence${state.visibleRecordKeys.size === 1 ? "" : "s"} combined across wrapped rows`
       : whole
         ? `${maximum.toLocaleString()} bp shown`
-        : `${state.viewRangeStart.toLocaleString()}-${state.viewRangeEnd.toLocaleString()} of ${maximum.toLocaleString()} bp`;
+        : `${state.viewRangeStart.toLocaleString()}-${state.viewRangeEnd.toLocaleString()} of ${maximum.toLocaleString()} bp`);
   }
 
-  function render() {
-    figureHost.textContent = "";
+  const render = () => preserveRenderHeight(figureHost, () => {
     state.figure.width = state.figureWidth;
     const displayRecord = currentDisplayRecord();
     state.circularGeometryRecord = projectGenomeFigureRecords(sourceRecords, {
@@ -3759,11 +3757,11 @@ function installFigureEditor(panel, sourceRecords, figure, editorDocument) {
     });
     syncRegionControl();
     if (!displayRecord) {
-      groupingSummary.textContent = "No feature groups shown";
+      setUiText(groupingSummary, "No feature groups shown");
       const empty = document.createElement("p");
       empty.className = "dna-viewer-empty genome-figure-empty-selection";
       empty.textContent = "No sequences are selected. Choose one or more sequences in the Sequences controls.";
-      figureHost.append(empty);
+      figureHost.replaceChildren(empty);
       currentSvg = null;
       syncEditor();
       return;
@@ -3774,17 +3772,17 @@ function installFigureEditor(panel, sourceRecords, figure, editorDocument) {
     const groupingFeatures = getVisibleFeatures(groupingRecord, state);
     const groupCount = featureSlotGroups(groupingFeatures, state.featureSlotGrouping).length;
     if (!groupCount) {
-      groupingSummary.textContent = "No feature groups shown";
+      setUiText(groupingSummary, "No feature groups shown");
     } else if (state.featureLayout === "non-overlap") {
       const packed = getStackedFeatureLayout(groupingRecord, groupingFeatures, figure.layout === "linear" ? 8 : 14, state);
-      groupingSummary.textContent = `${groupCount} group${groupCount === 1 ? "" : "s"} · ${packed.slotCount} packed lane${packed.slotCount === 1 ? "" : "s"}`;
+      setUiText(groupingSummary, `${groupCount} group${groupCount === 1 ? "" : "s"} · ${packed.slotCount} packed lane${packed.slotCount === 1 ? "" : "s"}`);
     } else {
-      groupingSummary.textContent = `${groupCount} group${groupCount === 1 ? "" : "s"} · one lane per group`;
+      setUiText(groupingSummary, `${groupCount} group${groupCount === 1 ? "" : "s"} · one lane per group`);
     }
     currentSvg = figure.layout === "linear" ? renderLinearRecord(displayRecord, state) : renderCircularRecord(displayRecord, state);
-    figureHost.append(currentSvg);
+    figureHost.replaceChildren(currentSvg);
     syncEditor();
-  }
+  });
 
   function appendMissingForcedLabels() {
     const forcedIds = new Set([...state.forceLabelIds]);
@@ -4015,18 +4013,18 @@ function installFigureEditor(panel, sourceRecords, figure, editorDocument) {
     const max = Number.parseInt(plotWindowControl.input.max, 10) || Math.max(min, defaultPlotWindow);
     state.plotWindowSize = snapPlotWindowSize(plotWindowControl.input.value, min, max);
     plotWindowControl.input.value = String(state.plotWindowSize);
-    plotWindowControl.valueLabel.textContent = `${formatWindowSize(state.plotWindowSize)}${plotWindowControl.unit}`;
+    setUiText(plotWindowControl.valueLabel, `${formatWindowSize(state.plotWindowSize)}${plotWindowControl.unit}`);
     render();
   });
   plotWidthControl.input.addEventListener("input", () => {
     state.plotBandWidth = Number.parseInt(plotWidthControl.input.value, 10) || DEFAULT_PLOT_BAND_WIDTH;
-    plotWidthControl.valueLabel.textContent = `${state.plotBandWidth}${plotWidthControl.unit}`;
+    setUiText(plotWidthControl.valueLabel, `${state.plotBandWidth}${plotWidthControl.unit}`);
     clearSuggestedLabels();
     render();
   });
   tickDensityControl.input.addEventListener("input", () => {
     state.tickDensity = Number.parseInt(tickDensityControl.input.value, 10) || DEFAULT_TICK_DENSITY;
-    tickDensityControl.valueLabel.textContent = String(state.tickDensity);
+    setUiText(tickDensityControl.valueLabel, String(state.tickDensity));
     render();
   });
   if (regionControl) {
@@ -4114,7 +4112,7 @@ function installFigureEditor(panel, sourceRecords, figure, editorDocument) {
   });
   featureOpacityControl.input.addEventListener("input", () => {
     state.featureOpacity = Number.parseInt(featureOpacityControl.input.value, 10) || DEFAULT_FEATURE_OPACITY;
-    featureOpacityControl.valueLabel.textContent = `${state.featureOpacity}${featureOpacityControl.unit}`;
+    setUiText(featureOpacityControl.valueLabel, `${state.featureOpacity}${featureOpacityControl.unit}`);
     render();
   });
   densityControl.select.addEventListener("change", () => {
@@ -4125,7 +4123,7 @@ function installFigureEditor(panel, sourceRecords, figure, editorDocument) {
   });
   slotWidthControl.input.addEventListener("input", () => {
     state.slotWidth = Number.parseInt(slotWidthControl.input.value, 10) || DEFAULT_FEATURE_TRACK_WIDTH;
-    slotWidthControl.valueLabel.textContent = `${state.slotWidth}${slotWidthControl.unit}`;
+    setUiText(slotWidthControl.valueLabel, `${state.slotWidth}${slotWidthControl.unit}`);
     clearSuggestedLabels();
     render();
   });
@@ -4246,10 +4244,11 @@ function installFigureEditor(panel, sourceRecords, figure, editorDocument) {
     state.selectedLabelId = "";
     render();
   });
-  png.addEventListener("click", () => {
+  png.addEventListener("click", async () => {
     if (!currentSvg) return;
     const stem = makeSafeFileStem(currentDisplayRecord()?.title, "genome-figure");
-    downloadPng(currentSvg, `${stem}.png`);
+    try { await downloadPng(currentSvg, `${stem}.png`); }
+    catch (error) { status.textContent = error.message; }
   });
   svgButton.addEventListener("click", () => {
     if (!currentSvg) return;

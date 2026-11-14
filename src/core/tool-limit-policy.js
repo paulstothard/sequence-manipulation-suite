@@ -72,6 +72,7 @@ const TOOL_LIMIT_POLICIES = Object.freeze({
     filterRecords: Object.freeze({}),
     filterOutput: Object.freeze({})
   }),
+  "sequence-stats-protein": Object.freeze({ proteinStatsInput: Object.freeze({}), proteinStatsRecords: Object.freeze({}), proteinStatsOutput: Object.freeze({}) }),
   "sequence-stats-dna-rna": Object.freeze({
     sequenceStatsFile: Object.freeze({}),
     sequenceStatsDecoded: Object.freeze({}),
@@ -84,6 +85,14 @@ const TOOL_LIMIT_POLICIES = Object.freeze({
     maxInputTable: Object.freeze({}),
     maxAnalysisDimensions: Object.freeze({}),
     maxSampleResults: Object.freeze({})
+  }),
+  "protein-motif-scanner": Object.freeze({
+    proteinMotifInput: Object.freeze({}), proteinMotifRecords: Object.freeze({}),
+    proteinMotifWork: Object.freeze({}), proteinMotifHits: Object.freeze({}), proteinMotifOutput: Object.freeze({})
+  }),
+  "protein-hydropathy": Object.freeze({
+    hydropathyInput: Object.freeze({}), hydropathyRecords: Object.freeze({}),
+    hydropathyRows: Object.freeze({}), hydropathyOutput: Object.freeze({})
   }),
   "protein-digest": Object.freeze({
     maxInputCharacters: Object.freeze({}),
@@ -186,6 +195,11 @@ const TOOL_LIMIT_POLICIES = Object.freeze({
     maxExactPermutations: Object.freeze({})
   }),
   "protein-pattern-finder": Object.freeze({
+    proteinPatternInput: Object.freeze({}),
+    proteinPatternRecords: Object.freeze({}),
+    proteinPatternWork: Object.freeze({}),
+    proteinPatternHits: Object.freeze({}),
+    proteinPatternOutput: Object.freeze({}),
     proteinPatternRegions: Object.freeze({})
   }),
   "pcr-primer-design": Object.freeze({

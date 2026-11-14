@@ -3,11 +3,21 @@
 SMS3 vendors the small BioWasm/Aioli runtime plus selected JavaScript/WebAssembly
 packages so browser analyses can run locally without a runtime CDN dependency.
 
+The base MUSCLE CDN package is named `5.1.0`, while its source defines version
+`5.2` and the browser executable reports `5.2.linux32`. It pins upstream commit
+`6c601163998616bb88991931e443c645858e162c`. SMS3 now rebuilds this same source with
+BioWasm's browser port plus the approved molecule-selection fix: `-align` honors
+`-nt`/`-amino`, and SMS3 supplies the declared molecule type. The banner revision
+is `6c601163-sms3-molecule1`; `muscle-runtime.js` owns the distinct identities.
+See [source, patches and reproducible build instructions](../../../scripts/vendor/muscle/README.md).
+The package path is retained, but MUSCLE's files are locally rebuilt rather than
+unmodified CDN copies. The alignment algorithm and ambiguity parameters are unchanged.
+
 Fetched files:
 
 - `aioli/3.2.1/aioli.js` from `https://biowasm.com/cdn/v3/aioli.js`
-- `muscle/5.1.0/muscle.js` from `https://biowasm.com/cdn/v3/muscle/5.1.0/muscle.js`
-- `muscle/5.1.0/muscle.wasm` from `https://biowasm.com/cdn/v3/muscle/5.1.0/muscle.wasm`
+- `muscle/5.1.0/muscle.js`: SMS3 pinned rebuild described above
+- `muscle/5.1.0/muscle.wasm`: SMS3 pinned rebuild described above
 - `seq-align/2017.10.18/needleman_wunsch.js` from `https://biowasm.com/cdn/v3/seq-align/2017.10.18/needleman_wunsch.js`
 - `seq-align/2017.10.18/needleman_wunsch.wasm` from `https://biowasm.com/cdn/v3/seq-align/2017.10.18/needleman_wunsch.wasm`
 - `seq-align/2017.10.18/smith_waterman.js` from `https://biowasm.com/cdn/v3/seq-align/2017.10.18/smith_waterman.js`
@@ -44,8 +54,8 @@ Aioli; `e2e/biowasm-worker-startup.spec.js` covers lifecycle and error handling.
 SHA-256 checksums:
 
 - `aioli/3.2.1/aioli.js`: `73dfa2f4bad4f4b07fbf72e4a62a33c2bef24428e48d520ed01864b8a16d2f1a`
-- `muscle/5.1.0/muscle.js`: `a857f4120fa752316e985d4e15df0004cd54997568b903e2297356735ce7fa10`
-- `muscle/5.1.0/muscle.wasm`: `bfd665c7cbd0847bbdc4d672a9fc975ab6f785b26e99d8a7adf0497f213a95cd`
+- `muscle/5.1.0/muscle.js`: `3ec337bcbdcbf4b897e68284d2b0b8b5f588fc4c60d827db223915f484c9089c`
+- `muscle/5.1.0/muscle.wasm`: `018e047994e2127859b8f1a34482fe07034994b13c7171ee57057f1cd1f49a42`
 - `seq-align/2017.10.18/needleman_wunsch.js`: `f806e8f02dbf52366c6fbec589a3bc72bfd7ff92e7acf705068c01bde31a3260`
 - `seq-align/2017.10.18/needleman_wunsch.wasm`: `44ce58a899b679fb75a00c1252cef49df458448d8fd77a6083bd00be102be17b`
 - `seq-align/2017.10.18/smith_waterman.js`: `a84a57dd03f737c602e232ca43c92a968a425f15b5752b8048f26e69bf2a338b`

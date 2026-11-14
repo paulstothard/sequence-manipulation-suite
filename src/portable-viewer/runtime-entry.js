@@ -1,3 +1,4 @@
+import { preserveRenderHeight } from "../app/preserve-render-height.js";
 import {
   validatePortableViewerArtifact
 } from "../core/portable-viewer.js";
@@ -20,28 +21,30 @@ import {
 } from "../app/viewer-sequence-navigation-ui.js";
 
 function renderSequenceViewerRecord(host, viewer, selection, viewerState, explicitNavigation = false) {
-  host.textContent = "";
-  const selectedViewer = {
-    ...viewer,
-    records: [viewer.records[selection.index]]
-  };
-  const savedState = explicitNavigation
-    ? makeViewerSequenceInitialState(viewer, selection, viewerState)
-    : viewerState?.title === selection.title
-    ? viewerState
-    : makeViewerSequenceInitialState(viewer, selection);
-  const viewerOptions = {
-    initialState: savedState,
-    preserveState: false,
-    showRecordTitle: false
-  };
-  if (selectedViewer.viewerType === "protein-sequence-viewer") {
-    renderProteinViewer(host, selectedViewer, viewerOptions);
-  } else if (selectedViewer.layout === "circular") {
-    renderCircularDnaViewer(host, selectedViewer, viewerOptions);
-  } else {
-    renderDnaViewer(host, selectedViewer, viewerOptions);
-  }
+  return preserveRenderHeight(host, () => {
+    host.textContent = "";
+    const selectedViewer = {
+      ...viewer,
+      records: [viewer.records[selection.index]]
+    };
+    const savedState = explicitNavigation
+      ? makeViewerSequenceInitialState(viewer, selection, viewerState)
+      : viewerState?.title === selection.title
+      ? viewerState
+      : makeViewerSequenceInitialState(viewer, selection);
+    const viewerOptions = {
+      initialState: savedState,
+      preserveState: false,
+      showRecordTitle: false
+    };
+    if (selectedViewer.viewerType === "protein-sequence-viewer") {
+      renderProteinViewer(host, selectedViewer, viewerOptions);
+    } else if (selectedViewer.layout === "circular") {
+      renderCircularDnaViewer(host, selectedViewer, viewerOptions);
+    } else {
+      renderDnaViewer(host, selectedViewer, viewerOptions);
+    }
+  });
 }
 
 function renderPortableSequenceViewer(container, artifact) {

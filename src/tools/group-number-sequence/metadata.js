@@ -1,10 +1,12 @@
+import { GROUP_NUMBER_DEFAULTS as defaults } from "../../core/group-number-options.js";
+
 const groupNumberBaseOptions = [
   {
     id: "groupSize",
     type: "number",
     label: "Characters per block",
     help: "Number of sequence characters in each space-separated block.",
-    defaultValue: 10,
+    defaultValue: defaults.groupSize,
     min: 1,
     max: 100
   },
@@ -13,7 +15,7 @@ const groupNumberBaseOptions = [
     type: "number",
     label: "Blocks per line",
     help: "Number of blocks shown on each output line.",
-    defaultValue: 6,
+    defaultValue: defaults.groupsPerLine,
     min: 1,
     max: 20
   },
@@ -21,14 +23,14 @@ const groupNumberBaseOptions = [
     id: "startPosition",
     type: "number",
     label: "First coordinate",
-    help: "Coordinate label to use for the first sequence character in the output.",
-    defaultValue: 1,
+    help: "Coordinate label for the first cleaned sequence character. Retained gaps each count as one position.",
+    defaultValue: defaults.startPosition,
     min: 0,
     max: 1000000000
   },
-  { id: "showPositionNumbers", type: "checkbox", label: "Show coordinate numbers", defaultValue: true, help: "Adds dynamically padded coordinate labels at the left of each output line." },
-  { id: "preserveCase", type: "checkbox", label: "Preserve input case", defaultValue: true },
-  { id: "keepGaps", type: "checkbox", label: "Keep gap characters (. and -)", defaultValue: true }
+  { id: "showPositionNumbers", type: "checkbox", label: "Show coordinate numbers", defaultValue: defaults.showPositionNumbers, help: "Adds dynamically padded coordinate labels at the left of each output line." },
+  { id: "preserveCase", type: "checkbox", label: "Preserve input case", defaultValue: defaults.preserveCase },
+  { id: "keepGaps", type: "checkbox", label: "Keep gap characters (. and -)", defaultValue: defaults.keepGaps }
 ];
 
 const dnaRnaTextFastaFileInput = {
@@ -48,10 +50,10 @@ function makeGroupNumberWorkflow(alphabet) {
       { id: "sequenceRecords", kind: "sequence-records", alphabet }
     ],
     outputs: [
-      { id: "primary", kind: "text", mediaType: "text/plain" },
-      { id: "groupedText", kind: "text", mediaType: "text/plain" },
-      { id: "textRecords", kind: "text-records", schema: "group-number-sequence" },
-      { id: "sequenceRecords", kind: "sequence-records", alphabet, schema: "group-number-sequence-cleaned" },
+      { id: "primary", label: "Grouped text", kind: "text", mediaType: "text/plain" },
+      { id: "groupedText", label: "Grouped text", kind: "text", mediaType: "text/plain", outputFormat: "text" },
+      { id: "textRecords", label: "Grouped text records", kind: "text-records", schema: "group-number-sequence", outputFormat: "text-records" },
+      { id: "sequenceRecords", label: alphabet === "protein" ? "Protein sequences" : "DNA/RNA sequences", kind: "sequence-records", alphabet, schema: "group-number-sequence-cleaned", outputFormat: "sequence-records" },
       { id: "warnings", kind: "warnings" }
     ]
   };
@@ -64,6 +66,7 @@ export const groupNumberDnaRnaMetadata = {
   tags: ["DNA", "RNA", "raw", "FASTA", "format conversion"],
   summary:
     "Group DNA/RNA characters into fixed-width blocks with optional position numbering and complementary strand display.",
+  whenToUse: "Prepare block-formatted DNA/RNA text with coordinate labels or an aligned complementary strand for inspection or sharing.",
   inputType: "DNA/RNA sequence",
   outputType: "Grouped DNA/RNA text",
   fileInput: dnaRnaTextFastaFileInput,
@@ -76,8 +79,8 @@ export const groupNumberDnaRnaMetadata = {
       id: "showComplement",
       type: "checkbox",
       label: "Show complementary strand",
-      help: "Adds a second grouped line showing the complement below each DNA/RNA sequence line.",
-      defaultValue: true
+      help: "Adds the DNA complement below each sequence line in the same left-to-right order (A→T and U→A).",
+      defaultValue: defaults.showComplement
     },
     {
       type: "group",
@@ -87,7 +90,7 @@ export const groupNumberDnaRnaMetadata = {
     {
       id: "cleaningNote",
       type: "note",
-      text: "Input is cleaned to DNA/RNA IUPAC symbols before grouping."
+      text: "Input is cleaned to DNA/RNA IUPAC symbols and X before grouping."
     }
   ]
 };
@@ -98,6 +101,7 @@ export const groupNumberProteinMetadata = {
   category: "Sequence Utilities",
   tags: ["protein", "raw", "FASTA", "format conversion"],
   summary: "Group protein characters into fixed-width blocks with optional position numbering.",
+  whenToUse: "Prepare block-formatted protein text with coordinate labels for inspection or sharing.",
   inputType: "Protein sequence",
   outputType: "Grouped protein text",
   fileInput: proteinTextFastaFileInput,
@@ -114,7 +118,7 @@ export const groupNumberProteinMetadata = {
     {
       id: "cleaningNote",
       type: "note",
-      text: "Input is cleaned to protein IUPAC symbols before grouping."
+      text: "Input retains standard amino-acid letters plus B, Z, J, O, U and X. Stop symbols (*) are retained and each count as one position."
     }
   ]
 };

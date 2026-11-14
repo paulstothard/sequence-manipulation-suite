@@ -1,3 +1,4 @@
+import { sequenceCoordinateUnit } from "../core/sequence-coordinate-unit.js";
 import { createSearchableViewerChoiceCombobox } from "./searchable-viewer-choice-ui.js";
 
 function positiveInteger(value) {
@@ -47,7 +48,7 @@ export function normalizeViewerSequenceChoices(viewer) {
       title,
       label: titleCounts.get(title) > 1 ? `${title} [${occurrence}]` : title,
       length,
-      detail: `${length.toLocaleString()} ${protein ? "aa" : "bp"}`,
+      detail: `${length.toLocaleString()} ${sequenceCoordinateUnit({ ...record, alphabet: protein ? "protein" : "dna-rna" })}`,
       searchText: String(record?.id ?? ""),
       record
     };
@@ -182,7 +183,7 @@ export function renderViewerSequenceNavigation(container, viewer, {
   const showButton = document.createElement("button");
   showButton.type = "submit";
   showButton.className = "primary";
-  showButton.textContent = "View sequence";
+  showButton.textContent = "Apply view";
   const status = document.createElement("span");
   status.className = "alignment-viewer-region-status";
   status.setAttribute("role", "status");

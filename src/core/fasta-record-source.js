@@ -56,8 +56,15 @@ function makeStringChunks(input, limits) {
   const text = String(input ?? "");
   return (async function* iterateStringChunks() {
     let decodedBytes = 0;
-    for (let start = 0; start < text.length; start += limits.chunkSize) {
-      const chunk = text.slice(start, start + limits.chunkSize);
+    for (let start = 0; start < text.length;) {
+      let end = Math.min(text.length, start + limits.chunkSize);
+      // Encode complete code points: encoding isolated surrogate halves adds
+      // two replacement characters (six bytes) instead of the original four.
+      const last = text.charCodeAt(end - 1);
+      const next = text.charCodeAt(end);
+      if (last >= 0xd800 && last <= 0xdbff && next >= 0xdc00 && next <= 0xdfff) end += 1;
+      const chunk = text.slice(start, end);
+      start = end;
       decodedBytes += new TextEncoder().encode(chunk).byteLength;
       if (decodedBytes > limits.maxDecodedBytes) {
         throw makeLimitError("Decoded FASTA text bytes", decodedBytes, limits.maxDecodedBytes);
@@ -157,7 +164,7 @@ async function* iterateTextFasta({ input, file, limits, allowRawSequence, record
     if (!record || !text) return;
     const nextTotal = totalBases + text.length;
     if (nextTotal > limits.maxAcceptedBases) {
-      throw makeLimitError("Accepted FASTA bases", nextTotal, limits.maxAcceptedBases);
+      throw makeLimitError("FASTA sequence characters", nextTotal, limits.maxAcceptedBases);
     }
     totalBases = nextTotal;
     const sequenceOffset = record.length;

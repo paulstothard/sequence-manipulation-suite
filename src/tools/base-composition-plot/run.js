@@ -1,4 +1,6 @@
-import { parseSequenceInput } from "../../core/fasta.js";
+import { applyAxisLimits, plotNumericExtent } from "../../core/plot-tools.js";
+import { exportDelimitedTable } from "../../core/table.js";
+import { BASE_COMPOSITION_DEFAULTS, METRIC_LABELS, normalizeBaseCompositionOptions } from "../../core/base-composition-options.js";
 import { openCleanDnaRnaFastaSource } from "../../core/fasta-dna-record-source.js";
 import {
   makeLinePlotSpec,
@@ -6,12 +8,11 @@ import {
   makePlaceholderSvg,
   renderLinePlotSvg
 } from "../../core/plot-renderer.js";
-import { cleanDnaRnaSequence } from "../../core/sequence.js";
 import { applyDisabledFastaSourceLimits, effectiveToolLimit } from "../../core/tool-limit-policy.js";
 import { makeTableStream, makeTextStream, makeToolResult } from "../../core/workflow.js";
 import { baseCompositionPlotTableColumns } from "./metadata.js";
 
-const TSV_COLUMNS = baseCompositionPlotTableColumns.map((column) => column.id);
+const TSV_COLUMNS = baseCompositionPlotTableColumns.map((column) => ({ ...column, label: column.id }));
 const SVG_PLOT_WINDOW_THRESHOLD = 5000;
 const SVG_PLOT_RECORD_WARNING_THRESHOLD = 8;
 const SVG_PLOT_LENGTH_RATIO_WARNING_THRESHOLD = 20;
@@ -22,18 +23,7 @@ const AUTO_WINDOW_MAX_ROWS_PER_RECORD = 80;
 const AUTO_WINDOW_MIN_ROWS_PER_RECORD = 20;
 const MAX_WINDOW_ROWS = 50_000;
 const MAX_MATERIALIZED_OUTPUT_CHARACTERS = 25 * 1024 * 1024;
-const METRIC_LABELS = {
-  gc_percent: "GC percent",
-  at_percent: "AT percent",
-  gc_skew: "GC skew",
-  at_skew: "AT skew",
-  ambiguous_percent: "Ambiguous percent"
-};
 
-function normalizePositiveInteger(value, fallback, max = 1000000) {
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) ? Math.min(max, Math.max(1, parsed)) : fallback;
-}
 
 function roundToNiceInteger(value) {
   const positive = Math.max(1, Number(value) || 1);
@@ -69,7 +59,7 @@ function estimateWindowRowCount(lengths, windowSize, stepSize) {
 function chooseAutoWindowSettings(lengths) {
   const positiveLengths = lengths.filter((length) => length > 0);
   if (positiveLengths.length === 0) {
-    return { windowSize: 100, stepSize: 25 };
+    return { windowSize: BASE_COMPOSITION_DEFAULTS.windowSize, stepSize: BASE_COMPOSITION_DEFAULTS.stepSize };
   }
 
   const referenceLength = median(positiveLengths);
@@ -105,29 +95,11 @@ function formatNumber(value, digits = 3) {
   return value === null || value === undefined ? "n/a" : Number(value).toFixed(digits);
 }
 
-function countWindow(sequence) {
-  const counts = { A: 0, C: 0, G: 0, TU: 0, ambiguous: 0 };
-  for (const character of sequence) {
-    if (character === "A") {
-      counts.A += 1;
-    } else if (character === "C") {
-      counts.C += 1;
-    } else if (character === "G") {
-      counts.G += 1;
-    } else if (character === "T" || character === "U") {
-      counts.TU += 1;
-    } else {
-      counts.ambiguous += 1;
-    }
-  }
-  return counts;
-}
-
 function divideOrNull(numerator, denominator) {
   return denominator === 0 ? null : numerator / denominator;
 }
 
-function makeWindowRow(title, start, end, counts, metric) {
+function makeWindowRow(title, recordIndex, start, end, counts, metric) {
   const unambiguous = counts.A + counts.C + counts.G + counts.TU;
   const gcPercent = divideOrNull((counts.G + counts.C) * 100, unambiguous);
   const atPercent = divideOrNull((counts.A + counts.TU) * 100, unambiguous);
@@ -136,6 +108,7 @@ function makeWindowRow(title, start, end, counts, metric) {
   const ambiguousPercent = (counts.ambiguous / (end - start)) * 100;
   return {
     record: title,
+    record_index: recordIndex,
     window_start: start + 1,
     window_end: end,
     position: (start + 1 + end) / 2,
@@ -163,10 +136,11 @@ function makeWindowRow(title, start, end, counts, metric) {
 const BASE_CATEGORY = Object.freeze({ A: 0, C: 1, G: 2, T: 3, U: 3 });
 const CATEGORY_FIELD = ["A", "C", "G", "TU", "ambiguous"];
 
-function makeStreamingWindowState(title, length, windowSettings, metric) {
+function makeStreamingWindowState(title, recordIndex, length, windowSettings, metric, retainRows) {
   const windowSize = Math.min(windowSettings.windowSize, length);
   return {
     title,
+    recordIndex,
     length,
     windowSize,
     stepSize: windowSettings.stepSize,
@@ -174,6 +148,10 @@ function makeStreamingWindowState(title, length, windowSettings, metric) {
     position: 0,
     ring: new Uint8Array(windowSize),
     counts: { A: 0, C: 0, G: 0, TU: 0, ambiguous: 0 },
+    retainRows,
+    windowCount: 0,
+    undefinedWindows: 0,
+    summary: { min: null, max: null },
     rows: []
   };
 }
@@ -190,150 +168,31 @@ async function consumeStreamingWindowChunk(state, text, context) {
     counts[CATEGORY_FIELD[category]] += 1;
     state.position += 1;
     if (state.position >= windowSize && (state.position - windowSize) % state.stepSize === 0) {
-      state.rows.push(makeWindowRow(state.title, state.position - windowSize, state.position, counts, state.metric));
+      const row = makeWindowRow(state.title, state.recordIndex, state.position - windowSize, state.position, counts, state.metric);
+      state.windowCount += 1;
+      if (state.retainRows) state.rows.push(row);
+      if (row.metric_value === null) state.undefinedWindows += 1;
+      if (row.metric_value !== null) {
+        if (!state.summary.min || row.metric_value < state.summary.min.metric_value) state.summary.min = row;
+        if (!state.summary.max || row.metric_value > state.summary.max.metric_value) state.summary.max = row;
+      }
     }
     if ((state.position & 0xffff) === 0) await context.yieldIfNeeded?.();
   }
 }
 
-function makeWindowRows(title, sequence, options) {
-  if (!sequence) {
-    return [];
-  }
-
-  const rows = [];
-  const effectiveWindow = Math.min(options.windowSize, sequence.length);
-  for (let start = 0; start <= sequence.length - effectiveWindow; start += options.stepSize) {
-    const end = start + effectiveWindow;
-    const windowSequence = sequence.slice(start, end);
-    const counts = countWindow(windowSequence);
-    const unambiguous = counts.A + counts.C + counts.G + counts.TU;
-    const gcPercent = divideOrNull((counts.G + counts.C) * 100, unambiguous);
-    const atPercent = divideOrNull((counts.A + counts.TU) * 100, unambiguous);
-    const gcSkew = divideOrNull(counts.G - counts.C, counts.G + counts.C);
-    const atSkew = divideOrNull(counts.A - counts.TU, counts.A + counts.TU);
-    const ambiguousPercent = (counts.ambiguous / windowSequence.length) * 100;
-    const values = {
-      gc_percent: gcPercent,
-      at_percent: atPercent,
-      gc_skew: gcSkew,
-      at_skew: atSkew,
-      ambiguous_percent: ambiguousPercent
-    };
-
-    rows.push({
-      record: title,
-      window_start: start + 1,
-      window_end: end,
-      position: (start + 1 + end) / 2,
-      window_size: windowSequence.length,
-      a_count: counts.A,
-      c_count: counts.C,
-      g_count: counts.G,
-      t_u_count: counts.TU,
-      ambiguous_count: counts.ambiguous,
-      gc_percent: gcPercent,
-      at_percent: atPercent,
-      gc_skew: gcSkew,
-      at_skew: atSkew,
-      ambiguous_percent: ambiguousPercent,
-      metric_value: values[options.metric]
-    });
-
-    if (end === sequence.length) {
-      break;
-    }
-  }
-
-  return rows;
-}
-
-async function makeWindowRowsWithContext(title, sequence, options, context = {}) {
-  if (!sequence) {
-    return [];
-  }
-
-  const rows = [];
-  const effectiveWindow = Math.min(options.windowSize, sequence.length);
-  for (let start = 0; start <= sequence.length - effectiveWindow; start += options.stepSize) {
-    if (rows.length > 0 && rows.length % 100 === 0) {
-      await context.yieldIfNeeded?.();
-    } else {
-      context.throwIfCancelled?.();
-    }
-    const end = start + effectiveWindow;
-    const windowSequence = sequence.slice(start, end);
-    const counts = countWindow(windowSequence);
-    const unambiguous = counts.A + counts.C + counts.G + counts.TU;
-    const gcPercent = divideOrNull((counts.G + counts.C) * 100, unambiguous);
-    const atPercent = divideOrNull((counts.A + counts.TU) * 100, unambiguous);
-    const gcSkew = divideOrNull(counts.G - counts.C, counts.G + counts.C);
-    const atSkew = divideOrNull(counts.A - counts.TU, counts.A + counts.TU);
-    const ambiguousPercent = (counts.ambiguous / windowSequence.length) * 100;
-    const values = {
-      gc_percent: gcPercent,
-      at_percent: atPercent,
-      gc_skew: gcSkew,
-      at_skew: atSkew,
-      ambiguous_percent: ambiguousPercent
-    };
-
-    rows.push({
-      record: title,
-      window_start: start + 1,
-      window_end: end,
-      position: (start + 1 + end) / 2,
-      window_size: windowSequence.length,
-      a_count: counts.A,
-      c_count: counts.C,
-      g_count: counts.G,
-      t_u_count: counts.TU,
-      ambiguous_count: counts.ambiguous,
-      gc_percent: gcPercent,
-      at_percent: atPercent,
-      gc_skew: gcSkew,
-      at_skew: atSkew,
-      ambiguous_percent: ambiguousPercent,
-      metric_value: values[options.metric]
-    });
-
-    if (end === sequence.length) {
-      break;
-    }
-  }
-
-  return rows;
-}
-
 function makeTsv(rows) {
-  return [
-    TSV_COLUMNS.join("\t"),
-    ...rows.map((row) =>
-      TSV_COLUMNS.map((column) =>
-        typeof row[column] === "number" ? formatNumber(row[column]) : row[column]
-      ).join("\t")
-    )
-  ].join("\n");
-}
-
-function summarizeRows(rows) {
-  const scoredRows = rows.filter((row) => row.metric_value !== null);
-  if (scoredRows.length === 0) {
-    return { min: null, max: null };
-  }
-  return {
-    min: scoredRows.reduce((best, row) => (row.metric_value < best.metric_value ? row : best), scoredRows[0]),
-    max: scoredRows.reduce((best, row) => (row.metric_value > best.metric_value ? row : best), scoredRows[0])
-  };
+  return exportDelimitedTable(TSV_COLUMNS, rows, "\t");
 }
 
 function makeReport(records, metric, windowSettings) {
   const lines = [];
   for (const record of records) {
-    const summary = summarizeRows(record.rows);
+    const summary = record.summary;
     lines.push(`${record.title} base composition plot`);
+    lines.push(`Record: ${record.recordIndex}`);
     lines.push(`Length: ${record.cleanedLength}`);
-    lines.push(`Windows: ${record.rows.length}`);
+    lines.push(`Windows: ${record.windowCount}`);
     lines.push(`Window settings: ${windowSettings.windowMode === "auto" ? "auto" : "custom"}`);
     lines.push(`Window size: ${windowSettings.windowSize}`);
     lines.push(`Step size: ${windowSettings.stepSize}`);
@@ -368,17 +227,16 @@ function getPositionAxisMode(records, requestedMode) {
   return getLengthRatio(records).ratio >= RELATIVE_AXIS_LENGTH_RATIO_THRESHOLD ? "relative" : "absolute";
 }
 
-function makeCompositionPlotSpec(records, metric, options) {
+function makeCompositionPlotSpec(records, metric, options, warnings) {
   const title = `${METRIC_LABELS[metric]} base composition plot`;
-  const yDomain = metric.endsWith("_skew") ? [-1, 1] : [0, 100];
   const positionAxisUsed = getPositionAxisMode(records, options.positionAxis);
+  const duplicateTitles = new Set(records.map(record => record.title)).size !== records.length;
   const series = records
     .filter((record) => record.rows.some((row) => row.metric_value !== null))
     .map((record) => ({
-      id: record.title,
-      label: record.title,
+      id: `record-${record.recordIndex}`,
+      label: duplicateTitles ? `Record ${record.recordIndex}: ${record.title}` : record.title,
       points: record.rows
-        .filter((row) => row.metric_value !== null)
         .map((row) => ({
           x: positionAxisUsed === "relative" && record.cleanedLength > 0
             ? (row.position / record.cleanedLength) * 100
@@ -387,11 +245,14 @@ function makeCompositionPlotSpec(records, metric, options) {
           title: `${record.title} ${row.window_start}-${row.window_end}: ${formatNumber(row.metric_value)}`
         }))
     }));
+  const points = series.flatMap(record => record.points);
   const spec = makeLinePlotSpec({
     title,
     xLabel: positionAxisUsed === "relative" ? "Relative position (% of sequence)" : "Position (window midpoint)",
     yLabel: METRIC_LABELS[metric],
-    yDomain,
+    xDomain: applyAxisLimits(plotNumericExtent(points.map(point => point.x)), { ...options, warnings }, "x"),
+    yDomain: applyAxisLimits(plotNumericExtent(points.map(point => point.y)), { ...options, warnings }, "y"),
+    clip: true,
     series,
     showLegend: options.showLegend,
     pointMarkers: options.pointMarkers,
@@ -437,31 +298,6 @@ function getSvgPlotWarnings(analyzedRecords, tableRows, requestedPositionAxis, p
   return warnings;
 }
 
-function normalizeBaseCompositionOptions(options = {}) {
-  const metric = Object.hasOwn(METRIC_LABELS, options.metric) ? options.metric : "gc_percent";
-  const hasLegacyExplicitWindow = options.windowMode === undefined && (options.windowSize !== undefined || options.stepSize !== undefined);
-  const windowMode = options.windowMode === "custom" || hasLegacyExplicitWindow ? "custom" : "auto";
-  const requestedOutputFormat = new Set(["report", "tsv", "plot", "svg-plot", "sms3-svg", "observable-svg"]).has(options.outputFormat)
-    ? options.outputFormat
-    : "plot";
-  return {
-    metric,
-    windowMode,
-    windowSize: normalizePositiveInteger(options.windowSize, 100),
-    stepSize: normalizePositiveInteger(options.stepSize, 25),
-    positionAxis: new Set(["auto", "absolute", "relative"]).has(options.positionAxis)
-      ? options.positionAxis
-      : "auto",
-    showLegend: options.showLegend !== false,
-    pointMarkers: new Set(["auto", "show", "hide"]).has(options.pointMarkers)
-      ? options.pointMarkers
-      : "auto",
-    outputFormat: ["svg-plot", "sms3-svg", "observable-svg"].includes(requestedOutputFormat)
-      ? "plot"
-      : requestedOutputFormat
-  };
-}
-
 function resolveWindowSettings(normalizedOptions, lengths) {
   if (normalizedOptions.windowMode === "custom") {
     return {
@@ -487,16 +323,19 @@ function makeBaseCompositionResult({
   windowSize,
   stepSize,
   positionAxis,
-  showLegend,
   pointMarkers,
   outputFormat,
+  normalizedOptions,
   limitOptions = {}
 }) {
   const maxOutputCharacters = effectiveToolLimit(limitOptions, "compositionOutput", MAX_MATERIALIZED_OUTPUT_CHARACTERS);
+  const windowCount = analyzedRecords.reduce((sum, record) => sum + record.windowCount, 0);
   const tableRows = analyzedRecords.flatMap((record) => record.rows);
   const notes = [];
+  const undefinedWindows = analyzedRecords.reduce((sum, record) => sum + record.undefinedWindows, 0);
+  if (undefinedWindows > 0) notes.push(`${undefinedWindows} window(s) have undefined ${METRIC_LABELS[metric]} because the denominator is zero. These values are blank in tables and break plotted lines.`);
   const windowSettings = { windowMode, windowSize, stepSize };
-  const reportOutput = makeReport(analyzedRecords, metric, windowSettings);
+  const reportOutput = outputFormat === "report" ? makeReport(analyzedRecords, metric, windowSettings) : "";
   if (reportOutput.length > maxOutputCharacters) {
     throw new Error(`Base composition report exceeds the ${maxOutputCharacters.toLocaleString()}-character materialized-output limit.`);
   }
@@ -504,22 +343,20 @@ function makeBaseCompositionResult({
   const svgRenderer = "observable-plot";
   let svgPlot = "";
   let plotSpec = null;
-  if (isSvgOutput && tableRows.length <= SVG_PLOT_WINDOW_THRESHOLD) {
+  if (isSvgOutput && windowCount <= SVG_PLOT_WINDOW_THRESHOLD) {
     plotSpec = makeCompositionPlotSpec(analyzedRecords, metric, {
+      ...normalizedOptions,
       windowSize,
-      stepSize,
-      positionAxis,
-      showLegend,
-      pointMarkers
-    });
+      stepSize
+    }, warnings);
     warnings.push(...getSvgPlotWarnings(analyzedRecords, tableRows, positionAxis, plotSpec.xAxisMode, pointMarkers, notes));
     svgPlot = renderLinePlotSvg(plotSpec);
   } else if (isSvgOutput) {
     warnings.push(
-      `Base composition plot was not drawn because this run has ${tableRows.length} windows. Use table output or larger window/step settings for dense analyses.`
+      `Base composition plot was not drawn because this run has ${windowCount} windows. Use table output or larger window/step settings for dense analyses.`
     );
     svgPlot = makePlaceholderSvg("Base composition plot not drawn", [
-      `${tableRows.length} windows across ${recordsProcessed} records.`,
+      `${windowCount} windows across ${recordsProcessed} records.`,
       "The graphical plot is suppressed for dense outputs to keep the browser responsive.",
       "Use the table output or increase the step size for a drawable plot."
     ]);
@@ -545,15 +382,10 @@ function makeBaseCompositionResult({
     recordsProcessed,
     basesProcessed,
     charactersRemoved,
-    optionsUsed: {
-      outputFormat,
-      windowMode,
-      windowSize,
-      stepSize
-    },
+    optionsUsed: { ...normalizedOptions, ...windowSettings },
     streams: {
-      report: makeTextStream(reportOutput, "text/plain"),
-      table: makeTableStream(baseCompositionPlotTableColumns, tableRows, "base-composition-plot"),
+      ...(outputFormat === "report" ? { report: makeTextStream(reportOutput, "text/plain") } : {}),
+      ...(outputFormat === "tsv" ? { table: makeTableStream(baseCompositionPlotTableColumns, tableRows, "base-composition-plot") } : {}),
       ...(isSvgOutput ? { plot: makeTextStream(svgPlot, "image/svg+xml") } : {})
     },
     visual: isSvgOutput
@@ -568,78 +400,21 @@ function makeBaseCompositionResult({
   });
 }
 
-export function runBaseCompositionPlot(input, options = {}) {
-  const records = parseSequenceInput(input, "sequence");
-  const warnings = [];
-  const normalizedOptions = normalizeBaseCompositionOptions(options);
-
-  if (records.length === 0) {
-    return makeToolResult({
-      output: "",
-      warnings: ["No sequence input was provided."],
-      recordsProcessed: 0,
-      basesProcessed: 0,
-      charactersRemoved: 0
-    });
-  }
-
-  const cleanedRecords = [];
-  let basesProcessed = 0;
-  let charactersRemoved = 0;
-
-  for (const record of records) {
-    const cleaned = cleanDnaRnaSequence(record.sequence, {
-      preserveCase: false,
-      keepGaps: false
-    });
-    charactersRemoved += cleaned.removedCount;
-    basesProcessed += cleaned.sequence.length;
-    if (cleaned.removedCount > 0) {
-      warnings.push(`${record.title}: removed ${cleaned.removedCount} non-DNA/RNA character(s).`);
+export async function runBaseCompositionPlot(input, options = {}, executionContext = {}) {
+  let lastYield = 0;
+  const context = {
+    ...executionContext,
+    async yieldIfNeeded() {
+      executionContext.throwIfCancelled?.();
+      // Batch short records into a scheduling slice while polling cancellation
+      // at every source chunk in both the length and window scans.
+      if (Date.now() - lastYield >= 8) {
+        await executionContext.yieldIfNeeded?.();
+        lastYield = Date.now();
+      }
     }
-    if (cleaned.sequence.length === 0) {
-      warnings.push(`${record.title}: no DNA/RNA sequence characters were found.`);
-    }
-    cleanedRecords.push({ title: record.title, sequence: cleaned.sequence });
-  }
-
-  const windowSettings = resolveWindowSettings(
-    normalizedOptions,
-    cleanedRecords.map((record) => record.sequence.length)
-  );
-  const analyzedRecords = [];
-
-  for (const record of cleanedRecords) {
-    if (record.sequence.length > 0 && record.sequence.length < windowSettings.windowSize) {
-      warnings.push(`${record.title}: sequence shorter than window size; used a ${record.sequence.length}-base window.`);
-    }
-    const rows = makeWindowRows(record.title, record.sequence, { ...normalizedOptions, ...windowSettings });
-    analyzedRecords.push({
-      title: record.title,
-      cleanedLength: record.sequence.length,
-      rows
-    });
-  }
-
-  return makeBaseCompositionResult({
-    analyzedRecords,
-    warnings,
-    recordsProcessed: records.length,
-    basesProcessed,
-    charactersRemoved,
-    metric: normalizedOptions.metric,
-    windowMode: windowSettings.windowMode,
-    windowSize: windowSettings.windowSize,
-    stepSize: windowSettings.stepSize,
-    positionAxis: normalizedOptions.positionAxis,
-    showLegend: normalizedOptions.showLegend,
-    pointMarkers: normalizedOptions.pointMarkers,
-    outputFormat: normalizedOptions.outputFormat,
-    limitOptions: options
-  });
-}
-
-export async function runBaseCompositionPlotWorker(input, options = {}, context = {}) {
+  };
+  options ??= {};
   context.reportProgress?.({ phase: "reading-record-lengths", progress: 0.05 });
   const warnings = [];
   const normalizedOptions = normalizeBaseCompositionOptions(options);
@@ -649,7 +424,7 @@ export async function runBaseCompositionPlotWorker(input, options = {}, context 
     maxDecodedSourceBytes: "compositionInput",
     maxSourceBytes: "compositionInput"
   });
-  const opened = await openCleanDnaRnaFastaSource(input, sourceOptions, context);
+  const opened = await openCleanDnaRnaFastaSource(input, { ...sourceOptions, strictHeaders: true }, context);
   const recordLengths = [];
   let currentLength = 0;
   for await (const event of opened.events({ trackStats: false })) {
@@ -660,6 +435,7 @@ export async function runBaseCompositionPlotWorker(input, options = {}, context 
   if (recordLengths.length === 0) {
     return makeToolResult({
       output: "",
+      optionsUsed: normalizedOptions,
       warnings: [opened.source.stats.inputProvided ? "No DNA/RNA records were found." : "No sequence input was provided.", ...opened.warnings],
       recordsProcessed: 0,
       basesProcessed: 0,
@@ -673,6 +449,8 @@ export async function runBaseCompositionPlotWorker(input, options = {}, context 
     throw new Error(`Base composition would produce ${estimatedRows.toLocaleString()} windows, above the ${maxWindowRows.toLocaleString()}-row limit. Increase the step size or select fewer records.`);
   }
 
+  const retainRows = normalizedOptions.outputFormat === "tsv" ||
+    (normalizedOptions.outputFormat === "plot" && estimatedRows <= SVG_PLOT_WINDOW_THRESHOLD);
   context.reportProgress?.({ phase: "scanning-windows", progress: 0.25 });
   const analyzedRecords = [];
   let basesProcessed = 0;
@@ -681,7 +459,7 @@ export async function runBaseCompositionPlotWorker(input, options = {}, context 
   for await (const event of opened.events()) {
     if (event.type === "record-start") {
       const length = recordLengths[analyzedRecords.length];
-      current = makeStreamingWindowState(event.title, length, windowSettings, normalizedOptions.metric);
+      current = makeStreamingWindowState(event.title, event.record, length, windowSettings, normalizedOptions.metric, retainRows);
     } else if (event.type === "sequence-chunk" && current) {
       await consumeStreamingWindowChunk(current, event.text, context);
     } else if (event.type === "record-end" && current) {
@@ -693,7 +471,7 @@ export async function runBaseCompositionPlotWorker(input, options = {}, context 
       if (event.length > 0 && event.length < windowSettings.windowSize) {
         warnings.push(`${current.title}: sequence shorter than window size; used a ${event.length}-base window.`);
       }
-      analyzedRecords.push({ title: current.title, cleanedLength: event.length, rows: current.rows });
+      analyzedRecords.push({ title: current.title, recordIndex: current.recordIndex, cleanedLength: event.length, rows: current.rows, windowCount: current.windowCount, summary: current.summary, undefinedWindows: current.undefinedWindows });
       current = null;
       context.reportProgress?.({
         phase: "scanning-windows",
@@ -718,9 +496,12 @@ export async function runBaseCompositionPlotWorker(input, options = {}, context 
     windowSize: windowSettings.windowSize,
     stepSize: windowSettings.stepSize,
     positionAxis: normalizedOptions.positionAxis,
-    showLegend: normalizedOptions.showLegend,
     pointMarkers: normalizedOptions.pointMarkers,
     outputFormat: normalizedOptions.outputFormat,
+    normalizedOptions,
     limitOptions: options
   });
 }
+
+// The production worker, registry and default workflow use one implementation.
+export const runBaseCompositionPlotWorker = runBaseCompositionPlot;

@@ -162,8 +162,9 @@ function parseLabelledBlocks(text, descriptor) {
   let recordIndex = 0;
   let title = "record 1";
   for (const line of getLines(text)) {
-    if (line.text.startsWith(">")) {
-      title = line.text.slice(1).replace(/\s+(?:text annotation|translation) map$/i, "").trim() || `record ${recordIndex + 1}`;
+    const plainHeading = descriptor.plainMapHeadings === true && line.text.endsWith(" text annotation map");
+    if (plainHeading || line.text.startsWith(">")) {
+      title = (plainHeading ? line.text : line.text.slice(1)).replace(/\s+(?:text annotation|translation) map$/i, "").trim() || `record ${recordIndex + 1}`;
       recordIndex += 1;
       continue;
     }

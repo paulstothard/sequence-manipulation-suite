@@ -1,3 +1,4 @@
+import { PROTEIN_PATTERN_DEFAULTS as defaults, PROTEIN_PATTERN_LIMITS as limits } from "../../core/protein-pattern-options.js";
 import {
   PROTEIN_PATTERN_MATCHED_REGION_RECORD_THRESHOLD,
   PROTEIN_PATTERN_SVG_MAP_MATCH_THRESHOLD,
@@ -11,6 +12,7 @@ export const proteinPatternFinderMetadata = {
   tags: ["protein", "raw", "motif", "regex", "search"],
   summary:
     "Find plain-text, IUPAC, or regular-expression protein motifs and report match coordinates.",
+  whenToUse: "Locate a specified peptide or sequence pattern in protein records and inspect its coordinates and surrounding sequence.",
   inputType: "Protein sequence",
   outputType: "Match report, table, pattern text map, linear pattern map, protein sequence viewer",
   runInWorker: true,
@@ -23,12 +25,12 @@ export const proteinPatternFinderMetadata = {
     ],
     outputs: [
       { id: "primary", kind: "text", mediaType: "text/plain" },
-      { id: "report", kind: "text", mediaType: "text/plain" },
-      { id: "textMap", kind: "text", mediaType: "text/plain" },
-      { id: "table", kind: "table", schema: "protein-pattern-finder", columns: proteinPatternFinderTableColumns },
-      { id: "overview", kind: "text", mediaType: "image/svg+xml" },
-      { id: "viewer", kind: "viewer", viewerType: "protein-sequence-viewer" },
-      { id: "matchedRegions", kind: "sequence-records", alphabet: "protein", schema: "protein-pattern-finder" },
+      { id: "report", outputFormat: "report", kind: "text", mediaType: "text/plain" },
+      { id: "textMap", outputFormat: "text-map", kind: "text", mediaType: "text/plain" },
+      { id: "table", outputFormat: "tsv", kind: "table", schema: "protein-pattern-finder", columns: proteinPatternFinderTableColumns },
+      { id: "overview", outputFormat: "svg-map", kind: "text", mediaType: "image/svg+xml" },
+      { id: "viewer", outputFormat: "interactive-viewer", kind: "viewer", viewerType: "protein-sequence-viewer" },
+      { id: "matchedRegions", outputFormat: "matched-regions", kind: "sequence-records", alphabet: "protein", schema: "protein-pattern-finder" },
       { id: "warnings", kind: "warnings" }
     ]
   },
@@ -38,27 +40,27 @@ export const proteinPatternFinderMetadata = {
       type: "text",
       label: "Pattern",
       help: "Enter the protein pattern to find. In IUPAC mode, ambiguity symbols such as B, Z, J, and X are interpreted as residue sets.",
-      defaultValue: "KDD"
+      defaultValue: defaults.pattern
     },
     {
       id: "patternMode",
       type: "radio",
       label: "Pattern mode",
-      help: "Plain text searches for exact characters. IUPAC motif expands protein ambiguity symbols. JavaScript regex uses the pattern as a regex source, without slash delimiters such as /K.D/i. See the JavaScript regex reference page for syntax and supported flags.",
-      defaultValue: "plain",
+      help: "Plain text searches for exact characters. IUPAC motif matches intersecting residue sets in both pattern and sequence: B=D/N, J=I/L, Z=E/Q, X=the 20 standard residues; U, O and * match themselves. JavaScript regex uses the pattern as a regex source, without slash delimiters such as /K.D/i. See the JavaScript regex reference page for syntax and supported flags.",
+      defaultValue: defaults.patternMode,
       choices: [
         { value: "plain", label: "Plain text" },
         { value: "iupac", label: "IUPAC motif" },
         { value: "regex", label: "JavaScript regex" }
       ]
     },
-    { id: "caseInsensitive", type: "checkbox", label: "Case-insensitive search", defaultValue: true, help: "Treat uppercase and lowercase letters as equivalent during matching. In regex mode this controls JavaScript i-flag behavior; other regex flags are not user options in this tool." },
-    { id: "allowOverlaps", type: "checkbox", label: "Allow overlapping matches", defaultValue: true, help: "Allows matches that share one or more residue positions." },
+    { id: "caseInsensitive", type: "checkbox", label: "Case-insensitive search", defaultValue: defaults.caseInsensitive, help: "Treat uppercase and lowercase letters as equivalent during matching. In regex mode this controls JavaScript i-flag behavior; other regex flags are not user options in this tool." },
+    { id: "allowOverlaps", type: "checkbox", label: "Allow overlapping matches", defaultValue: defaults.allowOverlaps, help: "Allows matches that share one or more residue positions." },
     {
       id: "outputFormat",
       type: "radio",
       label: "Output format",
-      defaultValue: "svg-map",
+      defaultValue: defaults.outputFormat,
       choices: [
         { value: "report", label: "Summary report" },
         { value: "text-map", label: "Pattern text map" },
@@ -74,6 +76,13 @@ export const proteinPatternFinderMetadata = {
       collapsible: true,
       collapsed: true,
       options: [
+        { id: "proteinPatternInput", type: "limit-value", label: "Input text", value: `${limits.inputCharacters.toLocaleString("en-US")} characters` },
+        { id: "proteinPatternRecords", type: "limit-value", label: "Protein records", value: limits.records },
+        { id: "proteinPatternWork", type: "limit-value", label: "Scan work", value: `${limits.work.toLocaleString("en-US")} residue-pattern positions`, detail: "This estimate cannot bound JavaScript regex backtracking time." },
+        { id: "proteinPatternHits", type: "limit-value", label: "Pattern hits", value: limits.hits },
+        { id: "proteinPatternOutput", type: "limit-value", label: "Selected output", value: `${limits.outputCharacters.toLocaleString("en-US")} characters`, detail: "Matched sequence retention is limited to half this amount before output is built." },
+        { id: "proteinPatternHeader", type: "limit-value", label: "FASTA header", value: `${limits.headerCharacters.toLocaleString("en-US")} characters` },
+        { id: "proteinPatternLength", type: "limit-value", label: "Pattern", value: `${limits.patternCharacters.toLocaleString("en-US")} characters` },
         {
           id: "patternOutputLimitNote",
           type: "note",
@@ -84,7 +93,7 @@ export const proteinPatternFinderMetadata = {
     {
       id: "patternNote",
       type: "note",
-      text: "IUPAC motif mode treats B, J, Z, and X as ambiguity symbols. Regex mode uses JavaScript regular-expression source syntax; use the case-insensitive checkbox for i-flag behavior. Alignment gap characters (. and -) are removed before searching. Coordinates are 1-based and inclusive on the cleaned sequence."
+      text: "Coordinates are 1-based and inclusive after alignment gaps (. and -) and invalid characters are removed. Stop symbols (*) retain their positions and can be matched by user patterns; regex anchors refer to the full record. Pattern matches do not establish protein function. Amino-acid symbols follow NCBI extended IUPAC notation; compatible-set matching and X covering the 20 standard residues are SMS3 search conventions."
     }
   ]
 };

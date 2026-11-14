@@ -1,4 +1,6 @@
 import { formatFastaRecord, parseSequenceInput } from "./fasta.js";
+import { makeClustalIdentifiers } from "./alignment-identifiers.js";
+import { makeClustalConsensus } from "./clustal-consensus.js";
 import { getGeneticCode, makeCodonMap } from "./genetic-code.js";
 import { makeAlignmentSvg } from "./alignment-svg.js";
 import { createBioWasmCli, requireBioWasmRuntime } from "./biowasm-runner.js";
@@ -27,6 +29,8 @@ export const BIOWASM_SEQ_ALIGN_VERSION = "2017.10.18";
 
 // BLOSUM62 values from Henikoff and Henikoff, Proc Natl Acad Sci USA.
 // 1992;89:10915-10919, using the standard NCBI/BLAST ordering.
+// Includes B, Z, X and stop entries from https://ftp.ncbi.nih.gov/blast/matrices/BLOSUM62.
+// J, O and U are outside this matrix and retain the generic -1 fallback.
 const BLOSUM62 = {
   A: { A: 4, R: -1, N: -2, D: -2, C: 0, Q: -1, E: -1, G: 0, H: -2, I: -1, L: -1, K: -1, M: -1, F: -2, P: -1, S: 1, T: 0, W: -3, Y: -2, V: 0, B: -2, Z: -1, X: 0 },
   R: { A: -1, R: 5, N: 0, D: -2, C: -3, Q: 1, E: 0, G: -2, H: 0, I: -3, L: -2, K: 2, M: -1, F: -3, P: -2, S: -1, T: -1, W: -3, Y: -2, V: -3, B: -1, Z: 0, X: -1 },
@@ -47,7 +51,11 @@ const BLOSUM62 = {
   T: { A: 0, R: -1, N: 0, D: -1, C: -1, Q: -1, E: -1, G: -2, H: -2, I: -1, L: -1, K: -1, M: -1, F: -2, P: -1, S: 1, T: 5, W: -2, Y: -2, V: 0, B: -1, Z: -1, X: 0 },
   W: { A: -3, R: -3, N: -4, D: -4, C: -2, Q: -2, E: -3, G: -2, H: -2, I: -3, L: -2, K: -3, M: -1, F: 1, P: -4, S: -3, T: -2, W: 11, Y: 2, V: -3, B: -4, Z: -3, X: -2 },
   Y: { A: -2, R: -2, N: -2, D: -3, C: -2, Q: -1, E: -2, G: -3, H: 2, I: -1, L: -1, K: -2, M: -1, F: 3, P: -3, S: -2, T: -2, W: 2, Y: 7, V: -1, B: -3, Z: -2, X: -1 },
-  V: { A: 0, R: -3, N: -3, D: -3, C: -1, Q: -2, E: -2, G: -3, H: -3, I: 3, L: 1, K: -2, M: 1, F: -1, P: -2, S: -2, T: 0, W: -3, Y: -1, V: 4, B: -3, Z: -2, X: -1 }
+  V: { A: 0, R: -3, N: -3, D: -3, C: -1, Q: -2, E: -2, G: -3, H: -3, I: 3, L: 1, K: -2, M: 1, F: -1, P: -2, S: -2, T: 0, W: -3, Y: -1, V: 4, B: -3, Z: -2, X: -1 },
+  B: { A: -2, R: -1, N: 3, D: 4, C: -3, Q: 0, E: 1, G: -1, H: 0, I: -3, L: -4, K: 0, M: -3, F: -3, P: -2, S: 0, T: -1, W: -4, Y: -3, V: -3, B: 4, Z: 1, X: -1, "*": -4 },
+  Z: { A: -1, R: 0, N: 0, D: 1, C: -3, Q: 3, E: 4, G: -2, H: 0, I: -3, L: -3, K: 1, M: -1, F: -3, P: -1, S: 0, T: -1, W: -3, Y: -2, V: -2, B: 1, Z: 4, X: -1, "*": -4 },
+  X: { A: 0, R: -1, N: -1, D: -1, C: -2, Q: -1, E: -1, G: -1, H: -1, I: -1, L: -1, K: -1, M: -1, F: -1, P: -2, S: 0, T: 0, W: -2, Y: -1, V: -1, B: -1, Z: -1, X: -1, "*": -4 },
+  "*": { A: -4, R: -4, N: -4, D: -4, C: -4, Q: -4, E: -4, G: -4, H: -4, I: -4, L: -4, K: -4, M: -4, F: -4, P: -4, S: -4, T: -4, W: -4, Y: -4, V: -4, B: -4, Z: -4, X: -4, "*": 1 }
 };
 
 const DNA_RNA_SYMBOLS = {
@@ -1010,19 +1018,15 @@ export function makeAlignedFasta(records, alignment, lineWidth = 60) {
 
 export function makeClustal(records, alignment, lineWidth = 60) {
   const width = Math.max(20, Math.min(120, Number.parseInt(lineWidth, 10) || 60));
-  const nameA = records[0].title.replace(/\s+/g, "_").slice(0, 24) || "sequence_a";
-  const nameB = records[1].title.replace(/\s+/g, "_").slice(0, 24) || "sequence_b";
+  const [nameA, nameB] = makeClustalIdentifiers(records.map(record => record.title));
   const labelWidth = Math.max(nameA.length, nameB.length, 12);
   const lines = ["CLUSTAL multiple sequence alignment", ""];
+  const symbols = makeClustalConsensus([alignment.alignmentA, alignment.alignmentB], alignment.alphabet);
 
   for (let index = 0; index < alignment.alignmentA.length; index += width) {
     const chunkA = alignment.alignmentA.slice(index, index + width);
     const chunkB = alignment.alignmentB.slice(index, index + width);
-    const consensus = alignment.markers
-      .slice(index, index + width)
-      .replace(/\|/g, "*")
-      .replace(/:/g, ":")
-      .replace(/\./g, " ");
+    const consensus = symbols.slice(index, index + width);
     lines.push(`${nameA.padEnd(labelWidth)} ${chunkA}`);
     lines.push(`${nameB.padEnd(labelWidth)} ${chunkB}`);
     lines.push(`${"".padEnd(labelWidth)} ${consensus}`);

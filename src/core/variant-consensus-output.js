@@ -1,3 +1,4 @@
+import { isolateSvgStyles } from "./svg-style-scope.js";
 import '../vendor/d3/d3.min.js';
 import { checkpoint } from './variant-consensus.js';
 import { makeDnaViewerData } from './dna-viewer-data.js';
@@ -129,7 +130,11 @@ export function makeConsensusViewerData(a) {
   });
   return makeDnaViewerData(records,{title:'Variant consensus sequence viewer',layout:'linear'});
 }
-export function renderConsensusMap(a) {
+export function renderConsensusMap(...args) {
+  return isolateSvgStyles(renderConsensusMapUnscoped(...args));
+}
+
+function renderConsensusMapUnscoped(a) {
   if(a.outputs.length>12||a.audit.length>240) throw new Error('Variant map supports up to 12 sequences and 240 audit rows. Narrow the region or choose a table/FASTA output.');
   const rowsByOutput=a.outputs.map(o=>a.audit.filter(r=>r.sequence_id===o.title || (r.status==='skipped'&&r.chrom===o.chrom&&r.pos>=o.start&&r.pos<=o.end)));
   const shownStatuses=new Set(rowsByOutput.flat().map(row=>row.status));

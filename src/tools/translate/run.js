@@ -1,3 +1,5 @@
+import { normalizeTranslateOptions, TRANSLATE_LIMITS as limits } from "../../core/translate-options.js";
+import { exportDelimitedTable } from "../../core/table.js";
 import { formatFastaRecord, parseSequenceInput } from "../../core/fasta.js";
 import { getGeneticCode } from "../../core/genetic-code.js";
 import { cleanDnaRnaSequence, complementDnaRnaSequence } from "../../core/sequence.js";
@@ -52,7 +54,7 @@ export function cleanUppercaseDnaRnaText(sequence) {
 }
 
 function getFrames(frameOption) {
-  return FRAME_SETS[frameOption] ?? FRAME_SETS["1"];
+  return FRAME_SETS[frameOption];
 }
 
 function formatPlainTranslation(recordTitle, frame, protein, includeTitle) {
@@ -64,13 +66,12 @@ function formatPlainTranslation(recordTitle, frame, protein, includeTitle) {
 }
 
 function makeTsv(rows) {
-  return [
-    translationTableColumns.map((column) => column.id).join("\t"),
-    ...rows.map((row) => translationTableColumns.map((column) => row[column.id] ?? "").join("\t"))
-  ].join("\n");
+  return exportDelimitedTable(translationTableColumns.map(column => ({ ...column, label: column.id })), rows);
 }
 
 function makeRuler(start, end, width) {
+  if (start === end) return String(start);
+  if (width < String(start).length + String(end).length + 1) return `${start}-${end}`;
   const line = Array.from({ length: width }, () => " ");
   const labels = [String(start), String(end)];
   const place = (label, index) => {
@@ -88,9 +89,10 @@ function formatMapLine(label, value) {
   return `${label.padEnd(10)}${value}`;
 }
 
-function makeTranslationTextMap(mapRecords, options = {}) {
-  const width = Math.max(30, Number.parseInt(options.textMapWidth ?? 60, 10) || 60);
+function* makeTranslationTextMap(mapRecords, options = {}) {
+  const width = options.textMapWidth;
   const sections = [];
+  let outputSize = 0;
   for (const record of mapRecords) {
     const sequence = record.sequence;
     const sourceDescription = record.uppercaseOnly
@@ -99,20 +101,19 @@ function makeTranslationTextMap(mapRecords, options = {}) {
         ? "reverse complement"
         : "forward";
     const lines = [
-      `>${record.title} translation map`,
-      `displayed sequence: ${sourceDescription}; frame ${record.frame}; genetic code ${record.geneticCode}`
+      `${record.title} text annotation map`,
+      `displayed sequence: ${sourceDescription}; frame ${record.frame}; genetic code ${record.geneticCode}; positions in displayed sequence`
     ];
     for (let start = 1; start <= sequence.length; start += width) {
       const end = Math.min(sequence.length, start + width - 1);
       const chunk = sequence.slice(start - 1, end);
       const aaLine = Array.from({ length: chunk.length }, () => " ");
-      let aaIndex = 0;
-      for (let codonStart = record.offset + 1; codonStart + 2 <= sequence.length; codonStart += 3) {
-        if (codonStart >= start && codonStart <= end) {
-          aaLine[codonStart - start] = record.protein[aaIndex] ?? " ";
-        }
-        aaIndex += 1;
+      const firstCodon = Math.max(0, Math.ceil((start - record.offset - 1) / 3));
+      for (let aaIndex = firstCodon, codonStart = record.offset + 1 + firstCodon * 3;
+        codonStart <= end && codonStart + 2 <= sequence.length; aaIndex += 1, codonStart += 3) {
+        aaLine[codonStart - start] = record.protein[aaIndex];
       }
+      if ((start - 1) % (width * 256) === 0) yield {phase: "building-map"};
       lines.push(
         "",
         formatMapLine("pos", makeRuler(start, end, chunk.length)),
@@ -120,26 +121,35 @@ function makeTranslationTextMap(mapRecords, options = {}) {
         formatMapLine("seq", chunk)
       );
     }
-    sections.push(lines.join("\n").trimEnd());
+    const section = lines.join("\n").trimEnd();
+    outputSize += section.length + (sections.length ? 2 : 0);
+    if (outputSize > limits.outputCharacters) throw new Error(`Selected output exceeds ${limits.outputCharacters.toLocaleString()} characters. Split the input.`);
+    sections.push(section);
   }
   return sections.join("\n\n");
 }
 
 export const translationTableColumns = [
+  { id: "record_index", label: "Source record", type: "number" },
   { id: "source_title", label: "Source title", type: "string" },
   { id: "title", label: "Protein title", type: "string" },
   { id: "frame", label: "Frame", type: "string" },
   { id: "genetic_code", label: "Genetic code", type: "string" },
-  { id: "length", label: "Protein length", type: "number" },
+  { id: "length", label: "Protein positions", type: "number" },
   { id: "ambiguous_codons", label: "Ambiguous codons", type: "number" },
   { id: "trailing_bases", label: "Trailing bases", type: "number" },
   { id: "reverse", label: "Reverse strand", type: "boolean" },
   { id: "offset", label: "Offset", type: "number" }
 ];
 
-export function runTranslate(input, options = {}) {
-  const records = parseSequenceInput(input, "sequence");
-  const warnings = [];
+function* translateSteps(input, options = {}) {
+  yield {phase: "reading-input", progress: 0};
+  options = normalizeTranslateOptions(options);
+  const source = String(input ?? "");
+  if (source.length > limits.inputCharacters) throw new Error(`Translation accepts at most ${limits.inputCharacters.toLocaleString()} input characters. Split the input into smaller batches.`);
+  const records = parseSequenceInput(source, "sequence", { strictHeaders: true });
+  if (records.length > limits.records) throw new Error(`Translation accepts at most ${limits.records.toLocaleString()} records per run.`);
+  const warnings = [], notes = [];
 
   if (records.length === 0) {
     return makeToolResult({
@@ -147,7 +157,7 @@ export function runTranslate(input, options = {}) {
       warnings: ["No sequence input was provided."],
       recordsProcessed: 0,
       basesProcessed: 0,
-      charactersRemoved: 0
+      charactersRemoved: 0, optionsUsed: options
     });
   }
 
@@ -156,18 +166,16 @@ export function runTranslate(input, options = {}) {
   const textMapRecords = [];
   const translationRows = [];
   const frames = getFrames(options.frame);
-  const outputFormat = options.outputFormat === "plain" || options.outputFormat === "tsv" || options.outputFormat === "text-map" || options.outputFormat === "fasta"
-    ? options.outputFormat
-    : options.formatFasta === false
-      ? "plain"
-      : "fasta";
+  const {outputFormat, lineWidth} = options;
   const formatFasta = outputFormat === "fasta";
-  const lineWidth = options.lineWidth ?? 60;
-  const code = getGeneticCode(options.geneticCode ?? "1");
+  const code = getGeneticCode(options.geneticCode);
   let basesProcessed = 0;
   let charactersRemoved = 0;
+  let mapBases = 0, outputSize = 0;
 
-  for (const record of records) {
+  for (const [recordIndex, record] of records.entries()) {
+    yield {phase: "translating", progress: 0.1 + 0.75 * recordIndex / records.length};
+    if (record.title.length > limits.titleCharacters) throw new Error(`Record ${recordIndex + 1}: use a title of at most ${limits.titleCharacters} characters.`);
     const usesUppercaseText = frames.some((frame) => frame.uppercaseOnly);
     const cleaned = usesUppercaseText
       ? cleanUppercaseDnaRnaText(record.sequence)
@@ -176,13 +184,21 @@ export function runTranslate(input, options = {}) {
         keepGaps: false
       });
     basesProcessed += cleaned.sequence.length;
-    charactersRemoved += cleaned.removedCount;
+    charactersRemoved += record.sequence.length - cleaned.sequence.length;
+    if (basesProcessed > limits.bases) throw new Error(`Translation accepts at most ${limits.bases.toLocaleString()} cleaned bases per run.`);
+    mapBases += cleaned.sequence.length * frames.length;
+    if (outputFormat === "text-map" && mapBases > limits.mapBases) throw new Error(`Text annotation maps accept at most ${limits.mapBases.toLocaleString()} displayed bases across records and frames. Select fewer records or frames, or another output.`);
 
-    if (cleaned.removedCount > 0) {
+    const excludedCharacters = usesUppercaseText ? record.sequence.length - cleaned.sequence.length - cleaned.removedCount : 0;
+    const gapCount = usesUppercaseText ? 0 : (record.sequence.match(/[.-]/g) ?? []).length;
+    const recordLabel = `R${recordIndex + 1} (${record.title})`;
+    if (excludedCharacters) notes.push(`${recordLabel}: excluded ${excludedCharacters} non-uppercase character(s); retained uppercase DNA/RNA letters were joined before translation.`);
+    if (gapCount) notes.push(`${recordLabel}: removed ${gapCount} alignment gap character(s).`);
+    if (cleaned.removedCount > gapCount) {
       warnings.push(
         usesUppercaseText
           ? `${record.title}: removed ${cleaned.removedCount} non-DNA/RNA uppercase character(s).`
-          : `${record.title}: removed ${cleaned.removedCount} non-DNA/RNA character(s).`
+          : `${record.title}: removed ${cleaned.removedCount - gapCount} non-DNA/RNA character(s).`
       );
     }
 
@@ -194,12 +210,19 @@ export function runTranslate(input, options = {}) {
       );
     }
 
+    let reverseSequence;
     for (const frame of frames) {
-      const sequence = frame.reverse ? reverseComplement(cleaned.sequence) : cleaned.sequence;
-      const result = translateSequence(sequence, {
-        geneticCode: code.id,
-        offset: frame.offset
-      });
+      const sequence = frame.reverse ? (reverseSequence ??= reverseComplement(cleaned.sequence)) : cleaned.sequence;
+      const parts = [];
+      let length = 0, ambiguousCodons = 0;
+      for (let start = frame.offset; start + 3 <= sequence.length; start += 24_576) {
+        const chunk = translateSequence(sequence.slice(start, start + 24_576), {geneticCode: code.id});
+        if (outputFormat !== "tsv") parts.push(chunk.protein);
+        length += chunk.protein.length;
+        ambiguousCodons += chunk.ambiguousCodons;
+        yield {phase: "translating"};
+      }
+      const result = {protein: parts.join(""), length, ambiguousCodons, trailingBases: Math.max(0, (sequence.length - frame.offset) % 3)};
 
       if (result.ambiguousCodons > 0) {
         warnings.push(
@@ -213,8 +236,9 @@ export function runTranslate(input, options = {}) {
         );
       }
 
-      const title = `${record.title} translated ${frame.label} code ${code.id}`;
-      translatedRecords.push({
+      const title = `${record.title} translated ${frame.label} code ${code.id}; record_index=${recordIndex + 1}`;
+      if (formatFasta) translatedRecords.push({
+        record_index: recordIndex + 1,
         title,
         sequence: result.protein,
         sourceTitle: record.title,
@@ -225,7 +249,7 @@ export function runTranslate(input, options = {}) {
         ambiguousCodons: result.ambiguousCodons,
         trailingBases: result.trailingBases
       });
-      textMapRecords.push({
+      if (outputFormat === "text-map") textMapRecords.push({
         title,
         sequence,
         frame: frame.label,
@@ -235,17 +259,24 @@ export function runTranslate(input, options = {}) {
         uppercaseOnly: frame.uppercaseOnly === true,
         protein: result.protein
       });
-      translationRows.push({
+      if (outputFormat === "tsv") {
+        const row = {
+        record_index: recordIndex + 1,
         source_title: record.title,
         title,
         frame: frame.label,
         genetic_code: code.id,
-        length: result.protein.length,
+        length: result.length,
         ambiguous_codons: result.ambiguousCodons,
         trailing_bases: result.trailingBases,
         reverse: frame.reverse,
         offset: frame.offset
-      });
+        };
+        if (translationRows.length >= limits.tableRows) throw new Error(`Translation tables accept at most ${limits.tableRows.toLocaleString()} rows.`);
+        outputSize += makeTsv([row]).length - makeTsv([]).length + 1;
+        if (outputSize > limits.outputCharacters) throw new Error(`Selected output exceeds ${limits.outputCharacters.toLocaleString()} characters. Split the input.`);
+        translationRows.push(row);
+      }
 
       if (formatFasta) {
         outputParts.push(
@@ -255,25 +286,33 @@ export function runTranslate(input, options = {}) {
             lineWidth
           )
         );
-      } else {
-        outputParts.push(formatPlainTranslation(record.title, frame, result.protein, frames.length > 1));
+      } else if (outputFormat === "plain") {
+        outputParts.push(formatPlainTranslation(records.length > 1 ? `R${recordIndex + 1} · ${record.title}` : record.title, frame, result.protein, frames.length > 1 || records.length > 1));
+      }
+      if (outputFormat === "fasta" || outputFormat === "plain") {
+        outputSize += outputParts.at(-1).length + (outputParts.length > 1 ? (formatFasta ? 1 : 2) : 0);
+        if (outputSize > limits.outputCharacters) throw new Error(`Selected output exceeds ${limits.outputCharacters.toLocaleString()} characters. Split the input.`);
       }
     }
   }
 
-  const fastaOutput = translatedRecords
-    .map((record) => formatFastaRecord(record.title, record.sequence, lineWidth))
-    .join("\n");
-  const tableOutput = makeTsv(translationRows);
-  const textMapOutput = outputFormat === "text-map" ? makeTranslationTextMap(textMapRecords, options) : "";
-  const plainOutput = outputParts.join("\n\n");
   const output = outputFormat === "tsv"
-    ? tableOutput
+    ? makeTsv(translationRows)
     : outputFormat === "text-map"
-      ? textMapOutput
-      : formatFasta
-        ? outputParts.join("\n")
-        : plainOutput;
+      ? yield* makeTranslationTextMap(textMapRecords, options)
+      : outputParts.join(formatFasta ? "\n" : "\n\n");
+  if (output.length > limits.outputCharacters) throw new Error(`Selected output exceeds ${limits.outputCharacters.toLocaleString()} characters. Split the input.`);
+  yield {phase: "building-output", progress: 0.95};
+  const streams = {};
+  if (formatFasta) {
+    streams.fasta = makeTextStream(output, "text/x-fasta");
+    streams.proteinRecords = {kind: "sequence-records", schema: "translated-protein-records", alphabet: "protein", records: translatedRecords};
+  } else if (outputFormat === "tsv") {
+    streams.table = makeTableStream(translationTableColumns, translationRows, "translate-dna-rna");
+    streams.translations = streams.table;
+  } else if (outputFormat === "text-map") {
+    streams.textMap = makeTextStream(output, "text/plain", {format: "labelled-blocks", alphabet: "dna-rna", plainMapHeadings: true});
+  }
 
   return makeToolResult({
     output,
@@ -282,36 +321,45 @@ export function runTranslate(input, options = {}) {
       : outputFormat === "plain"
         ? { format: "plain", alphabet: "protein" }
         : outputFormat === "text-map"
-          ? { format: "labelled-blocks", alphabet: "dna-rna" }
+          ? { format: "labelled-blocks", alphabet: "dna-rna", plainMapHeadings: true }
           : undefined,
     download: {
       filename: outputFormat === "tsv" ? "translate.tsv" : outputFormat === "fasta" ? "translate.fasta" : "translate.txt",
       mimeType: outputFormat === "tsv" ? "text/tab-separated-values;charset=utf-8" : "text/plain;charset=utf-8"
     },
-    warnings,
+    warnings, notes,
     recordsProcessed: records.length,
     basesProcessed,
     charactersRemoved,
-    streams: {
-      fasta: makeTextStream(fastaOutput, "text/x-fasta"),
-      ...(outputFormat === "text-map" ? { textMap: makeTextStream(textMapOutput, "text/plain", { format: "labelled-blocks", alphabet: "dna-rna" }) } : {}),
-      table: makeTableStream(translationTableColumns, translationRows, "translate-dna-rna"),
-      translations: makeTableStream(translationTableColumns, translationRows, "translate-dna-rna"),
-      proteinRecords: {
-        kind: "sequence-records",
-        schema: "translated-protein-records",
-        alphabet: "protein",
-        records: translatedRecords
-      }
-    }
+    optionsUsed: options,
+    streams
   });
 }
 
+// Both public entry points drain the same computation. The worker only adds scheduling.
+export function runTranslate(input, options = {}) {
+  const steps = translateSteps(input, options);
+  let step = steps.next();
+  while (!step.done) step = steps.next();
+  return step.value;
+}
+
 export async function runTranslateWorker(input, options = {}, context = {}) {
-  context.reportProgress?.({ phase: "translating", progress: 0.1 });
+  const steps = translateSteps(input, options);
+  let lastYield = -Infinity;
   context.throwIfCancelled?.();
-  await context.yieldIfNeeded?.();
-  const result = runTranslate(input, options);
-  context.reportProgress?.({ phase: "finished", progress: 1 });
-  return result;
+  let step = steps.next();
+  while (!step.done) {
+    context.throwIfCancelled?.();
+    if (performance.now() - lastYield >= 8) {
+      context.reportProgress?.(step.value);
+      await context.yieldIfNeeded?.();
+      lastYield = performance.now();
+    }
+    context.throwIfCancelled?.();
+    step = steps.next();
+  }
+  context.throwIfCancelled?.();
+  context.reportProgress?.({phase: "finished", progress: 1});
+  return step.value;
 }

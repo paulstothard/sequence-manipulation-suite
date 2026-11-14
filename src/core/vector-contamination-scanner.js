@@ -1,4 +1,5 @@
 import { cleanSequence, complementDnaRnaSequence, makeSequenceContext } from "./sequence.js";
+import { normalizeVectorOptions } from './vector-contamination-options.js';
 
 export const vectorContaminationTableColumns = [
   { id: "record", label: "Record", type: "string" },
@@ -20,39 +21,18 @@ export const vectorContaminationTableColumns = [
   { id: "left_context", label: "Left context", type: "string" },
   { id: "matched_text", label: "Matched text", type: "string" },
   { id: "right_context", label: "Right context", type: "string" },
-  { id: "context_sequence", label: "Context sequence", type: "string" }
+  { id: "context_sequence", label: "Context sequence", type: "string" },
+  { id: "record_index", label: "Record number", type: "number" }
 ];
 
-const sensitivityDefaults = {
-  "high-confidence": {
-    minimumAlignedLength: 30,
-    minimumPercentIdentity: 95
-  },
-  balanced: {
-    minimumAlignedLength: 30,
-    minimumPercentIdentity: 90
-  },
-  sensitive: {
-    minimumAlignedLength: 16,
-    minimumPercentIdentity: 85
-  }
-};
 const matchScore = 1;
 const mismatchPenalty = -5;
 const xDrop = 12;
 const runtimeKmerMaps = new WeakMap();
+const referenceLookups = new WeakMap();
 
 function reverseComplement(sequence) {
   return Array.from(complementDnaRnaSequence(sequence, { preserveCase: false })).reverse().join("");
-}
-
-function getThresholds(options = {}) {
-  const preset = sensitivityDefaults[options.sensitivity] ?? sensitivityDefaults.balanced;
-  return {
-    minimumAlignedLength: Math.max(1, Number(options.minimumAlignedLength) || preset.minimumAlignedLength),
-    minimumPercentIdentity: Math.max(0, Math.min(100, Number(options.minimumPercentIdentity) || preset.minimumPercentIdentity)),
-    maxHitsPerRecord: Math.max(1, Number(options.maxHitsPerRecord) || 50)
-  };
 }
 
 function makeReferenceLookup(records = []) {
@@ -78,7 +58,7 @@ export function buildVectorContaminationKmerMap(records = [], kmerLength = 11) {
 }
 
 function baseScore(left, right) {
-  return left === right ? matchScore : mismatchPenalty;
+  return left === right && /^[ACGT]$/.test(left) ? matchScore : mismatchPenalty;
 }
 
 function extendLeft(querySequence, queryIndex, referenceSequence, referenceIndex) {
@@ -140,7 +120,7 @@ function extendRight(querySequence, queryEnd, referenceSequence, referenceEnd) {
 function countMismatches(querySequence, referenceSequence, queryStart, referenceStart, length) {
   let mismatches = 0;
   for (let index = 0; index < length; index += 1) {
-    if (querySequence[queryStart + index] !== referenceSequence[referenceStart + index]) {
+    if (baseScore(querySequence[queryStart + index], referenceSequence[referenceStart + index]) !== matchScore) {
       mismatches += 1;
     }
   }
@@ -172,7 +152,7 @@ function extendUngappedSeed(querySequence, queryIndex, referenceSequence, refere
     alignedLength,
     mismatches,
     gaps: 0,
-    percentIdentity: Number((((alignedLength - mismatches) / alignedLength) * 100).toFixed(2))
+    percentIdentity: ((alignedLength - mismatches) / alignedLength) * 100
   };
 }
 
@@ -206,7 +186,7 @@ function makeRow(recordTitle, queryLength, originalSequence, orientedHit, strand
     percent_identity: orientedHit.percentIdentity,
     mismatches: orientedHit.mismatches,
     gaps: orientedHit.gaps,
-    score: orientedHit.alignedLength - orientedHit.mismatches * 5 - orientedHit.gaps,
+    score: (orientedHit.alignedLength - orientedHit.mismatches) * matchScore + orientedHit.mismatches * mismatchPenalty,
     confidence: classifyConfidence(orientedHit.alignedLength, orientedHit.percentIdentity),
     source_database: referenceRecord.sourceDatabase ?? "",
     source_accession: referenceRecord.sourceAccession ?? "",
@@ -320,7 +300,7 @@ function getKmerMap(referenceIndex) {
   return runtimeKmerMaps.get(referenceIndex);
 }
 
-function scanOrientedSequence(recordTitle, sequence, originalSequence, strand, referenceIndex, referenceLookup, thresholds, context = {}) {
+function* scanOrientedSequence(recordTitle, sequence, originalSequence, strand, referenceIndex, referenceLookup, thresholds, context = {}) {
   const rows = [];
   const kmerLength = referenceIndex.kmerLength;
   if (!Number.isInteger(kmerLength) || kmerLength <= 0 || sequence.length < kmerLength) {
@@ -331,6 +311,7 @@ function scanOrientedSequence(recordTitle, sequence, originalSequence, strand, r
   for (let queryIndex = 0; queryIndex <= sequence.length - kmerLength; queryIndex += 1) {
     if (queryIndex % 250 === 0) {
       context.throwIfCancelled?.();
+      yield;
     }
     const kmer = sequence.slice(queryIndex, queryIndex + kmerLength);
     if (!/^[ACGT]+$/.test(kmer)) {
@@ -348,6 +329,7 @@ function scanOrientedSequence(recordTitle, sequence, originalSequence, strand, r
       }
       if (seedIndex > 0 && seedIndex % 500 === 0) {
         context.throwIfCancelled?.();
+        yield;
       }
       const referenceRecord = referenceLookup.get(seed.recordId);
       if (!referenceRecord) {
@@ -376,7 +358,7 @@ function scanOrientedSequence(recordTitle, sequence, originalSequence, strand, r
   return rows;
 }
 
-export function scanVectorContaminationRecord(record, referenceIndex, options = {}, context = {}) {
+function* scanVectorContaminationSteps(record, referenceIndex, options = {}, context = {}) {
   const title = record.title ?? "sequence";
   const cleaned = cleanSequence(record.sequence ?? "", {
     alphabet: "dna-rna",
@@ -397,7 +379,8 @@ export function scanVectorContaminationRecord(record, referenceIndex, options = 
     };
   }
 
-  const referenceLookup = makeReferenceLookup(referenceIndex.records);
+  if (!referenceLookups.has(referenceIndex)) referenceLookups.set(referenceIndex, makeReferenceLookup(referenceIndex.records));
+  const referenceLookup = referenceLookups.get(referenceIndex);
   if (referenceLookup.size === 0) {
     warnings.push("No vector contamination reference records were available.");
     return {
@@ -408,16 +391,17 @@ export function scanVectorContaminationRecord(record, referenceIndex, options = 
     };
   }
 
-  const thresholds = getThresholds(options);
-  const scanBothStrands = options.strand !== "forward";
+  const thresholds = normalizeVectorOptions(options);
+  const scanBothStrands = thresholds.strand !== "forward";
+  const comparisonSequence = cleaned.sequence.replace(/U/g, "T");
   const rows = [
-    ...scanOrientedSequence(title, cleaned.sequence, cleaned.sequence, "+", referenceIndex, referenceLookup, thresholds, context),
+    ...(yield* scanOrientedSequence(title, comparisonSequence, cleaned.sequence, "+", referenceIndex, referenceLookup, thresholds, context)),
     ...(scanBothStrands
-      ? scanOrientedSequence(title, reverseComplement(cleaned.sequence), cleaned.sequence, "-", referenceIndex, referenceLookup, thresholds, context)
+      ? (yield* scanOrientedSequence(title, reverseComplement(comparisonSequence), cleaned.sequence, "-", referenceIndex, referenceLookup, thresholds, context))
       : [])
   ];
 
-  const summarized = deduplicateMergeAndSortRows(rows, thresholds.maxHitsPerRecord);
+  const summarized = deduplicateMergeAndSortRows(rows, context.maxRetainedHits ?? thresholds.maxHitsPerRecord);
 
   return {
     ...summarized,
@@ -426,4 +410,19 @@ export function scanVectorContaminationRecord(record, referenceIndex, options = 
     sequenceLength: cleaned.sequence.length,
     cleanedSequence: cleaned.sequence
   };
+}
+
+// Both facades drain the same computation; only worker scheduling differs.
+export function scanVectorContaminationRecord(record, index, options = {}, context = {}) {
+  const steps = scanVectorContaminationSteps(record, index, options, context);
+  let next; do { next = steps.next(); } while (!next.done);
+  return next.value;
+}
+export async function scanVectorContaminationRecordAsync(record, index, options = {}, context = {}) {
+  const steps = scanVectorContaminationSteps(record, index, options, context);
+  for (let next = steps.next(); ; next = steps.next()) {
+    if (next.done) return next.value;
+    await context.yieldIfNeeded?.();
+    context.throwIfCancelled?.();
+  }
 }
