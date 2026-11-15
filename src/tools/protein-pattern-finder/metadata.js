@@ -93,7 +93,7 @@ export const proteinPatternFinderMetadata = {
     {
       id: "patternNote",
       type: "note",
-      text: "Coordinates are 1-based and inclusive after alignment gaps (. and -) and invalid characters are removed. Stop symbols (*) retain their positions and can be matched by user patterns; regex anchors refer to the full record. Pattern matches do not establish protein function. Amino-acid symbols follow NCBI extended IUPAC notation; compatible-set matching and X covering the 20 standard residues are SMS3 search conventions."
+      text: "Coordinates are 1-based and inclusive after alignment gaps (. and -) and invalid characters are removed. Stop symbols (*) retain their positions and can be matched by user patterns; regex anchors refer to the full record. Amino-acid symbols follow NCBI extended IUPAC notation; compatible-set matching and X covering the 20 standard residues are SMS3 search conventions."
     }
   ]
 };

@@ -209,7 +209,9 @@ function parsePairwise(text, descriptor) {
   let proteinRow = 0;
   let sequenceLane = 0;
   for (const line of getLines(text)) {
-    if (!line.text.trim()) {
+    // A whitespace-only comparison row can mean an all-gap block. Only the
+    // empty separator between blocks restarts the sequence/translation lanes.
+    if (line.text === "") {
       proteinRow = 0;
       sequenceLane = 0;
       continue;

@@ -1,10 +1,12 @@
+import { makeDnaGelSvg } from "../../core/dna-gel.js";
+import { createGelAppearanceSeed } from "../../core/gel-image.js";
+import { normalizeDnaGelOptions } from "../../core/dna-gel-model.js";
 import { makeSequenceFeatureTracks } from "../../core/sequence-feature-tracks.js";
 import { parseDnaRnaSequenceOrFlatfile } from "../../core/dna-input-records.js";
 import { makeDnaViewerData, makeDnaViewerStream, makeRestrictionViewerTracks } from "../../core/dna-viewer-data.js";
 import {
   findRestrictionSites,
   makeRestrictionFragments,
-  makeRestrictionGelSvg,
   makeRestrictionMapSvg,
   restrictionFragmentTableColumns
 } from "../../core/restriction-tools.js";
@@ -17,6 +19,7 @@ import { restrictionEnzymeRecords } from "../../reference-data/restriction-enzym
 function normalizeOptions(options = {}) {
   const viewerFormats = new Set(["interactive-viewer", "interactive-circular-viewer"]);
   return {
+    ...normalizeDnaGelOptions(options),
     enzyme1: String(options.enzyme1 ?? "ecori").toLowerCase(),
     enzyme2: String(options.enzyme2 ?? "bamhi").toLowerCase(),
     enzyme3: String(options.enzyme3 ?? "").toLowerCase(),
@@ -212,8 +215,9 @@ export function runRestrictionDigest(input, options = {}, context = {}) {
   const mapSvg = normalized.outputFormat === "svg-map"
     ? makeRestrictionMapSvg(records, { ...normalized, forceLinear: true })
     : "";
-  const gelSvg = normalized.outputFormat === "svg-gel" ? makeRestrictionGelSvg(records, {
+  const gelSvg = normalized.outputFormat === "svg-gel" ? makeDnaGelSvg(records, {
     ...normalized,
+    gelAppearanceSeed: createGelAppearanceSeed(),
     subtitle: `${enzymes.map(enzyme => enzyme.name).join(" + ")} · ${normalized.topology === "circular"
       ? "Circular DNA; uncut molecules modeled as mixed conformations."
       : "Linear DNA · Complete digestion"}`

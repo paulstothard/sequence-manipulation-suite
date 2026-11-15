@@ -1,3 +1,4 @@
+import { renderOrfExplorer } from "./orf-explorer-ui.js";
 import {renderGraphicEditor} from './graphic-editor-ui.js';
 import { renderTextTableImage } from './text-table-image-ui.js';
 import { makeShowcaseGraphicDocument, makeShowcaseTextImageDocument } from './showcase-image-editors.js';
@@ -32,9 +33,8 @@ const SHOWCASE_VIEWER_ALLOWLIST = new Map([
   ["vcf-genotype-table", new Set(["interactive-viewer"])]
 ]);
 const SHOWCASE_TOOL_OPTION_OVERRIDES = new Map([
-  ["orf-finder", {
-    nestedMode: "all-starts"
-  }],
+  ["restriction-digest", { gelStain: "red" }],
+  ["in-silico-pcr", { gelStain: "green" }],
   ["alignment-viewer", {
     chromosome: "NC_001422.1",
     regionStart: 3920,
@@ -525,6 +525,7 @@ function applyShowcaseFilters(filterControls, cards) {
 }
 
 const SHOWCASE_SCROLL_ZOOM_SELECTOR = [
+  ".orf-explorer-map",
   ".dna-viewer-canvas",
   ".sanger-trace-canvas",
   ".protein-structure-canvas-host",
@@ -549,6 +550,7 @@ export function installShowcaseWheelIntentGuard(preview, { isScrollZoomEnabled =
 }
 
 function renderShowcaseViewer(preview, viewer, context) {
+  if (viewer?.viewerType === "orf-explorer") return renderOrfExplorer(preview, viewer);
   const showcaseViewer = makeShowcaseViewerPayload(viewer);
   const viewerOptions = {
     preserveState: false,
@@ -575,7 +577,11 @@ async function renderShowcaseCard(card, item, token, context) {
   }
 
   try {
-    const result = await context.runTool(tool, tool.example ?? "", item.options ?? {});
+    // Keep this interactive preview small before analysis and rendering. The
+    // ORF Finder itself retains the complete multi-record bundled example.
+    const example = tool.metadata.id === "orf-finder"
+      ? (tool.example ?? "").split(/\n(?=>)/, 1)[0] : tool.example ?? "";
+    const result = await context.runTool(tool, example, item.options ?? {});
     if (context.state.showcaseRenderToken !== token) {
       return;
     }

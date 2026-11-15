@@ -1,3 +1,5 @@
+export const BASE_COMPOSITION_LIMITS = Object.freeze({ plotWindows: 5000, windowRows: 50_000, outputCharacters: 25 * 1024 * 1024 });
+
 // Authoritative analysis/display defaults shared by controls and all callers.
 export const BASE_COMPOSITION_DEFAULTS = Object.freeze({
   windowMode: "auto", windowSize: 100, stepSize: 25,

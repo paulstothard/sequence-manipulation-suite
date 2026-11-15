@@ -1,9 +1,10 @@
+import { FASTA_RECORD_SOURCE_LIMITS as sourceLimits } from "../../core/fasta-record-source.js";
 import { vectorContaminationTableColumns } from "../../core/vector-contamination-scanner.js";
 import vectorSummary from "../../reference-data/vector-contamination/summary.js";
 import { VECTOR_CONTAMINATION_SVG_MAP_HIT_THRESHOLD } from "./run.js";
 import { makeFastaSourceInputOptions } from "../fasta-source-options.js";
 import { STREAMED_FASTA_SCAN_NOTE } from "../fasta-input-policy.js";
-import { VECTOR_INPUT_DEFAULTS as defaults, VECTOR_SENSITIVITY_PRESETS } from '../../core/vector-contamination-options.js';
+import { VECTOR_INPUT_DEFAULTS as defaults, VECTOR_SENSITIVITY_PRESETS, VECTOR_SCAN_LIMITS as limits, VECTOR_MATCH_MODEL as model } from '../../core/vector-contamination-options.js';
 
 export const vectorContaminationScannerMetadata = {
   id: "vector-contamination-scanner",
@@ -44,7 +45,7 @@ export const vectorContaminationScannerMetadata = {
       type: "select",
       label: "Sensitivity",
       defaultValue: defaults.sensitivity,
-      help: Object.entries(VECTOR_SENSITIVITY_PRESETS).map(([name, value]) => `${name}: ${value.minimumAlignedLength} bases, ${value.minimumPercentIdentity}% identity`).join('; ') + '. Explicit numeric thresholds override the preset. Confidence tiers are local heuristics: strong requires at least 30 bases and 95% identity; moderate requires 16 bases and 90%; remaining hits are low.',
+      help: Object.entries(VECTOR_SENSITIVITY_PRESETS).map(([name, value]) => `${name}: ${value.minimumAlignedLength} bases, ${value.minimumPercentIdentity}% identity`).join('; ') + `. Explicit numeric thresholds override the preset. Confidence tiers are local heuristics: strong requires at least ${model.strong.length} bases and ${model.strong.identity}% identity; moderate requires ${model.moderate.length} bases and ${model.moderate.identity}%; remaining hits are low.`,
       choices: [
         { value: "high-confidence", label: "High confidence" },
         { value: "balanced", label: "Balanced" },
@@ -68,7 +69,7 @@ export const vectorContaminationScannerMetadata = {
       label: "Minimum aligned length",
       defaultValue: defaults.minimumAlignedLength,
       placeholder: "From sensitivity",
-      help: "Leave empty to use the selected sensitivity preset. Matches require an exact 11-base A/C/G/T seed.",
+      help: `Leave empty to use the selected sensitivity preset. Matches require an exact ${vectorSummary.kmerLength}-base A/C/G/T seed.`,
       min: 8,
       max: 500
     },
@@ -87,7 +88,7 @@ export const vectorContaminationScannerMetadata = {
       id: "outputFormat",
       type: "radio",
       label: "Output format",
-      help: "Scanning is linear, including for the circular viewer; origin-spanning hits are not searched. Overlapping hits to the same reference and strand are consolidated at 80% overlap of the shorter hit.",
+      help: `Scanning is linear, including for the circular viewer; origin-spanning hits are not searched. Overlapping hits to the same reference and strand are consolidated at ${model.mergeOverlap * 100}% overlap of the shorter hit.`,
       defaultValue: defaults.outputFormat,
       choices: [
         { value: "report", label: "Summary report" },
@@ -105,7 +106,7 @@ export const vectorContaminationScannerMetadata = {
       collapsible: true,
       collapsed: true,
       options: [
-        { id: "vectorLargeSourceLimitNote", type: "note", text: "Scans are capped at 10 million non-whitespace input characters, 10,000 records, 5 million A/C/G/T query windows, 100,000 seed extensions, 20,000 candidate hits, and 26,214,400 materialized-output characters. Report, table, and linear map outputs are available; text maps and viewers require bounded pasted input." },
+        { id: "vectorLargeSourceLimitNote", type: "note", text: `Scans are capped at ${limits.inputCharacters.toLocaleString("en-US")} non-whitespace input characters, ${sourceLimits.maxRecords.toLocaleString("en-US")} records, ${limits.queryWindows.toLocaleString("en-US")} A/C/G/T query windows, ${limits.seedExtensions.toLocaleString("en-US")} seed extensions, ${limits.candidateRows.toLocaleString("en-US")} candidate hits, and ${limits.outputCharacters.toLocaleString("en-US")} materialized-output characters. Report, table, and linear map outputs are available; text maps and viewers require bounded pasted input.` },
         {
           id: "maxHitsPerRecord",
           type: "number",
@@ -124,7 +125,7 @@ export const vectorContaminationScannerMetadata = {
     {
       id: "databaseNote",
       type: "note",
-      text: `${vectorSummary.sourceName} ${vectorSummary.sourceVersion}; ${vectorSummary.recordCount} records and ${vectorSummary.totalBases.toLocaleString()} bases. Candidates require an exact 11-base seed and ungapped extension (+1 match, -5 mismatch; X-drop 12). NCBI VecScreen classifications are not reproduced; indel-containing alignments can be missed.`
+      text: `${vectorSummary.sourceName} ${vectorSummary.sourceVersion}; ${vectorSummary.recordCount} records and ${vectorSummary.totalBases.toLocaleString()} bases. Candidates require an exact ${vectorSummary.kmerLength}-base seed and ungapped extension (+${model.matchScore} match, ${model.mismatchPenalty} mismatch; X-drop ${model.xDrop}). NCBI VecScreen classifications are not reproduced; indel-containing alignments can be missed.`
     }
   ]
 };

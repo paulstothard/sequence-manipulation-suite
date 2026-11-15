@@ -1,4 +1,5 @@
-import { DNA_RNA_MOTIF_DEFAULTS, PROTEIN_MOTIF_DEFAULTS, PROTEIN_MOTIF_LIMITS } from "../../core/motif-scanner-options.js";
+import { FASTA_RECORD_SOURCE_LIMITS as sourceLimits } from "../../core/fasta-record-source.js";
+import { DNA_RNA_MOTIF_LIMITS as dnaLimits, DNA_RNA_MOTIF_DEFAULTS, PROTEIN_MOTIF_DEFAULTS, PROTEIN_MOTIF_LIMITS } from "../../core/motif-scanner-options.js";
 import { motifMatchTableColumns } from "../../core/motif-scanner.js";
 import dnaRnaMotifs from "../../reference-data/motifs/dna-rna-motifs.js";
 import proteinMotifs from "../../reference-data/motifs/protein-motifs.js";
@@ -124,7 +125,7 @@ const dnaRnaMotifLimitsGroup = {
   ...motifOutputLimitsGroup,
   options: [
     ...motifOutputLimitsGroup.options,
-    { id: "streamedMotifLimitsNote", type: "note", text: "Pasted and file motif scans are capped at 50 million non-whitespace input characters, 10,000 records, 200 million motif-symbol scoring operations, 50,000 candidate hits, and 26,214,400 materialized-output characters. Source files are limited to 512 MiB and decoded text to 150 MiB. Select a motif or class when scanning large records. Report, table, and linear map outputs are available; text maps and sequence viewers require bounded pasted input." }
+    { id: "streamedMotifLimitsNote", type: "note", text: `Pasted and file motif scans are capped at ${dnaLimits.inputCharacters.toLocaleString("en-US")} non-whitespace input characters, ${sourceLimits.maxRecords.toLocaleString("en-US")} records, ${dnaLimits.work.toLocaleString("en-US")} motif-symbol scoring operations, ${dnaLimits.hits.toLocaleString("en-US")} candidate hits, and ${dnaLimits.outputCharacters.toLocaleString("en-US")} materialized-output characters. Source files are limited to ${sourceLimits.maxSourceBytes / 1048576} MiB and decoded text to ${sourceLimits.maxDecodedBytes / 1048576} MiB. Select a motif or class when scanning large records. Report, table, and linear map outputs are available; text maps and sequence viewers require bounded pasted input.` }
   ]
 };
 
@@ -201,7 +202,7 @@ export const dnaRnaMotifScannerMetadata = {
     {
       id: "databaseNote",
       type: "note",
-      text: `Bundled database: ${dnaRnaMotifs.length} DNA/RNA motif records, including 2,346 JASPAR 2024 CORE profiles. Matches identify candidate sites; they do not establish function.`
+      text: "Bundled databases contain curated DNA/RNA consensus patterns and JASPAR transcription-factor profiles."
     }
   ]
 };
@@ -265,7 +266,7 @@ export const proteinMotifScannerMetadata = {
     {
       id: "databaseNote",
       type: "note",
-      text: `Bundled database: ${proteinMotifs.length} cited protein motif records. Short patterns can match by chance; results do not establish modification, localization or function.\n\nReferences:\n\nPatterns: PROSITE documentation; Yaffe 1997; Swinkels 1991.`
+      text: "Bundled patterns cover candidate modification, targeting, interaction and cleavage sites.\n\nReferences:\n\nPatterns: PROSITE documentation; Yaffe 1997; Swinkels 1991."
     }
   ]
 };

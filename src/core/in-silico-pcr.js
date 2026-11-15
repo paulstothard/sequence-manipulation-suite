@@ -1,7 +1,7 @@
 import { parsePcrTemplateInput, makePcrTemplateFeatureTracks } from "./pcr-template-input.js";
 import { formatFastaRecord } from "./fasta.js";
 import { makeDnaViewerData } from "./dna-viewer-data.js";
-import { makeRestrictionGelSvg } from "./restriction-tools.js";
+import { makeDnaGelSvg } from "./dna-gel.js";
 import { cleanDnaRnaSequence, complementDnaRnaSequence } from "./sequence.js";
 import { parsePrimerRecords, parsePrimerSequences } from "./primer-input.js";
 import { normalizePcrOptions, normalizePcrNumber } from "./in-silico-pcr-options.js";
@@ -470,7 +470,7 @@ export function makePcrProductsFasta(rows, lineWidth) {
   ).join("\n");
 }
 
-export function makePcrProductGelSvg(result) {
+export function makePcrProductGelSvg(result, appearance = {}) {
   const records = (result.records ?? []).map((record) => ({
     title: record.title,
     length: record.sequence.length,
@@ -488,12 +488,15 @@ export function makePcrProductGelSvg(result) {
       })),
     hits: []
   }));
-  return makeRestrictionGelSvg(records, {
+  return makeDnaGelSvg(records, {
+    ...result.options,
+    gelAppearanceSeed: appearance.gelAppearanceSeed,
+    gelLoadingMode: "equal-molar-products",
     topology: "linear",
     emptyFragmentsAsNoBand: true,
     title: "Simulated PCR product gel",
     subtitle: "PCR lanes show amplified products only; low-abundance template DNA is not drawn.",
-    note: `Qualitative schematic gel: band intensity does not predict amplification yield. Search: ${result.searchStatus}; lanes with no products found are empty.`
+    note: `Faint bands boosted; intensity does not predict PCR yield. Search: ${result.searchStatus}; no-product lanes empty.`
   });
 }
 

@@ -1,4 +1,5 @@
 import { effectiveToolLimit, normalizeDisabledToolLimitIds } from './tool-limit-policy.js';
+import { DNA_GEL_DEFAULTS, normalizeDnaGelOptions } from './dna-gel-model.js';
 
 export const IN_SILICO_PCR_NUMERIC_OPTIONS = Object.freeze({
   maxMismatches: { defaultValue: 0, min: 0, max: 6, step: 1 },
@@ -13,6 +14,7 @@ export const IN_SILICO_PCR_NUMERIC_OPTIONS = Object.freeze({
 });
 for (const spec of Object.values(IN_SILICO_PCR_NUMERIC_OPTIONS)) Object.freeze(spec);
 export const IN_SILICO_PCR_DEFAULTS = Object.freeze({
+  ...DNA_GEL_DEFAULTS,
   ...Object.fromEntries(Object.entries(IN_SILICO_PCR_NUMERIC_OPTIONS).map(([id, spec]) => [id, spec.defaultValue])),
   topology: 'linear', productSequenceMode: 'primer-incorporated', outputFormat: 'svg-gel'
 });
@@ -43,7 +45,7 @@ export function normalizePcrOptions(options = {}) {
   ]));
   normalized.maxProductLength = Math.max(normalized.minProductLength, normalized.maxProductLength);
   return {
-    ...normalized, disabledToolLimitIds,
+    ...normalized, ...normalizeDnaGelOptions(options), disabledToolLimitIds,
     topology: ['linear', 'circular'].includes(options.topology) ? options.topology : IN_SILICO_PCR_DEFAULTS.topology,
     productSequenceMode: ['primer-incorporated', 'template'].includes(options.productSequenceMode) ? options.productSequenceMode : IN_SILICO_PCR_DEFAULTS.productSequenceMode,
     outputFormat: IN_SILICO_PCR_OUTPUT_FORMATS.includes(options.outputFormat) ? options.outputFormat : IN_SILICO_PCR_DEFAULTS.outputFormat

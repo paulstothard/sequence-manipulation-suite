@@ -7,6 +7,10 @@
     "archive": {
       "bytes": 242409,
       "sha256": "311ec3f7910c59e333879243d696fc88458914e5115b5abb6547a20a16217bab"
+    },
+    "compression": {
+      "bytes": 6458,
+      "sha256": "604988a95b498d503f4987838e2a67b88c2de85eead98622930522a2b25adbff"
     }
   },
   "packages": [

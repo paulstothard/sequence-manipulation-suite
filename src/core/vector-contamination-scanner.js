@@ -1,5 +1,5 @@
 import { cleanSequence, complementDnaRnaSequence, makeSequenceContext } from "./sequence.js";
-import { normalizeVectorOptions } from './vector-contamination-options.js';
+import { normalizeVectorOptions, VECTOR_MATCH_MODEL } from './vector-contamination-options.js';
 
 export const vectorContaminationTableColumns = [
   { id: "record", label: "Record", type: "string" },
@@ -25,9 +25,9 @@ export const vectorContaminationTableColumns = [
   { id: "record_index", label: "Record number", type: "number" }
 ];
 
-const matchScore = 1;
-const mismatchPenalty = -5;
-const xDrop = 12;
+const matchScore = VECTOR_MATCH_MODEL.matchScore;
+const mismatchPenalty = VECTOR_MATCH_MODEL.mismatchPenalty;
+const xDrop = VECTOR_MATCH_MODEL.xDrop;
 const runtimeKmerMaps = new WeakMap();
 const referenceLookups = new WeakMap();
 
@@ -157,10 +157,10 @@ function extendUngappedSeed(querySequence, queryIndex, referenceSequence, refere
 }
 
 function classifyConfidence(length, percentIdentity) {
-  if (length >= 30 && percentIdentity >= 95) {
+  if (length >= VECTOR_MATCH_MODEL.strong.length && percentIdentity >= VECTOR_MATCH_MODEL.strong.identity) {
     return "strong";
   }
-  if (length >= 16 && percentIdentity >= 90) {
+  if (length >= VECTOR_MATCH_MODEL.moderate.length && percentIdentity >= VECTOR_MATCH_MODEL.moderate.identity) {
     return "moderate";
   }
   return "low";
@@ -219,7 +219,7 @@ function rowsRepresentSameHit(left, right) {
     return false;
   }
   const shorterLength = Math.min(left.aligned_length, right.aligned_length);
-  return overlap / Math.max(1, shorterLength) >= 0.8;
+  return overlap / Math.max(1, shorterLength) >= VECTOR_MATCH_MODEL.mergeOverlap;
 }
 
 export function deduplicateMergeAndSortRows(rows, maxHitsPerRecord) {

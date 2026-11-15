@@ -1,4 +1,4 @@
-import { normalizeCodonUsageOptions } from "../../core/codon-usage-options.js";
+import { normalizeCodonUsageOptions, CODON_USAGE_LIMITS } from "../../core/codon-usage-options.js";
 import { exportDelimitedTable } from "../../core/table.js";
 import { openCleanDnaRnaFastaSource } from "../../core/fasta-dna-record-source.js";
 import { getCodonsForCode, getGeneticCode } from "../../core/genetic-code.js";
@@ -22,11 +22,7 @@ export const codonUsageTableColumns = [
   { id: "is_total", label: "Combined total", type: "boolean" }
 ];
 
-export const CODON_USAGE_LIMITS = Object.freeze({
-  maxMaterializedOutputCharacters: 25 * 1024 * 1024,
-  maxPlotRecords: 20,
-  maxRecords: 1_000
-});
+export { CODON_USAGE_LIMITS } from "../../core/codon-usage-options.js";
 
 function formatNumber(value) {
   return value !== 0 && Math.abs(value) < 0.0005 ? value.toPrecision(3) : value.toFixed(3);

@@ -1,5 +1,8 @@
 import {getGeneticCode} from './genetic-code.js';
 
+export const CODON_USAGE_LIMITS = Object.freeze({ maxMaterializedOutputCharacters: 25 * 1024 * 1024, maxPlotRecords: 20, maxRecords: 1_000 });
+
+
 export const CODON_USAGE_DEFAULTS = Object.freeze({
   geneticCode: '1',
   plotValue: 'count',

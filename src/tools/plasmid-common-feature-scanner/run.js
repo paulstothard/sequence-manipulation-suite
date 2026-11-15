@@ -1,3 +1,4 @@
+import { FASTA_RECORD_SOURCE_LIMITS as sourceLimits } from "../../core/fasta-record-source.js";
 import { exportDelimitedTable } from "../../core/table.js";
 import { normalizePlasmidFeatureOptions } from "../../core/plasmid-common-feature-options.js";
 import { openCleanDnaRnaFastaSource } from "../../core/fasta-dna-record-source.js";
@@ -16,9 +17,9 @@ import {
 } from "../../reference-data/plasmid-common-features/records.js";
 
 const OUTPUT_FORMATS_BY_STREAM = { report: "report", table: "tsv", textMap: "text-map", overview: "svg-map", viewer: "interactive-viewer" };
-export const PLASMID_FEATURE_SVG_MAX_RECORDS = 12;
-export const PLASMID_FEATURE_SVG_MAX_TOTAL_HITS = 240;
-export const PLASMID_FEATURE_SVG_MAX_HITS_PER_RECORD = 80;
+export const PLASMID_FEATURE_SVG_MAX_RECORDS = PLASMID_FEATURE_LIMITS.mapRecords;
+export const PLASMID_FEATURE_SVG_MAX_TOTAL_HITS = PLASMID_FEATURE_LIMITS.mapTotalHits;
+export const PLASMID_FEATURE_SVG_MAX_HITS_PER_RECORD = PLASMID_FEATURE_LIMITS.mapRecordHits;
 
 function normalizeDnaForCounting(sequence) {
   return String(sequence ?? "").toUpperCase().replace(/U/g, "T").replace(/[^ACGTRYSWKMBDHVNX]/g, "");
@@ -63,7 +64,7 @@ function makeReport({ rows, references, recordsProcessed, basesProcessed, charac
     `Hits by type: ${formatCounts(countBy(rows, "feature_type"))}`,
     "",
     "Scope note:",
-    "Full-length ungapped signatures are scanned on both strands of each linear sequence. Coordinates use cleaned DNA with U treated as T. Candidate signature hits require biological interpretation; shared sites can match multiple reference signatures."
+    "Full-length ungapped signatures are scanned on both strands of each linear sequence. Coordinates use cleaned DNA with U treated as T. Shared sites can match multiple reference signatures."
   ].join("\n") + "\n";
 }
 
@@ -241,9 +242,9 @@ export async function runPlasmidCommonFeatureScanner(input, options = {}, execut
   const opened = await openCleanDnaRnaFastaSource(input, {
     ...sourceOptions, strictHeaders: true,
     onSourceChunk(text) { current.gaps += (text.match(/[.-]/g) ?? []).length; },
-    maxSourceBases: PLASMID_FEATURE_LIMITS.maxInputCharacters, maxSourceRecords: 10_000,
-    maxSourceBytes: 512 * 1024 * 1024, maxDecodedSourceBytes: 150 * 1024 * 1024,
-    maxFastaHeaderCharacters: 10_000, maxTotalFastaHeaderCharacters: 5_000_000, maxIndexBytes: 16 * 1024 * 1024
+    maxSourceBases: PLASMID_FEATURE_LIMITS.maxInputCharacters, maxSourceRecords: sourceLimits.maxRecords,
+    maxSourceBytes: sourceLimits.maxSourceBytes, maxDecodedSourceBytes: sourceLimits.maxDecodedBytes,
+    maxFastaHeaderCharacters: sourceLimits.maxHeaderCharacters, maxTotalFastaHeaderCharacters: sourceLimits.maxTotalHeaderCharacters, maxIndexBytes: sourceLimits.maxIndexBytes
   }, context);
   const records = [];
   for await (const event of opened.events()) {
@@ -293,7 +294,7 @@ export async function runPlasmidCommonFeatureScanner(input, options = {}, execut
   const outputFormat = options.outputFormat;
   // Map lines duplicate sequence and annotation labels; refuse dense rendering
   // before constructing the monospaced text, while table/report stay available.
-  if (formats.has("text-map") && (basesProcessed > 1_000_000 || rows.length > 10_000)) {
+  if (formats.has("text-map") && (basesProcessed > PLASMID_FEATURE_LIMITS.textMapBases || rows.length > PLASMID_FEATURE_LIMITS.textMapHits)) {
     throw new Error("Text annotation maps support up to 1,000,000 bases and 10,000 hits. Select Table or Summary report.");
   }
   const textMap = formats.has("text-map") ? makeTextMap(scannedRecords) : "";

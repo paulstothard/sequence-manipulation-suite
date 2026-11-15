@@ -70,7 +70,7 @@ export const proteinHydropathyMetadata = {
     {
       id: "methodNote",
       type: "note",
-      text: "Kyte-Doolittle values are averaged over the 20 standard amino acids. B/J/X/Z/O/U and stops retain positions but do not contribute to means; all-excluded windows are undefined. Gaps are removed before coordinates are assigned. Positive values indicate hydrophobicity; the profile alone does not establish membrane topology."
+      text: "Kyte-Doolittle values are averaged over the 20 standard amino acids. B/J/X/Z/O/U and stops retain positions but do not contribute to means; all-excluded windows are undefined. Gaps are removed before coordinates are assigned. Positive values indicate hydrophobicity."
     },
     {
       id: "citationNote",

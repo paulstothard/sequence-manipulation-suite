@@ -1,5 +1,7 @@
 import { effectiveToolLimit, normalizeDisabledToolLimitIds } from './tool-limit-policy.js';
 
+export const PCR_CANDIDATE_LENGTHS_PER_ENDPOINT = 8;
+
 // One definition for UI controls, presets and every computation entry point.
 // Numeric resource ceilings use these defaults even for old saved overrides;
 // recognized disabled-limit IDs are the explicit way to remove a ceiling.

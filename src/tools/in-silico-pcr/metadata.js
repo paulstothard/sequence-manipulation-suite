@@ -1,3 +1,4 @@
+import { makeDnaGelOptions } from "../dna-gel-options.js";
 import { applyInSilicoPcrOptionDefinitions } from "../../core/in-silico-pcr-options.js";
 import { PRIMER_INPUT_HELP } from "../primer-input-options.js";
 import {
@@ -80,6 +81,7 @@ export const inSilicoPcrMetadata = {
         { value: "interactive-circular-viewer", label: "Circular DNA sequence viewer" }
       ]
     },
+    ...makeDnaGelOptions(),
     {
       id: "advancedLimits",
       type: "group",

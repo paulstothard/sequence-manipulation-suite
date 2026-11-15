@@ -1,3 +1,4 @@
+import { FASTA_RECORD_SOURCE_LIMITS as sourceLimits } from "../../core/fasta-record-source.js";
 import {
   codonAdaptationCodonColumns,
   codonAdaptationIndexColumns
@@ -5,7 +6,7 @@ import {
 import { codonUsageReferences } from "../../reference-data/codon-usage/references.js";
 import { STREAMED_FASTA_SCAN_NOTE } from "../fasta-input-policy.js";
 import { makeFastaSourceInputOptions } from "../fasta-source-options.js";
-import { CODON_ADAPTATION_DEFAULTS } from "../../core/codon-adaptation-options.js";
+import { CODON_ADAPTATION_DEFAULTS, CODON_ADAPTATION_INDEX_LIMITS as limits, CAI_ZERO_REFERENCE_COUNT } from "../../core/codon-adaptation-options.js";
 
 export const codonAdaptationIndexMetadata = {
   id: "codon-adaptation-index",
@@ -76,13 +77,13 @@ export const codonAdaptationIndexMetadata = {
       options: [{
         id: "streamingLimitsNote",
         type: "note",
-        text: "All outputs accept up to 10,000 records and 100 million non-whitespace sequence characters, with 512 MiB source files and 150 MiB decoded text. Per-codon output is limited to 250,000 rows. Materialized output is limited to 26,214,400 characters. Exceeding a ceiling rejects the run. Headers are limited to 10,000 characters each and 5 million in total; index files are limited to 16 MiB."
+        text: `All outputs accept up to ${limits.maxRecords.toLocaleString("en-US")} records and ${sourceLimits.maxAcceptedBases.toLocaleString("en-US")} non-whitespace sequence characters, with ${sourceLimits.maxSourceBytes / 1048576} MiB source files and ${sourceLimits.maxDecodedBytes / 1048576} MiB decoded text. Per-codon output is limited to ${limits.maxCodonRows.toLocaleString("en-US")} rows. Materialized output is limited to ${limits.maxMaterializedOutputCharacters.toLocaleString("en-US")} characters. Exceeding a ceiling rejects the run. Headers are limited to ${sourceLimits.maxHeaderCharacters.toLocaleString("en-US")} characters each and ${sourceLimits.maxTotalHeaderCharacters.toLocaleString("en-US")} in total; index files are limited to ${sourceLimits.maxIndexBytes / 1048576} MiB.`
       }]
     },
     {
       id: "methodNote",
       type: "note",
-      text: "CAI is the geometric mean of relative adaptiveness weights for codons in the selected reference. Ambiguous, stop, and single-codon amino-acid families (Met/Trp in the bundled codes) are counted but not scored. Zero reference counts use a 0.5 pseudocount. Bundled organism references summarize CDS usage, not highly expressed gene subsets; CAI here measures reference similarity, not predicted expression. The equal-synonymous seed is illustrative.\n\nReferences:\n\nCodon adaptation index: Sharp and Li 1987."
+      text: `CAI is the geometric mean of relative adaptiveness weights for codons in the selected reference. Ambiguous, stop, and single-codon amino-acid families (Met/Trp in the bundled codes) are counted but not scored. Zero reference counts use a ${CAI_ZERO_REFERENCE_COUNT} pseudocount. Bundled organism references summarize CDS usage, not highly expressed gene subsets; CAI here measures reference similarity, not predicted expression. The equal-synonymous seed is illustrative.\n\nReferences:\n\nCodon adaptation index: Sharp and Li 1987.`
     }
   ]
 };

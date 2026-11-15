@@ -1,4 +1,5 @@
-import { PLASMID_FEATURE_DEFAULTS } from "../../core/plasmid-common-feature-options.js";
+import { FASTA_RECORD_SOURCE_LIMITS as sourceLimits } from "../../core/fasta-record-source.js";
+import { PLASMID_FEATURE_DEFAULTS, PLASMID_FEATURE_LIMITS as limits } from "../../core/plasmid-common-feature-options.js";
 import { plasmidCommonFeatureRecords, plasmidCommonFeatureProvenance } from "../../reference-data/plasmid-common-features/records.js";
 import { plasmidCommonFeatureMatchColumns } from "../../core/plasmid-common-feature-scanner.js";
 import {
@@ -165,7 +166,7 @@ export const plasmidCommonFeatureScannerMetadata = {
       options: [
         {
           id: "plasmidScanLimitNote", type: "note",
-          text: "Scans support 5,000,000 non-whitespace input characters, 10,000 records, 500,000,000 symbol comparisons and 100,000 hits. Retained hit text and the serialized result are each limited to 26,214,400 characters. Text maps support 1,000,000 bases and 10,000 hits. Source limits: 512 MiB file, 150 MiB decoded text, 10,000 characters per header and 5,000,000 header characters total. These limits remain fixed."
+          text: `Scans support ${limits.maxInputCharacters.toLocaleString("en-US")} non-whitespace input characters, ${sourceLimits.maxRecords.toLocaleString("en-US")} records, ${limits.maxComparisons.toLocaleString("en-US")} symbol comparisons and ${limits.maxHits.toLocaleString("en-US")} hits. Retained hit text is limited to ${limits.maxRetainedCharacters.toLocaleString("en-US")} characters and the serialized result to ${limits.maxOutputCharacters.toLocaleString("en-US")} characters. Text maps support ${limits.textMapBases.toLocaleString("en-US")} bases and ${limits.textMapHits.toLocaleString("en-US")} hits. Source limits: ${sourceLimits.maxSourceBytes / 1048576} MiB file, ${sourceLimits.maxDecodedBytes / 1048576} MiB decoded text, ${sourceLimits.maxHeaderCharacters.toLocaleString("en-US")} characters per header and ${sourceLimits.maxTotalHeaderCharacters.toLocaleString("en-US")} header characters total. These limits remain fixed.`
         },
         {
           id: "plasmidFeatureMapLimitNote",
@@ -177,7 +178,7 @@ export const plasmidCommonFeatureScannerMetadata = {
     {
       id: "databaseNote",
       type: "note",
-      text: `Bundled reference set: ${plasmidCommonFeatureRecords.length} common-feature signatures (${plasmidCommonFeatureProvenance.version}). A hit identifies a candidate signature; biological function requires additional evidence. Different signatures can identify the same site.`
+      text: `Bundled reference set: ${plasmidCommonFeatureRecords.length} common-feature signatures (${plasmidCommonFeatureProvenance.version}). Different signatures can identify the same site.`
     },
     {
       id: "methodNote", type: "note",

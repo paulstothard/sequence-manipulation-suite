@@ -12,7 +12,7 @@ import { makeDnaViewerData, makeDnaViewerStream } from "../../core/dna-viewer-da
 import { makeTableStream, makeTextStream, makeToolResult } from "../../core/workflow.js";
 import { loadReferenceGenomeRecords, normalizeReferenceGenomeMode } from "../reference-genome-runner.js";
 import { makePcrTemplateFeatureTracks } from "../../core/pcr-template-input.js";
-import { normalizePcrPrimerDesignOptions } from "../../core/pcr-primer-design-options.js";
+import { normalizePcrPrimerDesignOptions, PCR_CANDIDATE_LENGTHS_PER_ENDPOINT } from "../../core/pcr-primer-design-options.js";
 
 function isInteractiveViewerFormat(outputFormat) {
   return outputFormat === "interactive-viewer" || outputFormat === "interactive-circular-viewer";
@@ -152,7 +152,7 @@ export async function runPcrPrimerDesign(input, options = {}, context = {}) {
     tool: "pcr-primer-design", appVersion, analysisRevision: "2026-11-01",
     options: result.options, inputFiles, search: result.search, referenceScreen: result.referenceScreen,
     warnings: result.warnings, notes: result.notes ?? [],
-    method: "Heuristic linear PCR candidate search; approximate composition Tm; uninterrupted Watson–Crick structure runs; at most eight lengths retained per endpoint; reference matches do not filter or rerank pairs"
+    method: `Heuristic linear PCR candidate search; approximate composition Tm; uninterrupted Watson–Crick structure runs; at most ${PCR_CANDIDATE_LENGTHS_PER_ENDPOINT} lengths retained per endpoint; reference matches do not filter or rerank pairs`
   };
   const report = outputFormat === "report" ? makePcrPrimerDesignReport(result) : "";
   const tsv = outputFormat === "tsv" ? makePcrPrimerDesignTsv(result.rows) : "";

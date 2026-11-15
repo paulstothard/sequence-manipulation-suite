@@ -284,7 +284,8 @@ function inspectionContrast(mark) {
 
 export function installVisualInspection(container, {
   allowPin = true,
-  includeSvgTitles = true
+  includeSvgTitles = true,
+  isInteractionSuppressed = () => false
 } = {}) {
   if (!(container instanceof HTMLElement)) return () => {};
   container._sms3InspectionCleanup?.();
@@ -876,6 +877,7 @@ export function installVisualInspection(container, {
   }
 
   function inspectFromPointer(event) {
+    if (isInteractionSuppressed(event)) { hide(); return; }
     if (activeSource === "keyboard" || pinnedMark) return;
     const mark = resolveMark(event.target, event);
     if (mark) {
@@ -889,6 +891,8 @@ export function installVisualInspection(container, {
   container.addEventListener("pointermove", (event) => {
     pendingPointer = {
       target: event.target,
+      pointerType: event.pointerType,
+      buttons: event.buttons,
       clientX: event.clientX,
       clientY: event.clientY
     };
@@ -919,6 +923,7 @@ export function installVisualInspection(container, {
     if (pinnedMark && !container.contains(event.target)) unpin();
   }, listenerOptions);
   container.addEventListener("focusin", (event) => {
+    if (isInteractionSuppressed(event)) return;
     const mark = resolveMark(event.target);
     if (mark && !pinnedMark) show(mark, pointerPositionForElement(mark), { announce: true, source: "keyboard" });
   }, listenerOptions);
@@ -1009,6 +1014,7 @@ export function installVisualInspection(container, {
     if (container._sms3InspectionCleanup === cleanup) container._sms3InspectionCleanup = null;
   };
   container._sms3InspectionCleanup = cleanup;
+  cleanup.hide = () => { cancelPendingPointerInspection(); hide({ force: true }); };
   return cleanup;
 }
 

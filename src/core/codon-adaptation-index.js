@@ -2,7 +2,7 @@ import { exportDelimitedTable } from "./table.js";
 import { openCleanDnaRnaFastaSource } from "./fasta-dna-record-source.js";
 import { getCodonsForCode } from "./genetic-code.js";
 import { getCodonUsageReference } from "./codon-reference.js";
-import { normalizeCodonAdaptationOptions } from "./codon-adaptation-options.js";
+import { normalizeCodonAdaptationOptions, CAI_ZERO_REFERENCE_COUNT } from "./codon-adaptation-options.js";
 
 export const codonAdaptationIndexColumns = [
   { id: "record", label: "Record", type: "string" },
@@ -39,13 +39,13 @@ export function makeRelativeWeights(reference) {
   const weights = new Map();
   for (const [aa, family] of byAminoAcid) {
     const counts = family.map((codon) => Number(reference?.codons?.[codon]?.count ?? 0));
-    const maxCount = Math.max(...counts.map(count => count || 0.5));
+    const maxCount = Math.max(...counts.map(count => count || CAI_ZERO_REFERENCE_COUNT));
     for (const codon of family) {
       const count = Number(reference?.codons?.[codon]?.count ?? 0);
       weights.set(codon, {
         aminoAcid: aa,
         count,
-        weight: (count || 0.5) / maxCount,
+        weight: (count || CAI_ZERO_REFERENCE_COUNT) / maxCount,
         scorable: family.length > 1
       });
     }
@@ -91,7 +91,7 @@ export function appendCodonAdaptationChunk(accumulator, sequence) {
       accumulator.logSum += Math.log(weight.weight);
       if (weight.count === 0) {
         accumulator.zeroWeight += 1;
-        note = "Zero reference count; 0.5 pseudocount used";
+        note = `Zero reference count; ${CAI_ZERO_REFERENCE_COUNT} pseudocount used`;
       }
     }
     if (accumulator.includeCodonRows) {
@@ -134,7 +134,7 @@ export function makeCodonAdaptationReport(reference, rows) {
   return [
     "Codon adaptation index",
     `Reference: ${reference.name} (${reference.id})`,
-    "Method: geometric mean of codon relative adaptiveness weights as described by Sharp and Li (1987). Stop, ambiguous, and single-codon amino-acid families are excluded and counted as ignored. Zero reference counts use a 0.5 pseudocount.",
+    `Method: geometric mean of codon relative adaptiveness weights as described by Sharp and Li (1987). Stop, ambiguous, and single-codon amino-acid families are excluded and counted as ignored. Zero reference counts use a ${CAI_ZERO_REFERENCE_COUNT} pseudocount.`,
     "Interpretation: bundled organism references summarize CDS usage, not highly expressed gene subsets; scores measure similarity to that reference, not predicted expression. The equal-synonymous seed is illustrative.",
     "Citation: Sharp PM and Li WH. Nucleic Acids Res. 1987;15:1281-1295.",
     "",

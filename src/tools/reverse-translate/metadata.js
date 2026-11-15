@@ -130,7 +130,7 @@ export const reverseTranslateMetadata = {
     {
       id: "note",
       type: "note",
-      text: "Raw or FASTA protein input is cleaned by removing gaps and unsupported characters. Positions count retained residues and stop symbols (*); B means D/N, J means I/L, Z means E/Q, X covers sense codons, and U/O use NNN with a warning. Codon assignments follow NCBI Genetic Codes. Reverse translation constructs candidate DNA; original DNA and expression efficiency cannot be inferred."
+      text: "Raw or FASTA protein input is cleaned by removing gaps and unsupported characters. Positions count retained residues and stop symbols (*); B means D/N, J means I/L, Z means E/Q, X covers sense codons, and U/O use NNN with a warning. Codon assignments follow NCBI Genetic Codes. Reverse translation constructs candidate DNA; multiple DNA sequences can encode the same protein."
     }
   ]
 };

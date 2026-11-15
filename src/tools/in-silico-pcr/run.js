@@ -1,4 +1,5 @@
 import { makePcrAmpliconGff } from "../../core/pcr-annotated-export.js";
+import { createGelAppearanceSeed } from "../../core/gel-image.js";
 import {
   findInSilicoPcrProductsAsync,
   makePcrBindingSitesTsv,
@@ -33,7 +34,7 @@ export async function runInSilicoPcr(input, options = {}, context = {}) {
   const bindingSitesTsv = makePcrBindingSitesTsv(result.siteRows);
   const fasta = makePcrProductsFasta(result.rows, lineWidth);
   const textMap = outputFormat === "text-map" ? makePcrTextMap(result, textMapWidth) : "";
-  const gelSvg = outputFormat === "svg-gel" ? makePcrProductGelSvg(result) : "";
+  const gelSvg = outputFormat === "svg-gel" ? makePcrProductGelSvg(result, { gelAppearanceSeed: createGelAppearanceSeed() }) : "";
   const viewer = outputFormat === "interactive-viewer" || outputFormat === "interactive-circular-viewer"
     ? makePcrViewerData(result, { layout: outputFormat === "interactive-circular-viewer" ? "circular" : "linear" })
     : null;

@@ -1,6 +1,6 @@
 import { applyAxisLimits, plotNumericExtent } from "../../core/plot-tools.js";
 import { exportDelimitedTable } from "../../core/table.js";
-import { BASE_COMPOSITION_DEFAULTS, METRIC_LABELS, normalizeBaseCompositionOptions } from "../../core/base-composition-options.js";
+import { BASE_COMPOSITION_DEFAULTS, BASE_COMPOSITION_LIMITS, METRIC_LABELS, normalizeBaseCompositionOptions } from "../../core/base-composition-options.js";
 import { openCleanDnaRnaFastaSource } from "../../core/fasta-dna-record-source.js";
 import {
   makeLinePlotSpec,
@@ -13,7 +13,7 @@ import { makeTableStream, makeTextStream, makeToolResult } from "../../core/work
 import { baseCompositionPlotTableColumns } from "./metadata.js";
 
 const TSV_COLUMNS = baseCompositionPlotTableColumns.map((column) => ({ ...column, label: column.id }));
-const SVG_PLOT_WINDOW_THRESHOLD = 5000;
+const SVG_PLOT_WINDOW_THRESHOLD = BASE_COMPOSITION_LIMITS.plotWindows;
 const SVG_PLOT_RECORD_WARNING_THRESHOLD = 8;
 const SVG_PLOT_LENGTH_RATIO_WARNING_THRESHOLD = 20;
 const RELATIVE_AXIS_LENGTH_RATIO_THRESHOLD = 20;
@@ -21,8 +21,8 @@ const AUTO_POINT_MARKER_THRESHOLD = 300;
 const AUTO_WINDOW_TARGET_TOTAL_ROWS = 1200;
 const AUTO_WINDOW_MAX_ROWS_PER_RECORD = 80;
 const AUTO_WINDOW_MIN_ROWS_PER_RECORD = 20;
-const MAX_WINDOW_ROWS = 50_000;
-const MAX_MATERIALIZED_OUTPUT_CHARACTERS = 25 * 1024 * 1024;
+const MAX_WINDOW_ROWS = BASE_COMPOSITION_LIMITS.windowRows;
+const MAX_MATERIALIZED_OUTPUT_CHARACTERS = BASE_COMPOSITION_LIMITS.outputCharacters;
 
 
 function roundToNiceInteger(value) {

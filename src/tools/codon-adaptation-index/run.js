@@ -7,13 +7,9 @@ import {
 import { applyDisabledFastaSourceLimits, effectiveToolLimit } from "../../core/tool-limit-policy.js";
 import { makeTableStream, makeTextStream, makeToolResult } from "../../core/workflow.js";
 import { codonUsageReferences } from "../../reference-data/codon-usage/references.js";
-import { normalizeCodonAdaptationOptions } from "../../core/codon-adaptation-options.js";
+import { normalizeCodonAdaptationOptions, CODON_ADAPTATION_INDEX_LIMITS } from "../../core/codon-adaptation-options.js";
 
-export const CODON_ADAPTATION_INDEX_LIMITS = Object.freeze({
-  maxCodonRows: 250_000,
-  maxMaterializedOutputCharacters: 25 * 1024 * 1024,
-  maxRecords: 10_000
-});
+export { CODON_ADAPTATION_INDEX_LIMITS } from "../../core/codon-adaptation-options.js";
 
 function makeResult({ outputFormat, reference, rows, codonRows, report, warnings, recordsProcessed, basesProcessed, charactersRemoved, limitOptions = {} }) {
   const summaryTsv = outputFormat === "summary-tsv" ? tableToTsv(codonAdaptationIndexColumns, rows) : "";

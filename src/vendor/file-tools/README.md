@@ -11,3 +11,6 @@ hash-wasm supplies MD5/SHA-1/SHA-256/SHA-512. zip.js supplies ZIP/ZIP64 readers
 and its packaged WASM codecs; SMS3 runs it inside its own cancellable worker.
 fflate handles streaming multi-member gzip. modern-tar parses streamed TAR.
 file-type provides best-effort binary signature recognition on bounded samples.
+
+The small compression-only bundle exposes fflate's zlib encoder for embedded
+gel fluorescence PNGs, without loading the archive readers.

@@ -1,6 +1,6 @@
 import { formatFastaRecord } from "../../core/fasta.js";
 import { exportDelimitedTable } from "../../core/table.js";
-import { normalizeDnaRnaPatternOptions } from "../../core/dna-rna-pattern-options.js";
+import { normalizeDnaRnaPatternOptions, DNA_RNA_PATTERN_LIMITS } from "../../core/dna-rna-pattern-options.js";
 import { openCleanDnaRnaFastaSource } from "../../core/fasta-dna-record-source.js";
 import { iterateFastaFixedWindowSegments } from "../../core/fasta-fixed-window-segments.js";
 import { makeDnaViewerData, makeDnaViewerStream } from "../../core/dna-viewer-data.js";
@@ -26,13 +26,13 @@ export const dnaRnaPatternFinderTableColumns = [
   { id: "context_sequence", label: "Context sequence", type: "string" }
 ];
 const DETAILED_REPORT_MATCH_THRESHOLD = 2000;
-const MAX_STREAMED_PATTERN_LENGTH = 1000;
-const MAX_STREAMED_PATTERN_BASES = 50_000_000;
-const MAX_STREAMED_PATTERN_WORK = 500_000_000;
-const MAX_STREAMED_PATTERN_MATCHES = 100_000;
-const MAX_MATERIALIZED_OUTPUT_CHARACTERS = 25 * 1024 * 1024;
-export const DNA_RNA_PATTERN_MATCHED_REGION_RECORD_THRESHOLD = 5000;
-export const DNA_RNA_PATTERN_SVG_MAP_MATCH_THRESHOLD = 5000;
+const MAX_STREAMED_PATTERN_LENGTH = DNA_RNA_PATTERN_LIMITS.patternCharacters;
+const MAX_STREAMED_PATTERN_BASES = DNA_RNA_PATTERN_LIMITS.inputCharacters;
+const MAX_STREAMED_PATTERN_WORK = DNA_RNA_PATTERN_LIMITS.work;
+const MAX_STREAMED_PATTERN_MATCHES = DNA_RNA_PATTERN_LIMITS.hits;
+const MAX_MATERIALIZED_OUTPUT_CHARACTERS = DNA_RNA_PATTERN_LIMITS.outputCharacters;
+export const DNA_RNA_PATTERN_MATCHED_REGION_RECORD_THRESHOLD = DNA_RNA_PATTERN_LIMITS.regionRecords;
+export const DNA_RNA_PATTERN_SVG_MAP_MATCH_THRESHOLD = DNA_RNA_PATTERN_LIMITS.mapMatches;
 
 function reverseComplement(sequence) {
   return Array.from(complementDnaRnaSequence(sequence, { preserveCase: true })).reverse().join("");

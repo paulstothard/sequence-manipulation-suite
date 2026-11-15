@@ -1,3 +1,4 @@
+import { makeDnaGelOptions } from "../dna-gel-options.js";
 import { makeFastaSourceInputOptions } from "../fasta-source-options.js";
 import { restrictionEnzymeRecords } from "../../reference-data/restriction-enzymes/records.js";
 import {
@@ -109,6 +110,7 @@ export const restrictionDigestMetadata = {
         { value: "fasta", label: "FASTA cut fragments" }
       ]
     },
+    ...makeDnaGelOptions(),
     {
       id: "advancedLimits", type: "group", label: "Limits", collapsible: true, collapsed: true,
       options: [
@@ -120,7 +122,7 @@ export const restrictionDigestMetadata = {
       id: "sourceNote",
       type: "note",
       text:
-        "The simulated gel is qualitative. It uses log-size migration and draws uncut circular DNA with faster apparent mobility than an equivalent-length linear molecule."
+        "Gel migration uses a published linear-DNA model for 100–10,000 bp. Sizes outside this range are extrapolated; uncut plasmid conformations and band intensities are illustrative."
     }
   ]
 };

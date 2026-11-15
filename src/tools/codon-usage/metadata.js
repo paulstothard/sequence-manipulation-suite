@@ -1,4 +1,5 @@
-import { CODON_USAGE_DEFAULTS } from "../../core/codon-usage-options.js";
+import { FASTA_RECORD_SOURCE_LIMITS as sourceLimits } from "../../core/fasta-record-source.js";
+import { CODON_USAGE_DEFAULTS, CODON_USAGE_LIMITS as limits } from "../../core/codon-usage-options.js";
 import { geneticCodes } from "../../core/genetic-code.js";
 import { codonUsageTableColumns } from "./run.js";
 import { STREAMED_FASTA_SCAN_NOTE } from "../fasta-input-policy.js";
@@ -84,7 +85,7 @@ export const codonUsageMetadata = {
       options: [{
         id: "streamingLimitsNote",
         type: "note",
-        text: "Runs accept up to 1,000 coding records and 100 million non-whitespace sequence characters. Plots accept at most 20 input records; use the table or report for larger collections. Materialized output is limited to 26,214,400 characters. Source files are limited to 512 MiB and decoded text to 150 MiB; shared header and index limits also apply."
+        text: `Runs accept up to ${limits.maxRecords.toLocaleString("en-US")} coding records and ${sourceLimits.maxAcceptedBases.toLocaleString("en-US")} non-whitespace sequence characters. Plots accept at most ${limits.maxPlotRecords} input records; use the table or report for larger collections. Materialized output is limited to ${limits.maxMaterializedOutputCharacters.toLocaleString("en-US")} characters. Source files are limited to ${sourceLimits.maxSourceBytes / 1048576} MiB and decoded text to ${sourceLimits.maxDecodedBytes / 1048576} MiB; shared header and index limits also apply.`
       }]
     },
     {

@@ -1,5 +1,9 @@
 import { codonUsageReferences } from "../reference-data/codon-usage/references.js";
 
+export const CAI_ZERO_REFERENCE_COUNT = 0.5;
+export const CODON_ADAPTATION_INDEX_LIMITS = Object.freeze({ maxCodonRows: 250_000, maxMaterializedOutputCharacters: 25 * 1024 * 1024, maxRecords: 10_000 });
+
+
 export const CODON_ADAPTATION_DEFAULTS = Object.freeze({
   referenceId: "ecoli-k12-mg1655-refseq",
   outputFormat: "summary-tsv"

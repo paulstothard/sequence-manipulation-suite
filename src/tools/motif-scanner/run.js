@@ -1,4 +1,4 @@
-import { PROTEIN_MOTIF_LIMITS, normalizeMotifScannerOptions } from "../../core/motif-scanner-options.js";
+import { PROTEIN_MOTIF_LIMITS, DNA_RNA_MOTIF_LIMITS, normalizeMotifScannerOptions } from "../../core/motif-scanner-options.js";
 import { exportDelimitedTable } from "../../core/table.js";
 import { parseSequenceInput } from "../../core/fasta.js";
 import { openCleanDnaRnaFastaSource } from "../../core/fasta-dna-record-source.js";
@@ -19,10 +19,10 @@ import { MAX_PASTED_FASTA_CHARACTERS_FOR_RICH_OUTPUTS } from "../fasta-input-pol
 import { applyDisabledFastaSourceLimits, effectiveToolLimit } from "../../core/tool-limit-policy.js";
 
 const DETAILED_REPORT_MATCH_THRESHOLD = 2000;
-const MAX_STREAMED_MOTIF_BASES = 50_000_000;
-const MAX_MOTIF_WORK = 200_000_000;
-const MAX_STREAMED_MOTIF_HITS = 50_000;
-const MAX_MATERIALIZED_OUTPUT_CHARACTERS = 25 * 1024 * 1024;
+const MAX_STREAMED_MOTIF_BASES = DNA_RNA_MOTIF_LIMITS.inputCharacters;
+const MAX_MOTIF_WORK = DNA_RNA_MOTIF_LIMITS.work;
+const MAX_STREAMED_MOTIF_HITS = DNA_RNA_MOTIF_LIMITS.hits;
+const MAX_MATERIALIZED_OUTPUT_CHARACTERS = DNA_RNA_MOTIF_LIMITS.outputCharacters;
 export const MOTIF_TEXT_MAP_MATCH_THRESHOLD = 5000;
 export const MOTIF_SVG_MAP_MATCH_THRESHOLD = 120;
 export const MOTIF_SVG_RECORD_MATCH_THRESHOLD = 30;
@@ -66,8 +66,8 @@ function makeReport({ title, rows, selectedMotifs, recordsProcessed, residuesPro
     `Motif records scanned: ${selectedMotifs.length}`,
     `Motif syntax counts: ${getSyntaxSummary(selectedMotifs)}`,
     alphabet === "protein"
-      ? "Matching policy: bundled residue patterns are matched directly to stop-delimited peptide chains. Matches are candidate sites; phosphorylation, structural context and function are not established."
-      : "Matching policy: exact/IUPAC/regex motifs are matched directly; PWM/PSSM motifs are scored by relative PWM score. Spacing models, profile HMMs, structural context, and functional annotation are not applied.",
+      ? "Matching policy: bundled residue patterns are matched directly to stop-delimited peptide chains to locate candidate sites."
+      : "Matching policy: exact/IUPAC/regex motifs are matched directly; PWM/PSSM motifs are scored by relative PWM score.",
     `Sequences scanned: ${recordsProcessed}`,
     `${alphabet === "protein" ? includesStops ? "Sequence characters" : "Residues" : "Bases"} scanned: ${residuesProcessed}`,
     `Matches found: ${rows.length}`,

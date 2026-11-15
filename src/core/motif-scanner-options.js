@@ -1,4 +1,7 @@
 import { normalizeDisabledToolLimitIds } from "./tool-limit-policy.js";
+
+export const DNA_RNA_MOTIF_LIMITS = Object.freeze({ inputCharacters: 50_000_000, work: 200_000_000, hits: 50_000, outputCharacters: 25 * 1024 * 1024 });
+
 export const PROTEIN_MOTIF_LIMITS = Object.freeze({ inputCharacters: 2_000_000, records: 10_000, work: 50_000_000, hits: 50_000, outputCharacters: 26_214_400, headerCharacters: 1000 });
 export const DNA_RNA_MOTIF_DEFAULTS = Object.freeze({
   motifDatabase: 'sms3-curated',

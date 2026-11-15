@@ -1,0 +1,1 @@
+export { zlibSync } from "fflate";

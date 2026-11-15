@@ -3,7 +3,7 @@ import { getGeneticCode } from "./genetic-code.js";
 export const ORF_DEFAULTS = Object.freeze({
   strand: "both", startMode: "start-codon", geneticCode: "1", minimumAminoAcids: 30,
   includePartial: true, nestedMode: "first-start", sortBy: "start",
-  includeStopInProtein: false, outputFormat: "svg-overview"
+  includeStopInProtein: false, outputFormat: "orf-explorer"
 });
 
 export function normalizeOrfOptions(options = {}) {
@@ -19,11 +19,11 @@ export function normalizeOrfOptions(options = {}) {
     nestedMode: choice("nestedMode", ["first-start", "all-starts"]),
     sortBy: choice("sortBy", ["start", "length-desc", "frame", "complete"]),
     includeStopInProtein: typeof options.includeStopInProtein === "boolean" ? options.includeStopInProtein : ORF_DEFAULTS.includeStopInProtein,
-    outputFormat: choice("outputFormat", ["report", "tsv", "nucleotide-fasta", "protein-fasta", "svg-overview", "interactive-viewer", "interactive-circular-viewer", "orf-records"])
+    outputFormat: choice("outputFormat", ["report", "tsv", "nucleotide-fasta", "protein-fasta", "svg-overview", "interactive-viewer", "interactive-circular-viewer", "orf-records", "orf-explorer"])
   };
 }
 
 export const ORF_OUTPUT_FORMATS_BY_STREAM = Object.freeze({
-  report: "report", tsv: "tsv", table: "tsv", nucleotideFasta: "nucleotide-fasta",
+  explorer: "orf-explorer", report: "report", tsv: "tsv", table: "tsv", nucleotideFasta: "nucleotide-fasta",
   proteinFasta: "protein-fasta", overview: "svg-overview", viewer: "interactive-viewer", orfRecords: "orf-records"
 });

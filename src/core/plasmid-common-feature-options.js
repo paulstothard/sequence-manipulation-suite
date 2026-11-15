@@ -1,5 +1,12 @@
 import { plasmidCommonFeatureRecords } from "../reference-data/plasmid-common-features/records.js";
 
+export const PLASMID_FEATURE_LIMITS = Object.freeze({
+  maxInputCharacters: 5_000_000, maxComparisons: 500_000_000, maxHits: 100_000,
+  maxRetainedCharacters: 26_214_400, maxOutputCharacters: 26_214_400,
+  textMapBases: 1_000_000, textMapHits: 10_000,
+  mapRecords: 12, mapTotalHits: 240, mapRecordHits: 80
+});
+
 export const PLASMID_FEATURE_DEFAULTS = Object.freeze({
   featureType: "all", featureId: "all", maxMismatches: 1,
   minIdentityPercent: 95, outputFormat: "svg-map"

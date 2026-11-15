@@ -1,4 +1,4 @@
-import { normalizePlasmidFeatureOptions } from "./plasmid-common-feature-options.js";
+import { normalizePlasmidFeatureOptions, PLASMID_FEATURE_LIMITS } from "./plasmid-common-feature-options.js";
 import { complementDnaRnaSequence } from "./sequence.js";
 
 export const plasmidCommonFeatureMatchColumns = [
@@ -22,13 +22,7 @@ function normalizeDna(sequence) {
   return String(sequence ?? "").toUpperCase().replace(/U/g, "T").replace(/[^ACGTRYSWKMBDHVNX]/g, "");
 }
 
-export const PLASMID_FEATURE_LIMITS = Object.freeze({
-  maxInputCharacters: 5_000_000,
-  maxComparisons: 500_000_000,
-  maxHits: 100_000,
-  maxRetainedCharacters: 26_214_400,
-  maxOutputCharacters: 26_214_400
-});
+export { PLASMID_FEATURE_LIMITS } from "./plasmid-common-feature-options.js";
 
 // Full-length ungapped Hamming comparison: identity = equal positions / length * 100.
 // Reference sequences/provenance: https://www.addgene.org/mol-bio-reference/sequencing-primers/

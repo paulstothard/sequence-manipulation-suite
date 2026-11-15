@@ -4,7 +4,7 @@ import { parsePcrTemplateInput } from "./pcr-template-input.js";
 import { formatFastaRecord } from "./fasta.js";
 import { cleanDnaRnaSequence, complementDnaRnaSequence } from "./sequence.js";
 import { exportDelimitedTable } from "./table.js";
-import { normalizePcrPrimerDesignOptions, PCR_PRIMER_DESIGN_DEFAULTS } from "./pcr-primer-design-options.js";
+import { normalizePcrPrimerDesignOptions, PCR_PRIMER_DESIGN_DEFAULTS, PCR_CANDIDATE_LENGTHS_PER_ENDPOINT } from "./pcr-primer-design-options.js";
 export { normalizePcrPrimerDesignOptions } from "./pcr-primer-design-options.js";
 
 export const pcrPrimerDesignTableColumns = [
@@ -317,7 +317,7 @@ function makeRightCandidate(sequence, startIndex, length, options, excludedRegio
   return candidate;
 }
 
-function addCandidate(map, key, candidate, limit = 8) {
+function addCandidate(map, key, candidate, limit = PCR_CANDIDATE_LENGTHS_PER_ENDPOINT) {
   if (!candidate) {
     return;
   }

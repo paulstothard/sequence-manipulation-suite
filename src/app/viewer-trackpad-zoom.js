@@ -2,6 +2,8 @@
 // Touchscreens can emit both TouchEvents and GestureEvents: leave their zoom to
 // the touch controller and cancel only the duplicate browser default here.
 // https://developer.apple.com/library/archive/documentation/AppleApplications/Reference/SafariWebContent/HandlingEvents/HandlingEvents.html
+import { viewerSurfaceTouches } from './viewer-surface-touches.js';
+
 export function installCanvasTrackpadZoom(canvas, { onStart, onChange, onEnd }) {
   const document = canvas.ownerDocument ?? canvas;
   const window = document.defaultView;
@@ -25,14 +27,14 @@ export function installCanvasTrackpadZoom(canvas, { onStart, onChange, onEnd }) 
   listen(canvas, 'mousemove', trackPointer);
   listen(canvas, 'mouseleave', () => { pointer = null; });
   listen(canvas, 'touchstart', event => {
-    touches = event.targetTouches.length;
+    touches = viewerSurfaceTouches(event, canvas).length;
     if (gesture && !gesture.touch) {
       finish();
       gesture = { touch: true };
     }
   }, { passive: true, capture: true });
   const endTouch = event => {
-    if (touches) touches = (event.touches ?? event.targetTouches).length;
+    if (touches) touches = viewerSurfaceTouches(event, canvas).length;
     if (event.type === 'touchcancel') finish();
   };
   listen(document, 'touchend', endTouch, { passive: true });

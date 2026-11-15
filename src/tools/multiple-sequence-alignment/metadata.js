@@ -1,3 +1,4 @@
+import { MAX_HEATMAP_CELLS } from "../../core/plot-renderer.js";
 import { DEFAULT_ALIGNMENT_SVG_CELL_LIMIT } from "../../core/alignment-svg.js";
 import { MUSCLE_RUNTIME } from "../../vendor/biowasm/muscle-runtime.js";
 import { MSA_DEFAULTS, MSA_STREAM_FORMATS } from "../../core/multiple-alignment-options.js";
@@ -138,7 +139,7 @@ function buildMetadata(alphabet) {
         collapsed: true,
         options: [
           { id: "coloredAlignmentCells", type: "limit-value", label: "Maximum colored alignment cells", value: DEFAULT_ALIGNMENT_SVG_CELL_LIMIT, visibleWhen: { option: "outputFormat", value: "svg-color" }, help: "Fixed display-density ceiling. Larger alignments remain available as FASTA or alignment tables." },
-          { id: "identityHeatmapCells", type: "limit-value", label: "Maximum identity heatmap cells", value: 900, visibleWhen: { option: "outputFormat", value: "identity-heatmap" }, help: "Fixed display-density ceiling (30 sequences). Use Identity matrix table for larger comparisons." },
+          { id: "identityHeatmapCells", type: "limit-value", label: "Maximum identity heatmap cells", value: MAX_HEATMAP_CELLS, visibleWhen: { option: "outputFormat", value: "identity-heatmap" }, help: "Fixed display-density ceiling. Use Identity matrix table for larger comparisons." },
           { id: "maxAlignmentRecords", type: "limit-value", label: "Maximum input records", value: MAX_MSA_SEQUENCES },
           {
             id: "maxTotalSymbols",

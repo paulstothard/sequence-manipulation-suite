@@ -1,3 +1,5 @@
+import { makeOrfExplorerData, packOrfOverviewMarks } from "../../core/orf-explorer.js";
+export { packOrfOverviewMarks } from "../../core/orf-explorer.js";
 import { exportDelimitedTable } from "../../core/table.js";
 import { normalizeOrfOptions, ORF_OUTPUT_FORMATS_BY_STREAM } from "../../core/orf-options.js";
 import { formatFastaRecord } from "../../core/fasta.js";
@@ -270,18 +272,6 @@ function appendOverviewRuler(parts, { y, left, rightX, plotWidth, sequenceLength
   }
 }
 
-export function packOrfOverviewMarks(marks, gap = 3) {
-  const laneEnds = [];
-  const packed = [...marks]
-    .sort((left, right) => left.x1 - right.x1 || right.x2 - left.x2 || left.index - right.index)
-    .map((mark) => {
-      let lane = laneEnds.findIndex((laneEnd) => mark.x1 > laneEnd + gap);
-      if (lane === -1) lane = laneEnds.length;
-      laneEnds[lane] = Math.max(laneEnds[lane] ?? Number.NEGATIVE_INFINITY, mark.x2);
-      return { ...mark, lane };
-    });
-  return { marks: packed, laneCount: Math.max(1, laneEnds.length) };
-}
 
 function minimumWidthInterval(x1, x2, left, right, minimumWidth = 7) {
   const naturalWidth = Math.max(0, x2 - x1);
@@ -621,10 +611,6 @@ function isInteractiveViewerFormat(outputFormat) {
   return outputFormat === "interactive-viewer" || outputFormat === "interactive-circular-viewer";
 }
 
-function normalizeOutputFormat(outputFormat) {
-  const outputFormats = new Set(["report", "tsv", "nucleotide-fasta", "protein-fasta", "svg-overview", "interactive-viewer", "interactive-circular-viewer", "orf-records"]);
-  return outputFormats.has(outputFormat) ? outputFormat : "svg-overview";
-}
 
 function makeOrfViewerData(records, options = {}) {
   return makeDnaViewerData(records.map((record) => ({
@@ -665,7 +651,7 @@ function makeOrfViewerData(records, options = {}) {
 }
 
 function makeOrfFinderResult({ analyzedRecords, warnings, recordsProcessed, basesProcessed, charactersRemoved, options, formats }) {
-  const outputFormat = normalizeOutputFormat(options.outputFormat);
+  const outputFormat = options.outputFormat;
   const totalOrfs = analyzedRecords.reduce((sum, record) => sum + record.orfs.length, 0);
   const useSummaryReport = totalOrfs > LARGE_TEXT_ORF_THRESHOLD;
   if (useSummaryReport && formats.has("report")) {
@@ -690,6 +676,7 @@ function makeOrfFinderResult({ analyzedRecords, warnings, recordsProcessed, base
     withinOverviewSizeLimits &&
     !overviewLayoutTooTall;
   let svgOverviewOutput = "";
+  const explorer = formats.has("orf-explorer") ? makeOrfExplorerData(analyzedRecords, options) : null;
   const viewer = [...formats].some(isInteractiveViewerFormat) ? makeOrfViewerData(analyzedRecords, options) : null;
   const orfRecords = formats.has("orf-records") ? makeOrfRecords(analyzedRecords) : null;
   if (shouldDrawSvg) {
@@ -708,7 +695,9 @@ function makeOrfFinderResult({ analyzedRecords, warnings, recordsProcessed, base
       "Use the ORF table, first start codon per stop region, or raise the minimum amino acid length."
     ]);
   }
-  const output = outputFormat === "tsv"
+  const output = outputFormat === "orf-explorer"
+    ? `ORF explorer: ${totalOrfs} ORFs in ${recordsProcessed} sequence records.`
+    : outputFormat === "tsv"
     ? tsvOutput
     : outputFormat === "nucleotide-fasta"
       ? nucleotideFastaOutput
@@ -723,7 +712,7 @@ function makeOrfFinderResult({ analyzedRecords, warnings, recordsProcessed, base
   return makeToolResult({
     output,
     optionsUsed: options,
-    visual: outputFormat === "svg-overview"
+    visual: outputFormat === "orf-explorer" ? { viewer: explorer } : outputFormat === "svg-overview"
       ? { svg: output }
       : isInteractiveViewerFormat(outputFormat)
         ? { viewer }
@@ -737,6 +726,7 @@ function makeOrfFinderResult({ analyzedRecords, warnings, recordsProcessed, base
     basesProcessed,
     charactersRemoved,
     streams: {
+      ...(explorer ? { explorer: { kind: "viewer", viewerType: "orf-explorer", viewer: explorer } } : {}),
       ...(formats.has("report") ? { report: makeTextStream(reportOutput, "text/plain") } : {}),
       ...(formats.has("tsv") ? { tsv: makeTextStream(tsvOutput, "text/tab-separated-values") } : {}),
       ...(formats.has("tsv") ? { table: makeTableStream(orfTableColumns, tableRows, "orf-finder") } : {}),
@@ -760,7 +750,7 @@ export async function runOrfFinder(input, options = {}, executionContext = {}) {
     const format = Object.hasOwn(ORF_OUTPUT_FORMATS_BY_STREAM, stream) ? ORF_OUTPUT_FORMATS_BY_STREAM[stream] : null;
     if (format) formats.add(format === "interactive-viewer" && effectiveOptions.outputFormat === "interactive-circular-viewer" ? effectiveOptions.outputFormat : format);
   }
-  const materializeSequences = [...formats].some(format => !["report", "tsv"].includes(format));
+  const materializeSequences = [...formats].some(format => !["report", "tsv", "orf-explorer"].includes(format));
   // Many tiny records must not schedule a timer and UI update for each frame.
   let lastYield = -Infinity;
   let lastProgress = -Infinity;
@@ -804,7 +794,7 @@ export async function runOrfFinder(input, options = {}, executionContext = {}) {
       charactersRemoved += event.removedCount;
       if (event.removedCount > 0) warnings.push(`${current.title}: removed ${event.removedCount} non-DNA/RNA character(s).`);
       if (!event.length) warnings.push(`${current.title}: no DNA/RNA sequence characters were found.`);
-      budget.setRecordTitle(current.title);
+      budget.setRecordTitle(formats.size === 1 && formats.has("orf-explorer") ? "" : current.title);
       const orfs = await findOrfs(sequence, effectiveOptions, context, budget, materializeSequences);
       analyzedRecords.push({ title: current.title, recordIndex: analyzedRecords.length + 1, sequence, orfs });
       context.reportProgress({ phase: "scanning-records", recordsProcessed: analyzedRecords.length, basesProcessed });
@@ -821,7 +811,11 @@ export async function runOrfFinder(input, options = {}, executionContext = {}) {
   const result = makeOrfFinderResult({ analyzedRecords, warnings, recordsProcessed: analyzedRecords.length,
     basesProcessed, charactersRemoved, options: effectiveOptions, formats });
   // Include the actual selected text and structured payload in the transport budget.
-  if (JSON.stringify(result).length > ORF_LIMITS.maxOutputCharacters) {
+  // Explorer visual and workflow stream share one object in structured clone.
+  // Count that payload once, without expanding nested ORF sequences.
+  const transportResult = result.visual?.viewer?.viewerType === "orf-explorer"
+    ? { ...result, visual: undefined } : result;
+  if (JSON.stringify(transportResult).length > ORF_LIMITS.maxOutputCharacters) {
     throw new Error(`ORF result exceeds the ${ORF_LIMITS.maxOutputCharacters.toLocaleString("en-US")}-character output limit. Use fewer records or stricter ORF filters.`);
   }
   return result;

@@ -1,5 +1,6 @@
+import { FASTA_RECORD_SOURCE_LIMITS as sourceLimits } from "../../core/fasta-record-source.js";
 import { makeAxisLimitsGroup } from "../plot-axis-options.js";
-import { BASE_COMPOSITION_DEFAULTS } from "../../core/base-composition-options.js";
+import { BASE_COMPOSITION_DEFAULTS, BASE_COMPOSITION_LIMITS as limits } from "../../core/base-composition-options.js";
 
 const axisLimits = makeAxisLimitsGroup();
 axisLimits.visibleWhen = { option: "outputFormat", value: "plot" };
@@ -152,7 +153,7 @@ export const baseCompositionPlotMetadata = {
       options: [{
         id: "streamingLimitsNote",
         type: "note",
-        text: "Runs accept up to 100 million accepted FASTA bases and 10,000 records. A run may produce at most 50,000 windows and 26,214,400 characters of materialized output; exceeding either ceiling rejects the run. Plots show at most 5,000 windows. Increase the step size or select fewer records when a limit is reached."
+        text: `Runs accept up to ${sourceLimits.maxAcceptedBases.toLocaleString("en-US")} accepted FASTA bases and ${sourceLimits.maxRecords.toLocaleString("en-US")} records. A run may produce at most ${limits.windowRows.toLocaleString("en-US")} windows and ${limits.outputCharacters.toLocaleString("en-US")} characters of materialized output; exceeding either ceiling rejects the run. Plots show at most ${limits.plotWindows.toLocaleString("en-US")} windows. Increase the step size or select fewer records when a limit is reached.`
       }]
     },
     {

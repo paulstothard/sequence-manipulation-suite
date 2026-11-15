@@ -1,4 +1,5 @@
-import { SEQUENCE_STATS_DEFAULTS } from "../../core/sequence-stats-options.js";
+import { FASTA_RECORD_SOURCE_LIMITS as sourceLimits } from "../../core/fasta-record-source.js";
+import { SEQUENCE_STATS_DEFAULTS, SEQUENCE_STATS_OUTPUT_CHARACTERS } from "../../core/sequence-stats-options.js";
 import { sequenceStatsTableColumns } from "./table-columns.js";
 import { STREAMED_FASTA_SCAN_NOTE } from "../fasta-input-policy.js";
 import { makeFastaSourceInputOptions } from "../fasta-source-options.js";
@@ -55,7 +56,7 @@ export const sequenceStatsDnaRnaMetadata = {
       options: [{
         id: "streamingLimitsNote",
         type: "note",
-        text: "Runs accept source files up to 512 MiB, 150 MiB of decoded text, 10,000 records, and 100 million accepted source characters. Selected output is limited to 26,214,400 characters. FASTA headers are limited to 10,000 characters each and 5,000,000 in total; each index sidecar is limited to 16 MiB."
+        text: `Runs accept source files up to ${sourceLimits.maxSourceBytes / 1048576} MiB, ${sourceLimits.maxDecodedBytes / 1048576} MiB of decoded text, ${sourceLimits.maxRecords.toLocaleString("en-US")} records, and ${sourceLimits.maxAcceptedBases.toLocaleString("en-US")} accepted source characters. Selected output is limited to ${SEQUENCE_STATS_OUTPUT_CHARACTERS.toLocaleString("en-US")} characters. FASTA headers are limited to ${sourceLimits.maxHeaderCharacters.toLocaleString("en-US")} characters each and ${sourceLimits.maxTotalHeaderCharacters.toLocaleString("en-US")} in total; each index sidecar is limited to ${sourceLimits.maxIndexBytes / 1048576} MiB.`
       }]
     },
     {

@@ -1,3 +1,3 @@
 // Keep this in sync with package.json; test/app-version.test.js enforces drift.
-export const appVersion = "1.0.3";
+export const appVersion = "1.0.4";
 export const appName = "sms3";

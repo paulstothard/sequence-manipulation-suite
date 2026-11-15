@@ -15872,3 +15872,158 @@ details[open] > .sequence-extractor-section-header .sequence-extractor-section-h
 .dna-viewer-hidden-browser .dna-viewer-hidden-show { flex: 0 0 32px; width: 32px; height: 32px; padding: 6px; display: grid; place-items: center; }
 .dna-viewer-hidden-show svg { display: block; width: 18px; height: 18px; margin: 0; max-width: none; border: 0; border-radius: 0; box-shadow: none; background: transparent; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; }
 .interactive-sequence-viewer-inspector-body { min-height: 0; align-content: start; }
+
+/* ORF Explorer: read-only analysis viewer, using the shared output palette. */
+.orf-explorer {
+  container-type: inline-size;
+  color: var(--app-output-text);
+  background: var(--app-output-surface);
+  display: grid;
+  gap: .75rem;
+  padding: .75rem;
+  overflow: clip;
+  min-width: 0;
+  --viewer-surface: var(--app-output-surface);
+  --viewer-surface-soft: var(--app-output-surface-soft);
+  --viewer-border: var(--app-output-border);
+  --viewer-muted: var(--app-output-muted);
+  --viewer-text: var(--app-output-text);
+  --viewer-accent: var(--app-output-accent);
+  --viewer-accent-soft: var(--app-output-accent-soft);
+  --viewer-accent-strong: var(--app-output-accent-strong);
+  --viewer-border-strong: var(--app-output-border-strong);
+}
+.orf-explorer-controls,
+.orf-explorer-map-panel,
+.orf-explorer-table-panel {
+  border: 1px solid var(--viewer-border);
+  border-radius: 8px;
+  min-width: 0;
+}
+.orf-explorer-controls { background: var(--viewer-surface-soft); }
+.orf-explorer [hidden] { display: none; }
+.orf-explorer-header { display: flex; flex-wrap: wrap; gap: .5rem .85rem; align-items: flex-end; padding: .5rem .65rem; background: var(--app-output-surface-soft); }
+.orf-explorer-header { border-radius: 8px 8px 0 0; }
+.orf-explorer-record-choice { flex: 1 1 16rem; min-width: 0; max-width: 28rem; }
+.orf-explorer-identity { display: flex; flex-wrap: wrap; align-items: center; gap: .2rem .65rem; flex: 1 1 15rem; min-width: 0; min-height: 1.95rem; }
+.orf-explorer-record-title { font-size: .9rem; font-weight: 650; overflow-wrap: anywhere; }
+.orf-explorer-summary { margin: 0; font-size: .79rem; color: var(--app-output-muted); line-height: 1.4; }
+.orf-explorer-exports { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .65rem; min-width: 0; }
+.orf-explorer-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .65rem; padding: .4rem .65rem; border-top: 1px solid var(--app-output-border); }
+.orf-explorer-field { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin: 0; font-size: .8rem; color: var(--app-output-muted); }
+.orf-explorer select, .orf-explorer input { color: var(--app-output-text); background: var(--app-output-surface); border: 1px solid var(--app-output-border-strong); border-radius: 5px; padding: .3rem .45rem; font-size: .8rem; min-width: 0; max-width: 100%; }
+.orf-explorer select { width: auto; }
+.orf-explorer .viewer-choice-combobox input { width: 100%; }
+.orf-explorer .viewer-choice-toggle { height: auto; }
+.orf-explorer-header input,
+.orf-explorer-header select,
+.orf-explorer-header .viewer-choice-toggle,
+.orf-explorer .orf-explorer-header .dna-viewer-buttons button { height: 1.95rem; min-height: 1.95rem; }
+.orf-explorer-muted { color: var(--app-output-muted); font-size: .78rem; }
+.orf-explorer-pager { margin-left: auto; }
+.orf-explorer-pager input { width: 4.5rem; }
+.orf-explorer-page-summary { margin: 0; color: var(--app-output-muted); font-size: .78rem; }
+.orf-explorer-export-status { position: fixed; inset: auto 1rem 1rem auto; margin: 0; max-width: min(28rem, calc(100vw - 2rem)); padding: .55rem .7rem; border: 1px solid var(--app-output-border); border-radius: 8px; background: var(--app-output-surface); color: var(--app-output-text); box-shadow: 0 3px 12px rgb(0 0 0 / .16); font-size: .78rem; }
+.orf-explorer-export-status:popover-open { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.orf-explorer-export-status:not(:popover-open) { display: none; }
+.orf-explorer-export-status::backdrop { background: transparent; pointer-events: none; }
+.orf-explorer-export-status button { padding: .25rem .45rem; font-size: .75rem; }
+.orf-explorer-map-panel { background: var(--viewer-surface); overflow: hidden; }
+.orf-explorer-map-tools.dna-viewer-toolbar { align-items: center; border: 0; border-bottom: 1px solid var(--viewer-border); gap: .4rem .65rem; }
+.orf-explorer-legend { display: flex; flex-wrap: wrap; gap: 1rem; color: var(--app-output-muted); font-size: .76rem; }
+.orf-explorer-legend span { display: inline-flex; align-items: center; gap: .35rem; }
+.orf-explorer-legend span::before { content: ''; width: .7rem; height: .45rem; border-radius: 2px; background: var(--app-output-accent); }
+.orf-explorer-legend .partial::before { background: var(--app-output-warning); }
+.orf-explorer-map { position: relative; overflow: auto; max-height: 560px; min-width: 0; }
+.orf-explorer-map-tools.dna-viewer-toolbar label input { padding: 0; border-radius: 4px; }
+.orf-explorer-code { color: var(--viewer-muted); font-size: .75rem; overflow-wrap: anywhere; }
+.orf-explorer-base { font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.orf-explorer-residue { font: 600 10px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.orf-explorer-sequence-label { font: 11px system-ui, sans-serif; dominant-baseline: central; pointer-events: none; }
+.orf-explorer-sequence-layer [data-orf-select] { cursor: pointer; }
+/* Inspection's off-screen text must not add a pixel below the drawing. */
+.orf-explorer-map > .visually-hidden { top: 0; left: 0; }
+.orf-explorer-map svg { display: block; max-width: none; overflow: visible; }
+.orf-explorer-map svg { touch-action: pan-y; user-select: none; -webkit-user-select: none; cursor: grab; }
+.orf-explorer-map svg:focus { outline: none; }
+.orf-explorer-map.is-dragging :is(svg, .orf-explorer-mark) { cursor: grabbing; }
+.orf-explorer-map.is-navigating .orf-explorer-mark:not(.is-selected) { filter: none; }
+.orf-explorer-frame-band { fill: none; }
+.orf-explorer-frame-label { font: 600 12px system-ui, sans-serif; fill: var(--app-output-muted); }
+.orf-explorer-axis { stroke: var(--app-output-border-strong); stroke-width: 1; }
+.orf-explorer-axis-label { font: 11px system-ui, sans-serif; fill: var(--app-output-muted); }
+.orf-explorer-mark { fill: var(--app-output-accent); stroke: var(--app-output-accent-strong); stroke-width: 1; cursor: pointer; }
+.orf-explorer-mark.partial { fill: var(--app-output-warning); stroke: var(--app-output-warning); }
+.orf-explorer-density { cursor: zoom-in; }
+.orf-explorer-density-complete { fill: var(--app-output-accent); }
+.orf-explorer-density-partial { fill: var(--app-output-warning); }
+.orf-explorer-density:is(:hover, :focus) { filter: var(--orf-explorer-glow); outline: none; }
+:root[data-theme='dark'] .orf-explorer-density:is(:hover, :focus) { filter: var(--orf-explorer-glow-dark); }
+/* Match the amber feature glow in the DNA/protein viewers. Suppress the native
+   SVG focus rectangle for mouse focus too, while preserving a visible halo. */
+.orf-explorer-mark:focus { outline: none; }
+.orf-explorer-mark:is(.is-selected, :hover, :focus) {
+  filter: var(--orf-explorer-glow);
+}
+:root[data-theme='dark'] .orf-explorer-mark:is(.is-selected, :hover, :focus) {
+  filter: var(--orf-explorer-glow-dark);
+}
+.orf-explorer-mark-label { font: 600 11px system-ui, sans-serif; fill: #fff; pointer-events: none; text-anchor: middle; }
+:root[data-theme='dark'] .orf-explorer-mark-label { fill: #101b20; }
+.orf-explorer-map-footer { display: flex; flex-wrap: wrap; align-items: baseline; gap: .3rem .85rem; padding: .35rem .65rem; }
+.orf-explorer-map-caption { margin: 0; font-size: .75rem; color: var(--app-output-muted); }
+.orf-explorer-map-help { margin: 0; padding: 0 .85rem .55rem; font-size: .75rem; line-height: 1.5; color: var(--app-output-muted); }
+.orf-explorer-body { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: start; gap: .75rem; min-width: 0; }
+.orf-explorer-table-panel { background: var(--viewer-surface); overflow: hidden; }
+.orf-explorer-table-scroll { max-height: 560px; overflow: auto; }
+.orf-explorer-table { width: 100%; border-collapse: collapse; margin: 0; font-size: .8rem; }
+.orf-explorer-table th { position: sticky; top: 0; z-index: 1; background: var(--app-output-surface-soft); }
+.orf-explorer-table th, .orf-explorer-table td { padding: .45rem .5rem; white-space: nowrap; border-inline: 0; border-bottom: 1px solid var(--app-output-border); }
+.orf-explorer-table th .table-sort-button { display: flex; align-items: center; gap: .3rem; font-size: .75rem; }
+.orf-explorer-sort-indicator { color: var(--app-output-muted); font-size: .8rem; opacity: .55; }
+.orf-explorer-table th[aria-sort]:not([aria-sort='none']) .orf-explorer-sort-indicator { color: var(--app-output-accent-strong); opacity: 1; }
+.orf-explorer-table td button { background: transparent; border: 0; padding: .1rem 0; color: var(--app-output-accent-strong); font-size: .8rem; font-weight: 600; text-align: left; }
+.orf-explorer-table tr { cursor: pointer; }
+.orf-explorer-table tr:hover { background: var(--app-output-hover-bg); }
+.orf-explorer-table tr.is-selected { background: var(--app-output-accent-soft); }
+.orf-explorer-table tr.is-selected td:first-child { box-shadow: inset 3px 0 var(--app-output-accent); }
+.orf-explorer-badge { display: inline-block; padding: .15rem .4rem; border-radius: 4px; color: var(--app-output-accent-strong); background: var(--app-output-accent-soft); font-size: .7rem; font-weight: 600; }
+.orf-explorer-badge.partial { color: var(--app-output-warning); background: var(--app-output-warning-soft); }
+.orf-explorer-details { height: auto; max-height: none; margin: 0; position: static; }
+.orf-explorer-detail-title { align-items: center; justify-content: flex-start; gap: .6rem; }
+.orf-explorer-detail-title h5 { font-size: .95rem; margin: 0; }
+.orf-explorer-detail-title .orf-explorer-badge { color: var(--app-output-accent-strong); font-size: .7rem; }
+.orf-explorer-detail-title .orf-explorer-badge.partial { color: var(--app-output-warning); }
+.orf-explorer-detail-empty { margin: 0; padding: .85rem; }
+.orf-explorer-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .3rem .8rem; margin: 0; font-size: .8rem; }
+.orf-explorer-facts dt { color: var(--app-output-muted); }
+.orf-explorer-facts dd { margin: 0; overflow-wrap: anywhere; }
+.orf-explorer-sequence-heading { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .3rem; font-size: .8rem; }
+.orf-explorer-sequence-text { margin: 0; padding: .65rem .7rem; border: 1px solid var(--app-output-border); border-radius: 8px; background: var(--app-output-surface); color: var(--app-output-text); font: .76rem/1.65 'SFMono-Regular', Consolas, 'Liberation Mono', monospace; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-all; min-width: 0; min-height: 3.5rem; max-height: 13rem; overflow: auto; overscroll-behavior-y: contain; }
+.orf-explorer-sequence-note { line-height: 1.55; margin: 0; }
+.orf-explorer-sequence-pager { font-size: .76rem; color: var(--app-output-muted); }
+@container (max-width: 960px) {
+  .orf-explorer-table-scroll { max-height: 280px; }
+  .orf-explorer-pager { margin-left: 0; }
+}
+@container (max-width: 720px) {
+  .orf-explorer-body { grid-template-columns: minmax(0, 1fr); }
+  .orf-explorer-details { scroll-margin-top: 1rem; }
+}
+@container (max-width: 400px) {
+  .orf-explorer-header { padding: .65rem; }
+  .orf-explorer-details .interactive-sequence-viewer-inspector-body { padding: .5rem; }
+  .orf-explorer-toolbar { padding-left: .65rem; padding-right: .65rem; }
+  .orf-explorer-identity { flex-basis: 100%; }
+  .orf-explorer-facts { column-gap: .55rem; }
+}
+@container (max-width: 340px) {
+  .orf-explorer-facts { grid-template-columns: minmax(0, 1fr); row-gap: .15rem; }
+  .orf-explorer-facts dd:not(:last-child) { margin-bottom: .35rem; }
+}
+.orf-explorer { --viewer-button-gradient: var(--app-output-button-gradient); --viewer-border-strong: var(--app-output-border-strong); --viewer-hover-bg: var(--app-output-hover-bg); --viewer-hover-border: var(--app-output-hover-border); --viewer-accent-strong: var(--app-output-accent-strong); }
+.orf-explorer .dna-viewer-buttons { gap: .35rem; }
+.orf-explorer .dna-viewer-buttons button { height: 1.9rem; min-width: 1.9rem; padding: .3rem .55rem; font-size: .76rem; }
+.orf-explorer .dna-viewer-buttons button:disabled { opacity: .45; cursor: default; }
+.orf-explorer-map svg { background: var(--app-output-surface); border: 0; border-radius: 0; }
+.orf-explorer-table { table-layout: auto; min-width: 32rem; }

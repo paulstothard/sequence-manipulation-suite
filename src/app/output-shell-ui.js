@@ -1,3 +1,4 @@
+import { renderOrfExplorer } from "./orf-explorer-ui.js";
 import { preserveRenderHeight } from "./preserve-render-height.js";
 import {renderGraphicEditor} from './graphic-editor-ui.js';
 import { renderTextTableImage } from './text-table-image-ui.js';
@@ -1858,6 +1859,10 @@ function renderVisualOutput(scope, svg, options = {}) {
   if (options.figure) {
     renderGenomeFigure(visualOutput, options.figure, options.editorDocument);
     attachVisualInspection(visualOutput);
+    return "";
+  }
+  if (options.viewer?.viewerType === "orf-explorer") {
+    renderOrfExplorer(visualOutput, options.viewer);
     return "";
   }
   if (options.viewer) {

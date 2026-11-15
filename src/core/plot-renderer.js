@@ -9,6 +9,8 @@ import {
   SMS3_PLOT_THEME
 } from "./publication-plot-style.js";
 
+export const MAX_HEATMAP_CELLS = 900;
+
 export const PLOT_FOUNDATION = {
   name: "Observable Plot",
   packageName: "@observablehq/plot",
@@ -590,7 +592,7 @@ function renderHeatmapPlotSvgUnscoped(spec) {
   if (cellCount === 0) {
     return makePlaceholderSvg(spec.title ?? "Heatmap", ["No heatmap cells were available to draw."], spec);
   }
-  if (cellCount > 900) {
+  if (cellCount > MAX_HEATMAP_CELLS) {
     return makePlaceholderSvg(spec.title ?? "Heatmap", [
       `The heatmap has ${cellCount.toLocaleString()} cells.`,
       "Use the matrix table output for this many comparisons."

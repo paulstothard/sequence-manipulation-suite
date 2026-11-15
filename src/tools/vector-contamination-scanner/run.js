@@ -1,5 +1,5 @@
 import { exportDelimitedTable } from '../../core/table.js';
-import { normalizeVectorOptions } from '../../core/vector-contamination-options.js';
+import { normalizeVectorOptions, VECTOR_SCAN_LIMITS, VECTOR_MATCH_MODEL } from '../../core/vector-contamination-options.js';
 import { openCleanDnaRnaFastaSource } from "../../core/fasta-dna-record-source.js";
 import { iterateFastaFixedWindowSegments } from "../../core/fasta-fixed-window-segments.js";
 import { makeDnaViewerData, makeDnaViewerStream } from "../../core/dna-viewer-data.js";
@@ -14,12 +14,12 @@ import { makeTableStream, makeTextStream, makeToolResult } from "../../core/work
 import { MAX_PASTED_FASTA_CHARACTERS_FOR_RICH_OUTPUTS } from "../fasta-input-policy.js";
 import { applyDisabledFastaSourceLimits, effectiveToolLimit } from "../../core/tool-limit-policy.js";
 
-export const VECTOR_CONTAMINATION_SVG_MAP_HIT_THRESHOLD = 5000;
-const MAX_STREAMED_VECTOR_BASES = 10_000_000;
-const MAX_VECTOR_QUERY_WINDOWS = 5_000_000;
-const MAX_VECTOR_SEED_EXTENSIONS = 100_000;
-const MAX_VECTOR_CANDIDATE_ROWS = 20_000;
-const MAX_MATERIALIZED_OUTPUT_CHARACTERS = 25 * 1024 * 1024;
+export const VECTOR_CONTAMINATION_SVG_MAP_HIT_THRESHOLD = VECTOR_SCAN_LIMITS.mapHits;
+const MAX_STREAMED_VECTOR_BASES = VECTOR_SCAN_LIMITS.inputCharacters;
+const MAX_VECTOR_QUERY_WINDOWS = VECTOR_SCAN_LIMITS.queryWindows;
+const MAX_VECTOR_SEED_EXTENSIONS = VECTOR_SCAN_LIMITS.seedExtensions;
+const MAX_VECTOR_CANDIDATE_ROWS = VECTOR_SCAN_LIMITS.candidateRows;
+const MAX_MATERIALIZED_OUTPUT_CHARACTERS = VECTOR_SCAN_LIMITS.outputCharacters;
 
 
 let vectorReferenceDataPromise;
@@ -326,7 +326,7 @@ async function runStreamedVectorContaminationScanner(input, options, context, in
   const warnings = [];
   const notes = [
     `Reference: ${summary.sourceName}, ${summary.sourceVersion}; ${summary.recordCount.toLocaleString("en-US")} sequences.`,
-    "Candidate screen: exact 11-base seeds and ungapped +1/-5 extension (X-drop 12); confidence tiers use alignment length and identity. Matches require review; absent hits do not establish absence of contamination."
+    `Candidate screen: exact ${index.kmerLength}-base seeds and ungapped +${VECTOR_MATCH_MODEL.matchScore}/${VECTOR_MATCH_MODEL.mismatchPenalty} extension (X-drop ${VECTOR_MATCH_MODEL.xDrop}); confidence tiers use alignment length and identity.`
   ];
   const scanBudget = { queryWindows: 0, seedExtensions: 0, candidateRows: 0, maxQueryWindows, maxSeedExtensions, maxCandidateRows };
   let current = null;

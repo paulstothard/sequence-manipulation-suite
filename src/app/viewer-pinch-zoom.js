@@ -1,4 +1,5 @@
 import { installCanvasTrackpadZoom } from './viewer-trackpad-zoom.js';
+import { viewerSurfaceTouches } from './viewer-surface-touches.js';
 
 function pinchPosition(touches) {
   if (touches.length !== 2) return null;
@@ -14,7 +15,9 @@ export function installCanvasPinchZoom(canvas, {
   onStart, onChange, onEnd, onContact, onTap,
   onPanStart, onPanMove, onPanEnd, panAxis = "x"
 }) {
-  let previous = null, single = null, suppressClickUntil = 0;
+  const document = canvas.ownerDocument ?? canvas;
+  const window = document.defaultView;
+  let previous = null, single = null, suppressClickUntil = 0, suspended = false;
   const suppressClick = () => { suppressClickUntil = Date.now() + 500; };
   const point = touch => ({ clientX: touch.clientX, clientY: touch.clientY, button: 0, target: canvas });
   const finishPinch = () => {
@@ -30,7 +33,8 @@ export function installCanvasPinchZoom(canvas, {
     onContact?.();
   };
   const start = event => {
-    const touches = event.targetTouches;
+    suspended = false;
+    const touches = viewerSurfaceTouches(event, canvas);
     if (!previous && !single) suppressClickUntil = 0;
     if (touches.length === 1 && onPanStart) {
       finishPinch();
@@ -45,7 +49,8 @@ export function installCanvasPinchZoom(canvas, {
     previous = current;
   };
   const move = event => {
-    const touches = event.targetTouches;
+    if (suspended) return;
+    const touches = viewerSurfaceTouches(event, canvas);
     if (touches.length === 1 && onPanStart) {
       finishPinch();
       const touch = touches[0];
@@ -74,18 +79,23 @@ export function installCanvasPinchZoom(canvas, {
     previous = current;
   };
   const end = event => {
-    if (event.type === "touchcancel") { finishPan(true); finishPinch(); return; }
-    if (event.targetTouches.length === 2) return;
+    if (!previous && !single) return;
+    const touches = viewerSurfaceTouches(event, canvas);
+    if (event.type === "touchcancel") {
+      if (event.changedTouches && !viewerSurfaceTouches({ touches: event.changedTouches }, canvas).length) return;
+      finishPan(true); finishPinch(); return;
+    }
+    if (touches.length === 2) return;
     finishPinch();
-    if (event.targetTouches.length === 1 && onPanStart) {
-      const remaining = event.targetTouches[0];
+    if (touches.length === 1 && onPanStart) {
+      const remaining = touches[0];
       if (!single || single.id !== remaining.identifier) { finishPan(true); beginSingle(remaining); }
     } else {
-      if (!event.targetTouches.length && single && !single.active && !single.scrolling && single.tapAllowed && onTap) {
+      if (!touches.length && single && !single.active && !single.scrolling && single.tapAllowed && onTap) {
         event.preventDefault();
         onTap(single.last);
       }
-      finishPan(event.targetTouches.length > 0);
+      finishPan(touches.length > 0);
     }
   };
   const click = event => {
@@ -94,6 +104,7 @@ export function installCanvasPinchZoom(canvas, {
     event.stopImmediatePropagation();
   };
   const pointerDown = () => { if (!previous && !single) suppressClickUntil = 0; };
+  const blur = () => { suspended = true; finishPan(true); finishPinch(); };
   const cleanupTrackpad = installCanvasTrackpadZoom(canvas, {
     onStart: () => { finishPan(true); finishPinch(); onContact?.(); onStart?.(); },
     onChange,
@@ -103,8 +114,9 @@ export function installCanvasPinchZoom(canvas, {
   canvas.addEventListener("pointerdown", pointerDown);
   canvas.addEventListener("touchstart", start, { passive: false });
   canvas.addEventListener("touchmove", move, { passive: false });
-  canvas.addEventListener("touchend", end, { passive: false });
-  canvas.addEventListener("touchcancel", end);
+  document.addEventListener("touchend", end, { passive: false });
+  document.addEventListener("touchcancel", end);
+  window?.addEventListener("blur", blur);
   return () => {
     cleanupTrackpad();
     finishPan(true);
@@ -113,7 +125,8 @@ export function installCanvasPinchZoom(canvas, {
     canvas.removeEventListener("pointerdown", pointerDown);
     canvas.removeEventListener("touchstart", start);
     canvas.removeEventListener("touchmove", move);
-    canvas.removeEventListener("touchend", end);
-    canvas.removeEventListener("touchcancel", end);
+    document.removeEventListener("touchend", end);
+    document.removeEventListener("touchcancel", end);
+    window?.removeEventListener("blur", blur);
   };
 }

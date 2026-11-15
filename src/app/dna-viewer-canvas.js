@@ -86,6 +86,8 @@ import { installCanvasVisualInspection } from "./visual-inspection.js";
 import { installCanvasPinchZoom } from "./viewer-pinch-zoom.js";
 import { viewerWheelZoomFactor } from "./viewer-wheel-zoom.js";
 import { calculateBaseSelectionMarker } from "./base-selection-marker.js";
+import { makeCheckboxToggle } from './viewer-checkbox-toggle.js';
+import { createViewerExportButton, createViewerFitButton } from './viewer-export-buttons.js';
 import { createFeatureZoomController, featureFocus } from "./viewer-feature-focus.js";
 
 const PLOT_LEFT = 118;
@@ -109,9 +111,6 @@ const ICONS = {
   zoomOut: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.25"/><path d="m15.25 15.25 4.25 4.25"/><path d="M7.75 10.5h5.5"/></svg>',
   panLeft: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6.5 9 12l5.5 5.5"/><path d="M20 12H9.5"/></svg>',
   panRight: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 6.5 15 12l-5.5 5.5"/><path d="M4 12h10.5"/></svg>',
-  fitView: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4H4v4"/><path d="M16 4h4v4"/><path d="M20 16v4h-4"/><path d="M8 20H4v-4"/><path d="M8 12h8"/></svg>',
-  pngFile: '<span class="dna-viewer-export-label">PNG</span><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3.25v8"/><path d="m6.9 8.55 3.1 3.1 3.1-3.1"/><path d="M4.25 15.75h11.5"/></svg>',
-  svgFile: '<span class="dna-viewer-export-label">SVG</span><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3.25v8"/><path d="m6.9 8.55 3.1 3.1 3.1-3.1"/><path d="M4.25 15.75h11.5"/></svg>'
 };
 
 const VIEWER_DNA_RNA_IUPAC = /^[ACGTURYSWKMBDHVNX]$/i;
@@ -1488,15 +1487,6 @@ function createButton(icon, title) {
   return button;
 }
 
-function makeCheckboxToggle(text, checked) {
-  const label = document.createElement("label");
-  const input = document.createElement("input");
-  input.type = "checkbox";
-  input.checked = checked;
-  label.append(input, text);
-  return { label, input };
-}
-
 function makeGeneticCodeSelect(selectedCode = "1") {
   const control = document.createElement("div");
   control.className = "dna-viewer-code-select";
@@ -1842,12 +1832,9 @@ function installViewer(panel, record, options = {}) {
   const zoomOut = createButton(ICONS.zoomOut, "Zoom out from the center of the current view");
   const panLeft = createButton(ICONS.panLeft, "Pan left");
   const panRight = createButton(ICONS.panRight, "Pan right");
-  const reset = createButton(ICONS.fitView, "Fit full sequence");
-  const camera = createButton(ICONS.pngFile, "Download current view as PNG");
-  const svgDownload = createButton(ICONS.svgFile, "Download current view as SVG");
-  camera.classList.add("dna-viewer-export-button");
-  camera.classList.add("dna-viewer-export-button-first");
-  svgDownload.classList.add("dna-viewer-export-button");
+  const reset = createViewerFitButton();
+  const camera = createViewerExportButton('PNG', { first: true });
+  const svgDownload = createViewerExportButton('SVG');
   buttons.append(zoomIn, zoomOut, panLeft, panRight, reset, camera, svgDownload);
   const status = document.createElement("div");
   status.className = "dna-viewer-status";

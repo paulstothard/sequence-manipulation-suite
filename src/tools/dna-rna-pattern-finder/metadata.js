@@ -1,4 +1,5 @@
-import { DNA_RNA_PATTERN_DEFAULTS as defaults } from "../../core/dna-rna-pattern-options.js";
+import { FASTA_RECORD_SOURCE_LIMITS as sourceLimits } from "../../core/fasta-record-source.js";
+import { DNA_RNA_PATTERN_DEFAULTS as defaults, DNA_RNA_PATTERN_LIMITS as limits } from "../../core/dna-rna-pattern-options.js";
 import {
   DNA_RNA_PATTERN_MATCHED_REGION_RECORD_THRESHOLD,
   DNA_RNA_PATTERN_SVG_MAP_MATCH_THRESHOLD,
@@ -94,7 +95,7 @@ export const dnaRnaPatternFinderMetadata = {
         {
           id: "patternOutputLimitNote",
           type: "note",
-          text: `Plain/IUPAC scans support patterns up to 1,000 characters, 50 million non-whitespace input characters, 10,000 records, 500 million symbol comparisons, and 100,000 candidate hits. Retained hit data and selected output are limited to 26,214,400 characters. Use report, table, or linear map output; text maps, sequence viewers, and JavaScript regex require bounded pasted input. Matched regions requested in workflows are capped at ${DNA_RNA_PATTERN_MATCHED_REGION_RECORD_THRESHOLD.toLocaleString()} records; linear maps show at most ${DNA_RNA_PATTERN_SVG_MAP_MATCH_THRESHOLD.toLocaleString()} matches.`
+          text: `Plain/IUPAC scans support patterns up to ${limits.patternCharacters.toLocaleString("en-US")} characters, ${limits.inputCharacters.toLocaleString("en-US")} non-whitespace input characters, ${sourceLimits.maxRecords.toLocaleString("en-US")} records, ${limits.work.toLocaleString("en-US")} symbol comparisons, and ${limits.hits.toLocaleString("en-US")} candidate hits. Retained hit data and selected output are limited to ${limits.outputCharacters.toLocaleString("en-US")} characters. Use report, table, or linear map output; text maps, sequence viewers, and JavaScript regex require bounded pasted input. Matched regions requested in workflows are capped at ${DNA_RNA_PATTERN_MATCHED_REGION_RECORD_THRESHOLD.toLocaleString()} records; linear maps show at most ${DNA_RNA_PATTERN_SVG_MAP_MATCH_THRESHOLD.toLocaleString()} matches.`
         }
       ]
     },

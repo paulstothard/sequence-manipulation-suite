@@ -1,3 +1,5 @@
+export const DNA_RNA_PATTERN_LIMITS = Object.freeze({ patternCharacters: 1000, inputCharacters: 50_000_000, work: 500_000_000, hits: 100_000, outputCharacters: 25 * 1024 * 1024, regionRecords: 5000, mapMatches: 5000 });
+
 export const DNA_RNA_PATTERN_DEFAULTS = Object.freeze({
   pattern: "ATGN",
   patternMode: "iupac",

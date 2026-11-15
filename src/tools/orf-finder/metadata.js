@@ -1,3 +1,5 @@
+import { ORF_EXPLORER_PAGE_SIZE, ORF_SEQUENCE_PAGE_SIZE } from "../../core/orf-explorer.js";
+import { ORF_MAP_ARROW_LIMIT } from "../../core/orf-explorer-map.js";
 import { ORF_DEFAULTS } from "../../core/orf-options.js";
 import { geneticCodes } from "../../core/genetic-code.js";
 import {
@@ -17,7 +19,10 @@ export const orfFinderMetadata = {
     "Find open reading frames on forward and reverse-complement strands with selectable genetic codes and length filters.",
   whenToUse: "Locate candidate coding regions in DNA/RNA and export their coordinates or translations under a chosen genetic code.",
   inputType: "DNA/RNA sequence",
-  outputType: "ORF report, table, FASTA, overview, or linear DNA sequence viewer",
+  showcaseOutputs: [{ id: "orf-explorer", label: "ORF explorer",
+    summary: "Explore ORFs and their DNA and protein sequences in a short lambda phage fragment.",
+    options: { outputFormat: "orf-explorer", nestedMode: "first-start" } }],
+  outputType: "ORF explorer, report, table, FASTA, overview, or linear DNA sequence viewer",
   runInWorker: true,
   workerModule: "../tools/orf-finder/run.js",
   workerExport: "runOrfFinderWorker",
@@ -28,6 +33,7 @@ export const orfFinderMetadata = {
       { id: "sequenceRecords", kind: "sequence-records", alphabet: "dna-rna" }
     ],
     outputs: [
+      { id: "explorer", outputFormat: "orf-explorer", kind: "viewer", viewerType: "orf-explorer", label: "ORF explorer" },
       { id: "primary", kind: "text", mediaType: "text/plain" },
       { id: "report", outputFormat: "report", kind: "text", mediaType: "text/plain" },
       { id: "tsv", outputFormat: "tsv", kind: "text", mediaType: "text/tab-separated-values" },
@@ -113,6 +119,7 @@ export const orfFinderMetadata = {
       label: "Output format",
       defaultValue: ORF_DEFAULTS.outputFormat,
       choices: [
+        { value: "orf-explorer", label: "ORF explorer" },
         { value: "report", label: "Summary report" },
         { value: "tsv", label: "Summary table", resultView: { kind: "table", streamId: "table" } },
         { value: "nucleotide-fasta", label: "Nucleotide FASTA" },
@@ -129,6 +136,7 @@ export const orfFinderMetadata = {
         { type: "limit-value", label: "FASTA source", value: "512 MiB source; 150 MiB decoded text", detail: "Header ceilings are 10,000 characters per record and 5,000,000 combined; indexed sidecars are limited to 16 MiB." },
         { type: "limit-value", label: "ORF candidates", value: "100,000 ORFs per run", detail: "Larger candidate sets are rejected before sequence materialization." },
         { type: "limit-value", label: "ORF sequences and output", value: "26,214,400 characters each", detail: "Rejects larger combined ORF nucleotide/protein sequence and record-title content or serialized result payloads; no partial result is returned." },
+        { type: "limit-value", label: "ORF explorer", value: `${ORF_EXPLORER_PAGE_SIZE} table rows per page; ${ORF_MAP_ARROW_LIMIT} individual map ORFs; ${ORF_SEQUENCE_PAGE_SIZE} DNA bases per sequence page`, detail: "The map includes every matching ORF in the visible region. Dense regions count all ORFs overlapping each interval; large records retain density where more than two packed lanes per frame would be needed. Zoom reveals individual ORFs, their translations using the analysis genetic code, and both DNA strands in a fixed strip between forward and reverse ORFs. Table pagination does not limit map coverage. SVG/PNG export the current view; DNA and protein exports include full sequences within the output limit." },
         { type: "limit-value", label: "Detailed text report", value: `${LARGE_TEXT_ORF_THRESHOLD.toLocaleString("en-US")} ORFs`, detail: "Larger results switch to a summary; select Summary table to generate all found ORFs." },
         { type: "limit-value", label: "ORF overview plot", value: `${SVG_OVERVIEW_ORF_THRESHOLD.toLocaleString("en-US")} ORFs, ${SVG_OVERVIEW_BASE_THRESHOLD.toLocaleString("en-US")} bases, and ${SVG_OVERVIEW_HEIGHT_THRESHOLD.toLocaleString("en-US")} px planned height`, detail: "The plot is withheld above any bound after optimally packing the visible intervals into lanes." },
         { type: "note", text: `Above ${LARGE_TEXT_ORF_THRESHOLD.toLocaleString("en-US")} ORFs, the text report switches to a summary; select Summary table to generate all found ORFs. An overview that exceeds its ORF, base, or packed-height bound is replaced with an explanation; choose the table, first-start nested ORFs, or narrower filters to see a drawable overview.` }
@@ -140,7 +148,7 @@ export const orfFinderMetadata = {
       text: "Input is cleaned to DNA/RNA IUPAC symbols with gaps removed. Ambiguous codons translate as X and do not define starts or stops. RNA U is treated as T for ORF detection and nucleotide FASTA."
     },
     { type: "note", text: "Coordinates are 1-based and inclusive on the cleaned input, with start ≤ end on both strands. Nucleotide ORFs include the terminal stop; amino-acid lengths exclude it. Complete means a terminal stop was found. Partial ORFs omit incomplete terminal codons." },
-    { type: "note", text: "Each record is scanned as a linear sequence; the circular viewer changes the display only. ORFs are candidate coding regions and do not establish genes or expression. Splicing, frameshifts and context-dependent recoding are not modeled." },
+    { type: "note", text: "Each record is scanned as a linear sequence; the circular viewer changes the display only. Splicing, frameshifts and context-dependent recoding are not modeled." },
     { type: "note", text: "References:\n\nGenetic codes and alternative initiators: NCBI Genetic Codes." }
   ]
 };

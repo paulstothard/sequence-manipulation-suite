@@ -1,5 +1,12 @@
 import { normalizeDisabledToolLimitIds } from './tool-limit-policy.js';
 
+export const VECTOR_SCAN_LIMITS = Object.freeze({ inputCharacters: 10_000_000, queryWindows: 5_000_000, seedExtensions: 100_000, candidateRows: 20_000, outputCharacters: 25 * 1024 * 1024, mapHits: 5000 });
+export const VECTOR_MATCH_MODEL = Object.freeze({
+  matchScore: 1, mismatchPenalty: -5, xDrop: 12, mergeOverlap: 0.8,
+  strong: Object.freeze({ length: 30, identity: 95 }),
+  moderate: Object.freeze({ length: 16, identity: 90 })
+});
+
 export const VECTOR_SENSITIVITY_PRESETS = Object.freeze({
   'high-confidence': Object.freeze({ minimumAlignedLength: 30, minimumPercentIdentity: 95 }),
   balanced: Object.freeze({ minimumAlignedLength: 30, minimumPercentIdentity: 90 }),

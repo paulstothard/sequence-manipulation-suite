@@ -1,4 +1,5 @@
 const viewerStreamLabels = {
+  "orf-explorer": { sentence: "ORF explorer", label: "ORF explorer", heading: "ORF Explorer" },
   "dna-sequence-viewer": {
     sentence: "Linear DNA sequence viewer",
     label: "Linear DNA sequence viewer",
@@ -32,7 +33,8 @@ const genericViewerTitles = new Set([
   "circular dna sequence viewer",
   "protein sequence viewer",
   "protein structure viewer",
-  "interactive sequence extractor"
+  "interactive sequence extractor",
+  "orf explorer"
 ]);
 
 export function describeViewerStream(stream, style = "sentence") {
