@@ -1,3 +1,4 @@
+import { plotCategoryMarker } from "./plot-category-style.js";
 import { isolateSvgStyles } from "./svg-style-scope.js";
 import "../vendor/d3/d3.min.js";
 import { escapeXml } from "./plot-renderer.js";
@@ -38,8 +39,6 @@ export const simpleLinearRegressionFitColumns = [
   { id: "fitted", label: "Fitted", type: "number" },
   { id: "residual", label: "Residual", type: "number" }
 ];
-
-const COLORS = SMS3_PLOT_THEME.categorical;
 
 function getD3() {
   return globalThis.d3 ?? null;
@@ -108,10 +107,6 @@ export function simpleLinearRegressionFitRowsToTsv(rows) {
   return rowsToTsv(simpleLinearRegressionFitColumns, rows);
 }
 
-function groupColor(group, groups) {
-  return COLORS[Math.max(0, groups.indexOf(group)) % COLORS.length];
-}
-
 function renderRegressionSvg(...args) {
   return isolateSvgStyles(renderRegressionSvgUnscoped(...args));
 }
@@ -173,11 +168,10 @@ function renderRegressionSvgUnscoped(result, options = {}) {
     `<line class="axis" x1="0" x2="0" y1="0" y2="${plotHeight}"/>`,
     `<line x1="${line.x1.toFixed(2)}" y1="${line.y1.toFixed(2)}" x2="${line.x2.toFixed(2)}" y2="${line.y2.toFixed(2)}" stroke="${SMS3_PLOT_THEME.outline}" stroke-width="${style.dataStrokeWidth}"/>`,
     ...pointRows.map((row) => {
-      const color = groupColor(row.group || "Data", groups);
       const details = [`${row.label}: x=${row.x}, y=${row.y}, fitted=${row.fitted}`];
       const crowdingFact = pointCrowdingFact(row);
       if (crowdingFact) details.push(crowdingFact);
-      return `<circle data-sms3-nearest-point="true" cx="${row.plotX.toFixed(2)}" cy="${row.plotY.toFixed(2)}" r="4.6" fill="${color}" fill-opacity="0.8"><title>${escapeXml(details.join("; "))}</title></circle>`;
+      return plotCategoryMarker(groups.indexOf(row.group || "Data"), { x: row.plotX, y: row.plotY, radius: 4.6, attributes: 'data-sms3-nearest-point="true" fill-opacity="0.8"', title: details.join("; ") });
     }),
     "</g>",
     `<text class="label" x="${width / 2}" y="${height - 18}" text-anchor="middle">${escapeXml(makePlotAxisLabel(result.xColumn?.label ?? "X"))}</text>`,
@@ -187,7 +181,7 @@ function renderRegressionSvgUnscoped(result, options = {}) {
   if (showLegend) {
     parts.push(...groups.slice(0, 16).map((group, index) => {
       const y = 76 + index * 20;
-      return `<rect x="${width - 128}" y="${y - 10}" width="10" height="10" fill="${groupColor(group, groups)}"/><text class="legend" x="${width - 112}" y="${y}">${escapeXml(group)}</text>`;
+      return `${plotCategoryMarker(index, { x: width - 123, y: y - 5, radius: 5 })}<text class="legend" x="${width - 112}" y="${y}">${escapeXml(group)}</text>`;
     }));
   }
   parts.push("</svg>");

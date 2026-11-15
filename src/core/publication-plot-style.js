@@ -1,3 +1,5 @@
+import { PUBLICATION_COLOR_MAPS } from "./publication-color-maps.js";
+
 export const PUBLICATION_PLOT_FONT_FAMILY = "Arial,Helvetica,sans-serif";
 export const PUBLICATION_SEQUENCE_FONT_FAMILY = "ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace";
 export const DEFAULT_PUBLICATION_WIDTH_MM = 180;
@@ -51,15 +53,16 @@ export const SMS3_PLOT_THEME = freeze({
     high: "#D55E00"
   }),
   heatmapScales: freeze({
-    lightViridis: freeze(["#f1f5f9", "#bbdbe0", "#48bb8f", "#fde725"]),
-    viridis: freeze(["#440154", "#31688e", "#35b779", "#fde725"]),
+    cividis: PUBLICATION_COLOR_MAPS.cividis,
+    viridis: PUBLICATION_COLOR_MAPS.viridis,
     blue: freeze(["#eff6ff", "#60a5fa", "#1d4ed8"]),
-    redBlue: freeze(["#0072B2", "#f8fafc", "#D55E00"])
+    blueOrange: freeze(["#0072B2", "#f8fafc", "#D55E00"])
   }),
   alignment: freeze({
-    exact: "#cdece2",
-    similar: "#d7e9f3",
-    mismatch: "#f5d9ca",
+    // Moderate fills keep every sequence letter in the same regular dark ink.
+    exact: "#80c7b0",
+    similar: "#80b4d2",
+    mismatch: "#efbd6f",
     gap: "#e5e7eb"
   }),
   featureMap: freeze({

@@ -1,3 +1,5 @@
+import { plotCategoryStyle, plotCategoryMarker, plotCategoryPatternDefs } from "./plot-category-style.js";
+import { normalizePlotColorScale, plotColorDomain, plotValueColor } from "./plot-color-scale.js";
 import { isolateSvgStyles } from "./svg-style-scope.js";
 import "../vendor/d3/d3.min.js";
 import {
@@ -315,10 +317,6 @@ function histogramBinCount(values, min, max, options = {}) {
   return clampBinCount(Number.parseInt(options.binCount, 10) || 12);
 }
 
-function groupColor(group, groups) {
-  return COLORS[Math.max(0, groups.indexOf(group)) % COLORS.length];
-}
-
 function round(value, digits = 6) {
   return Number.isFinite(value) ? Number(value.toFixed(digits)) : "";
 }
@@ -364,64 +362,6 @@ function gaussianKernelDensity(values, grid, bandwidth) {
     }, 0);
     return { value, density: total / normalizer };
   });
-}
-
-function interpolateHex(a, b, t) {
-  const clamped = Math.max(0, Math.min(1, t));
-  const parse = (value) => [
-    Number.parseInt(value.slice(1, 3), 16),
-    Number.parseInt(value.slice(3, 5), 16),
-    Number.parseInt(value.slice(5, 7), 16)
-  ];
-  const [ar, ag, ab] = parse(a);
-  const [br, bg, bb] = parse(b);
-  const channel = (start, end) => Math.round(start + (end - start) * clamped).toString(16).padStart(2, "0");
-  return `#${channel(ar, br)}${channel(ag, bg)}${channel(ab, bb)}`;
-}
-
-function interpolateStops(stops, t) {
-  const clamped = clamp(t, 0, 1);
-  if (stops.length <= 1) return stops[0] ?? SMS3_PLOT_THEME.selection;
-  const scaled = clamped * (stops.length - 1);
-  const index = Math.min(stops.length - 2, Math.floor(scaled));
-  return interpolateHex(stops[index], stops[index + 1], scaled - index);
-}
-
-function normalizeHeatmapColorScale(value) {
-  return ["light-viridis", "viridis", "blue", "red-blue"].includes(value) ? value : "light-viridis";
-}
-
-function colorForValue(value, min, max, { colorScale = "light-viridis" } = {}) {
-  if (!Number.isFinite(value)) return SMS3_PLOT_THEME.missing;
-  const span = max - min || 1;
-  const fraction = (value - min) / span;
-  if (colorScale === "light-viridis") {
-    return interpolateStops(SMS3_PLOT_THEME.heatmapScales.lightViridis, fraction);
-  }
-  if (colorScale === "red-blue") {
-    const limit = Math.max(Math.abs(min), Math.abs(max), 1e-9);
-    if (value < 0) return interpolateHex(SMS3_PLOT_THEME.diverging.low, SMS3_PLOT_THEME.diverging.middle, (value + limit) / limit);
-    return interpolateHex(SMS3_PLOT_THEME.diverging.middle, SMS3_PLOT_THEME.diverging.high, value / limit);
-  }
-  if (colorScale === "blue") {
-    return interpolateStops(SMS3_PLOT_THEME.heatmapScales.blue, fraction);
-  }
-  const d3 = getD3();
-  if (d3?.scaleSequential) {
-    const interpolator = colorScale === "blue"
-      ? d3.interpolateBlues
-      : colorScale === "red-blue"
-        ? d3.interpolateRdBu
-        : d3.interpolateViridis;
-    if (interpolator) {
-      if (colorScale === "red-blue") {
-        const limit = Math.max(Math.abs(min), Math.abs(max), 1e-9);
-        return interpolator(0.5 + clamp(value / (2 * limit), -0.5, 0.5));
-      }
-      return d3.scaleSequential(interpolator).domain([min, max])(value);
-    }
-  }
-  return interpolateStops(SMS3_PLOT_THEME.heatmapScales.viridis, fraction);
 }
 
 function orderValues(values, mode = "input") {
@@ -1406,7 +1346,7 @@ export function makeHeatmapPlot(input, options = {}) {
     valueLabel: makePlotAxisLabel(valueColumn.label, options.valueAxisLabel, options.valueAxisUnit),
     publicationWidthMm: options.publicationWidthMm,
     showTitle: options.showTitle !== false,
-    colorScheme: normalizeHeatmapColorScale(options.colorScale),
+    colorScheme: normalizePlotColorScale(options.colorScale),
     xCategories: xValues.map((value) => ({ id: value, label: value })),
     yCategories: yValues.map((value) => ({ id: value, label: value })),
     cells: rows.map((row) => ({
@@ -1648,7 +1588,6 @@ export function renderScatterSvg(rows, options = {}) {
     ...pointRows.map((row) => {
       const x = row.plotX;
       const y = row.plotY;
-      const color = groupColor(row.group || "Data", groups);
       const facts = [
         String(row.label || "Point"),
         `${options.xLabel || "x"}: ${row.x}`,
@@ -1658,14 +1597,14 @@ export function renderScatterSvg(rows, options = {}) {
       const crowdingFact = pointCrowdingFact(row);
       if (crowdingFact) facts.push(crowdingFact);
       if (sampleFact) facts.push(sampleFact);
-      return `<circle data-sms3-nearest-point="true" cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="4.5" fill="${color}" fill-opacity="0.78"><title>${escapeXml(facts.join("; "))}</title></circle>`;
+      return plotCategoryMarker(groups.indexOf(row.group || "Data"), { x, y, attributes: 'data-sms3-nearest-point="true" fill-opacity="0.78"', title: facts.join("; ") });
     }),
     "</g>"
   ];
   if (options.showLegend) {
     parts.push(...groups.slice(0, 16).map((group, index) => {
       const y = 76 + index * 20;
-      return `<rect x="${width - 128}" y="${y - 10}" width="10" height="10" fill="${groupColor(group, groups)}"/><text class="legend" x="${width - 112}" y="${y}">${escapeXml(group)}</text>`;
+      return `${plotCategoryMarker(index, { x: width - 123, y: y - 5, radius: 5 })}<text class="legend" x="${width - 112}" y="${y}">${escapeXml(group)}</text>`;
     }));
   }
   return renderBaseSvg({
@@ -2057,7 +1996,7 @@ export function renderLineSvg(rows, options = {}) {
     `<line class="axis" x1="0" x2="${plotWidth}" y1="${plotHeight}" y2="${plotHeight}"/>`,
     `<line class="axis" x1="0" x2="0" y1="0" y2="${plotHeight}"/>`,
     ...groupedRows.map((seriesRows, index) => {
-      const color = COLORS[index % COLORS.length];
+      const { color, dash } = plotCategoryStyle(index);
       const line = getD3()?.line?.()
         .x((row) => scale(row.x, xMin, xMax, 0, plotWidth))
         .y((row) => scale(row.y, yMin, yMax, plotHeight, 0));
@@ -2073,16 +2012,16 @@ export function renderLineSvg(rows, options = {}) {
         const crowdingFact = pointCrowdingFact(row);
         if (crowdingFact) details.push(crowdingFact);
         if (sampleFact) details.push(sampleFact);
-        return `<circle data-sms3-nearest-point="true" cx="${row.plotX.toFixed(2)}" cy="${row.plotY.toFixed(2)}" r="3.2" fill="${color}"><title>${escapeXml(details.join("; "))}</title></circle>`;
+        return plotCategoryMarker(index, { x: row.plotX, y: row.plotY, radius: 3.2, attributes: 'data-sms3-nearest-point="true"', title: details.join("; ") });
       }).join("");
-      return `<path d="${path}" fill="none" stroke="${color}" stroke-width="${style.dataStrokeWidth}" stroke-linejoin="round" stroke-linecap="round"/>${points}`;
+      return `<path d="${path}" fill="none" stroke="${color}" stroke-width="${style.dataStrokeWidth}"${dash ? ` stroke-dasharray="${dash}"` : ""} stroke-linejoin="round" stroke-linecap="round"/>${points}`;
     }),
     "</g>"
   ];
   if (options.showLegend) {
     parts.push(...groups.slice(0, 16).map((group, index) => {
       const y = 76 + index * 20;
-      return `<line x1="${width - 130}" x2="${width - 116}" y1="${y - 4}" y2="${y - 4}" stroke="${COLORS[index % COLORS.length]}" stroke-width="3"/><text class="legend" x="${width - 108}" y="${y}">${escapeXml(group)}</text>`;
+      return `<line x1="${width - 130}" x2="${width - 116}" y1="${y - 4}" y2="${y - 4}" stroke="${plotCategoryStyle(index).color}" stroke-width="3"${plotCategoryStyle(index).dash ? ` stroke-dasharray="${plotCategoryStyle(index).dash}"` : ""}/><text class="legend" x="${width - 108}" y="${y}">${escapeXml(group)}</text>`;
     }));
   }
   return renderBaseSvg({
@@ -2124,6 +2063,7 @@ export function renderBarSvg(rows, options = {}) {
   const groupWidth = categoryWidth * 0.78;
   const barWidth = Math.max(2, groupWidth / Math.max(1, groups.length));
   const parts = [
+    plotCategoryPatternDefs(groups.length),
     `<g transform="translate(${margin.left} ${margin.top})">`,
     ...yTicks.map((tick) => {
       const y = scale(tick, yMin, yMax, plotHeight, 0);
@@ -2141,7 +2081,7 @@ export function renderBarSvg(rows, options = {}) {
       const groupIndex = groups.indexOf(row.group || "Data");
       const x = categoryIndex * categoryWidth + (categoryWidth - groupWidth) / 2 + groupIndex * barWidth;
       const y = scale(row.value, yMin, yMax, plotHeight, 0);
-      const color = groupColor(row.group || "Data", groups);
+      const color = plotCategoryStyle(groupIndex).fill;
       return `<rect class="category-value-bar" data-sms3-inspection-highlight="shade" x="${x.toFixed(2)}" y="${Math.min(y, zeroY).toFixed(2)}" width="${Math.max(1, barWidth - 2).toFixed(2)}" height="${Math.max(1, Math.abs(zeroY - y)).toFixed(2)}" fill="${color}" fill-opacity="0.82"><title>${escapeXml(`${row.category}${row.group ? ` / ${row.group}` : ""}: ${row.value}`)}</title></rect>`;
     }),
     "</g>"
@@ -2149,7 +2089,7 @@ export function renderBarSvg(rows, options = {}) {
   if (options.showLegend) {
     parts.push(...groups.slice(0, 16).map((group, index) => {
       const y = 76 + index * 20;
-      return `<rect x="${width - 128}" y="${y - 10}" width="10" height="10" fill="${groupColor(group, groups)}"/><text class="legend" x="${width - 112}" y="${y}">${escapeXml(group)}</text>`;
+      return `<rect x="${width - 128}" y="${y - 10}" width="10" height="10" fill="${plotCategoryStyle(index).fill}"/><text class="legend" x="${width - 112}" y="${y}">${escapeXml(group)}</text>`;
     }));
   }
   return renderBaseSvg({
@@ -2405,8 +2345,8 @@ export function renderHeatmapSvg(rows, options = {}) {
   const maxXLabelWidth = Math.max(...xValues.map((value) => plotTextWidthEstimate(value, 11)), 40);
   const maxYLabelWidth = Math.max(...yValues.map((value) => plotTextWidthEstimate(value, 11)), 48);
   const values = rows.map((row) => row.value).filter((value) => Number.isFinite(value));
-  const min = options.colorDomain ? options.colorDomain[0] : Math.min(...values);
-  const max = options.colorDomain ? options.colorDomain[1] : Math.max(...values);
+  const colorScale = normalizePlotColorScale(options.colorScale);
+  const [min, max] = plotColorDomain(options.colorDomain ?? [Math.min(...values), Math.max(...values)], colorScale);
   const marginLeft = Math.min(260, Math.max(148, Math.ceil(maxYLabelWidth + 46)));
   const marginBottom = Math.min(150, Math.max(104, Math.ceil(maxXLabelWidth * 0.64 + 58)));
   const rawLegendTitle = String(options.valueLabel || "Value");
@@ -2430,7 +2370,6 @@ export function renderHeatmapSvg(rows, options = {}) {
   const { height, margin } = layout;
   const plotWidth = width - margin.left - margin.right;
   const plotHeight = height - margin.top - margin.bottom;
-  const colorScale = normalizeHeatmapColorScale(options.colorScale);
   const cellWidth = plotWidth / Math.max(1, xValues.length);
   const cellHeight = plotHeight / Math.max(1, yValues.length);
   const legendLayout = heatmapLegendLayout({
@@ -2449,7 +2388,7 @@ export function renderHeatmapSvg(rows, options = {}) {
       const row = rowByCell.get(`${xValue}\u0000${yValue}`);
       const x = xIndex * cellWidth;
       const y = yIndex * cellHeight;
-      const color = row ? colorForValue(row.value, min, max, { colorScale }) : SMS3_PLOT_THEME.missing;
+      const color = row ? plotValueColor(row.value, [min, max], colorScale) : SMS3_PLOT_THEME.missing;
       const title = row ? `${row.x} / ${row.y}: ${niceNumber(row.value)}` : `${xValue} / ${yValue}: missing`;
       return `<rect data-sms3-inspection-highlight="shade" x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${Math.max(1, cellWidth).toFixed(2)}" height="${Math.max(1, cellHeight).toFixed(2)}" fill="${color}" stroke="${SMS3_PLOT_THEME.surface}" stroke-width="1"><title>${escapeXml(title)}</title></rect>`;
     })),
@@ -2472,10 +2411,11 @@ export function renderHeatmapSvg(rows, options = {}) {
       y: 0,
       width: legendBarWidth,
       height: legendHeight,
-      colorAt: (fraction) => colorForValue(max - fraction * (max - min), min, max, { colorScale })
+      colorAt: (fraction) => plotValueColor(max - fraction * (max - min), [min, max], colorScale)
     }),
     `<text class="legend" data-heatmap-legend-title="true" x="0" y="-18" text-anchor="start">${escapeXml(legendTitle)}</text>`,
     `<text class="tick" data-heatmap-legend-label="max" x="${legendBarWidth + legendLabelGap}" y="0" dominant-baseline="middle">${escapeXml(niceNumber(max))}</text>`,
+    ...(colorScale === "blue-orange" ? [`<text class="tick" data-heatmap-legend-label="zero" x="${legendBarWidth + legendLabelGap}" y="${legendHeight / 2}" dominant-baseline="middle">0</text>`] : []),
     `<text class="tick" data-heatmap-legend-label="min" x="${legendBarWidth + legendLabelGap}" y="${legendHeight}" dominant-baseline="middle">${escapeXml(niceNumber(min))}</text>`,
     "</g>"
   ];

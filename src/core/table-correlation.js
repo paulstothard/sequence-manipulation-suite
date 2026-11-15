@@ -201,7 +201,7 @@ export function makeCorrelationHeatmap(result, options = {}) {
       yLabel: "Column",
       valueLabel,
       colorDomain: isCorrelationMetric ? [-1, 1] : undefined,
-      colorScale: isCorrelationMetric ? "red-blue" : "blue"
+      colorScale: "blue-orange"
     }
   );
 }

@@ -493,18 +493,21 @@ function shortestCoordinateDelta(target, current, length) {
   return ((((target - current) % length) + length * 1.5) % length) - length / 2;
 }
 
-function wheelGestureAnchor(state, rawAnchor, recordLength, clientX, clientY) {
-  const anchorClientX = Number(state.wheelAnchorClientX);
-  const anchorClientY = Number(state.wheelAnchorClientY);
+function zoomGestureAnchor(state, rawAnchor, angle, recordLength, clientX, clientY) {
+  const anchorClientX = Number(state.zoomAnchorClientX);
+  const anchorClientY = Number(state.zoomAnchorClientY);
   const moved = Number.isFinite(anchorClientX) && Number.isFinite(anchorClientY)
     ? Math.hypot(clientX - anchorClientX, clientY - anchorClientY)
     : Infinity;
-  if (!Number.isFinite(state.wheelAnchorBp) || moved > 24) {
-    state.wheelAnchorBp = normalizeBp(rawAnchor, recordLength);
-    state.wheelAnchorClientX = clientX;
-    state.wheelAnchorClientY = clientY;
+  if (!Number.isFinite(state.zoomAnchorBp) || moved > 24) {
+    state.zoomAnchorBp = normalizeBp(rawAnchor, recordLength);
+    state.zoomAnchorAngle = angle;
+    state.zoomAnchorClientX = clientX;
+    state.zoomAnchorClientY = clientY;
   }
-  return state.wheelAnchorBp;
+  // Retain both parts of the anchor. Recomputing its angle as the circle moves
+  // can send a cached north-facing coordinate to the south mid-gesture.
+  return { bp: state.zoomAnchorBp, angle: state.zoomAnchorAngle };
 }
 
 export function measureCircularFeatureZoom(region, focus, { x, y, state, recordLength, arc = getArcConfig(state, recordLength) }) {
@@ -1778,11 +1781,15 @@ function computeRenderedCircularLayout(width, height, state, record) {
   });
   const orderedTrackLayouts = sortCircularTrackLayoutsForDrawing(otherTrackLayouts);
   const offsets = getCircularTrackOffsets(digestFragmentTracks, restrictionTracks, orderedTrackLayouts, state.compactLayout);
-  if (getCenterWeight(state, record) <= 0.05) {
+  const overviewBlend = getCenterWeight(state, record);
+  if (overviewBlend < 1) {
     // Honor narrow viewports after overview scaling; a fixed radius floor
     // can push the outer coordinate labels beyond the Canvas clip.
     const availableOuterRadius = Math.max(0, Math.min(width, height - 2 * (state.featureLegendHeight || 0)) / 2 - 42);
-    baseRadius = Math.max(minimumBaseRadius, Math.min(baseRadius, availableOuterRadius - offsets.rulerOffset));
+    const overviewRadius = Math.max(minimumBaseRadius, Math.min(baseRadius, availableOuterRadius - offsets.rulerOffset));
+    // Gradually release the fitted overview radius. A threshold switch here
+    // made a tiny zoom step expand every ring by tens of pixels at once.
+    baseRadius = overviewRadius + (baseRadius - overviewRadius) * overviewBlend;
     pxPerBp = ((TWO_PI - arc.gapAngle) * baseRadius) / state.viewSpan;
   }
   const detailRadius = getInnermostSequenceRadius(baseRadius, state);
@@ -2793,17 +2800,18 @@ function installCircularViewer(panel, record, options = {}) {
     hiddenTrackIds: new Set(preserved?.hiddenTrackIds ?? []),
     expandedTrackIds: new Set(Array.isArray(preserved?.expandedTrackIds) ? preserved.expandedTrackIds : []),
     hiddenTrackItemTypes: new Map((preserved?.hiddenTrackItemTypes ?? []).map(([key, types]) => [key, new Set(types)])),
-    wheelAnchorClientX: null,
-    wheelAnchorClientY: null
+    zoomAnchorClientX: null,
+    zoomAnchorClientY: null
   };
   const featureZoom = createFeatureZoomController({ ...record, topology: 'circular' });
   function resetZoomAnchors() {
     featureZoom.release();
     if (state.wheelAnchorTimer) clearTimeout(state.wheelAnchorTimer);
     state.wheelAnchorTimer = null;
-    state.wheelAnchorBp = null;
-    state.wheelAnchorClientX = null;
-    state.wheelAnchorClientY = null;
+    state.zoomAnchorBp = null;
+    state.zoomAnchorAngle = null;
+    state.zoomAnchorClientX = null;
+    state.zoomAnchorClientY = null;
   }
   clampSpan(state, record.length);
   initializeViewerCompositionTracks(record, state, preserved?.composition);
@@ -2899,19 +2907,11 @@ function installCircularViewer(panel, record, options = {}) {
     const oldScale = rect.scale;
     const oldLayout = computeRenderedCircularLayout(rect.width, rect.height, state, record);
     const { cx, cy, baseRadius: oldRadius } = oldLayout;
-    let localX = (clientX - rect.left) / oldScale;
-    let localY = (clientY - rect.top) / oldScale;
-    const pointer = preserveOrientation
+    const localX = (clientX - rect.left) / oldScale;
+    const localY = (clientY - rect.top) / oldScale;
+    let pointer = preserveOrientation
       ? CIRCULAR_ZOOM_ORIENTATION_ANGLE
       : zoomAnchorAngle({ clientX, clientY }, rect, cx, cy, oldRadius);
-    const pointerDistance = Math.hypot(localX - cx, localY - cy);
-    const centerDeadZone = Math.max(
-      70,
-      Math.min(oldRadius * 0.45, Math.min(rect.width, rect.height) * 0.22)
-    );
-    const useCursorAnchor = !preserveOrientation && Number.isFinite(pointerDistance) && pointerDistance > centerDeadZone;
-    const oldAnchorX = cx + Math.cos(pointer) * oldRadius;
-    const oldAnchorY = cy + Math.sin(pointer) * oldRadius;
     const oldArc = oldLayout.arc;
     const oldFraction = angleToFractionOnArc(pointer, oldArc);
     const rawAnchorBp = getViewStart(state) + oldFraction * oldSpan;
@@ -2923,9 +2923,14 @@ function installCircularViewer(panel, record, options = {}) {
         x: localX, y: localY, state, recordLength: record.length, arc: oldArc
       })
     }) : null;
+    const retainAnchor = (wheelZoom || options.retainAnchor) && !preserveOrientation;
+    const gestureAnchor = retainAnchor && !focus
+      ? zoomGestureAnchor(state, rawAnchorBp, pointer, record.length, clientX, clientY) : null;
+    if (gestureAnchor) pointer = gestureAnchor.angle;
     const anchorBp = focus ? state.viewCenter + shortestCoordinateDelta(focus.center, state.viewCenter, record.length)
-      : wheelZoom ? wheelGestureAnchor(state, rawAnchorBp, record.length, clientX, clientY)
-      : rawAnchorBp;
+      : gestureAnchor ? gestureAnchor.bp : rawAnchorBp;
+    const oldAnchorX = (cx + Math.cos(pointer) * oldRadius) * oldScale;
+    const oldAnchorY = (cy + Math.sin(pointer) * oldRadius) * oldScale;
     const nextSpan = Math.max(minSpan, Math.min(record.length, oldSpan / factor));
     if (oldScale !== 1 && nextSpan < record.length * 0.999) {
       state.canvasDisplayScale = 1;
@@ -2934,8 +2939,6 @@ function installCircularViewer(panel, record, options = {}) {
       state.centerY = null;
       state.viewMoved = false;
       rect = circularCanvasRect(canvas, state);
-      localX = clientX - rect.left;
-      localY = clientY - rect.top;
     }
     const viewportWidth = rect.width;
     const viewportHeight = rect.height;
@@ -2973,7 +2976,10 @@ function installCircularViewer(panel, record, options = {}) {
       return;
     }
     const newRadius = computeRenderedCircularLayout(rect.width, rect.height, state, record).baseRadius;
-    if (state.viewMoved && Number.isFinite(state.centerX) && Number.isFinite(state.centerY)) {
+    if (!preserveOrientation || (state.viewMoved && Number.isFinite(state.centerX) && Number.isFinite(state.centerY))) {
+      // Keep the displayed anchor in place, including centre-fallback zooms.
+      // Switching to an unrelated preferred display radius caused a jump as
+      // soon as the overview began allowing centre movement.
       const clamped = clampVisualCenter(
         oldAnchorX - Math.cos(pointer) * newRadius,
         oldAnchorY - Math.sin(pointer) * newRadius,
@@ -2996,33 +3002,6 @@ function installCircularViewer(panel, record, options = {}) {
       const clamped = clampVisualCenter(
         displayX - Math.cos(pointer) * newRadius,
         displayY - Math.sin(pointer) * newRadius,
-        newRadius,
-        rect.width,
-        rect.height
-      );
-      setStoredCenterForVisualCenter(
-        state,
-        record,
-        rect.width,
-        rect.height,
-        clamped.cx,
-        clamped.cy
-      );
-      state.viewMoved = false;
-    } else if (!preserveOrientation) {
-      const displayRadius = getCircularAnchorDisplayRadius(viewportWidth, viewportHeight, state, record.length);
-      const anchorRadius = useCursorAnchor
-        ? newRadius + (pointerDistance - oldRadius) * oldScale
-        : newRadius;
-      const displayX = useCursorAnchor
-        ? localX
-        : viewportCenterX + Math.cos(pointer) * displayRadius;
-      const displayY = useCursorAnchor
-        ? localY
-        : viewportCenterY + Math.sin(pointer) * displayRadius;
-      const clamped = clampVisualCenter(
-        displayX - Math.cos(pointer) * anchorRadius,
-        displayY - Math.sin(pointer) * anchorRadius,
         newRadius,
         rect.width,
         rect.height
@@ -3481,9 +3460,10 @@ function installCircularViewer(panel, record, options = {}) {
     if (state.wheelAnchorTimer) clearTimeout(state.wheelAnchorTimer);
     zoomAt(event.clientX, event.clientY, factor, { smoothAnchor: true });
     state.wheelAnchorTimer = setTimeout(() => {
-      state.wheelAnchorBp = null;
-      state.wheelAnchorClientX = null;
-      state.wheelAnchorClientY = null;
+      state.zoomAnchorBp = null;
+      state.zoomAnchorAngle = null;
+      state.zoomAnchorClientX = null;
+      state.zoomAnchorClientY = null;
       state.wheelAnchorTimer = null;
     }, 320);
   }, { passive: false });
@@ -3499,8 +3479,9 @@ function installCircularViewer(panel, record, options = {}) {
       inspection.hide();
     },
     onChange: ({ current, factor }) => {
-      zoomAt(current.x, current.y, factor);
-    }
+      zoomAt(current.x, current.y, factor, { retainAnchor: true });
+    },
+    onEnd: resetZoomAnchors
   });
   const onMouseDown = (event) => {
     if (event.button !== 0) return;

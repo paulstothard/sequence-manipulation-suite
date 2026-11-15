@@ -2,6 +2,15 @@ import externalResourceCatalogue from './external-resources/catalogue.js';
 import { MUSCLE_RUNTIME } from '../vendor/biowasm/muscle-runtime.js';
 
 export const softwareLicenseAttributions = [
+  {
+    category: "Runtime data",
+    name: "Genome Artistry identity palettes",
+    version: "c17386b87cda34f28af9373c8667a75270241ebd",
+    license: "MIT",
+    sourceUrl: "https://github.com/paulstothard/genome-artistry/tree/c17386b87cda34f28af9373c8667a75270241ebd/color_schemes",
+    bundledPath: "src/vendor/genome-artistry/identity-palettes.js; src/vendor/genome-artistry/LICENSE",
+    notes: "Supplies Aurora, Copper and Forest identity gradients for Genome Comparison Poster. SMS3 retains its layout-specific backgrounds and text colors."
+  },
   {category:"Runtime library",name:"CSSTree",version:"3.1.0",license:"MIT",sourceUrl:"https://github.com/csstree/csstree",bundledPath:"src/vendor/svg-parser/; src/vendor/svg-parser/css-tree-LICENSE.txt",notes:"Parses and validates SVG styles locally.",packageNames:["css-tree"]},
   {category:"Runtime data",name:"mdn-data",version:"2.12.2",license:"CC0-1.0",sourceUrl:"https://github.com/mdn/data",bundledPath:"src/vendor/svg-parser/; src/vendor/svg-parser/mdn-data-LICENSE.txt",notes:"Provides CSS syntax definitions used to validate SVG styles.",packageNames:["mdn-data"]},
   {category:"Runtime library",name:"source-map-js",version:"1.2.2",license:"BSD-3-Clause",sourceUrl:"https://github.com/7rulnik/source-map-js",bundledPath:"src/vendor/svg-parser/; src/vendor/svg-parser/source-map-js-LICENSE.txt",notes:"Supports source-position mapping in the bundled CSS parser.",packageNames:["source-map-js"]},

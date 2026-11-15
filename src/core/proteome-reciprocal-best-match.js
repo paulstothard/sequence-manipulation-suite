@@ -774,7 +774,7 @@ export function makeSequenceSetBestMatchHeatmapSvg(result, options = {}) {
     yLabel: config.yLabel,
     valueLabel: "Identity",
     valueDomain: [0, 100],
-    colorScheme: "light-viridis",
+    colorScheme: "cividis",
     xCategories: rowsB.map((record) => ({ id: String(record.sourceIndex), label: `${record.sourceIndex}: ${record.title}` })),
     yCategories: rowsA.map((record) => ({ id: String(record.sourceIndex), label: `${record.sourceIndex}: ${record.title}` })),
     cells: rowsA.flatMap(a => rowsB.map(b => {

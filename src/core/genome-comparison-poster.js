@@ -1,3 +1,6 @@
+import { GENOME_ARTISTRY_IDENTITY_PALETTES } from "../vendor/genome-artistry/identity-palettes.js";
+import { PUBLICATION_COLOR_MAPS } from "./publication-color-maps.js";
+import { interpolateColorStops } from "./plot-color-scale.js";
 import { isolateSvgStyles } from "./svg-style-scope.js";
 import { parseSequenceInput } from "./fasta.js";
 import { cleanDnaRnaSequence, complementDnaRnaSequence } from "./sequence.js";
@@ -1281,14 +1284,22 @@ const IDENTITY_COLOR_SCHEMES = Object.freeze({
   },
   viridis: {
     label: "Viridis",
-    direct: ["#440154", "#3b528b", "#21918c", "#5ec962", "#fde725"],
-    reverse: ["#3b0f70", "#355f8d", "#1f9e89", "#6ece58", "#fde725"]
+    direct: PUBLICATION_COLOR_MAPS.viridis,
+    reverse: PUBLICATION_COLOR_MAPS.viridis
   },
   cividis: {
     label: "Cividis",
-    direct: ["#00204c", "#31446b", "#666970", "#a39c5a", "#ffd43b"],
-    reverse: ["#12355b", "#3e5f7e", "#6f7f85", "#aa9f62", "#f6c85f"]
+    direct: PUBLICATION_COLOR_MAPS.cividis,
+    reverse: PUBLICATION_COLOR_MAPS.cividis
   },
+  ...Object.fromEntries(["plasma", "inferno", "magma"].map(name => [name, {
+    label: name[0].toUpperCase() + name.slice(1),
+    direct: PUBLICATION_COLOR_MAPS[name],
+    reverse: PUBLICATION_COLOR_MAPS[name]
+  }])),
+  ...Object.fromEntries(Object.entries(GENOME_ARTISTRY_IDENTITY_PALETTES).map(([name, colors]) => [name, {
+    label: name[0].toUpperCase() + name.slice(1), direct: colors, reverse: colors
+  }])),
   sunset: {
     label: "Sunset",
     direct: ["#3b0764", "#7e22ce", "#db2777", "#f97316", "#fde68a"],
@@ -1311,38 +1322,6 @@ function normalizeColorScheme(value) {
 
 function getIdentityColorScheme(value) {
   return IDENTITY_COLOR_SCHEMES[normalizeColorScheme(value)] ?? IDENTITY_COLOR_SCHEMES[DEFAULT_COLOR_SCHEME];
-}
-
-function parseHexColor(color) {
-  const value = String(color).replace(/^#/u, "");
-  return [
-    Number.parseInt(value.slice(0, 2), 16),
-    Number.parseInt(value.slice(2, 4), 16),
-    Number.parseInt(value.slice(4, 6), 16)
-  ];
-}
-
-function formatHexColor([red, green, blue]) {
-  return `#${[red, green, blue]
-    .map((value) => clamp(Math.round(value), 0, 255).toString(16).padStart(2, "0"))
-    .join("")}`;
-}
-
-function interpolateHexColor(startColor, endColor, fraction) {
-  const start = parseHexColor(startColor);
-  const end = parseHexColor(endColor);
-  const t = clamp(fraction, 0, 1);
-  return formatHexColor(start.map((value, index) => value + (end[index] - value) * t));
-}
-
-function interpolateIdentityColors(colors, fraction) {
-  const t = clamp(fraction, 0, 1);
-  if (colors.length <= 1) {
-    return colors[0] ?? "#ffffff";
-  }
-  const scaled = t * (colors.length - 1);
-  const index = Math.min(colors.length - 2, Math.floor(scaled));
-  return interpolateHexColor(colors[index], colors[index + 1], scaled - index);
 }
 
 function weightedIdentityPercentile(blocks, percentile) {
@@ -1396,7 +1375,7 @@ function identityScaleFraction(identity, scale) {
 function identityColor(identity, strand, scale, colorScheme = DEFAULT_COLOR_SCHEME) {
   const scheme = getIdentityColorScheme(colorScheme);
   const colors = strand === "-" ? scheme.reverse : scheme.direct;
-  return interpolateIdentityColors(colors, identityScaleFraction(identity, scale));
+  return interpolateColorStops(colors, identityScaleFraction(identity, scale));
 }
 
 function makeGradientId(layout, strand) {
@@ -1430,16 +1409,18 @@ function renderIdentityLegend(parts, { x, y, width, scale, layout, showReverse, 
   const labelOffset = 24;
   const rowGap = 38;
   parts.push(`<text class="label" x="${x}" y="${y - 14}" data-identity-legend-title="true">${escapeXml(`${scaleLabel}; ${scheme.label}`)}</text>`);
-  const rows = [
-    { strand: "+", label: "Direct strand" },
-    ...(showReverse ? [{ strand: "-", label: "Reverse-complement strand" }] : [])
+  const sameColors = scheme.direct.length === scheme.reverse.length &&
+    scheme.direct.every((color, index) => color === scheme.reverse[index]);
+  const rows = sameColors ? [{ strand: "+", label: "", key: "shared" }] : [
+    { strand: "+", label: "Direct strand", key: "direct" },
+    ...(showReverse ? [{ strand: "-", label: "Reverse-complement strand", key: "reverse" }] : [])
   ];
   rows.forEach((row, index) => {
     const rowY = y + index * rowGap;
     const labelY = rowY + labelOffset;
-    const rowKey = row.strand === "-" ? "reverse" : "direct";
+    const rowKey = row.key;
     parts.push(`<rect x="${x}" y="${rowY}" width="${width}" height="${barHeight}" rx="3" fill="url(#${makeGradientId(layout, row.strand)})" data-identity-legend-bar="${rowKey}"/>`);
-    parts.push(`<text class="small" x="${x}" y="${labelY}" data-identity-legend-label="${rowKey}-min">${escapeXml(`${row.label} ${scale.min}%`)}</text>`);
+    parts.push(`<text class="small" x="${x}" y="${labelY}" data-identity-legend-label="${rowKey}-min">${escapeXml(`${row.label} ${scale.min}%`.trim())}</text>`);
     parts.push(`<text class="small" x="${x + width}" y="${labelY}" text-anchor="end" data-identity-legend-label="${rowKey}-max">${escapeXml(`${scale.max}%`)}</text>`);
   });
 }
@@ -2674,9 +2655,9 @@ function renderCircularGenomeComparisonPosterSvg({
   warnings = []
 }) {
   const width = 1120;
-  const height = 1120;
+  const height = width + (options.showLegend ? 120 : 0);
   const cx = width / 2;
-  const cy = height / 2;
+  const cy = width / 2;
   const outerRadius = options.showAxis ? 450 : 512;
   const innerRadius = outerRadius * 0.28;
   const ringPitch = (outerRadius - innerRadius) / Math.max(1, comparisons.length);

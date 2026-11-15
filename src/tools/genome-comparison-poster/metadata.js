@@ -215,11 +215,17 @@ export const genomeComparisonPosterMetadata = {
             { value: "magma-ocean", label: "Magma / ocean" },
             { value: "viridis", label: "Viridis" },
             { value: "cividis", label: "Cividis" },
+            { value: "plasma", label: "Plasma" },
+            { value: "inferno", label: "Inferno" },
+            { value: "magma", label: "Magma" },
+            { value: "aurora", label: "Aurora" },
+            { value: "copper", label: "Copper" },
+            { value: "forest", label: "Forest" },
             { value: "sunset", label: "Sunset" },
             { value: "blue-gold", label: "Blue / gold" }
           ],
           visibleWhen: { option: "outputFormat", value: plotOutputFormats },
-          help: "Chooses the identity-color palette for comparison blocks. Reverse-complement blocks use a paired variant of the same scheme."
+          help: "Viridis, Cividis, Plasma, Inferno and Magma are scientific sequential scales. All schemes use the same identity colors on both strands except Sunset and Blue / gold, which use paired strand palettes. Figure backgrounds stay fixed for each layout."
         },
         {
           id: "showLegend",

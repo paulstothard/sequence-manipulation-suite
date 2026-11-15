@@ -869,6 +869,19 @@ function drawLinearRuler(ctx, state, layout, options = {}) {
   }
 }
 
+export function getVisibleLinearTranslationCodonStarts(frameOffset, viewStart, viewEnd, sequenceLength) {
+  if (viewEnd <= viewStart) return [];
+  // Codons occupy [start, start + 3), including any fractional base at an edge.
+  // Keep the left-overlapping codon for clipping, but never invent a codon beyond
+  // the actual record boundaries or before this frame's first complete codon.
+  const first = Math.max(frameOffset, frameOffset + Math.floor((viewStart - frameOffset) / 3) * 3);
+  const starts = [];
+  for (let index = first; index + 3 <= sequenceLength && index < viewEnd; index += 3) {
+    starts.push(index);
+  }
+  return starts;
+}
+
 function drawTranslationRow(ctx, record, state, y, frameLabel, frameOffset, strand, layout, theme) {
   const { plotLeft, plotRight, pxPerBp } = layout;
   const codonHeight = record.compactLayout ? 14 : 22;
@@ -905,12 +918,7 @@ function drawTranslationRow(ctx, record, state, y, frameLabel, frameOffset, stra
   const sequence = record.sequence;
   const codonMap = makeCodonMap(getViewerGeneticCode(record, state));
   const startCodons = getStartCodons(getViewerGeneticCode(record, state));
-  const firstCodonStart = Math.max(frameOffset, frameOffset + Math.floor((state.viewStart - frameOffset) / 3) * 3);
-  const start = firstCodonStart < state.viewStart ? firstCodonStart + 3 : firstCodonStart;
-  const visibleCodons = [];
-  for (let index = start; index + 2 < record.length && index <= state.viewEnd; index += 3) {
-    if (index + 2 >= state.viewStart) visibleCodons.push(index);
-  }
+  const visibleCodons = getVisibleLinearTranslationCodonStarts(frameOffset, state.viewStart, state.viewEnd, record.length);
   ctx.save();
   ctx.beginPath();
   ctx.rect(plotLeft, y - hitHalfHeight - 2, plotRight - plotLeft, hitHalfHeight * 2 + 4);

@@ -41,7 +41,7 @@ export const labWorkflowPresets = [
     workflow: { steps: [input(),
       tool("replicate-qc", "qpcr-analysis", "input", "technical", { ...qpcr, outputFormat: "technical" }),
       tool("expression", "qpcr-analysis", "input", "groups", { ...qpcr, outputFormat: "groups" }),
-      tool("heatmap", "heatmap", "expression", "primary", { xColumn: "Condition", yColumn: "Target", valueColumn: "Log2 fold change", colorScale: "red-blue", categoryOrder: "input", showMissingCells: true, title: "qPCR log2 fold change relative to Control", outputFormat: "svg" })
+      tool("heatmap", "heatmap", "expression", "primary", { xColumn: "Condition", yColumn: "Target", valueColumn: "Log2 fold change", colorScale: "blue-orange", categoryOrder: "input", showMissingCells: true, title: "qPCR log2 fold change relative to Control", outputFormat: "svg" })
     ] }
   },
   {

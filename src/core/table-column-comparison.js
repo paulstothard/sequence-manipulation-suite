@@ -1,3 +1,4 @@
+import { plotValueColor } from "./plot-color-scale.js";
 import { isolateSvgStyles } from "./svg-style-scope.js";
 import "../vendor/d3/d3.min.js";
 import { convertTableDataFormat } from "./table-data-format-converter.js";
@@ -458,17 +459,6 @@ function histogram(values, domain, binCount = 12) {
   return bins;
 }
 
-function interpolateStops(stops, fraction) {
-  const t = Math.max(0, Math.min(1, fraction));
-  if (stops.length <= 1) return stops[0] ?? SMS3_PLOT_THEME.selection;
-  const d3 = getD3();
-  if (d3?.scaleLinear && d3?.interpolateRgb) {
-    const domain = stops.map((_, index) => index / (stops.length - 1));
-    return d3.scaleLinear(domain, stops).interpolate(d3.interpolateRgb)(t);
-  }
-  return stops[Math.round(t * (stops.length - 1))];
-}
-
 function renderBaseSvg(...args) {
   return isolateSvgStyles(renderBaseSvgUnscoped(...args));
 }
@@ -726,8 +716,7 @@ function renderCategoryCategoryPlot(result, columnA, columnB, options = {}) {
   const maxCount = Math.max(1, ...rows.map((row) => row.count));
   const rowByCell = new Map(rows.map((row) => [`${row.level_a}\u0000${row.level_b}`, row]));
   const colorForCount = (count) => {
-    const t = count / maxCount;
-    return interpolateStops(SMS3_PLOT_THEME.heatmapScales.blue, 0.12 + t * 0.78);
+    return plotValueColor(count, [0, maxCount]);
   };
   const parts = [
     `<g transform="translate(${margin.left} ${margin.top})">`,
@@ -776,9 +765,7 @@ function truncateLabel(value, maxLength) {
 }
 
 function compactColor(count, maxCount) {
-  if (count <= 0) return SMS3_PLOT_THEME.missing;
-  const t = Math.max(0, Math.min(1, count / Math.max(1, maxCount)));
-  return interpolateStops(SMS3_PLOT_THEME.heatmapScales.lightViridis, 0.16 + t * 0.78);
+  return plotValueColor(count, [0, maxCount]);
 }
 
 function renderCompactMatrixSvg({ title, subtitle, xLabel, yLabel, xLabels, yLabels, counts }) {

@@ -47,12 +47,12 @@ export const heatmapMetadata = {
           id: "colorScale",
           type: "select",
           label: "Color scale",
-          defaultValue: "light-viridis",
+          defaultValue: "cividis",
           choices: [
-            { value: "light-viridis", label: "Light teal-yellow" },
+            { value: "cividis", label: "Cividis" },
             { value: "viridis", label: "Viridis" },
             { value: "blue", label: "Blue sequential" },
-            { value: "red-blue", label: "Red-blue diverging" }
+            { value: "blue-orange", label: "Blue-orange diverging (zero-centered)" }
           ]
         },
         {

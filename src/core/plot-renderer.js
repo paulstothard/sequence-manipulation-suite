@@ -1,3 +1,4 @@
+import { DEFAULT_PLOT_COLOR_SCALE, normalizePlotColorScale, plotColorDomain, plotValueColor, plotCellTextColor } from "./plot-color-scale.js";
 import { isolateSvgStyles } from "./svg-style-scope.js";
 import "../vendor/d3/d3.min.js";
 import { annotatePointCrowding, pointCrowdingFact } from "./point-plot-inspection.js";
@@ -47,7 +48,7 @@ export function heatmapLegendLayout({ matrixX, matrixY, matrixWidth, matrixHeigh
 }
 
 export function renderHeatmapLegendRamp({ x, y, width, height, colorAt }) {
-  const intervals = 64;
+  const intervals = 255;
   const colors = Array.from({ length: intervals + 1 }, (_, index) => String(colorAt(index / intervals)));
   let hash = 2166136261;
   for (const color of colors) {
@@ -265,7 +266,7 @@ export function makeHeatmapPlotSpec({
   cells,
   valueLabel = "Value",
   valueDomain = [0, 100],
-  colorScheme = "light-viridis",
+  colorScheme = DEFAULT_PLOT_COLOR_SCALE,
   missingCells = [],
   width,
   height,
@@ -281,8 +282,8 @@ export function makeHeatmapPlotSpec({
     xLabel,
     yLabel,
     valueLabel,
-    valueDomain,
-    colorScheme,
+    valueDomain: plotColorDomain(valueDomain, colorScheme),
+    colorScheme: normalizePlotColorScale(colorScheme),
     width,
     height,
     publicationWidthMm,
@@ -320,13 +321,14 @@ export function makeObservablePlotConfig(spec) {
       x: xLabels.get(cell.x) ?? cell.x,
       y: yLabels.get(cell.y) ?? cell.y,
       value: cell.value,
+      color: plotValueColor(cell.value, spec.valueDomain, spec.colorScheme),
       title: cell.title
     }));
     return {
       title: spec.title,
       x: { label: spec.xLabel, padding: 0 },
       y: { label: spec.yLabel, padding: 0 },
-      color: { label: spec.valueLabel, domain: spec.valueDomain, legend: true },
+      color: { type: "identity", legend: false },
       marks: [
         {
           type: "cell",
@@ -334,7 +336,7 @@ export function makeObservablePlotConfig(spec) {
           options: {
             x: "x",
             y: "y",
-            fill: "value",
+            fill: "color",
             title: "title",
             inset: HEATMAP_CELL_GUTTER_PX / 2
           }
@@ -577,65 +579,6 @@ function truncateLabel(label, maxLength = 42) {
   return text.length > maxLength ? `${text.slice(0, maxLength - 1)}...` : text;
 }
 
-function hexToRgb(value) {
-  const text = String(value ?? "").replace(/^#/u, "");
-  return [0, 2, 4].map((offset) => Number.parseInt(text.slice(offset, offset + 2), 16));
-}
-
-function interpolateLightViridis(t) {
-  return interpolateRgbStops(SMS3_PLOT_THEME.heatmapScales.lightViridis.map(hexToRgb), t);
-}
-
-function interpolateRgbStops(stops, t) {
-  const clamped = Math.max(0, Math.min(1, Number(t)));
-  const scaled = clamped * (stops.length - 1);
-  const index = Math.min(stops.length - 2, Math.floor(scaled));
-  const local = scaled - index;
-  const left = stops[index];
-  const right = stops[index + 1];
-  const rgb = left.map((channel, channelIndex) => Math.round(channel + (right[channelIndex] - channel) * local));
-  return `rgb(${rgb.join(" ")})`;
-}
-
-function interpolateColor(value, domain = [0, 100], colorScheme = "light-viridis") {
-  const [min, max] = domain;
-  const t = Math.max(0, Math.min(1, (Number(value) - min) / Math.max(1e-12, max - min)));
-  if (colorScheme === "light-viridis") {
-    return interpolateLightViridis(t);
-  }
-  if (colorScheme === "blue") {
-    return interpolateRgbStops(SMS3_PLOT_THEME.heatmapScales.blue.map(hexToRgb), t);
-  }
-  if (colorScheme === "red-blue") {
-    const limit = Math.max(Math.abs(min), Math.abs(max), 1e-9);
-    const centered = 0.5 + Math.max(-0.5, Math.min(0.5, Number(value) / (2 * limit)));
-    return interpolateRgbStops(SMS3_PLOT_THEME.heatmapScales.redBlue.map(hexToRgb), centered);
-  }
-  const d3 = getD3();
-  if (d3?.scaleSequential) {
-    const interpolator = colorScheme === "blue"
-      ? d3.interpolateBlues
-      : colorScheme === "red-blue"
-        ? d3.interpolateRdBu
-        : d3.interpolateViridis;
-    if (interpolator) {
-      if (colorScheme === "red-blue") {
-        const limit = Math.max(Math.abs(min), Math.abs(max), 1e-9);
-        return interpolator(0.5 + Math.max(-0.5, Math.min(0.5, Number(value) / (2 * limit))));
-      }
-      return d3.scaleSequential(interpolator).domain([min, max])(value);
-    }
-  }
-  const stopsByScheme = {
-    blue: SMS3_PLOT_THEME.heatmapScales.blue.map(hexToRgb),
-    "light-viridis": SMS3_PLOT_THEME.heatmapScales.lightViridis.map(hexToRgb),
-    "red-blue": SMS3_PLOT_THEME.heatmapScales.redBlue.map(hexToRgb),
-    viridis: SMS3_PLOT_THEME.heatmapScales.viridis.map(hexToRgb)
-  };
-  const stops = stopsByScheme[colorScheme] ?? stopsByScheme.viridis;
-  return interpolateRgbStops(stops, t);
-}
-
 export function renderHeatmapPlotSvg(...args) {
   return isolateSvgStyles(renderHeatmapPlotSvgUnscoped(...args));
 }
@@ -702,7 +645,7 @@ function renderHeatmapPlotSvgUnscoped(spec) {
   const cellMap = new Map((spec.cells ?? []).map((item) => [`${item.x}\t${item.y}`, item]));
   const parts = [
     `<svg xmlns="http://www.w3.org/2000/svg" ${publicationSvgAttributes(style)} viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXml(spec.title)}" data-plot-foundation="observable-plot" data-plot-backend="d3" data-plot-renderer="sms3" data-sms3-publication-theme="default" data-sms3-plot-kind="heatmap" data-heatmap-cell-gutter-px="${HEATMAP_CELL_GUTTER_PX}">`,
-    `<style>[data-plot-renderer="sms3"] text{font-family:${style.fontFamily};font-size:${style.bodyFontSize}px;fill:${SMS3_PLOT_THEME.text};stroke:none!important;stroke-width:0!important;text-shadow:none!important;paint-order:normal!important;font-weight:400}[data-plot-renderer="sms3"] .title{font-size:${style.titleFontSize}px;font-weight:600}[data-plot-renderer="sms3"] .axis-label{font-size:${style.axisLabelFontSize}px;fill:${SMS3_PLOT_THEME.text};font-weight:400}[data-plot-renderer="sms3"] .tick{font-size:${style.bodyFontSize}px;fill:${SMS3_PLOT_THEME.axis};font-weight:400}[data-plot-renderer="sms3"] .heatmap-cell{shape-rendering:crispEdges;stroke:${SMS3_PLOT_THEME.surface};stroke-width:${HEATMAP_CELL_GUTTER_PX}}[data-plot-renderer="sms3"] .heatmap-cell-highlight-marker{fill:${SMS3_PLOT_THEME.highlight};fill-opacity:.88}[data-plot-renderer="sms3"] .value{font-size:${style.smallFontSize}px;text-anchor:middle;dominant-baseline:central;fill:${SMS3_PLOT_THEME.outline};font-weight:500}[data-plot-renderer="sms3"] .note{font-size:${style.bodyFontSize}px;fill:${SMS3_PLOT_THEME.textMuted}}</style>`,
+    `<style>[data-plot-renderer="sms3"] text{font-family:${style.fontFamily};font-size:${style.bodyFontSize}px;fill:${SMS3_PLOT_THEME.text};stroke:none!important;stroke-width:0!important;text-shadow:none!important;paint-order:normal!important;font-weight:400}[data-plot-renderer="sms3"] .title{font-size:${style.titleFontSize}px;font-weight:600}[data-plot-renderer="sms3"] .axis-label{font-size:${style.axisLabelFontSize}px;fill:${SMS3_PLOT_THEME.text};font-weight:400}[data-plot-renderer="sms3"] .tick{font-size:${style.bodyFontSize}px;fill:${SMS3_PLOT_THEME.axis};font-weight:400}[data-plot-renderer="sms3"] .heatmap-cell{shape-rendering:crispEdges;stroke:${SMS3_PLOT_THEME.surface};stroke-width:${HEATMAP_CELL_GUTTER_PX}}[data-plot-renderer="sms3"] .heatmap-cell-highlight-marker{fill:${SMS3_PLOT_THEME.highlight};fill-opacity:.88}[data-plot-renderer="sms3"] .value{font-size:${style.smallFontSize}px;text-anchor:middle;dominant-baseline:central;font-weight:500}[data-plot-renderer="sms3"] .note{font-size:${style.bodyFontSize}px;fill:${SMS3_PLOT_THEME.textMuted}}</style>`,
     `<rect width="${width}" height="${height}" fill="${SMS3_PLOT_THEME.surface}"></rect>`,
     ...(style.showTitle ? [`<text class="title" x="${FIGURE_TEXT_X}" y="${header.titleY}">${escapeXml(spec.title)}</text>`] : [])
   ];
@@ -724,14 +667,14 @@ function renderHeatmapPlotSvgUnscoped(spec) {
     xCategories.forEach((xCategory, xIndex) => {
       const cellRecord = cellMap.get(`${xCategory.id}\t${yCategory.id}`);
       const value = Number(cellRecord?.value ?? NaN);
-      const fill = Number.isFinite(value) ? interpolateColor(value, spec.valueDomain, spec.colorScheme) : SMS3_PLOT_THEME.missing;
+      const fill = Number.isFinite(value) ? plotValueColor(value, spec.valueDomain, spec.colorScheme) : SMS3_PLOT_THEME.missing;
       const x = margin.left + xIndex * cell;
       const y = margin.top + yIndex * cell;
       const isHighlighted = cellRecord?.highlight === true;
       parts.push(`<rect class="heatmap-cell" x="${x}" y="${y}" width="${cell}" height="${cell}" fill="${fill}"><title>${escapeXml(cellRecord?.title ?? `${xCategory.label} vs ${yCategory.label}`)}</title></rect>`);
       if (cell >= 26 && cellCount <= 100 && Number.isFinite(value)) {
         const displayValue = cellRecord?.displayValue ?? value.toFixed(value >= 99.95 ? 0 : 1);
-        parts.push(`<text class="value" x="${(x + cell / 2).toFixed(2)}" y="${(y + cell / 2).toFixed(2)}">${escapeXml(displayValue)}</text>`);
+        parts.push(`<text class="value" style="fill:${plotCellTextColor(fill)}" x="${(x + cell / 2).toFixed(2)}" y="${(y + cell / 2).toFixed(2)}">${escapeXml(displayValue)}</text>`);
       }
       if (isHighlighted) {
         const markerSize = Math.max(6, Math.min(9, cell * 0.22));
@@ -761,7 +704,7 @@ function renderHeatmapPlotSvgUnscoped(spec) {
     y: legendY,
     width: legendBarWidth,
     height: legendHeight,
-    colorAt: (fraction) => interpolateColor(
+    colorAt: (fraction) => plotValueColor(
       spec.valueDomain[1] - fraction * (spec.valueDomain[1] - spec.valueDomain[0]),
       spec.valueDomain,
       spec.colorScheme
@@ -770,6 +713,7 @@ function renderHeatmapPlotSvgUnscoped(spec) {
   parts.push(`<text class="axis-label" data-heatmap-legend-title="true" x="${legendX}" y="${legendY - 18}" text-anchor="start">${escapeXml(legendTitle)}</text>`);
   for (const [kind, value, y] of [
     ["max", spec.valueDomain[1], legendY],
+    ...(spec.colorScheme === "blue-orange" ? [["zero", 0, legendY + legendHeight / 2]] : []),
     ["min", spec.valueDomain[0], legendY + legendHeight]
   ]) {
     parts.push(`<text class="tick" data-heatmap-legend-label="${kind}" x="${legendX + legendBarWidth + legendLabelGap}" y="${y}" dominant-baseline="middle">${escapeXml(formatTick(value))}</text>`);

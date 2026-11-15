@@ -1,3 +1,4 @@
+import { plotColorDomain, plotValueColor } from "../core/plot-color-scale.js";
 import { isolateSvgElementStyles } from "../core/svg-style-scope.js";
 import {
   HEATMAP_CELL_GUTTER_PX,
@@ -145,19 +146,6 @@ function truncatePlotLabel(value, maxLength) {
   return `${text.slice(0, Math.max(1, maxLength - 1))}…`;
 }
 
-function observableHeatmapColors(plotSpec) {
-  if (plotSpec.colorScheme === "blue") {
-    return SMS3_PLOT_THEME.heatmapScales.blue;
-  }
-  if (plotSpec.colorScheme === "red-blue") {
-    return SMS3_PLOT_THEME.heatmapScales.redBlue;
-  }
-  if (plotSpec.colorScheme === "viridis") {
-    return SMS3_PLOT_THEME.heatmapScales.viridis;
-  }
-  return SMS3_PLOT_THEME.heatmapScales.lightViridis;
-}
-
 function addObservableHeatmapAnnotations(svg, plotSpec, publicationStyle, matrixBounds) {
   const namespace = "http://www.w3.org/2000/svg";
   const width = Number(svg.getAttribute("width")) || plotSpec.width || 760;
@@ -167,8 +155,7 @@ function addObservableHeatmapAnnotations(svg, plotSpec, publicationStyle, matrix
   const domain = Array.isArray(plotSpec.valueDomain) && plotSpec.valueDomain.length >= 2
     ? plotSpec.valueDomain.map(Number)
     : [Math.min(...numericValues), Math.max(...numericValues)];
-  const min = Number.isFinite(domain[0]) ? domain[0] : 0;
-  const max = Number.isFinite(domain[1]) ? domain[1] : min;
+  const [min, max] = plotColorDomain(domain, plotSpec.colorScheme);
   const gradientId = `sms3-heatmap-gradient-${++observableHeatmapLegendCounter}`;
   const group = document.createElementNS(namespace, "g");
   group.setAttribute("aria-label", "Plot title and color scale");
@@ -216,19 +203,11 @@ function addObservableHeatmapAnnotations(svg, plotSpec, publicationStyle, matrix
   gradient.setAttribute("x2", "0");
   gradient.setAttribute("y1", "0");
   gradient.setAttribute("y2", "1");
-  const heatmapColors = observableHeatmapColors(plotSpec);
-  const colorRamp = window.d3?.scaleLinear
-    ? window.d3.scaleLinear()
-      .domain(heatmapColors.map((_, index) => index / Math.max(1, heatmapColors.length - 1)))
-      .range(heatmapColors)
-    : (fraction) => heatmapColors[
-      Math.max(0, Math.min(heatmapColors.length - 1, Math.round(fraction * (heatmapColors.length - 1))))
-    ];
-  for (let index = 0; index <= 64; index += 1) {
-    const fraction = index / 64;
+  for (let index = 0; index <= 255; index += 1) {
+    const fraction = index / 255;
     const stop = document.createElementNS(namespace, "stop");
     stop.setAttribute("offset", `${fraction * 100}%`);
-    stop.setAttribute("stop-color", colorRamp(1 - fraction));
+    stop.setAttribute("stop-color", plotValueColor(max - fraction * (max - min), [min, max], plotSpec.colorScheme));
     gradient.append(stop);
   }
   defs.append(gradient);
@@ -286,6 +265,13 @@ function addObservableHeatmapAnnotations(svg, plotSpec, publicationStyle, matrix
   minLabel.setAttribute("dominant-baseline", "middle");
   minLabel.textContent = formatPlotNumber(min);
   group.append(minLabel);
+  if (plotSpec.colorScheme === "blue-orange") {
+    const zeroLabel = minLabel.cloneNode(true);
+    zeroLabel.setAttribute("data-heatmap-legend-label", "zero");
+    zeroLabel.setAttribute("y", String(legendY + legendHeight / 2));
+    zeroLabel.textContent = "0";
+    group.append(zeroLabel);
+  }
 
   svg.append(group);
 }
@@ -491,6 +477,7 @@ export function renderObservablePlotPreview(plotSpec) {
         x: xLabels.get(cell.x) ?? cell.x,
         y: yLabels.get(cell.y) ?? cell.y,
         value: cell.value,
+        color: plotValueColor(cell.value, plotSpec.valueDomain, plotSpec.colorScheme),
         title: cell.title
       }));
       const missingRows = (plotSpec.missingCells ?? []).map((cell) => ({
@@ -529,19 +516,14 @@ export function renderObservablePlotPreview(plotSpec) {
           domain: (plotSpec.yCategories ?? []).map((item) => item.label),
           padding: 0
         },
-        color: {
-          label: plotSpec.valueLabel ?? "Value",
-          domain: plotSpec.valueDomain,
-          range: observableHeatmapColors(plotSpec),
-          legend: false
-        },
+        color: { type: "identity", legend: false },
         marks: [
           ...(missingRows.length > 0
             ? [cellMark(missingRows, {
                 x: "x",
                 y: "y",
-                fill: "#f1f5f9",
-                stroke: "#e2e8f0",
+                fill: SMS3_PLOT_THEME.missing,
+                stroke: SMS3_PLOT_THEME.missingOutline,
                 title: "title",
                 inset: HEATMAP_CELL_GUTTER_PX / 2
               })]
@@ -549,7 +531,7 @@ export function renderObservablePlotPreview(plotSpec) {
           cellMark(rows, {
             x: "x",
             y: "y",
-            fill: "value",
+            fill: "color",
             title: "title",
             inset: HEATMAP_CELL_GUTTER_PX / 2
           })
