@@ -15,7 +15,7 @@ export const treeViewerMetadata = {
   outputType:
     "Interactive tree, styled figures, metadata tables, and reusable tree document",
   showcaseOutputs: [
-    {
+    { showcase: "tree-viewer",
       id: "tree-figure",
       label: "Bcl-2 family with bootstrap support",
       summary: "An intact 18-tip vertebrate clade from the Biopython Bcl-2 example, with source bootstrap values, species-group colors, and terminal branch-length bars."

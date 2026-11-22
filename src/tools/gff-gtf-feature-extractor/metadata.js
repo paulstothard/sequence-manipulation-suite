@@ -82,12 +82,12 @@ export const gffGtfFeatureExtractorMetadata = {
           label: "Output format",
           defaultValue: "feature-table",
           choices: [
-            { value: "feature-table", label: "Feature table" },
-            { value: "transcript-fasta", label: "Transcript FASTA" },
-            { value: "cds-fasta", label: "CDS DNA/RNA FASTA" },
-            { value: "protein-fasta", label: "Protein FASTA" },
-            { value: "gff3", label: "Normalized GFF3" },
-            { value: "report", label: "Summary report" }
+            { showcase: false, value: "feature-table", label: "Feature table" },
+            { showcase: false, value: "transcript-fasta", label: "Transcript FASTA" },
+            { showcase: false, value: "cds-fasta", label: "CDS DNA/RNA FASTA" },
+            { showcase: false, value: "protein-fasta", label: "Protein FASTA" },
+            { showcase: false, value: "gff3", label: "Normalized GFF3" },
+            { showcase: false, value: "report", label: "Summary report" }
           ]
         }
       ]

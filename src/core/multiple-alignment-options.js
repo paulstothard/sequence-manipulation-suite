@@ -12,8 +12,8 @@ export const MSA_DEFAULTS = Object.freeze({
   maxAlignmentCells: pairwiseAlignmentDefaultLimits.maxAlignmentCells
 });
 export const multipleAlignmentDefaultLimits = Object.freeze({ maxTotalSymbols: MSA_DEFAULTS.maxTotalSymbols });
-export const MSA_STREAM_FORMATS = Object.freeze({ report: 'report', fasta: 'aligned-fasta', proteinFasta: 'translated-protein-fasta', clustal: 'clustal', table: 'tsv', coloredSvg: 'svg-color', sequenceLogo: 'sequence-logo', treeDocument: 'tree-viewer', newick: 'newick', tree: 'nj-tree', treeSvg: 'nj-tree-svg', distanceTable: 'distance-table', identityMatrix: 'identity-matrix', identityMatrixTable: 'identity-matrix', identityPairs: 'identity-pairs', identityHeatmap: 'identity-heatmap' });
-export const MSA_OUTPUT_FORMATS = Object.freeze(['report', 'aligned-fasta', 'translated-protein-fasta', 'clustal', 'tsv', 'svg-color', 'sequence-logo', 'tree-viewer', 'nj-tree', 'nj-tree-svg', 'identity-matrix', 'identity-heatmap', 'identity-pairs', 'distance-table', 'newick']);
+export const MSA_STREAM_FORMATS = Object.freeze({ report: 'report', fasta: 'aligned-fasta', proteinFasta: 'translated-protein-fasta', clustal: 'clustal', table: 'tsv', alignmentDocument: 'aligned-sequence-viewer', coloredSvg: 'svg-color', sequenceLogo: 'sequence-logo', treeDocument: 'tree-viewer', newick: 'newick', tree: 'nj-tree', treeSvg: 'nj-tree-svg', distanceTable: 'distance-table', identityMatrix: 'identity-matrix', identityMatrixTable: 'identity-matrix', identityPairs: 'identity-pairs', identityHeatmap: 'identity-heatmap' });
+export const MSA_OUTPUT_FORMATS = Object.freeze(['report', 'aligned-fasta', 'translated-protein-fasta', 'clustal', 'tsv', 'svg-color', 'aligned-sequence-viewer', 'sequence-logo', 'tree-viewer', 'nj-tree', 'nj-tree-svg', 'identity-matrix', 'identity-heatmap', 'identity-pairs', 'distance-table', 'newick']);
 
 function finiteNumber(value, fallback) {
   if (value == null || typeof value === 'boolean' || String(value).trim() === '') return fallback;

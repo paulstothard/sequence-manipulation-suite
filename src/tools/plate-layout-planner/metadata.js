@@ -50,7 +50,7 @@ export const plateLayoutMetadata = {
       { id: "planningNote", type: "note", text: "This tool assigns well positions. Choose controls, standards, replicate counts, and edge handling for your assay. Check every plate: controls are not copied automatically, and randomization does not guarantee balanced groups or separated replicates. The example illustrates the input format; it is not a validated assay protocol." }
     ] },
     { type: "group", label: "Output", options: [
-      { id: "outputFormat", type: "radio", label: "Output format", defaultValue: "plate-map", choices: [{ value: "plate-map", label: "Editable plate map" }, { value: "table", label: "Well-assignment table" }],
+      { id: "outputFormat", type: "radio", label: "Output format", defaultValue: "plate-map", choices: [{ showcase: "editable-plate-map", value: "plate-map", label: "Editable plate map" }, { showcase: false, value: "table", label: "Well-assignment table" }],
         help: "The map supports manual edits, Undo/Redo, browser recovery, and current-layout exports. The table includes assigned, empty, and reserved wells. Saved layouts reopen through Choose file." }
     ] },
     { type: "group", label: "Limits", collapsible: true, collapsed: true, options: [

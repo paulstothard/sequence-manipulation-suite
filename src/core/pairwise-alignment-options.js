@@ -10,8 +10,8 @@ export const PAIRWISE_DEFAULTS = Object.freeze({
   ...pairwiseAlignmentDefaultLimits
 });
 export const PAIRWISE_DNA_DEFAULTS = Object.freeze({ ...PAIRWISE_DEFAULTS, gapOpen: 16, gapExtend: 4 });
-export const PAIRWISE_OUTPUTS = Object.freeze(['report','alignment-text','aligned-fasta','clustal','tsv','svg-color']);
-export const PAIRWISE_CODON_OUTPUTS = Object.freeze(['report','alignment-text','codon-fasta','protein-fasta','tsv','svg-color']);
+export const PAIRWISE_OUTPUTS = Object.freeze(['report','alignment-text','aligned-fasta','clustal','tsv','svg-color','aligned-sequence-viewer']);
+export const PAIRWISE_CODON_OUTPUTS = Object.freeze(['report','alignment-text','codon-fasta','protein-fasta','tsv','svg-color','aligned-sequence-viewer']);
 export function pairwiseNumber(value, fallback) {
   if (value == null || typeof value === 'boolean' || String(value).trim() === '') return fallback;
   const parsed = Number(value);
@@ -37,7 +37,7 @@ export function normalizePairwiseToolOptions(options = {}, alphabet = 'coding-dn
     for (const key of ['matchScore','mismatchScore','similarScore','secondSequenceOrientation']) delete result[key];
   }
   if (alphabet !== 'coding-dna') delete result.geneticCode;
-  const streams = alphabet === 'coding-dna' ? ['report','alignmentText','codonFasta','proteinFasta','table','coloredSvg'] : ['report','alignmentText','fasta','clustal','table','coloredSvg'];
+  const streams = alphabet === 'coding-dna' ? ['report','alignmentText','codonFasta','proteinFasta','table','coloredSvg','alignmentDocument'] : ['report','alignmentText','fasta','clustal','table','coloredSvg','alignmentDocument'];
   result.requestedPairwiseOutputs = Array.isArray(options.requestedPairwiseOutputs) ? [...new Set(options.requestedPairwiseOutputs.filter(id=>streams.includes(id)))] : [];
   return result;
 }

@@ -64,10 +64,10 @@ export const simpleLinearRegressionMetadata = {
       label: "Output format",
       options: [
         { id: "outputFormat", type: "radio", label: "Format", defaultValue: "plot-svg", choices: [
-          { value: "result-tsv", label: "Result table" },
-          { value: "fit-tsv", label: "Fitted/residual table" },
-          { value: "plot-svg", label: "Regression plot" },
-          { value: "report", label: "Summary report" }
+          { showcase: false, value: "result-tsv", label: "Result table" },
+          { showcase: false, value: "fit-tsv", label: "Fitted/residual table" },
+          { showcase: "regression-plot", value: "plot-svg", label: "Regression plot" },
+          { showcase: false, value: "report", label: "Summary report" }
         ] }
       ]
     },

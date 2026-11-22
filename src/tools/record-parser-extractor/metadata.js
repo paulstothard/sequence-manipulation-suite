@@ -91,21 +91,21 @@ const dnaOutputFormatOption = {
   label: "Output format",
   defaultValue: "features-tsv",
   choices: [
-    { value: "features-tsv", label: "Feature table" },
-    { value: "linear-svg-map", label: "Linear feature map" },
-    { value: "circular-svg-map", label: "Circular feature map" },
-    { value: "linear-genome-figure", label: "Linear genome figure" },
-    { value: "circular-genome-figure", label: "Circular genome figure" },
-    { value: "interactive-viewer", label: "Linear DNA sequence viewer" },
-    { value: "interactive-circular-viewer", label: "Circular DNA sequence viewer" },
-    { value: "whole-fasta", label: "Whole DNA/RNA FASTA" },
-    { value: "cds-fasta", label: "CDS DNA/RNA FASTA" },
-    { value: "protein-fasta", label: "CDS translation FASTA" },
-    { value: "selected-feature-fasta", label: "Feature FASTA" },
-    { value: "cds-uppercase-fasta", label: "CDS as uppercase FASTA" },
-    { value: "gene-uppercase-fasta", label: "Gene as uppercase FASTA" },
-    { value: "text-map", label: "Feature text map" },
-    { value: "report", label: "Summary report" }
+    { showcase: false, value: "features-tsv", label: "Feature table" },
+    { showcase: "linear-feature-map", value: "linear-svg-map", label: "Linear feature map" },
+    { showcase: "circular-feature-map", value: "circular-svg-map", label: "Circular feature map" },
+    { showcase: "linear-genome-figure", value: "linear-genome-figure", label: "Linear genome figure" },
+    { showcase: "circular-genome-figure", value: "circular-genome-figure", label: "Circular genome figure" },
+    { showcase: "linear-dna-viewer", value: "interactive-viewer", label: "Linear DNA sequence viewer" },
+    { showcase: "circular-dna-viewer", value: "interactive-circular-viewer", label: "Circular DNA sequence viewer" },
+    { showcase: false, value: "whole-fasta", label: "Whole DNA/RNA FASTA" },
+    { showcase: false, value: "cds-fasta", label: "CDS DNA/RNA FASTA" },
+    { showcase: false, value: "protein-fasta", label: "CDS translation FASTA" },
+    { showcase: false, value: "selected-feature-fasta", label: "Feature FASTA" },
+    { showcase: false, value: "cds-uppercase-fasta", label: "CDS as uppercase FASTA" },
+    { showcase: false, value: "gene-uppercase-fasta", label: "Gene as uppercase FASTA" },
+    { showcase: false, value: "text-map", label: "Feature text map" },
+    { showcase: false, value: "report", label: "Summary report" }
   ]
 };
 
@@ -115,14 +115,14 @@ const proteinOutputFormatOption = {
   label: "Output format",
   defaultValue: "features-tsv",
   choices: [
-    { value: "features-tsv", label: "Feature table" },
-    { value: "protein-sequence-figure", label: "Protein sequence figure" },
-    { value: "linear-svg-map", label: "Linear protein feature map" },
-    { value: "interactive-viewer", label: "Protein sequence viewer" },
-    { value: "protein-fasta", label: "Whole protein FASTA" },
-    { value: "selected-feature-fasta", label: "Feature FASTA" },
-    { value: "text-map", label: "Feature text map" },
-    { value: "report", label: "Summary report" }
+    { showcase: false, value: "features-tsv", label: "Feature table" },
+    { showcase: "protein-sequence-figure", value: "protein-sequence-figure", label: "Protein sequence figure" },
+    { showcase: "linear-protein-feature-map", value: "linear-svg-map", label: "Linear protein feature map" },
+    { showcase: "protein-sequence-viewer", value: "interactive-viewer", label: "Protein sequence viewer" },
+    { showcase: false, value: "protein-fasta", label: "Whole protein FASTA" },
+    { showcase: false, value: "selected-feature-fasta", label: "Feature FASTA" },
+    { showcase: false, value: "text-map", label: "Feature text map" },
+    { showcase: false, value: "report", label: "Summary report" }
   ]
 };
 

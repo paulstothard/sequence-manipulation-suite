@@ -52,7 +52,7 @@ export const dnaRnaFilterOptions = [
 
 export const dnaRnaOutputOption = {
   id: "outputFormat", type: "select", label: "Output format", defaultValue: "fasta",
-  choices: [{ value: "fasta", label: "FASTA" }, { value: "text", label: "Filtered text" }],
+  choices: [{ showcase: false, value: "fasta", label: "FASTA" }, { showcase: false, value: "text", label: "Filtered text" }],
   help: "FASTA requires nucleotide symbols, X, whitespace or alignment gaps. Choose Filtered text to retain other characters; records are separated by a blank line."
 };
 

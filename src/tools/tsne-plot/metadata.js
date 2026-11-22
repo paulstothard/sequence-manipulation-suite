@@ -119,9 +119,9 @@ export const tsnePlotMetadata = {
       label: "Output format",
       options: [
         { id: "outputFormat", type: "radio", label: "Format", defaultValue: "svg", choices: [
-          { value: "svg", label: "t-SNE plot" },
-          { value: "embedding-table", label: "Embedding table" },
-          { value: "report", label: "Summary report" }
+          { showcase: "t-sne-plot", value: "svg", label: "t-SNE plot" },
+          { showcase: false, value: "embedding-table", label: "Embedding table" },
+          { showcase: false, value: "report", label: "Summary report" }
         ] }
       ]
     },

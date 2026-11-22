@@ -72,8 +72,8 @@ export const tableDescriptiveStatisticsMetadata = {
           label: "Format",
           defaultValue: "summary-tsv",
           choices: [
-            { value: "summary-tsv", label: "Summary table", resultView: { kind: "table", streamId: "summaryTable" } },
-            { value: "report", label: "Summary report" }
+            { showcase: false, value: "summary-tsv", label: "Summary table", resultView: { kind: "table", streamId: "summaryTable" } },
+            { showcase: false, value: "report", label: "Summary report" }
           ]
         }
       ]

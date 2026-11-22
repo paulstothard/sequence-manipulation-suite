@@ -376,9 +376,9 @@ export const vcfFilterMetadata = {
           label: "Output format",
           defaultValue: "filtered-vcf",
           choices: [
-            { value: "filtered-vcf", label: "Filtered VCF" },
-            { value: "variant-table", label: "Variant table" },
-            { value: "report", label: "Summary report" }
+            { showcase: false, value: "filtered-vcf", label: "Filtered VCF" },
+            { showcase: false, value: "variant-table", label: "Variant table" },
+            { showcase: false, value: "report", label: "Summary report" }
           ]
         }
       ]

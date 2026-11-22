@@ -54,12 +54,12 @@ export const tableDataFormatConverterMetadata = {
           label: "Format",
           defaultValue: "tsv",
           choices: [
-            { value: "tsv", label: "TSV" },
-            { value: "csv", label: "CSV" },
-            { value: "json", label: "JSON" },
-            { value: "markdown", label: "Markdown table" },
-            { value: "xlsx", label: "Excel workbook (.xlsx)" },
-            { value: "report", label: "Summary report" }
+            { showcase: false, value: "tsv", label: "TSV" },
+            { showcase: false, value: "csv", label: "CSV" },
+            { showcase: false, value: "json", label: "JSON" },
+            { showcase: false, value: "markdown", label: "Markdown table" },
+            { showcase: false, value: "xlsx", label: "Excel workbook (.xlsx)" },
+            { showcase: false, value: "report", label: "Summary report" }
           ],
           help: "XLSX files loaded through the file picker or drop zone are converted to tabular text with the bundled ExcelJS browser library. XLSX export uses the same library from the structured table stream. YAML remains planned."
         }

@@ -92,10 +92,10 @@ export const twoGroupPermutationTestMetadata = {
       label: "Output format",
       options: [
         { id: "outputFormat", type: "radio", label: "Format", defaultValue: "svg", choices: [
-          { value: "report", label: "Summary report" },
-          { value: "result-tsv", label: "Result table" },
-          { value: "null-tsv", label: "Null distribution table" },
-          { value: "svg", label: "Null distribution plot" }
+          { showcase: false, value: "report", label: "Summary report" },
+          { showcase: false, value: "result-tsv", label: "Result table" },
+          { showcase: false, value: "null-tsv", label: "Null distribution table" },
+          { showcase: "null-distribution-plot", value: "svg", label: "Null distribution plot" }
         ] }
       ]
     },

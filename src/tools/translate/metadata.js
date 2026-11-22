@@ -73,10 +73,10 @@ export const translateMetadata = {
           help: "The translation table counts all translated positions, including ambiguous X and stop * symbols.",
           defaultValue: defaults.outputFormat,
           choices: [
-            { value: "fasta", label: "Protein FASTA" },
-            { value: "plain", label: "Plain protein text" },
-            { value: "tsv", label: "Translation table" },
-            { value: "text-map", label: "Text annotation map" }
+            { showcase: false, value: "fasta", label: "Protein FASTA" },
+            { showcase: false, value: "plain", label: "Plain protein text" },
+            { showcase: false, value: "tsv", label: "Translation table" },
+            { showcase: false, value: "text-map", label: "Text annotation map" }
           ]
         }
       ]

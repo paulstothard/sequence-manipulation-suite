@@ -47,9 +47,9 @@ export const fastaValidatorNormalizerMetadata = {
           label: "Format",
           defaultValue: "report",
           choices: [
-            { value: "report", label: "Summary report" },
-            { value: "fasta", label: "Normalized FASTA" },
-            { value: "tsv", label: "Record table" }
+            { showcase: false, value: "report", label: "Summary report" },
+            { showcase: false, value: "fasta", label: "Normalized FASTA" },
+            { showcase: false, value: "tsv", label: "Record table" }
           ]
         }
       ]

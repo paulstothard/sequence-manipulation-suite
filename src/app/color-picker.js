@@ -3,9 +3,17 @@ import { recentImageColors, rememberImageColor } from './recent-image-colors.js'
 
 // Preset colors follow the Tree Viewer's palette, with readable names.
 const COLORS = [
-  ['Black','#000000'], ['White','#ffffff'], ['Slate','#334155'], ['Gray','#64748b'],
+  ['Slate','#334155'], ['Blue gray','#64748b'],
   ['Blue','#0072b2'], ['Sky blue','#56b4e9'], ['Green','#009e73'], ['Orange','#e69f00'],
   ['Vermilion','#d55e00'], ['Rose','#cc79a7'], ['Yellow','#f0e442'], ['Red','#b91c1c']
+];
+// Neutral grays have equal RGB channels. Keep them together, dark to light,
+// as in established swatch palettes (for example Inkscape's Gray palette).
+const GRAYS = [
+  ['Black','#000000'],
+  ...['111111','222222','444444','666666','888888','aaaaaa','bbbbbb','cccccc','dddddd','eeeeee']
+    .map(hex => [`Gray #${hex}`,`#${hex}`]),
+  ['White','#ffffff']
 ];
 
 export function createColorPicker(name, value, { sampleColor } = {}) {
@@ -33,6 +41,10 @@ export function createColorPicker(name, value, { sampleColor } = {}) {
   if (sampleColor) headingActions.append(dropper);
   headingActions.append(dismiss); heading.append(make('strong',name),headingActions);
   const palette = make('div', null, 'sms3-color-palette'); palette.setAttribute('role','group'); palette.setAttribute('aria-label','Standard colors');
+  const grayscale = make('div', null, 'sms3-color-presets');
+  const grayPalette = make('div', null, 'sms3-color-palette');
+  grayPalette.setAttribute('role','group'); grayPalette.setAttribute('aria-label','Grayscale');
+  grayscale.append(make('span','Grayscale','sms3-color-help'),grayPalette);
   const opacitySummary = make('output', null, 'sms3-color-opacity');
   const recent = make('div', null, 'sms3-color-recent');
   const recentPalette = make('div', null, 'sms3-color-palette');
@@ -44,7 +56,7 @@ export function createColorPicker(name, value, { sampleColor } = {}) {
   function refresh() {
     trigger.style.setProperty('--swatch-color', input.value);
     const rgb = input.value.slice(0,7).toLowerCase(), opacity = Math.round(colorOpacity(input.value) * 100);
-    const current = COLORS.find(([,color]) => color === rgb);
+    const current = [...GRAYS,...COLORS].find(([,color]) => color === rgb);
     trigger.setAttribute('aria-description', `Current color: ${current?.[0] ?? 'Custom color'}, ${opacity}% opacity. Changes apply immediately.`);
     opacitySummary.textContent = `Opacity ${opacity}%`;
     for (const swatch of swatches) swatch.setAttribute('aria-pressed', String(swatch.dataset.color === rgb));
@@ -69,15 +81,15 @@ export function createColorPicker(name, value, { sampleColor } = {}) {
       recentPalette.append(swatch);
     });
   }
-  for (const [label,color] of COLORS) {
+  for (const [entries,target] of [[GRAYS,grayPalette],[COLORS,palette]])for (const [label,color] of entries) {
     const swatch = make('button', null, 'sms3-color-swatch'); swatch.type = 'button';
     swatch.dataset.color = color; swatch.title = label; swatch.setAttribute('aria-label',label);
     swatch.style.setProperty('--swatch-color',color);
     swatch.addEventListener('click', () => select(withColorOpacity(color, colorOpacity(input.value))));
-    swatches.push(swatch); palette.append(swatch);
+    swatches.push(swatch); target.append(swatch);
   }
   const custom = make('div', 'Loading color picker…', 'sms3-color-custom');
-  panel.append(heading,custom,opacitySummary,palette,recent,help);
+  panel.append(heading,custom,opacitySummary,grayscale,palette,recent,help);
   element.append(label,input,trigger,panel);
   const close = () => { if (panel.matches(':popover-open')) panel.hidePopover(); };
   dismiss.addEventListener('click', () => { close(); trigger.focus({preventScroll:true}); });
@@ -92,7 +104,13 @@ export function createColorPicker(name, value, { sampleColor } = {}) {
     if (focus) (swatches.find(swatch => swatch.dataset.color === input.value.slice(0,7).toLowerCase()) ?? dropper).focus({preventScroll:true});
     listeners?.abort(); listeners = new AbortController();
     window.addEventListener('resize',close,{signal:listeners.signal});
-    document.addEventListener('scroll', event => { if (event.target.contains?.(trigger)) close(); },{capture:true,signal:listeners.signal});
+    document.addEventListener('scroll', event => {
+      if (!event.target.contains?.(trigger)) return;
+      // A scroll that revealed the trigger can dispatch after the click opened
+      // the picker. Dismiss only when the anchor has actually moved since open.
+      const current = trigger.getBoundingClientRect();
+      if (current.left !== anchor.left || current.top !== anchor.top) close();
+    },{capture:true,signal:listeners.signal});
     if (!picker) {
       try {
         await import('../vendor/color-picker/hex-alpha-color-picker.js');

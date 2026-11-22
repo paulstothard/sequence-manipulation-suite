@@ -64,10 +64,10 @@ const inputOptionsGroup = {
 function makeOutputFormatOption(defaultValue, figureLabel, includeBothLayouts = false) {
   const layoutChoices = includeBothLayouts
     ? [
-        { value: "circular", label: "Circular genome figure" },
-        { value: "linear", label: "Wrapped linear genome figure" }
+        { showcase: "circular-genome-figure", value: "circular", label: "Circular genome figure" },
+        { showcase: "linear-genome-figure", value: "linear", label: "Wrapped linear genome figure" }
       ]
-    : [{ value: defaultValue, label: figureLabel }];
+    : [{ showcase: defaultValue === "circular" ? "circular-genome-figure" : "linear-genome-figure", value: defaultValue, label: figureLabel }];
   return {
     id: "outputFormat",
     type: "radio",
@@ -75,7 +75,7 @@ function makeOutputFormatOption(defaultValue, figureLabel, includeBothLayouts = 
     defaultValue,
     choices: [
       ...layoutChoices,
-      { value: "report", label: "Summary report" }
+      { showcase: false, value: "report", label: "Summary report" }
     ]
   };
 }

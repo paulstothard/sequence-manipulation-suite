@@ -182,6 +182,10 @@ export function createWorkflowBuilderController({
           return { text: "", rawText: value.text, summary: "Workflow output: editable image", outputLabel: "Editable image", isTsv: false,
             graphicEditor: doc.source, editorDocument: doc, filename: `${doc.tool}.sms3.json`, mimeType: "application/json" };
         }
+        if (candidate?.format === "sms3-editor-document" && candidate.tool === "aligned-sequence-viewer") {
+          const doc = parseEditorDocument(value.text);
+          return {text:"",rawText:value.text,summary:"Workflow output: aligned sequences",outputLabel:"Aligned sequence viewer",isTsv:false,alignedSequence:doc.source,editorDocument:doc,filename:"aligned-sequence-viewer.sms3.json",mimeType:"application/json"};
+        }
         if (candidate?.format === "sms3-editor-document" && IMAGE_EDITOR_TOOLS.includes(candidate.tool)) {
           const doc = parseEditorDocument(value.text);
           return { text: "", rawText: value.text, summary: "Workflow output: editable text or table image", outputLabel: "Editable image", isTsv: false,

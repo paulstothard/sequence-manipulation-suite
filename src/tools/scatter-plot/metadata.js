@@ -53,8 +53,8 @@ export const scatterPlotMetadata = {
       label: "Output format",
       options: [
         { id: "outputFormat", type: "radio", label: "Format", defaultValue: "svg", choices: [
-          { value: "svg", label: "Scatter plot" },
-          { value: "point-tsv", label: "Point table" }
+          { showcase: "scatter-plot", value: "svg", label: "Scatter plot" },
+          { showcase: false, value: "point-tsv", label: "Point table" }
         ] }
       ]
     },

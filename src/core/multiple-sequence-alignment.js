@@ -1095,7 +1095,10 @@ export function makeMultipleAlignmentSvg(alignment, options = {}) {
   const showConsensusLine = options.showConsensusLine !== false;
   return makeAlignmentSvg({
     title: isCodingDna ? "Colored multiple coding DNA alignment" : "Colored multiple sequence alignment",
-    note: isCodingDna ? "Coordinates count bases and ignore gaps." : "Coordinates count bases or amino acids and ignore gaps.",
+    note: isCodingDna ? "Coordinates count bases and ignore gaps."
+      : alignment.alphabet === "protein"
+        ? "Coordinates count protein sequence characters, including stop symbols, and ignore gaps."
+        : "Coordinates count bases or amino acids and ignore gaps.",
     rows: alignment.titles.map((title, index) => ({
       label: title,
       aligned: alignment.aligned[index],

@@ -62,11 +62,11 @@ export const proteinPatternFinderMetadata = {
       label: "Output format",
       defaultValue: defaults.outputFormat,
       choices: [
-        { value: "report", label: "Summary report" },
-        { value: "text-map", label: "Pattern text map" },
-        { value: "svg-map", label: "Linear pattern map" },
-        { value: "interactive-viewer", label: "Protein sequence viewer" },
-        { value: "tsv", label: "Summary table", resultView: { kind: "table", streamId: "table" } }
+        { showcase: false, value: "report", label: "Summary report" },
+        { showcase: false, value: "text-map", label: "Pattern text map" },
+        { showcase: "linear-pattern-map", value: "svg-map", label: "Linear pattern map" },
+        { showcase: "protein-sequence-viewer", value: "interactive-viewer", label: "Protein sequence viewer" },
+        { showcase: false, value: "tsv", label: "Summary table", resultView: { kind: "table", streamId: "table" } }
       ]
     },
     {

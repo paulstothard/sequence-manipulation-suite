@@ -71,9 +71,9 @@ export const violinPlotMetadata = {
       label: "Output format",
       options: [
         { id: "outputFormat", type: "radio", label: "Format", defaultValue: "svg", choices: [
-          { value: "svg", label: "Violin plot" },
-          { value: "density-tsv", label: "Density table" },
-          { value: "summary-tsv", label: "Summary table", resultView: { kind: "table", streamId: "summaryTable" } }
+          { showcase: "violin-plot", value: "svg", label: "Violin plot" },
+          { showcase: false, value: "density-tsv", label: "Density table" },
+          { showcase: false, value: "summary-tsv", label: "Summary table", resultView: { kind: "table", streamId: "summaryTable" } }
         ] }
       ]
     },

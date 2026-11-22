@@ -134,11 +134,11 @@ function makeOptions({ alphabet, kmerLabel, sequenceCountLimitLabel, sequenceLim
           label: "Output format",
           defaultValue: defaults.outputFormat,
           choices: [
-            { value: "report", label: "Summary report" },
-            { value: "reciprocal-tsv", label: "Reciprocal best-match table" },
-            { value: "candidates-tsv", label: "Aligned candidate pair table" },
-            { value: "unmatched-tsv", label: alphabet === "protein" ? "Proteins without reciprocal matches" : "Sequences without reciprocal matches" },
-            { value: "heatmap-svg", label: "Identity heatmap" }
+            { showcase: false, value: "report", label: "Summary report" },
+            { showcase: false, value: "reciprocal-tsv", label: "Reciprocal best-match table" },
+            { showcase: false, value: "candidates-tsv", label: "Aligned candidate pair table" },
+            { showcase: false, value: "unmatched-tsv", label: alphabet === "protein" ? "Proteins without reciprocal matches" : "Sequences without reciprocal matches" },
+            { showcase: "sequence-identity-heatmap", value: "heatmap-svg", label: "Identity heatmap" }
           ]
         }
       ]

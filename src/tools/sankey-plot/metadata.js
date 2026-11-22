@@ -52,8 +52,8 @@ export const sankeyPlotMetadata = {
       label: "Output format",
       options: [
         { id: "outputFormat", type: "radio", label: "Format", defaultValue: "svg", choices: [
-          { value: "svg", label: "Sankey plot" },
-          { value: "flow-tsv", label: "Flow table" }
+          { showcase: "sankey-plot", value: "svg", label: "Sankey plot" },
+          { showcase: false, value: "flow-tsv", label: "Flow table" }
         ] }
       ]
     },

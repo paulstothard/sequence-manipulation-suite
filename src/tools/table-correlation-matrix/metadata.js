@@ -58,12 +58,12 @@ export const tableCorrelationMatrixMetadata = {
       label: "Output format",
       options: [
         { id: "outputFormat", type: "radio", label: "Format", defaultValue: "correlation-heatmap-svg", choices: [
-          { value: "matrix-tsv", label: "Matrix table" },
-          { value: "correlation-heatmap-svg", label: "Pearson r heatmap" },
-          { value: "spearman-heatmap-svg", label: "Spearman rho heatmap" },
-          { value: "kendall-heatmap-svg", label: "Kendall tau-b heatmap" },
-          { value: "covariance-heatmap-svg", label: "Covariance heatmap" },
-          { value: "report", label: "Summary report" }
+          { showcase: false, value: "matrix-tsv", label: "Matrix table" },
+          { showcase: "correlation-heatmap", value: "correlation-heatmap-svg", label: "Pearson r heatmap" },
+          { showcase: "correlation-heatmap", value: "spearman-heatmap-svg", label: "Spearman rho heatmap" },
+          { showcase: "correlation-heatmap", value: "kendall-heatmap-svg", label: "Kendall tau-b heatmap" },
+          { showcase: "covariance-heatmap", value: "covariance-heatmap-svg", label: "Covariance heatmap" },
+          { showcase: false, value: "report", label: "Summary report" }
         ] }
       ]
     },

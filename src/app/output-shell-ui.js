@@ -1,3 +1,4 @@
+import { renderAlignedSequenceViewer } from "./aligned-sequence-viewer-ui.js";
 import { renderOrfExplorer } from "./orf-explorer-ui.js";
 import { preserveRenderHeight } from "./preserve-render-height.js";
 import {renderGraphicEditor} from './graphic-editor-ui.js';
@@ -113,8 +114,11 @@ export function createOutputShellController({
 function renderMessages(result) {
   elements.messages.textContent = "";
 
-  if (result.visual?.graphicEditor || result.visual?.textTableImage) {
+  if (result.visual?.alignedSequence || result.visual?.graphicEditor || result.visual?.textTableImage) {
     appendOutputDetails(elements.messages, (result.notes ?? []).map(note => ["Run note", note]));
+    if (result.visual?.alignedSequence && state.selectedTool?.metadata?.id !== "aligned-sequence-viewer") {
+      appendToolDescriptionActions(elements.messages);
+    }
     appendWarningSummary(elements.messages,result.warnings);
     return;
   }
@@ -698,6 +702,7 @@ function updateOutputActions(scope, { hidden = false, mimeType = "", label = "" 
   }
   const kind = getOutputActionKind(mimeType, label);
   parts.downloadButton.textContent = `Download ${kind}`;
+  parts.copyButton.hidden = kind === "SVG";
   parts.copyButton.textContent = `Copy ${kind}`;
 }
 
@@ -1766,7 +1771,7 @@ function renderVisualOutput(scope, svg, options = {}) {
     textRegions._sms3TextCleanup = renderFilePreview(textRegions, options.filePreview);
     return "";
   }
-  if (!svg && !options.filePreview && !options.viewer && !options.figure && !options.proteinFigure && !options.sequenceLogo && !options.proteinStructure && !options.notebook && !options.sangerTrace && !options.sequenceEditor && !options.sequenceExtractor && !options.treeViewer && !options.plateLayout && !options.textTableImage && !options.graphicEditor) {
+  if (!svg && !options.filePreview && !options.viewer && !options.figure && !options.proteinFigure && !options.sequenceLogo && !options.proteinStructure && !options.notebook && !options.sangerTrace && !options.sequenceEditor && !options.sequenceExtractor && !options.treeViewer && !options.plateLayout && !options.alignedSequence && !options.textTableImage && !options.graphicEditor) {
     visualOutput.hidden = true;
     visualOutput.textContent = "";
     return;
@@ -1777,6 +1782,7 @@ function renderVisualOutput(scope, svg, options = {}) {
   if (options.graphicEditor) {
     return renderGraphicEditor(visualOutput, options.graphicEditor, options.editorDocument);
   }
+  if (options.alignedSequence) return renderAlignedSequenceViewer(visualOutput, options.alignedSequence, options.editorDocument);
   if (options.textTableImage) {
     renderTextTableImage(visualOutput, options.textTableImage, options.editorDocument);
     return "";
@@ -1921,7 +1927,7 @@ function renderVisualOutput(scope, svg, options = {}) {
 }
 
 async function applyToolOutputChoice(choice, options = {}) {
-  const hasVisualOutput = Boolean(choice.filePreview || choice.svg || choice.viewer || choice.figure || choice.proteinFigure || choice.sequenceLogo || choice.proteinStructure || choice.notebook || choice.sangerTrace || choice.sequenceEditor || choice.sequenceExtractor || choice.treeViewer || choice.graphicEditor || choice.textTableImage || choice.plateLayout);
+  const hasVisualOutput = Boolean(choice.filePreview || choice.svg || choice.viewer || choice.figure || choice.proteinFigure || choice.sequenceLogo || choice.proteinStructure || choice.notebook || choice.sangerTrace || choice.sequenceEditor || choice.sequenceExtractor || choice.treeViewer || choice.graphicEditor || choice.alignedSequence || choice.textTableImage || choice.plateLayout);
   const hasPrimaryOutput = Boolean(choice.text || choice.tableStream || hasVisualOutput);
   elements.toolOutput.dataset.rawOutput = choice.text;
   elements.toolOutput.value = choice.tableStream
@@ -1952,6 +1958,8 @@ async function applyToolOutputChoice(choice, options = {}) {
     sequenceExtractor: choice.sequenceExtractor,
     treeViewer: choice.treeViewer,
     graphicEditor: choice.graphicEditor,
+    alignedSequence: choice.alignedSequence,
+    editorDocument: choice.editorDocument,
     textTableImage: choice.textTableImage,
     plateLayout: choice.plateLayout,
     signal: options.signal
@@ -1975,7 +1983,7 @@ async function applyToolOutputChoice(choice, options = {}) {
   elements.toolOutput.hidden = Boolean(choice.tableStream || hasVisualOutput || !choice.text);
   setOutputSearchRowVisible("tool", Boolean(choice.tableStream || (!hasVisualOutput && choice.text)));
   updateOutputActions("tool", {
-    hidden: Boolean(choice.filePreview || choice.tableStream || choice.viewer || choice.figure || choice.proteinFigure || choice.sequenceLogo || choice.proteinStructure || choice.notebook || choice.sangerTrace || choice.sequenceEditor || choice.sequenceExtractor || choice.treeViewer || choice.graphicEditor || choice.textTableImage || choice.plateLayout || (!choice.text && !choice.svg)),
+    hidden: Boolean(choice.filePreview || choice.tableStream || choice.viewer || choice.figure || choice.proteinFigure || choice.sequenceLogo || choice.proteinStructure || choice.notebook || choice.sangerTrace || choice.sequenceEditor || choice.sequenceExtractor || choice.treeViewer || choice.graphicEditor || choice.alignedSequence || choice.textTableImage || choice.plateLayout || (!choice.text && !choice.svg)),
     mimeType: choice.download.mimeType,
     label: choice.label
   });
@@ -2074,6 +2082,8 @@ async function renderGeneratedToolOutputChoice(result, options = {}) {
     sequenceExtractor,
     treeViewer: result.visual?.treeViewer ?? null,
     graphicEditor: result.visual?.graphicEditor ?? null,
+    alignedSequence: result.visual?.alignedSequence ?? null,
+    editorDocument: result.visual?.editorDocument,
     textTableImage: result.visual?.textTableImage ?? null,
     plateLayout: result.visual?.plateLayout ?? null,
     sequenceSearch: null

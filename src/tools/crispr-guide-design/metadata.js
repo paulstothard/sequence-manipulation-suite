@@ -126,17 +126,17 @@ export const crisprGuideDesignMetadata = {
           type: "radio",
           label: "Output format",
           choices: [
-            { value: "report", label: "Summary report" },
-            { value: "tsv", label: "Guide table" },
-            { value: "offtarget-tsv", label: "Reference-match table", resultView: { kind: "table", streamId: "offTargetTable" } },
-            { value: "guide-fasta", label: "Spacer RNA FASTA (no scaffold)" },
-            { value: "analysis-json", label: "Complete analysis JSON" },
-            { value: "bed", label: "Spacer coordinates BED" },
-            { value: "gff3", label: "Guide/PAM GFF3 with sequence" },
-            { value: "context-text", label: "Context text" },
-            { value: "text-map", label: "Text annotation map" },
-            { value: "svg-map", label: "Linear guide map" },
-            { value: "interactive-viewer", label: "Linear DNA sequence viewer" }
+            { showcase: false, value: "report", label: "Summary report" },
+            { showcase: false, value: "tsv", label: "Guide table" },
+            { showcase: false, value: "offtarget-tsv", label: "Reference-match table", resultView: { kind: "table", streamId: "offTargetTable" } },
+            { showcase: false, value: "guide-fasta", label: "Spacer RNA FASTA (no scaffold)" },
+            { showcase: false, value: "analysis-json", label: "Complete analysis JSON" },
+            { showcase: false, value: "bed", label: "Spacer coordinates BED" },
+            { showcase: false, value: "gff3", label: "Guide/PAM GFF3 with sequence" },
+            { showcase: false, value: "context-text", label: "Context text" },
+            { showcase: false, value: "text-map", label: "Text annotation map" },
+            { showcase: "linear-guide-map", value: "svg-map", label: "Linear guide map" },
+            { showcase: "linear-dna-viewer", value: "interactive-viewer", label: "Linear DNA sequence viewer" }
           ]
         },
         { id: "contextBases", type: "number", label: "Context bases", visibleWhen: { option: "outputFormat", value: ["context-text"] } }

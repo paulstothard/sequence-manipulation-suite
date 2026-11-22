@@ -63,25 +63,25 @@ export const inSilicoPcrMetadata = {
       { value: "primer-incorporated", label: "Primer-incorporated amplicon" },
       { value: "template", label: "Original template interval" }
     ], help: "Amplicons include primer substitutions and any 5-prime tails. Template intervals preserve the submitted template bases and exclude tails. GFF3 annotates primers and tails and projects supported template feature parts as intervals; biological function and translation are not revalidated." },
+    ...makeDnaGelOptions(),
     {
       id: "outputFormat",
       type: "radio",
       label: "Output format",
       choices: [
-        { value: "report", label: "Summary report" },
-        { value: "tsv", label: "Product table" },
-        { value: "binding-sites-tsv", label: "Binding-site table", resultView: { kind: "table", streamId: "bindingSites" } },
-        { value: "alignments", label: "Primer/template alignments" },
-        { value: "analysis-json", label: "Complete analysis JSON" },
-        { value: "fasta", label: "Product FASTA" },
-        { value: "amplicon-gff3", label: "Annotated products GFF3" },
-        { value: "text-map", label: "Primer text map" },
-        { value: "svg-gel", label: "Simulated gel" },
-        { value: "interactive-viewer", label: "Linear DNA sequence viewer" },
-        { value: "interactive-circular-viewer", label: "Circular DNA sequence viewer" }
+        { showcase: false, value: "report", label: "Summary report" },
+        { showcase: false, value: "tsv", label: "Product table" },
+        { showcase: false, value: "binding-sites-tsv", label: "Binding-site table", resultView: { kind: "table", streamId: "bindingSites" } },
+        { showcase: false, value: "alignments", label: "Primer/template alignments" },
+        { showcase: false, value: "analysis-json", label: "Complete analysis JSON" },
+        { showcase: false, value: "fasta", label: "Product FASTA" },
+        { showcase: false, value: "amplicon-gff3", label: "Annotated products GFF3" },
+        { showcase: false, value: "text-map", label: "Primer text map" },
+        { showcase: "dna-gel", value: "svg-gel", label: "Simulated gel" },
+        { showcase: "linear-dna-viewer", value: "interactive-viewer", label: "Linear DNA sequence viewer" },
+        { showcase: "circular-dna-viewer", value: "interactive-circular-viewer", label: "Circular DNA sequence viewer" }
       ]
     },
-    ...makeDnaGelOptions(),
     {
       id: "advancedLimits",
       type: "group",

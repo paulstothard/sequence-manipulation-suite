@@ -92,9 +92,9 @@ export const fastaExtractByIdMetadata = {
           label: "Output format",
           defaultValue: "fasta",
           choices: [
-            { value: "fasta", label: "FASTA" },
-            { value: "table-tsv", label: "Match table" },
-            { value: "report", label: "Summary report" }
+            { showcase: false, value: "fasta", label: "FASTA" },
+            { showcase: false, value: "table-tsv", label: "Match table" },
+            { showcase: false, value: "report", label: "Summary report" }
           ]
         }
       ]

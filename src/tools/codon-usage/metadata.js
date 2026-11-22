@@ -72,9 +72,9 @@ export const codonUsageMetadata = {
       label: "Output format",
       defaultValue: CODON_USAGE_DEFAULTS.outputFormat,
       choices: [
-        { value: "table", label: "Codon usage table" },
-        { value: "plot", label: "Codon usage plot" },
-        { value: "report", label: "Summary report" }
+        { showcase: false, value: "table", label: "Codon usage table" },
+        { showcase: "codon-usage-plot", value: "plot", label: "Codon usage plot" },
+        { showcase: false, value: "report", label: "Summary report" }
       ]
     },
     {

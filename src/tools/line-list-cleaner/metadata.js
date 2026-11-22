@@ -113,9 +113,9 @@ export const lineListCleanerMetadata = {
           label: "Output format",
           defaultValue: "list",
           choices: [
-            { value: "list", label: "List text" },
-            { value: "report", label: "Summary report" },
-            { value: "tsv", label: "Count table" }
+            { showcase: false, value: "list", label: "List text" },
+            { showcase: false, value: "report", label: "Summary report" },
+            { showcase: false, value: "tsv", label: "Count table" }
           ]
         },
         {

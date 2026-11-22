@@ -126,11 +126,11 @@ export const tableColumnComparisonMetadata = {
           label: "Output format",
           defaultValue: "plot",
           choices: [
-            { value: "plot", label: "Comparison plot" },
-            { value: "compact-heatmap", label: "Compact heat map" },
-            { value: "comparison-table", label: "Comparison table" },
-            { value: "pair-table", label: "Row comparison table" },
-            { value: "report", label: "Summary report" }
+            { showcase: "comparison-plot", value: "plot", label: "Comparison plot" },
+            { showcase: "compact-heat-map", value: "compact-heatmap", label: "Compact heat map" },
+            { showcase: false, value: "comparison-table", label: "Comparison table" },
+            { showcase: false, value: "pair-table", label: "Row comparison table" },
+            { showcase: false, value: "report", label: "Summary report" }
           ]
         }
       ]

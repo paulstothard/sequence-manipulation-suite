@@ -101,9 +101,9 @@ export const textSearchReplaceMetadata = {
       label: "Output format",
       defaultValue: "text",
       choices: [
-        { value: "text", label: "Result text" },
-        { value: "tsv", label: "Match table" },
-        { value: "report", label: "Summary report" }
+        { showcase: false, value: "text", label: "Result text" },
+        { showcase: false, value: "tsv", label: "Match table" },
+        { showcase: false, value: "report", label: "Summary report" }
       ]
     }
   ]

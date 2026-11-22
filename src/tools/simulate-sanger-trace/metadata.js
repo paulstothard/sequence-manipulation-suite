@@ -22,7 +22,7 @@ export const simulateSangerTraceMetadata = {
   },
   runInWorker: true, workerModule: '../tools/simulate-sanger-trace/run.js', workerExport: 'runSimulateSangerTrace',
   showcaseOutputs: [
-    { id: 'interactive-trace', label: 'Trace editor', options: { outputFormat: 'interactive-trace' } }
+    { showcase: "sanger-trace-editor", id: 'interactive-trace', label: 'Trace editor', options: { outputFormat: 'interactive-trace' } }
   ],
   workflow: {
     inputs: [{ id: 'input', kind: 'text', mediaType: 'text/plain' }, { id: 'sequenceRecords', kind: 'sequence-records', alphabet: 'dna-rna' }],
@@ -55,11 +55,11 @@ export const simulateSangerTraceMetadata = {
     ] },
     { type: 'group', label: 'Output format', options: [
       { id: 'outputFormat', type: 'select', label: 'Output format', defaultValue: 'interactive-trace', choices: [
-        { value: 'interactive-trace', label: 'Trace editor' },
-        { value: 'trace-json', label: 'Trace JSON' },
-        { value: 'ab1', label: 'AB1' },
-        { value: 'scf', label: 'SCF' },
-        { value: 'report', label: 'Summary report' }
+        { showcase: "sanger-trace-editor", value: 'interactive-trace', label: 'Trace editor' },
+        { showcase: false, value: 'trace-json', label: 'Trace JSON' },
+        { showcase: false, value: 'ab1', label: 'AB1' },
+        { showcase: false, value: 'scf', label: 'SCF' },
+        { showcase: false, value: 'report', label: 'Summary report' }
       ] }
     ] },
     { type: 'group', id: 'limits', label: 'Limits', collapsible: true, collapsed: true, options: [

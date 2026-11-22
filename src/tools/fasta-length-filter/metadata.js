@@ -157,10 +157,10 @@ export const fastaLengthFilterMetadata = {
           label: "Format",
           defaultValue: "filtered-fasta",
           choices: [
-            { value: "filtered-fasta", label: "Selected records FASTA" },
-            { value: "removed-fasta", label: "Non-selected records FASTA" },
-            { value: "report", label: "Summary report" },
-            { value: "tsv", label: "Decision table" }
+            { showcase: false, value: "filtered-fasta", label: "Selected records FASTA" },
+            { showcase: false, value: "removed-fasta", label: "Non-selected records FASTA" },
+            { showcase: false, value: "report", label: "Summary report" },
+            { showcase: false, value: "tsv", label: "Decision table" }
           ]
         }
       ]

@@ -65,8 +65,8 @@ export const volcanoPlotMetadata = {
           label: "Format",
           defaultValue: "svg",
           choices: [
-            { value: "svg", label: "Volcano plot" },
-            { value: "point-tsv", label: "Point table" }
+            { showcase: "volcano-plot", value: "svg", label: "Volcano plot" },
+            { showcase: false, value: "point-tsv", label: "Point table" }
           ]
         }
       ]

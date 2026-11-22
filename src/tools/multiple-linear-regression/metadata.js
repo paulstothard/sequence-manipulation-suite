@@ -86,11 +86,11 @@ export const multipleLinearRegressionMetadata = {
       label: "Output format",
       options: [
         { id: "outputFormat", type: "radio", label: "Format", defaultValue: "coefficient-tsv", choices: [
-          { value: "coefficient-tsv", label: "Coefficient table" },
-          { value: "model-tsv", label: "Model summary table" },
-          { value: "fit-tsv", label: "Fitted/residual table" },
-          { value: "residual-plot-svg", label: "Residual plot" },
-          { value: "report", label: "Summary report" }
+          { showcase: false, value: "coefficient-tsv", label: "Coefficient table" },
+          { showcase: false, value: "model-tsv", label: "Model summary table" },
+          { showcase: false, value: "fit-tsv", label: "Fitted/residual table" },
+          { showcase: "residual-plot", value: "residual-plot-svg", label: "Residual plot" },
+          { showcase: false, value: "report", label: "Summary report" }
         ] }
       ]
     },

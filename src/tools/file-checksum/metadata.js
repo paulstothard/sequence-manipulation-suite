@@ -42,9 +42,9 @@ export const fileChecksumMetadata = {
     { id: "manifestText", type: "textarea", label: "Checksum manifest", defaultValue: "", visibleWhen: { option: "verification", value: "manifest" }, help: "Paste GNU or BSD checksum lines using the selected algorithm, or select a manifest file below. Pasted text uses the manifest entry name pasted-text.txt." },
     { id: "manifestFile", type: "file", label: "Manifest file", dropLabel: "Drop checksum manifest here", defaultValue: null, visibleWhen: { option: "verification", value: "manifest" }, help: "The selected manifest file takes precedence over pasted manifest text." },
     { id: "outputFormat", type: "radio", label: "Output format", defaultValue: "tsv", dependsOn: "verification", choices: [
-      { value: "tsv", label: "Checksum table", labelsByParentValue: { checksum: "Verification table", manifest: "Verification table" } },
-      { value: "manifest", label: "Checksum manifest", dependsOnValue: "none" },
-      { value: "report", label: "Summary report", always: true, labelsByParentValue: { checksum: "Verification report", manifest: "Verification report" } }
+      { showcase: false, value: "tsv", label: "Checksum table", labelsByParentValue: { checksum: "Verification table", manifest: "Verification table" } },
+      { showcase: false, value: "manifest", label: "Checksum manifest", dependsOnValue: "none" },
+      { showcase: false, value: "report", label: "Summary report", always: true, labelsByParentValue: { checksum: "Verification report", manifest: "Verification report" } }
     ] },
     { type: "group", label: "Limits", collapsible: true, collapsed: true, options: [
       { type: "limit-value", label: "Files and manifest entries", value: "1,000 each", detail: "Larger batches or manifests are rejected." },

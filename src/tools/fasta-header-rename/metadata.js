@@ -100,9 +100,9 @@ export const fastaHeaderRenameMetadata = {
           label: "Format",
           defaultValue: "fasta",
           choices: [
-            { value: "fasta", label: "Renamed FASTA" },
-            { value: "report", label: "Summary report" },
-            { value: "tsv", label: "Rename table" }
+            { showcase: false, value: "fasta", label: "Renamed FASTA" },
+            { showcase: false, value: "report", label: "Summary report" },
+            { showcase: false, value: "tsv", label: "Rename table" }
           ]
         }
       ]

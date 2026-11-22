@@ -20,7 +20,7 @@ export const geneViewerMetadata = {
   },
   options: [
     { type: 'group', label: 'Output format', options: [
-      { id: 'outputFormat', type: 'radio', label: 'Output format', defaultValue: 'interactive-viewer', choices: [{ value: 'interactive-viewer', label: 'Interactive gene viewer' }] }
+      { id: 'outputFormat', type: 'radio', label: 'Output format', defaultValue: 'interactive-viewer', choices: [{ showcase: "interactive-gene-viewer", value: 'interactive-viewer', label: 'Interactive gene viewer' }] }
     ] },
     { type: 'group', label: 'Limits', collapsible: true, collapsed: true, options: [
       { type: 'limit-value', label: 'Genomic interval', value: '1,000,000 bases', detail: 'Larger regions are refused.' },

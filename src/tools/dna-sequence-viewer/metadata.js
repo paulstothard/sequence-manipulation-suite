@@ -44,7 +44,7 @@ const inputFormatOption = {
   ]
 };
 
-function makeOutputFormatOption(viewerLabel) {
+function makeOutputFormatOption(viewerLabel, showcaseFamily) {
   return {
     type: "group",
     label: "Output format",
@@ -55,8 +55,8 @@ function makeOutputFormatOption(viewerLabel) {
         label: "Output format",
         defaultValue: "interactive-viewer",
         choices: [
-          { value: "interactive-viewer", label: viewerLabel },
-          { value: "report", label: "Summary report" }
+          { showcase: showcaseFamily, value: "interactive-viewer", label: viewerLabel },
+          { showcase: false, value: "report", label: "Summary report" }
         ]
       }
     ]
@@ -70,6 +70,7 @@ function makeViewerMetadata({
   whenToUse,
   outputType,
   viewerLabel,
+  showcaseFamily,
   workerExport
 }) {
   return {
@@ -100,7 +101,7 @@ function makeViewerMetadata({
     },
     options: [
       inputFormatOption,
-      makeOutputFormatOption(viewerLabel),
+      makeOutputFormatOption(viewerLabel, showcaseFamily),
       {
         type: "group", label: "Limits", collapsible: true, collapsed: true, options: [
           { type: "limit-value", label: "Maximum feature lanes per track", value: id === "circular-dna-sequence-viewer" ? CIRCULAR_VIEWER_RING_LIMIT : LINEAR_VIEWER_ROW_LIMIT,
@@ -120,6 +121,7 @@ export const dnaSequenceViewerMetadata = makeViewerMetadata({
   whenToUse: "Inspect nucleotide sequences and their annotations along a linear coordinate axis.",
   outputType: "Linear DNA sequence viewer or summary report",
   viewerLabel: "Linear DNA sequence viewer",
+  showcaseFamily: "linear-dna-viewer",
   workerExport: "runLinearDnaSequenceViewer"
 });
 
@@ -130,5 +132,6 @@ export const circularDnaSequenceViewerMetadata = makeViewerMetadata({
   whenToUse: "Explore circular DNA sequences and annotated plasmids or genomes, with feature tracks, reading frames and base-level inspection.",
   outputType: "Circular DNA sequence viewer or summary report",
   viewerLabel: "Circular DNA sequence viewer",
+  showcaseFamily: "circular-dna-viewer",
   workerExport: "runCircularDnaSequenceViewer"
 });

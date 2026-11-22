@@ -139,12 +139,12 @@ GGGGGGGGGGGGGGGG`,
           dependsOn: "readLayout",
           defaultValue: "fastq",
           choices: [
-            { value: "fastq", label: "Sampled FASTQ", dependsOnValue: "single" },
-            { value: "interleaved-fastq", label: "Interleaved paired FASTQ", dependsOnValue: "paired" },
-            { value: "read1-fastq", label: "Read 1 sampled FASTQ", dependsOnValue: "paired" },
-            { value: "read2-fastq", label: "Read 2 sampled FASTQ", dependsOnValue: "paired" },
-            { value: "table", label: "Sample table", always: true },
-            { value: "report", label: "Summary report", always: true }
+            { showcase: false, value: "fastq", label: "Sampled FASTQ", dependsOnValue: "single" },
+            { showcase: false, value: "interleaved-fastq", label: "Interleaved paired FASTQ", dependsOnValue: "paired" },
+            { showcase: false, value: "read1-fastq", label: "Read 1 sampled FASTQ", dependsOnValue: "paired" },
+            { showcase: false, value: "read2-fastq", label: "Read 2 sampled FASTQ", dependsOnValue: "paired" },
+            { showcase: false, value: "table", label: "Sample table", always: true },
+            { showcase: false, value: "report", label: "Summary report", always: true }
           ]
         }
       ]

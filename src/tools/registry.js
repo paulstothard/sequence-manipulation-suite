@@ -1,3 +1,6 @@
+import { alignedSequenceViewerMetadata } from "./aligned-sequence-viewer/metadata.js";
+import { runAlignedSequenceViewer } from "./aligned-sequence-viewer/run.js";
+import { alignedSequenceViewerExample } from "../examples/aligned-sequence-viewer-example.js";
 import { dnaRnaDotPlotExample } from "../examples/alignment-dot-plot-example.js";
 import { identifierInputsFor } from './identifier-inputs.js';
 import {svgEditorMetadata,svgEditorExample} from "./svg-editor/metadata.js";
@@ -492,6 +495,7 @@ function makeFastqQcExample() {
 }
 
 export const tools = [
+  { metadata: alignedSequenceViewerMetadata, run: runAlignedSequenceViewer, example: alignedSequenceViewerExample },
   {metadata:svgEditorMetadata,run:runSvgEditor,example:svgEditorExample},
   {metadata:imageAnnotatorMetadata,run:runImageAnnotator,example:imageAnnotatorExample},
   { metadata: textImageMetadata, run: runTextImage, example: textImageExample },

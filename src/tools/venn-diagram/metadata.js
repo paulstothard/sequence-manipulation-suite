@@ -58,11 +58,11 @@ export const vennDiagramMetadata = {
           label: "Format",
           defaultValue: "venn-svg",
           choices: [
-            { value: "venn-svg", label: "Venn diagram" },
-            { value: "table-tsv", label: "Comparison table" },
-            { value: "shared", label: "Shared by all item list" },
-            { value: "unique-one", label: "Unique to one list item list" },
-            { value: "report", label: "Summary report" }
+            { showcase: "venn-diagram", value: "venn-svg", label: "Venn diagram" },
+            { showcase: false, value: "table-tsv", label: "Comparison table" },
+            { showcase: false, value: "shared", label: "Shared by all item list" },
+            { showcase: false, value: "unique-one", label: "Unique to one list item list" },
+            { showcase: false, value: "report", label: "Summary report" }
           ]
         }
       ]

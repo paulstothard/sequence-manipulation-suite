@@ -195,7 +195,7 @@ export const sangerTraceReviewEditorMetadata = {
     workflowOutputIds: ["primary", "report", "table", "fasta", "fastq", "warnings"]
   }),
   showcaseOutputs: [
-    {
+    { showcase: "sanger-trace-editor",
       id: "interactive-trace-editor",
       label: "Trace editor",
       options: { outputFormat: "interactive-trace" }
@@ -204,10 +204,10 @@ export const sangerTraceReviewEditorMetadata = {
   options: [
     sangerTrimmingGroup({ defaultMode: 'none', includeReverseComplement: true }),
     outputFormatGroup("interactive-trace", [
-      { value: "interactive-trace", label: "Trace editor" },
-      { value: "tsv", label: "Base-call table" },
-      { value: "fasta", label: "Clipped FASTA" },
-      { value: "fastq", label: "Clipped FASTQ" },
+      { showcase: "sanger-trace-editor", value: "interactive-trace", label: "Trace editor" },
+      { showcase: false, value: "tsv", label: "Base-call table" },
+      { showcase: false, value: "fasta", label: "Clipped FASTA" },
+      { showcase: false, value: "fastq", label: "Clipped FASTQ" },
     ]),
     { ...limitsGroup(), options: limitsGroup().options.filter(option => option.id === "maxSessionTraces") }
   ]
@@ -230,11 +230,11 @@ export const sangerTraceAssemblyMetadata = {
     sangerTrimmingGroup(),
     assemblyGroup(),
     outputFormatGroup("assembly-trace-map-svg", [
-      { value: "assembly-trace-map-svg", label: "Assembly trace map" },
-      { value: "assembly-text-map", label: "Assembly text map" },
-      { value: "consensus-fasta", label: "Consensus FASTA" },
-      { value: "session-report", label: "Summary report" },
-      { value: "analysis-json", label: "Analysis JSON" }
+      { showcase: "assembly-trace-map", value: "assembly-trace-map-svg", label: "Assembly trace map" },
+      { showcase: false, value: "assembly-text-map", label: "Assembly text map" },
+      { showcase: false, value: "consensus-fasta", label: "Consensus FASTA" },
+      { showcase: false, value: "session-report", label: "Summary report" },
+      { showcase: false, value: "analysis-json", label: "Analysis JSON" }
     ]),
     limitsGroup(false, true)
   ]

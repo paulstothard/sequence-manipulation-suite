@@ -149,13 +149,13 @@ export const pcrPrimerDesignMetadata = {
       label: "Output format",
       help: "Summary report and Analysis JSON retain settings, search scope and warnings. FASTA exports contain sequences only.",
       choices: [
-        { value: "report", label: "Summary report" },
-        { value: "analysis-json", label: "Analysis JSON" },
-        { value: "tsv", label: "Candidate table" },
-        { value: "primer-fasta", label: "Primer FASTA" },
-        { value: "product-fasta", label: "Product FASTA" },
-        { value: "interactive-viewer", label: "Linear DNA sequence viewer" },
-        { value: "interactive-circular-viewer", label: "Circular DNA sequence viewer" }
+        { showcase: false, value: "report", label: "Summary report" },
+        { showcase: false, value: "analysis-json", label: "Analysis JSON" },
+        { showcase: false, value: "tsv", label: "Candidate table" },
+        { showcase: false, value: "primer-fasta", label: "Primer FASTA" },
+        { showcase: false, value: "product-fasta", label: "Product FASTA" },
+        { showcase: "linear-dna-viewer", value: "interactive-viewer", label: "Linear DNA sequence viewer" },
+        { showcase: "circular-dna-viewer", value: "interactive-circular-viewer", label: "Circular DNA sequence viewer" }
       ]
     },
     {

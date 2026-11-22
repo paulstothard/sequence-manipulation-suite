@@ -103,10 +103,10 @@ export const proteinStructureViewerMetadata = {
           label: "Output format",
           defaultValue: "interactive-viewer",
           choices: [
-            { value: "interactive-viewer", label: "Protein structure viewer" },
-            { value: "report", label: "Summary report" },
-            { value: "residue-tsv", label: "Residue table" },
-            { value: "atom-tsv", label: "Atom table" }
+            { showcase: "protein-structure-viewer", value: "interactive-viewer", label: "Protein structure viewer" },
+            { showcase: false, value: "report", label: "Summary report" },
+            { showcase: false, value: "residue-tsv", label: "Residue table" },
+            { showcase: false, value: "atom-tsv", label: "Atom table" }
           ]
         }
       ]

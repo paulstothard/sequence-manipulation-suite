@@ -16,7 +16,7 @@ export const sequenceExtractorMetadata = {
   inputType: "Plain-text DNA sequence, FASTA records, GenBank/DDBJ or EMBL nucleotide records, GFF3/GTF/BED plus FASTA, and optional primer sequences",
   outputType: "Interactive scrollable sequence extractor",
   showcaseOutputs: [
-    {
+    { showcase: "sequence-extractor",
       id: "interactive-sequence-extractor",
       label: "Interactive sequence extractor",
       options: { enzymeIds: "ecori" }

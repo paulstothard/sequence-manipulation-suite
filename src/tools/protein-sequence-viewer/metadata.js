@@ -36,8 +36,8 @@ export const proteinSequenceViewerMetadata = {
       label: "Output format",
       defaultValue: "interactive-viewer",
       choices: [
-        { value: "interactive-viewer", label: "Protein sequence viewer" },
-        { value: "report", label: "Summary report" }
+        { showcase: "protein-sequence-viewer", value: "interactive-viewer", label: "Protein sequence viewer" },
+        { showcase: false, value: "report", label: "Summary report" }
       ]
     },
     {

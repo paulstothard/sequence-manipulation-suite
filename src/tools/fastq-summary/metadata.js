@@ -112,19 +112,19 @@ FFFFFFFFFFFFFFFF`,
           label: "Output format",
           defaultValue: "report",
           choices: [
-            { value: "report", label: "Summary report" },
-            { value: "tsv", label: "Summary table", resultView: { kind: "table", streamId: "table" } },
-            { value: "per-base-quality-tsv", label: "Per-base quality table" },
-            { value: "length-distribution-tsv", label: "Read length distribution table" },
-            { value: "gc-distribution-tsv", label: "Read GC distribution table" },
-            { value: "read-quality-distribution-tsv", label: "Read mean quality distribution table" },
-            { value: "n-distribution-tsv", label: "Read N distribution table" },
-            { value: "quality-svg", label: "Per-base quality plot" },
-            { value: "read-quality-svg", label: "Read mean quality plot" },
-            { value: "base-composition-svg", label: "Per-base composition plot" },
-            { value: "length-svg", label: "Read length plot" },
-            { value: "gc-svg", label: "Read GC plot" },
-            { value: "n-distribution-svg", label: "Read N distribution plot" }
+            { showcase: false, value: "report", label: "Summary report" },
+            { showcase: false, value: "tsv", label: "Summary table", resultView: { kind: "table", streamId: "table" } },
+            { showcase: false, value: "per-base-quality-tsv", label: "Per-base quality table" },
+            { showcase: false, value: "length-distribution-tsv", label: "Read length distribution table" },
+            { showcase: false, value: "gc-distribution-tsv", label: "Read GC distribution table" },
+            { showcase: false, value: "read-quality-distribution-tsv", label: "Read mean quality distribution table" },
+            { showcase: false, value: "n-distribution-tsv", label: "Read N distribution table" },
+            { showcase: "per-base-quality-plot", value: "quality-svg", label: "Per-base quality plot" },
+            { showcase: "read-mean-quality-plot", value: "read-quality-svg", label: "Read mean quality plot" },
+            { showcase: "per-base-composition-plot", value: "base-composition-svg", label: "Per-base composition plot" },
+            { showcase: "read-length-plot", value: "length-svg", label: "Read length plot" },
+            { showcase: "read-gc-plot", value: "gc-svg", label: "Read GC plot" },
+            { showcase: "read-n-distribution-plot", value: "n-distribution-svg", label: "Read N distribution plot" }
           ]
         }
       ]

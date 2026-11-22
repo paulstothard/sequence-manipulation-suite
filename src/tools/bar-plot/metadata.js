@@ -52,8 +52,8 @@ export const barPlotMetadata = {
       label: "Output format",
       options: [
         { id: "outputFormat", type: "radio", label: "Format", defaultValue: "svg", choices: [
-          { value: "svg", label: "Bar plot" },
-          { value: "bar-tsv", label: "Bar table" }
+          { showcase: "bar-plot", value: "svg", label: "Bar plot" },
+          { showcase: false, value: "bar-tsv", label: "Bar table" }
         ] }
       ]
     },

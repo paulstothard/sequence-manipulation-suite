@@ -56,11 +56,11 @@ export const primerOligoPropertiesMetadata = {
           label: "Format",
           help: "Normalized sequence is your input oligo in 5′→3′ order after cleanup and any selected DNA/RNA conversion. Use this strand for the oligo you entered, including reverse primers. Reverse complement is the opposite strand, also written 5′→3′. Review each row's validity, warnings and notes before ordering.",
           choices: [
-            { value: "report", label: "Summary report" },
-            { value: "tsv", label: "Property table" },
-            { value: "reverse-complement-fasta", label: "Reverse-complement FASTA" },
-            { value: "pair-tsv", label: "Oligo pair Tm comparison", resultView: { kind: "table", streamId: "pairs" } },
-            { value: "analysis-json", label: "Complete analysis JSON" }
+            { showcase: false, value: "report", label: "Summary report" },
+            { showcase: false, value: "tsv", label: "Property table" },
+            { showcase: false, value: "reverse-complement-fasta", label: "Reverse-complement FASTA" },
+            { showcase: false, value: "pair-tsv", label: "Oligo pair Tm comparison", resultView: { kind: "table", streamId: "pairs" } },
+            { showcase: false, value: "analysis-json", label: "Complete analysis JSON" }
           ]
         }
       ]

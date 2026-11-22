@@ -38,9 +38,9 @@ export const markdownNotebookMetadata = {
           label: "Output format",
           defaultValue: "notebook",
           choices: [
-            { value: "notebook", label: "Markdown editor" },
-            { value: "markdown", label: "Markdown" },
-            { value: "report", label: "Summary report" }
+            { showcase: false, value: "notebook", label: "Markdown editor" },
+            { showcase: false, value: "markdown", label: "Markdown" },
+            { showcase: false, value: "report", label: "Summary report" }
           ]
         }
       ]

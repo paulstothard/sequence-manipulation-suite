@@ -1,3 +1,5 @@
+import { multipleAlignedSequenceModel } from "../../core/aligned-sequence-adapters.js";
+import { alignedSequenceViewerStream } from "../aligned-sequence-viewer/run.js";
 import { normalizeMultipleAlignmentOptions, MSA_STREAM_FORMATS } from "../../core/multiple-alignment-options.js";
 import { clustalIdentifierNotes } from "../../core/alignment-identifiers.js";
 import { makeAlignmentTreeViewerResult } from "../../core/alignment-tree-viewer.js";
@@ -19,7 +21,7 @@ import { DEFAULT_ALIGNMENT_SVG_CELL_LIMIT } from "../../core/alignment-svg.js";
 import { exportDelimitedTable } from "../../core/table.js";
 
 const identityStreams = new Set(['identityMatrix', 'identityMatrixTable', 'identityPairs', 'identityHeatmap']);
-const extensions = { report: 'txt', fasta: 'fasta', proteinFasta: 'faa', clustal: 'aln', table: 'tsv', coloredSvg: 'svg', sequenceLogo: 'logo-summary.txt', treeDocument: 'json', newick: 'nwk', tree: 'nwk.txt', treeSvg: 'tree.svg', distanceTable: 'distances.tsv', identityMatrix: 'identity-matrix.tsv', identityPairs: 'identity-pairs.tsv', identityHeatmap: 'identity-heatmap.svg' };
+const extensions = { report: 'txt', fasta: 'fasta', proteinFasta: 'faa', clustal: 'aln', table: 'tsv', alignmentDocument: 'sms3.json', coloredSvg: 'svg', sequenceLogo: 'logo-summary.txt', treeDocument: 'json', newick: 'nwk', tree: 'nwk.txt', treeSvg: 'tree.svg', distanceTable: 'distances.tsv', identityMatrix: 'identity-matrix.tsv', identityPairs: 'identity-pairs.tsv', identityHeatmap: 'identity-heatmap.svg' };
 
 async function runMultipleAlignment(input, rawOptions = {}, alphabet, context = {}) {
   context.reportProgress?.({ phase: "parsing-input", progress: 0.05 });
@@ -43,7 +45,9 @@ async function runMultipleAlignment(input, rawOptions = {}, alphabet, context = 
   const { requestedAlignmentOutputs, materializeAlignmentRows, ...optionsUsed } = options;
   const notes = [...new Set([...(prepared?.notes ?? []), ...(identityResult?.notes ?? [])])];
   const resultBase = {
-    optionsUsed, warnings, notes, processedUnitLabel: alphabet === 'protein' ? 'residue' : 'base', recordsProcessed: source.records.length,
+    optionsUsed, warnings, notes,
+    processedUnitLabel: alphabet === 'protein' ? (source.records.some(record => record.sequence.includes('*')) ? 'character' : 'residue') : 'base',
+    recordsProcessed: source.records.length,
     basesProcessed: source.totalSymbols, charactersRemoved: source.charactersRemoved
   };
   if ((needsAlignment && !prepared.alignment) || (needsIdentity && !identityResult.identity)) return makeToolResult({ ...resultBase, output: '' });
@@ -63,6 +67,7 @@ async function runMultipleAlignment(input, rawOptions = {}, alphabet, context = 
     proteinFasta: () => makeTextStream(makeMultipleCodingDnaProteinFasta(prepared.alignment, options.lineWidth), 'text/x-fasta', { format: 'fasta', alphabet: 'protein' }),
     clustal: () => makeTextStream(makeMultipleAlignmentClustal(prepared.alignment, options.lineWidth), 'text/plain', { format: 'clustal', alphabet }),
     table: () => table(alphabet === 'coding-dna' ? multipleCodingDnaAlignmentTableColumns : multipleAlignmentTableColumns, prepared.alignment.rows),
+    alignmentDocument: () => alignedSequenceViewerStream(multipleAlignedSequenceModel(prepared.alignment)),
     coloredSvg: () => makeTextStream(makeMultipleAlignmentSvg(prepared.alignment, { alphabet, lineWidth: options.lineWidth, maxCells: DEFAULT_ALIGNMENT_SVG_CELL_LIMIT, showConsensusLine: options.showConsensusLine }), 'image/svg+xml'),
     sequenceLogo: async () => {
       const calculation = await calculateSequenceLogo(prepared.alignment.titles.map((title, index) => formatFastaRecord(title, prepared.alignment.aligned[index], 80)).join('\n'), {
@@ -106,7 +111,7 @@ async function runMultipleAlignment(input, rawOptions = {}, alphabet, context = 
     ...resultBase, output, streams, sequenceSearch: primary.sequenceSearch,
     notes: [...notes, ...(requested.has('clustal') ? clustalIdentifierNotes(prepared.alignment.titles) : [])],
     download: { filename: selected === 'treeDocument' ? 'alignment-tree.json' : selected.startsWith('identity') ? `${alphabet}-${extensions[selected]}` : `${alphabet}-multiple-alignment.${extensions[selected]}`, mimeType: `${mediaType};charset=utf-8` },
-    visual: selected === 'treeDocument' ? treeViewer.visual
+    visual: selected === 'alignmentDocument' ? {alignedSequence:JSON.parse(output).source} : selected === 'treeDocument' ? treeViewer.visual
       : selected === 'sequenceLogo' ? { sequenceLogo: primary.figure }
       : mediaType === 'image/svg+xml' ? { svg: output } : undefined
   });

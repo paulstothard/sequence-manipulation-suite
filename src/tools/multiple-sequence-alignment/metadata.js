@@ -1,3 +1,4 @@
+import { ALIGNED_SEQUENCE_LIMITS } from "../../core/aligned-sequences.js";
 import { MAX_HEATMAP_CELLS } from "../../core/plot-renderer.js";
 import { DEFAULT_ALIGNMENT_SVG_CELL_LIMIT } from "../../core/alignment-svg.js";
 import { MUSCLE_RUNTIME } from "../../vendor/biowasm/muscle-runtime.js";
@@ -16,7 +17,7 @@ import { pairwiseAlignmentDefaultLimits } from "../../core/pairwise-alignment.js
 import { geneticCodes } from "../../core/genetic-code.js";
 
 const identityOutputFormats = ["identity-matrix", "identity-heatmap"];
-const alignmentOutputFormats = ["clustal", "aligned-fasta", "translated-protein-fasta", "report", "tsv", "svg-color", "sequence-logo", "tree-viewer", "nj-tree", "nj-tree-svg"];
+const alignmentOutputFormats = ["clustal", "aligned-fasta", "translated-protein-fasta", "report", "tsv", "svg-color", "aligned-sequence-viewer", "sequence-logo", "tree-viewer", "nj-tree", "nj-tree-svg"];
 const pairwiseScoringVisibleWhen = {
   any: [
     { option: "alignmentEngine", value: MULTIPLE_ALIGNMENT_ENGINES.sms3 },
@@ -58,6 +59,7 @@ function buildMetadata(alphabet) {
         { id: "clustal", kind: "text", mediaType: "text/plain" },
         { id: "table", kind: "table", schema: isCodingDna ? "multiple-alignment-coding-dna" : isProtein ? "multiple-alignment-protein" : "multiple-alignment-dna-rna", columns: isCodingDna ? multipleCodingDnaAlignmentTableColumns : multipleAlignmentTableColumns },
         { id: "coloredSvg", kind: "text", mediaType: "image/svg+xml" },
+        { id: "alignmentDocument", kind: "text", mediaType: "application/json", label: "Aligned sequence viewer", outputFormat: "aligned-sequence-viewer" },
         { id: "sequenceLogo", kind: "figure", figureType: "sequence-logo", label: "Sequence logo" },
         { id: "tree", kind: "text", mediaType: "text/plain" },
         { id: "treeSvg", kind: "text", mediaType: "image/svg+xml" },
@@ -116,18 +118,19 @@ function buildMetadata(alphabet) {
         label: "Output format",
         defaultValue: MSA_DEFAULTS.outputFormat,
         choices: [
-          { value: "clustal", label: "CLUSTAL-format text alignment" },
-          { value: "aligned-fasta", label: isCodingDna ? "Aligned codon FASTA" : "Aligned FASTA" },
-          ...(isCodingDna ? [{ value: "translated-protein-fasta", label: "Aligned translated protein FASTA" }] : []),
-          { value: "report", label: "Summary report" },
-          { value: "tsv", label: "Alignment table" },
-          { value: "svg-color", label: "Colored alignment" },
-          { value: "sequence-logo", label: isCodingDna ? "Aligned coding-DNA sequence logo" : "Sequence logo" },
-          { value: "tree-viewer", label: "Tree Viewer" },
-          { value: "nj-tree", label: "Neighbor-joining tree report" },
-          { value: "nj-tree-svg", label: "Midpoint-rooted NJ tree" },
-          { value: "identity-matrix", label: "Identity matrix table", resultView: { kind: "table", streamId: "identityMatrixTable" } },
-          { value: "identity-heatmap", label: "Identity heatmap" }
+          { showcase: false, value: "clustal", label: "CLUSTAL-format text alignment" },
+          { showcase: false, value: "aligned-fasta", label: isCodingDna ? "Aligned codon FASTA" : "Aligned FASTA" },
+          ...(isCodingDna ? [{ showcase: false, value: "translated-protein-fasta", label: "Aligned translated protein FASTA" }] : []),
+          { showcase: false, value: "report", label: "Summary report" },
+          { showcase: false, value: "tsv", label: "Alignment table" },
+          { showcase: "colored-alignment", value: "svg-color", label: "Colored alignment" },
+          { showcase: "aligned-sequence-viewer", value: "aligned-sequence-viewer", label: "Aligned sequence viewer" },
+          { showcase: "sequence-logo", value: "sequence-logo", label: isCodingDna ? "Aligned coding-DNA sequence logo" : "Sequence logo" },
+          { showcase: "tree-viewer", value: "tree-viewer", label: "Tree Viewer" },
+          { showcase: false, value: "nj-tree", label: "Neighbor-joining tree report" },
+          { showcase: "tree-figure", value: "nj-tree-svg", label: "Midpoint-rooted NJ tree" },
+          { showcase: false, value: "identity-matrix", label: "Identity matrix table", resultView: { kind: "table", streamId: "identityMatrixTable" } },
+          { showcase: "sequence-identity-heatmap", value: "identity-heatmap", label: "Identity heatmap" }
         ],
         help: "Tree outputs use the selected alignment engine. Identity matrix and heatmap outputs instead use all-vs-all SMS3 affine pairwise alignments with the scoring controls shown for those outputs."
       },
@@ -138,6 +141,7 @@ function buildMetadata(alphabet) {
         collapsible: true,
         collapsed: true,
         options: [
+          { id: "alignedSequenceFigureCells", type: "limit-value", label: "Aligned sequence viewer cells", value: ALIGNED_SEQUENCE_LIMITS.displayedCells, visibleWhen: { option: "outputFormat", value: "aligned-sequence-viewer" }, help: "Complete alignment length × displayed sequences, including gaps. Larger alignments remain available as FASTA or alignment tables." },
           { id: "coloredAlignmentCells", type: "limit-value", label: "Maximum colored alignment cells", value: DEFAULT_ALIGNMENT_SVG_CELL_LIMIT, visibleWhen: { option: "outputFormat", value: "svg-color" }, help: "Fixed display-density ceiling. Larger alignments remain available as FASTA or alignment tables." },
           { id: "identityHeatmapCells", type: "limit-value", label: "Maximum identity heatmap cells", value: MAX_HEATMAP_CELLS, visibleWhen: { option: "outputFormat", value: "identity-heatmap" }, help: "Fixed display-density ceiling. Use Identity matrix table for larger comparisons." },
           { id: "maxAlignmentRecords", type: "limit-value", label: "Maximum input records", value: MAX_MSA_SEQUENCES },

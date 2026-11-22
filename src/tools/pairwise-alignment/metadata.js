@@ -1,3 +1,4 @@
+import { ALIGNED_SEQUENCE_LIMITS } from "../../core/aligned-sequences.js";
 import { DEFAULT_ALIGNMENT_SVG_CELL_LIMIT } from "../../core/alignment-svg.js";
 import { PAIRWISE_DEFAULTS, PAIRWISE_DNA_DEFAULTS } from "../../core/pairwise-alignment-options.js";
 const TWO_SEQUENCE_INPUT_HELP = "Use two FASTA records, or separate two plain-text sequences with a blank line. Sequence lines may wrap.";
@@ -7,7 +8,9 @@ import {
   codonAlignmentTableColumns,
   PAIRWISE_ALIGNMENT_ENGINES,
   pairwiseAlignmentDefaultLimits,
-  pairwiseAlignmentTableColumns
+  pairwiseAlignmentTableColumns,
+  pairwiseDnaAlignmentTableColumns,
+  BLOSUM62_UNLISTED_SCORE
 } from "../../core/pairwise-alignment.js";
 
 function makeWorkflow(alphabet) {
@@ -23,8 +26,9 @@ function makeWorkflow(alphabet) {
       { id: "alignmentText", kind: "text", mediaType: "text/plain" },
       { id: "fasta", kind: "text", mediaType: "text/x-fasta" },
       { id: "clustal", kind: "text", mediaType: "text/plain" },
-      { id: "table", kind: "table", schema: `pairwise-alignment-${alphabet}`, columns: pairwiseAlignmentTableColumns },
+      { id: "table", kind: "table", schema: `pairwise-alignment-${alphabet}`, columns: alphabet === 'dna-rna' ? pairwiseDnaAlignmentTableColumns : pairwiseAlignmentTableColumns },
       { id: "coloredSvg", kind: "text", mediaType: "image/svg+xml" },
+      { id: "alignmentDocument", kind: "text", mediaType: "application/json", label: "Aligned sequence viewer", outputFormat: "aligned-sequence-viewer" },
       { id: "warnings", kind: "warnings" }
     ]
   };
@@ -45,6 +49,7 @@ function makeCodonWorkflow() {
       { id: "proteinFasta", kind: "text", mediaType: "text/x-fasta" },
       { id: "table", kind: "table", schema: "pairwise-coding-dna-alignment", columns: codonAlignmentTableColumns },
       { id: "coloredSvg", kind: "text", mediaType: "image/svg+xml" },
+      { id: "alignmentDocument", kind: "text", mediaType: "application/json", label: "Aligned sequence viewer", outputFormat: "aligned-sequence-viewer" },
       { id: "warnings", kind: "warnings" }
     ]
   };
@@ -103,12 +108,13 @@ const commonOptions = [
         label: "Format",
         defaultValue: PAIRWISE_DEFAULTS.outputFormat,
         choices: [
-          { value: "report", label: "Summary report" },
-          { value: "alignment-text", label: "Pairwise text" },
-          { value: "aligned-fasta", label: "Aligned FASTA" },
-          { value: "clustal", label: "CLUSTAL-format text alignment" },
-          { value: "tsv", label: "Alignment table" },
-          { value: "svg-color", label: "Colored alignment" }
+          { showcase: false, value: "report", label: "Summary report" },
+          { showcase: false, value: "alignment-text", label: "Pairwise text" },
+          { showcase: false, value: "aligned-fasta", label: "Aligned FASTA" },
+          { showcase: false, value: "clustal", label: "CLUSTAL-format text alignment" },
+          { showcase: false, value: "tsv", label: "Alignment table" },
+          { showcase: "colored-alignment", value: "svg-color", label: "Colored alignment" },
+          { showcase: "aligned-sequence-viewer", value: "aligned-sequence-viewer", label: "Aligned sequence viewer" }
         ]
       }
     ]
@@ -122,6 +128,7 @@ const pairwiseLimitsGroup = {
   collapsible: true,
   collapsed: true,
   options: [
+    { id: "alignedSequenceFigureCells", type: "limit-value", label: "Aligned sequence viewer cells", value: ALIGNED_SEQUENCE_LIMITS.displayedCells, visibleWhen: { option: "outputFormat", value: "aligned-sequence-viewer" }, help: "Complete alignment length × displayed sequences, including gaps. Larger alignments remain available as FASTA or alignment tables." },
     { type: "limit-value", id: "pairwiseFigureCells", label: "Colored alignment cells", value: DEFAULT_ALIGNMENT_SVG_CELL_LIMIT, help: "Fixed drawing ceiling across both rows; larger alignments remain available as reports, text, FASTA or tables." },
     { type: "limit-value", label: "Input sequences per alignment", value: 2,
       help: "Exactly two records or raw sequence blocks are required. Extra records are rejected." },
@@ -145,6 +152,7 @@ export const pairwiseAlignDnaRnaMetadata = {
   tags: ["DNA", "RNA", "raw", "FASTA", "alignment", "coordinates"],
   summary:
     "Align two DNA/RNA sequences with global or local dynamic programming and affine gap penalties.",
+  whenToUse: "Compare two nucleotide sequences end to end or locate their best matching subsequences, optionally testing the second sequence's reverse complement.",
   inputType: "Two DNA/RNA sequences",
   inputHelp: TWO_SEQUENCE_INPUT_HELP,
   outputType: "Alignment report, text, FASTA, CLUSTAL-format text, table, colored alignment",
@@ -153,7 +161,8 @@ export const pairwiseAlignDnaRnaMetadata = {
   workerModule: "../tools/pairwise-alignment/run.js",
   workerExport: "runPairwiseAlignDnaRna",
   options: [
-    ...commonOptions.slice(0, 2),
+    commonOptions[0],
+    { ...commonOptions[1], help: "seq-align accepts integer scores and unambiguous DNA or RNA, with no mixed T/U input. SMS3 affine also accepts fractional scores and IUPAC ambiguity symbols." },
     { id: "matchScore", type: "number", label: "Match score", defaultValue: PAIRWISE_DEFAULTS.matchScore, min: -100, max: 100, step: 0.5 },
     {
       id: "similarScore",
@@ -183,6 +192,11 @@ export const pairwiseAlignDnaRnaMetadata = {
     ...commonOptions.slice(4),
     pairwiseLimitsGroup,
     {
+      id: "methodNote",
+      type: "note",
+      text: "Pre-existing gaps are removed before alignment. Coordinates are 1-based inclusive positions in the cleaned sequences. Identity counts identical symbols, including identical ambiguity symbols, across all alignment columns. SMS3 scores distinct overlapping IUPAC symbols and T/U with the ambiguous overlap score. A gap of length L costs opening + (L - 1) × extension. Reverse-complement displays number the selected orientation; the table also retains submitted positions."
+    },
+    {
       id: "citationNote",
       type: "note",
       text: "References:\n\nGlobal alignment: Needleman and Wunsch 1970.\n\nLocal alignment: Smith and Waterman 1981.\n\nAffine gap model: Gotoh 1982."
@@ -197,6 +211,7 @@ export const pairwiseAlignProteinMetadata = {
   tags: ["protein", "raw", "FASTA", "alignment", "coordinates"],
   summary:
     "Align two protein sequences with global or local dynamic programming, BLOSUM62 scores, and affine gap penalties.",
+  whenToUse: "Compare two protein sequences end to end or identify their highest-scoring matching regions while retaining residue coordinates and gap positions.",
   inputType: "Two protein sequences",
   inputHelp: TWO_SEQUENCE_INPUT_HELP,
   outputType: "Alignment report, text, FASTA, CLUSTAL-format text, table, colored alignment",
@@ -205,12 +220,14 @@ export const pairwiseAlignProteinMetadata = {
   workerModule: "../tools/pairwise-alignment/run.js",
   workerExport: "runPairwiseAlignProtein",
   options: [
-    ...commonOptions,
+    commonOptions[0],
+    { ...commonOptions[1], help: "seq-align accepts integer gap penalties. SMS3 affine also accepts fractional gap penalties." },
+    ...commonOptions.slice(2),
     pairwiseLimitsGroup,
     {
       id: "matrixNote",
       type: "note",
-      text: "Protein alignments use the BLOSUM62 substitution matrix with affine gap penalties."
+      text: `BLOSUM62 includes B, Z, X and stop symbols. J, O and U are retained with a generic pair score of ${BLOSUM62_UNLISTED_SCORE}. Pre-existing gaps are removed; coordinates are 1-based inclusive positions in the cleaned sequences, including retained stops. Identity counts identical symbols across all alignment columns. Similarity counts identical symbols plus positive-scoring substitutions. A gap of length L costs opening + (L - 1) × extension.`
     },
     {
       id: "citationNote",
@@ -261,12 +278,13 @@ export const pairwiseAlignCodingDnaMetadata = {
           label: "Format",
           defaultValue: PAIRWISE_DEFAULTS.outputFormat,
           choices: [
-            { value: "report", label: "Summary report" },
-            { value: "alignment-text", label: "Codon text" },
-            { value: "codon-fasta", label: "Aligned codon FASTA" },
-            { value: "protein-fasta", label: "Aligned translated protein FASTA" },
-            { value: "tsv", label: "Codon table" },
-            { value: "svg-color", label: "Colored alignment" }
+            { showcase: false, value: "report", label: "Summary report" },
+            { showcase: false, value: "alignment-text", label: "Codon text" },
+            { showcase: false, value: "codon-fasta", label: "Aligned codon FASTA" },
+            { showcase: false, value: "protein-fasta", label: "Aligned translated protein FASTA" },
+            { showcase: false, value: "tsv", label: "Codon table" },
+            { showcase: "colored-alignment", value: "svg-color", label: "Colored alignment" },
+            { showcase: "aligned-sequence-viewer", value: "aligned-sequence-viewer", label: "Aligned sequence viewer" }
           ]
         }
       ]

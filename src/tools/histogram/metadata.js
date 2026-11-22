@@ -72,8 +72,8 @@ export const histogramMetadata = {
       label: "Output format",
       options: [
         { id: "outputFormat", type: "radio", label: "Format", defaultValue: "svg", choices: [
-          { value: "svg", label: "Histogram plot" },
-          { value: "bin-tsv", label: "Bin table" }
+          { showcase: "histogram-plot", value: "svg", label: "Histogram plot" },
+          { showcase: false, value: "bin-tsv", label: "Bin table" }
         ] }
       ]
     },

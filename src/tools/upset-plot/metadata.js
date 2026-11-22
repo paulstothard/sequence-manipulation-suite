@@ -69,11 +69,11 @@ export const upsetPlotMetadata = {
           label: "Format",
           defaultValue: "upset-svg",
           choices: [
-            { value: "upset-svg", label: "UpSet plot" },
-            { value: "table-tsv", label: "Comparison table" },
-            { value: "shared", label: "Shared by all item list" },
-            { value: "unique-one", label: "Unique to one list item list" },
-            { value: "report", label: "Summary report" }
+            { showcase: "upset-plot", value: "upset-svg", label: "UpSet plot" },
+            { showcase: false, value: "table-tsv", label: "Comparison table" },
+            { showcase: false, value: "shared", label: "Shared by all item list" },
+            { showcase: false, value: "unique-one", label: "Unique to one list item list" },
+            { showcase: false, value: "report", label: "Summary report" }
           ]
         }
       ]

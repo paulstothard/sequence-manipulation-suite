@@ -71,13 +71,13 @@ export function getSvgPngExportSize(width, height, physicalSize) {
   return figurePngSize(width, height, physicalSize);
 }
 
-export async function downloadSvgAsPng(svg, filename = "sms3-plot.png", { background = "#ffffff" } = {}) {
+export async function downloadSvgAsPng(svg, filename = "sms3-plot.png", { background = "#ffffff", maxPixels } = {}) {
   const documentSvg = new DOMParser().parseFromString(svg, "image/svg+xml").documentElement;
   const viewBox = documentSvg.getAttribute("viewBox")?.trim().split(/[\s,]+/).map(Number) ?? [];
   const physicalSize = svgPhysicalSize(documentSvg);
   const width = viewBox[2] || (physicalSize && physicalSize.widthMm * CSS_PIXELS_PER_INCH / 25.4) || parseFloat(documentSvg.getAttribute('width')) || 920;
   const height = viewBox[3] || (physicalSize && physicalSize.heightMm * CSS_PIXELS_PER_INCH / 25.4) || parseFloat(documentSvg.getAttribute('height')) || 420;
-  const size = getSvgPngExportSize(width, height, physicalSize);
+  const size = figurePngSize(width, height, physicalSize, maxPixels);
   if (!viewBox.length) documentSvg.setAttribute('viewBox', `0 0 ${width} ${height}`);
   // Rasterize the vector at the target resolution instead of resizing a
   // screen-resolution image. Keep viewBox geometry and text unchanged.

@@ -94,23 +94,23 @@ export const restrictionDigestMetadata = {
       visibleWhen: { option: "outputFormat", value: "svg-gel" },
       help: "For linear DNA, combine fragments from all input molecules in one lane, followed by separate explanatory lanes. Assumes equal molecule counts; does not predict PCR efficiency or yield."
     },
+    ...makeDnaGelOptions(),
     {
       id: "outputFormat",
       type: "radio",
       label: "Output format",
       defaultValue: "svg-gel",
       choices: [
-        { value: "svg-gel", label: "Simulated gel" },
-        { value: "svg-map", label: "Fragment map" },
-        { value: "interactive-viewer", label: "Linear DNA sequence viewer" },
-        { value: "interactive-circular-viewer", label: "Circular DNA sequence viewer" },
-        { value: "text-map", label: "Text annotation map" },
-        { value: "report", label: "Fragment-size report" },
-        { value: "tsv", label: "Fragment table" },
-        { value: "fasta", label: "FASTA cut fragments" }
+        { showcase: "dna-gel", value: "svg-gel", label: "Simulated gel" },
+        { showcase: "fragment-map", value: "svg-map", label: "Fragment map" },
+        { showcase: "linear-dna-viewer", value: "interactive-viewer", label: "Linear DNA sequence viewer" },
+        { showcase: "circular-dna-viewer", value: "interactive-circular-viewer", label: "Circular DNA sequence viewer" },
+        { showcase: false, value: "text-map", label: "Text annotation map" },
+        { showcase: false, value: "report", label: "Fragment-size report" },
+        { showcase: false, value: "tsv", label: "Fragment table" },
+        { showcase: false, value: "fasta", label: "FASTA cut fragments" }
       ]
     },
-    ...makeDnaGelOptions(),
     {
       id: "advancedLimits", type: "group", label: "Limits", collapsible: true, collapsed: true,
       options: [

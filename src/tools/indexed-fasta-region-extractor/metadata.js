@@ -44,10 +44,10 @@ export const indexedFastaRegionExtractorMetadata = {
           label: "Output format",
           defaultValue: "fasta",
           choices: [
-            { value: "fasta", label: "Extracted FASTA" },
-            { value: "table-tsv", label: "Region table" },
-            { value: "interactive-viewer", label: "DNA region viewer" },
-            { value: "report", label: "Summary report" }
+            { showcase: false, value: "fasta", label: "Extracted FASTA" },
+            { showcase: false, value: "table-tsv", label: "Region table" },
+            { showcase: "linear-dna-viewer", value: "interactive-viewer", label: "DNA region viewer" },
+            { showcase: false, value: "report", label: "Summary report" }
           ]
         }
       ]

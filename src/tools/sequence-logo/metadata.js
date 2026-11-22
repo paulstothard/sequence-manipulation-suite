@@ -172,8 +172,8 @@ export const sequenceLogoMetadata = {
       label: "Output format",
       defaultValue: "interactive-logo",
       choices: [
-        { value: "interactive-logo", label: "Interactive sequence logo" },
-        { value: "column-table", label: "Column statistics table", resultView: { kind: "table", streamId: "table" } }
+        { showcase: "sequence-logo", value: "interactive-logo", label: "Interactive sequence logo" },
+        { showcase: false, value: "column-table", label: "Column statistics table", resultView: { kind: "table", streamId: "table" } }
       ]
     },
     {

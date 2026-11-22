@@ -49,8 +49,8 @@ export const wordCloudMetadata = {
       label: "Output format",
       options: [
         { id: "outputFormat", type: "radio", label: "Format", defaultValue: "svg", choices: [
-          { value: "svg", label: "Word cloud plot" },
-          { value: "word-tsv", label: "Word-count table" }
+          { showcase: "word-cloud-plot", value: "svg", label: "Word cloud plot" },
+          { showcase: false, value: "word-tsv", label: "Word-count table" }
         ] }
       ]
     },

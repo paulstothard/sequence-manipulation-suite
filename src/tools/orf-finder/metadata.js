@@ -19,7 +19,7 @@ export const orfFinderMetadata = {
     "Find open reading frames on forward and reverse-complement strands with selectable genetic codes and length filters.",
   whenToUse: "Locate candidate coding regions in DNA/RNA and export their coordinates or translations under a chosen genetic code.",
   inputType: "DNA/RNA sequence",
-  showcaseOutputs: [{ id: "orf-explorer", label: "ORF explorer",
+  showcaseOutputs: [{ showcase: "orf-explorer", id: "orf-explorer", label: "ORF explorer",
     summary: "Explore ORFs and their DNA and protein sequences in a short lambda phage fragment.",
     options: { outputFormat: "orf-explorer", nestedMode: "first-start" } }],
   outputType: "ORF explorer, report, table, FASTA, overview, or linear DNA sequence viewer",
@@ -119,14 +119,14 @@ export const orfFinderMetadata = {
       label: "Output format",
       defaultValue: ORF_DEFAULTS.outputFormat,
       choices: [
-        { value: "orf-explorer", label: "ORF explorer" },
-        { value: "report", label: "Summary report" },
-        { value: "tsv", label: "Summary table", resultView: { kind: "table", streamId: "table" } },
-        { value: "nucleotide-fasta", label: "Nucleotide FASTA" },
-        { value: "protein-fasta", label: "Protein FASTA" },
-        { value: "svg-overview", label: "ORF overview plot" },
-        { value: "interactive-viewer", label: "Linear DNA sequence viewer" },
-        { value: "interactive-circular-viewer", label: "Circular DNA sequence viewer" }
+        { showcase: "orf-explorer", value: "orf-explorer", label: "ORF explorer" },
+        { showcase: false, value: "report", label: "Summary report" },
+        { showcase: false, value: "tsv", label: "Summary table", resultView: { kind: "table", streamId: "table" } },
+        { showcase: false, value: "nucleotide-fasta", label: "Nucleotide FASTA" },
+        { showcase: false, value: "protein-fasta", label: "Protein FASTA" },
+        { showcase: "orf-overview-plot", value: "svg-overview", label: "ORF overview plot" },
+        { showcase: "linear-dna-viewer", value: "interactive-viewer", label: "Linear DNA sequence viewer" },
+        { showcase: "circular-dna-viewer", value: "interactive-circular-viewer", label: "Circular DNA sequence viewer" }
       ]
     },
     {

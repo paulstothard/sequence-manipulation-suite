@@ -118,9 +118,9 @@ export const vcfRandomSamplerMetadata = {
           label: "Output format",
           defaultValue: "sampled-vcf",
           choices: [
-            { value: "sampled-vcf", label: "Sampled VCF" },
-            { value: "variant-table", label: "Variant table" },
-            { value: "report", label: "Summary report" }
+            { showcase: false, value: "sampled-vcf", label: "Sampled VCF" },
+            { showcase: false, value: "variant-table", label: "Variant table" },
+            { showcase: false, value: "report", label: "Summary report" }
           ]
         }
       ]

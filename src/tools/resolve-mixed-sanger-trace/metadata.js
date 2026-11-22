@@ -38,9 +38,9 @@ export const resolveMixedSangerTraceMetadata = {
     ] },
     { type:'group', label:'Output format', options:[
       { id:'outputFormat', type:'select', label:'Output format', defaultValue:'alignment-svg', choices:[
-        { value:'alignment-svg', label:'Candidate alignment' }, { value:'fasta', label:'Candidate FASTA' },
-        { value:'aligned-fasta', label:'Aligned FASTA' }, { value:'tsv', label:'Variant table' },
-        { value:'report', label:'Summary report' }, { value:'json', label:'Analysis JSON' }
+        { showcase: "candidate-alignment", value:'alignment-svg', label:'Candidate alignment' }, { showcase: false, value:'fasta', label:'Candidate FASTA' },
+        { showcase: false, value:'aligned-fasta', label:'Aligned FASTA' }, { showcase: false, value:'tsv', label:'Variant table' },
+        { showcase: false, value:'report', label:'Summary report' }, { showcase: false, value:'json', label:'Analysis JSON' }
       ] }
     ] },
     { type:'group', id:'limits', label:'Limits', collapsible:true, collapsed:true, options:[

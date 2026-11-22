@@ -102,10 +102,10 @@ export const reverseTranslateMetadata = {
       type: "radio",
       defaultValue: defaults.outputFormat,
       choices: [
-        { value: "fasta", label: "Reverse-translated DNA FASTA" },
-        { value: "plot", label: "Codon base probability plot" },
-        { value: "tsv", label: "Codon choice table" },
-        { value: "report", label: "Summary report" }
+        { showcase: false, value: "fasta", label: "Reverse-translated DNA FASTA" },
+        { showcase: "codon-base-probability-plot", value: "plot", label: "Codon base probability plot" },
+        { showcase: false, value: "tsv", label: "Codon choice table" },
+        { showcase: false, value: "report", label: "Summary report" }
       ]
     },
     {

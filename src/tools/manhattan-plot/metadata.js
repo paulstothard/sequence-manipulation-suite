@@ -76,8 +76,8 @@ export const manhattanPlotMetadata = {
           label: "Output format",
           defaultValue: "svg",
           choices: [
-            { value: "svg", label: "Manhattan plot" },
-            { value: "point-tsv", label: "Point table" }
+            { showcase: "manhattan-plot", value: "svg", label: "Manhattan plot" },
+            { showcase: false, value: "point-tsv", label: "Point table" }
           ]
         }
       ]

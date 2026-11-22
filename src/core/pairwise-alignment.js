@@ -21,6 +21,7 @@ const STATE_Y = 2;
 const STATE_STOP = 3;
 const MAX_ALIGNMENT_CELLS_OPTION = 20_000_000;
 export const BIOWASM_SEQ_ALIGN_VERSION = "2017.10.18";
+export const BLOSUM62_UNLISTED_SCORE = -1;
 
 // BLOSUM62 values from Henikoff and Henikoff, Proc Natl Acad Sci USA.
 // 1992;89:10915-10919, using the standard NCBI/BLAST ordering.
@@ -81,6 +82,13 @@ export const pairwiseAlignmentTableColumns = [
   { id: "sequence_b", label: "Sequence B", type: "string" },
   { id: "relation", label: "Relation", type: "string" },
   { id: "score", label: "Column score", type: "number" }
+];
+
+export const pairwiseDnaAlignmentTableColumns = [
+  ...pairwiseAlignmentTableColumns.map(column => column.id === "sequence_b_position"
+    ? { ...column, label: "Sequence B oriented position" } : column),
+  { id: "sequence_b_source_position", label: "Sequence B submitted position", type: "number" },
+  { id: "sequence_b_orientation", label: "Sequence B orientation", type: "string" }
 ];
 
 export const codonAlignmentTableColumns = [
@@ -147,8 +155,13 @@ function describeAlignmentCleanup(record, cleaned, alphabet, warnings, notes) {
   if (unexpected) warnings.push(`${record.title}: removed ${unexpected} character(s) outside the ${alphabet === "protein" ? "protein" : "DNA/RNA"} alphabet.${alphabet === "coding-dna" ? " Check the reading frame after cleanup." : ""}`);
 }
 
-function reverseComplementDnaRna(sequence) {
-  return Array.from(complementDnaRnaSequence(sequence, { preserveCase: false })).reverse().join("");
+function reverseComplementDnaRna(sequence, partnerSequence) {
+  const complement = Array.from(complementDnaRnaSequence(sequence, { preserveCase: false })).reverse().join("");
+  // Retain an RNA source's alphabet. When B has no T/U, infer RNA only
+  // from an RNA-only partner; otherwise the ordinary DNA convention applies.
+  const rna = !sequence.includes("T") && (sequence.includes("U")
+    || (!partnerSequence.includes("T") && partnerSequence.includes("U")));
+  return rna ? complement.replaceAll("T", "U") : complement;
 }
 
 function splitCompleteCodons(sequence) {
@@ -278,6 +291,17 @@ function seqAlignGapOpen(options) {
   return options.gapOpen - options.gapExtend;
 }
 
+function seqAlignScoreBounds(sequenceA, sequenceB, alphabet, options) {
+  const substitutions = alphabet === "protein" ? [-4, 11] : [options.matchScore, options.mismatchScore];
+  const scores = [...substitutions, options.gapOpen, options.gapExtend];
+  const magnitude = Math.max(...scores.map(Math.abs));
+  // Reserve room for every possible path step and the sentinel margin in int32.
+  if (magnitude * (sequenceA.length + sequenceB.length + 2) > 2_147_483_647) {
+    throw new Error("These sequences and scoring parameters exceed seq-align's integer score range. Reduce the scores or sequence lengths, or select the SMS3 affine engine.");
+  }
+  return Math.min(0, ...scores);
+}
+
 function parseSeqAlignGlobalOutput(stdout) {
   const lines = String(stdout ?? "")
     .split(/\r?\n/)
@@ -330,6 +354,7 @@ async function alignPairwiseWithBioWasmSeqAlign(sequenceA, sequenceB, rawOptions
   const originalB = String(sequenceB ?? "").toUpperCase();
   const a = seqAlignSequence(originalA, alphabet);
   const b = seqAlignSequence(originalB, alphabet);
+  const minimumScore = seqAlignScoreBounds(a, b, alphabet, options);
   const program = options.mode === "local" ? "smith_waterman" : "needleman_wunsch";
   const cli = await cliFactory(program);
   const args = [];
@@ -341,6 +366,11 @@ async function alignPairwiseWithBioWasmSeqAlign(sequenceA, sequenceB, rawOptions
   }
   if (alphabet === "protein") {
     args.push("--scoring", "BLOSUM62");
+    // The bundled CLI otherwise assigns its own scores to unlisted symbols.
+    // Explicit wildcards retain SMS3's generic fallback in both named engines.
+    for (const symbol of new Set(a + b)) {
+      if (!Object.hasOwn(BLOSUM62, symbol)) args.push("--wildcard", symbol, String(BLOSUM62_UNLISTED_SCORE));
+    }
   } else {
     args.push("--match", String(options.matchScore), "--mismatch", String(options.mismatchScore));
   }
@@ -349,6 +379,13 @@ async function alignPairwiseWithBioWasmSeqAlign(sequenceA, sequenceB, rawOptions
     String(seqAlignGapOpen(options)),
     "--gapextend",
     String(options.gapExtend),
+    // seq-align's CLI changes penalties without updating min_penalty. Its global
+    // DP sentinel can then overflow when a larger negative step is added. A
+    // wildcard for '?' (excluded by both input alphabets) updates that bound
+    // through the supported CLI without changing any biological pair score.
+    // See src/alignment_cmdline.c, scoring_add_wildcard and alignment_fill_matrices
+    // in https://github.com/noporpoise/seq-align; COMP-143 retains native probes.
+    "--wildcard", "?", String(minimumScore),
     a,
     b
   );
@@ -403,6 +440,9 @@ async function alignPairwiseWithSelectedEngine(sequenceA, sequenceB, rawOptions 
   const preferredEngine = requestedEngine || PAIRWISE_ALIGNMENT_ENGINES.seqAlign;
   const options = normalizeOptions(rawOptions);
   assertAlignmentCapacity(sequenceA, sequenceB, options, preferredEngine);
+  if (alphabet === "protein" && /[JOU]/i.test(sequenceA + sequenceB)) {
+    pushUniqueWarning(warnings, `BLOSUM62 has no entries for J, O or U. Pairs containing these symbols use the generic score ${BLOSUM62_UNLISTED_SCORE}.`);
+  }
 
   if (preferredEngine === PAIRWISE_ALIGNMENT_ENGINES.seqAlign) {
     requireBioWasmRuntime("seq-align");
@@ -455,7 +495,7 @@ function symbolsOverlap(left, right, alphabet) {
 
 function scorePair(left, right, alphabet, options) {
   if (alphabet === "protein" && options.scoringMatrix === "blosum62") {
-    return BLOSUM62[left]?.[right] ?? BLOSUM62[right]?.[left] ?? -1;
+    return BLOSUM62[left]?.[right] ?? BLOSUM62[right]?.[left] ?? BLOSUM62_UNLISTED_SCORE;
   }
   if (left === right) {
     return options.matchScore;
@@ -773,7 +813,7 @@ export async function preparePairwiseAlignment(input, rawOptions = {}, alphabet 
   let alignment = null;
   if (alphabet === "dna-rna" && rawOptions.secondSequenceOrientation === "best") {
     const directAlignment = await alignPairwiseWithSelectedEngine(records[0].sequence, records[1].sequence, { ...rawOptions, alphabet }, alphabet, warnings, context);
-    const reverseComplementSequence = reverseComplementDnaRna(records[1].sequence);
+    const reverseComplementSequence = reverseComplementDnaRna(records[1].sequence, records[0].sequence);
     const reverseComplementAlignment = await alignPairwiseWithSelectedEngine(records[0].sequence, reverseComplementSequence, { ...rawOptions, alphabet }, alphabet, warnings, context);
     const selectedReverseComplement = reverseComplementAlignment.score > directAlignment.score;
     alignment = selectedReverseComplement ? reverseComplementAlignment : directAlignment;
@@ -798,6 +838,18 @@ export async function preparePairwiseAlignment(input, rawOptions = {}, alphabet 
       mode: "as-provided",
       selected: "as-provided"
     };
+  }
+  if (alphabet === "dna-rna") {
+    const reversed = alignment.orientationSelection.selected === "reverse-complement";
+    for (const column of alignment.columns) {
+      column.sequence_b_source_position = column.sequence_b_position === "" ? ""
+        : reversed ? records[1].sequence.length - column.sequence_b_position + 1 : column.sequence_b_position;
+      column.sequence_b_orientation = alignment.orientationSelection.selected;
+    }
+    if (alignment.orientationSelection.mode === "best-of-two") {
+      notes.push(`Sequence B orientation: ${reversed ? "reverse complement" : "submitted orientation"} selected (submitted score ${alignment.orientationSelection.asProvidedScore}; reverse-complement score ${alignment.orientationSelection.reverseComplementScore}; ties keep submitted orientation).`);
+    }
+    if (reversed) notes.push("Sequence B display coordinates count from the reverse complement. The alignment table also gives 1-based positions in the cleaned submitted sequence.");
   }
   return { warnings: [...new Set(warnings)], notes, records, alignment, charactersRemoved };
 }
@@ -959,9 +1011,16 @@ export function makePairwiseAlignmentReport(records, alignment, options = {}) {
     `Gap columns: ${alignment.gaps}`,
     `Gap openings: ${alignment.gapOpenings}`,
     `Identity: ${alignmentPercent(alignment.identityPercent)}`,
+    ...(alignment.alphabet === "dna-rna" ? ["Identity counts identical symbols, including identical ambiguity symbols, across all alignment columns."] : []),
+    ...(alignment.alphabet === "protein" ? ["Identity counts identical symbols, including ambiguity and stop symbols, across all alignment columns."] : []),
     `Similarity: ${alignmentPercent(alignment.similarityPercent)}`,
+    ...(alignment.alphabet === "protein" ? ["Similarity counts identical symbols plus positive-scoring substitutions. Coordinates are 1-based inclusive positions in the cleaned sequences, including retained stops."] : []),
     `Sequence A aligned range: ${alignment.alignedLength ? `${alignment.startA}-${alignment.endA}` : "none"}`,
     `Sequence B aligned range: ${alignment.alignedLength ? `${alignment.startB}-${alignment.endB}` : "none"}`,
+    ...(alignment.orientationSelection?.selected === "reverse-complement" ? [
+      "Sequence B aligned coordinates count from the reverse complement.",
+      `Sequence B submitted range: ${alignment.alignedLength ? `${records[1].sequence.length - alignment.endB + 1}-${records[1].sequence.length - alignment.startB + 1} (reverse strand)` : "none"}`
+    ] : []),
     "",
     "References:",
     "",
@@ -977,7 +1036,8 @@ export function makePairwiseAlignmentReport(records, alignment, options = {}) {
 export function makePairwiseAlignmentText(records, alignment, lineWidth = 60) {
   if (!alignment.alignedLength) return "No positive-scoring local alignment found.";
   const width = Math.max(20, Math.min(120, Number.parseInt(lineWidth, 10) || 60));
-  const lines = [];
+  const lines = alignment.orientationSelection?.selected === "reverse-complement"
+    ? ["Sequence B is reverse complemented; its displayed coordinates count from that orientation.", ""] : [];
   let posA = alignment.startA;
   let posB = alignment.startB;
   const labelA = records[0].title.slice(0, 18) || "Sequence A";
@@ -990,12 +1050,12 @@ export function makePairwiseAlignmentText(records, alignment, lineWidth = 60) {
     const chunkA = alignment.alignmentA.slice(index, index + width);
     const chunkB = alignment.alignmentB.slice(index, index + width);
     const chunkMarkers = alignment.markers.slice(index, index + width);
-    const startA = posA;
-    const startB = posB;
     const basesA = chunkA.replace(/-/g, "").length;
     const basesB = chunkB.replace(/-/g, "").length;
-    const endA = basesA > 0 ? posA + basesA - 1 : posA - 1;
-    const endB = basesB > 0 ? posB + basesB - 1 : posB - 1;
+    const startA = basesA > 0 ? posA : "—";
+    const startB = basesB > 0 ? posB : "—";
+    const endA = basesA > 0 ? posA + basesA - 1 : "—";
+    const endB = basesB > 0 ? posB + basesB - 1 : "—";
 
     lines.push(`${labelA.padEnd(labelWidth)} ${String(startA).padStart(coordinateWidth)} ${chunkA} ${endA}`);
     lines.push(`${"".padEnd(markerIndent)} ${chunkMarkers}`);
@@ -1038,7 +1098,7 @@ export function makeClustal(records, alignment, lineWidth = 60) {
 }
 
 export function makeAlignmentTsv(alignment) {
-  const headers = pairwiseAlignmentTableColumns.map((column) => column.id);
+  const headers = (alignment.alphabet === "dna-rna" ? pairwiseDnaAlignmentTableColumns : pairwiseAlignmentTableColumns).map((column) => column.id);
   return [
     headers.join("\t"),
     ...alignment.columns.map((row) => headers.map((header) => String(row[header] ?? "").replace(/\t/g, " ")).join("\t"))
@@ -1110,10 +1170,10 @@ export function makePairwiseCodonAlignmentText(records, alignment, lineWidth = 2
     const chunkB = codonsB.join(" ");
     const basesA = codonsA.filter((codon) => codon !== "---").length * 3;
     const basesB = codonsB.filter((codon) => codon !== "---").length * 3;
-    const startA = posA;
-    const startB = posB;
-    const endA = basesA > 0 ? posA + basesA - 1 : posA - 1;
-    const endB = basesB > 0 ? posB + basesB - 1 : posB - 1;
+    const startA = basesA > 0 ? posA : "—";
+    const startB = basesB > 0 ? posB : "—";
+    const endA = basesA > 0 ? posA + basesA - 1 : "—";
+    const endB = basesB > 0 ? posB + basesB - 1 : "—";
 
     lines.push(`${labelA.padEnd(labelWidth)} ${String(startA).padStart(coordinateWidth)} ${chunkA} ${endA}`);
     lines.push(`${"protein".padStart(markerIndent)} ${proteinA}`);
@@ -1159,7 +1219,11 @@ export function makeColoredAlignmentSvg(records, alignment, lineWidth = 72) {
       : "Teal exact match; blue ambiguous overlap; orange mismatch; gray gap.";
   return makeAlignmentSvg({
     title: `${records[0].title} vs ${records[1].title}`,
-    note: "Coordinates count bases or amino acids and ignore gaps.",
+    note: alignment.orientationSelection?.selected === "reverse-complement"
+      ? "Coordinates ignore gaps. Sequence B coordinates count from its reverse complement."
+      : alignment.alphabet === "protein"
+        ? "Coordinates count protein sequence characters, including stop symbols, and ignore gaps."
+        : "Coordinates count bases or amino acids and ignore gaps.",
     rows: [
       { label: records[0].title, aligned: alignment.alignmentA, start: alignment.startA },
       { label: records[1].title, aligned: alignment.alignmentB, start: alignment.startB }

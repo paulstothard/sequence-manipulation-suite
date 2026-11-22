@@ -51,8 +51,8 @@ export const qqPlotMetadata = {
       label: "Output format",
       options: [
         { id: "outputFormat", type: "radio", label: "Format", defaultValue: "svg", choices: [
-          { value: "svg", label: "Q-Q plot" },
-          { value: "quantile-tsv", label: "Quantile table" }
+          { showcase: "q-q-plot", value: "svg", label: "Q-Q plot" },
+          { showcase: false, value: "quantile-tsv", label: "Quantile table" }
         ] }
       ]
     },

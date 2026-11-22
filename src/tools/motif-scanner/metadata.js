@@ -81,12 +81,12 @@ const dnaRnaOutputOptions = [
     label: "Output format",
     defaultValue: DNA_RNA_MOTIF_DEFAULTS.outputFormat,
     choices: [
-      { value: "report", label: "Summary report" },
-      { value: "tsv", label: "Summary table", resultView: { kind: "table", streamId: "table" } },
-      { value: "text-map", label: "Motif text map" },
-      { value: "svg-map", label: "Linear motif map" },
-      { value: "interactive-viewer", label: "Linear DNA sequence viewer" },
-      { value: "interactive-circular-viewer", label: "Circular DNA sequence viewer" }
+      { showcase: false, value: "report", label: "Summary report" },
+      { showcase: false, value: "tsv", label: "Summary table", resultView: { kind: "table", streamId: "table" } },
+      { showcase: false, value: "text-map", label: "Motif text map" },
+      { showcase: "linear-motif-map", value: "svg-map", label: "Linear motif map" },
+      { showcase: "linear-dna-viewer", value: "interactive-viewer", label: "Linear DNA sequence viewer" },
+      { showcase: "circular-dna-viewer", value: "interactive-circular-viewer", label: "Circular DNA sequence viewer" }
     ]
   }
 ];
@@ -98,11 +98,11 @@ const proteinOutputOptions = [
     label: "Output format",
     defaultValue: PROTEIN_MOTIF_DEFAULTS.outputFormat,
     choices: [
-      { value: "report", label: "Summary report" },
-      { value: "tsv", label: "Summary table", resultView: { kind: "table", streamId: "table" } },
-      { value: "text-map", label: "Motif text map" },
-      { value: "svg-map", label: "Linear motif map" },
-      { value: "interactive-viewer", label: "Protein sequence viewer" }
+      { showcase: false, value: "report", label: "Summary report" },
+      { showcase: false, value: "tsv", label: "Summary table", resultView: { kind: "table", streamId: "table" } },
+      { showcase: false, value: "text-map", label: "Motif text map" },
+      { showcase: "linear-motif-map", value: "svg-map", label: "Linear motif map" },
+      { showcase: "protein-sequence-viewer", value: "interactive-viewer", label: "Protein sequence viewer" }
     ]
   }
 ];

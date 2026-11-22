@@ -157,10 +157,10 @@ export const vcfGenotypeTableMetadata = {
           dependsOn: "dataType",
           defaultValue: "tsv",
           choices: [
-            { value: "tsv", label: "Table", dependsOnValue: ["metadata", "info-tags", "format-fields", "samples", "variants", "split-info-variants", "genotypes", "region-variants", "region-split-info"] },
-            { value: "xlsx", label: "Excel workbook", dependsOnValue: ["metadata", "info-tags", "format-fields", "samples", "variants", "split-info-variants", "genotypes", "region-variants", "region-split-info"] },
-            { value: "report", label: "Summary report", dependsOnValue: ["metadata", "info-tags", "format-fields", "samples", "variants", "split-info-variants", "genotypes", "region-variants", "region-split-info"] },
-            { value: "interactive-viewer", label: "Variant region viewer", dependsOnValue: ["genotypes", "region-variants"] }
+            { showcase: false, value: "tsv", label: "Table", dependsOnValue: ["metadata", "info-tags", "format-fields", "samples", "variants", "split-info-variants", "genotypes", "region-variants", "region-split-info"] },
+            { showcase: false, value: "xlsx", label: "Excel workbook", dependsOnValue: ["metadata", "info-tags", "format-fields", "samples", "variants", "split-info-variants", "genotypes", "region-variants", "region-split-info"] },
+            { showcase: false, value: "report", label: "Summary report", dependsOnValue: ["metadata", "info-tags", "format-fields", "samples", "variants", "split-info-variants", "genotypes", "region-variants", "region-split-info"] },
+            { showcase: "variant-region-viewer", value: "interactive-viewer", label: "Variant region viewer", dependsOnValue: ["genotypes", "region-variants"] }
           ]
         }
       ]

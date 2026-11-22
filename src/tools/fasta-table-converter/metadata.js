@@ -43,8 +43,8 @@ export const fastaToTableMetadata = {
           label: "Format",
           defaultValue: "table-tsv",
           choices: [
-            { value: "table-tsv", label: "Record table" },
-            { value: "report", label: "Summary report" }
+            { showcase: false, value: "table-tsv", label: "Record table" },
+            { showcase: false, value: "report", label: "Summary report" }
           ]
         }
       ]
@@ -120,9 +120,9 @@ export const tableToFastaMetadata = {
           label: "Format",
           defaultValue: "fasta",
           choices: [
-            { value: "fasta", label: "FASTA" },
-            { value: "table-tsv", label: "Parsed table" },
-            { value: "report", label: "Summary report" }
+            { showcase: false, value: "fasta", label: "FASTA" },
+            { showcase: false, value: "table-tsv", label: "Parsed table" },
+            { showcase: false, value: "report", label: "Summary report" }
           ]
         }
       ]

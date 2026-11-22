@@ -48,10 +48,10 @@ export const lightweightSequenceAssemblyMetadata = {
           label: "Output format",
           defaultValue: defaults.outputFormat,
           choices: [
-            { value: "report", label: "Assembly report" },
-            { value: "fasta", label: "Consensus FASTA" },
-            { value: "text-map", label: "Consensus/read text map" },
-            { value: "tsv", label: "Read placement table" }
+            { showcase: false, value: "report", label: "Assembly report" },
+            { showcase: false, value: "fasta", label: "Consensus FASTA" },
+            { showcase: false, value: "text-map", label: "Consensus/read text map" },
+            { showcase: false, value: "tsv", label: "Read placement table" }
           ]
         }
       ]

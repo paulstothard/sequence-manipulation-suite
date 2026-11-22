@@ -78,18 +78,18 @@ export const biologicalRecordFormatConverterMetadata = {
           label: "Format",
           defaultValue: "feature-tsv",
           choices: [
-            { value: "whole-fasta", label: "Whole DNA/RNA FASTA" },
-            { value: "cds-fasta", label: "CDS DNA/RNA FASTA" },
-            { value: "protein-fasta", label: "Protein FASTA" },
-            { value: "feature-tsv", label: "Feature table" },
-            { value: "gff3", label: "GFF3-like feature rows" },
-            { value: "gff3-bundle", label: "GFF3 + FASTA bundle" },
-            { value: "genbank", label: "GenBank flatfile" },
-            { value: "embl", label: "EMBL flatfile" },
-            { value: "ddbj", label: "DDBJ-style flatfile" },
-            { value: "bed", label: "BED-like interval rows" },
-            { value: "bed-bundle", label: "BED + FASTA bundle" },
-            { value: "report", label: "Summary report" }
+            { showcase: false, value: "whole-fasta", label: "Whole DNA/RNA FASTA" },
+            { showcase: false, value: "cds-fasta", label: "CDS DNA/RNA FASTA" },
+            { showcase: false, value: "protein-fasta", label: "Protein FASTA" },
+            { showcase: false, value: "feature-tsv", label: "Feature table" },
+            { showcase: false, value: "gff3", label: "GFF3-like feature rows" },
+            { showcase: false, value: "gff3-bundle", label: "GFF3 + FASTA bundle" },
+            { showcase: false, value: "genbank", label: "GenBank flatfile" },
+            { showcase: false, value: "embl", label: "EMBL flatfile" },
+            { showcase: false, value: "ddbj", label: "DDBJ-style flatfile" },
+            { showcase: false, value: "bed", label: "BED-like interval rows" },
+            { showcase: false, value: "bed-bundle", label: "BED + FASTA bundle" },
+            { showcase: false, value: "report", label: "Summary report" }
           ],
           help: "Reconstructed flatfiles, GFF3, and BED are useful exchange formats, but they can lose unsupported qualifiers, references, fuzzy-location detail, dates, and some protein-feature semantics."
         }

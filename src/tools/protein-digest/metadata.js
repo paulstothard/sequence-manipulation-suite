@@ -60,7 +60,7 @@ export const proteinDigestMetadata = {
     {
       type: "group", label: "Output", options: [
         { id: "outputFormat", type: "radio", label: "Output format", defaultValue: PROTEIN_DIGEST_DEFAULTS.outputFormat,
-          choices: [{ value: "table", label: "Peptide table" }, { value: "fasta", label: "Peptide FASTA" }, { value: "svg-map", label: "Peptide map" }],
+          choices: [{ showcase: false, value: "table", label: "Peptide table" }, { showcase: false, value: "fasta", label: "Peptide FASTA" }, { showcase: "peptide-map", value: "svg-map", label: "Peptide map" }],
           help: "Table and FASTA retain every peptide occurrence. Maps show peptide spans and coordinates; when missed cleavages are allowed, colors count predicted cut sites left uncut inside each peptide. Overlapping bars are alternative products. Use table or FASTA for larger digests." }
       ]
     },

@@ -53,8 +53,8 @@ export const linePlotMetadata = {
       label: "Output format",
       options: [
         { id: "outputFormat", type: "radio", label: "Format", defaultValue: "svg", choices: [
-          { value: "svg", label: "Line plot" },
-          { value: "point-tsv", label: "Point table" }
+          { showcase: "line-plot", value: "svg", label: "Line plot" },
+          { showcase: false, value: "point-tsv", label: "Point table" }
         ] }
       ]
     },

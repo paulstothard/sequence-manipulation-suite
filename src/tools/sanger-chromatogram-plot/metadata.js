@@ -11,7 +11,7 @@ export const sangerChromatogramPlotMetadata = {
     { id: 'trace-set', label: 'Trace', dropLabel: 'Drop AB1, SCF, Trace JSON, or base-call sequence here', accept: '.ab1,.abi,.abif,.scf,.json,.txt,.fa,.fasta' }
   ] },
   runInWorker: true, workerModule: '../tools/sanger-chromatogram-plot/run.js', workerExport: 'runSangerChromatogramPlot',
-  showcaseOutputs: [{id: 'chromatogram-plot', label: 'Chromatogram plot', options: {}}],
+  showcaseOutputs: [{ showcase: "chromatogram-plot",id: 'chromatogram-plot', label: 'Chromatogram plot', options: {}}],
   workflow: {
     inputs: [{id: 'input', kind: 'text', mediaType: 'text/plain'}],
     outputs: [

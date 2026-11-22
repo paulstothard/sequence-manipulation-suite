@@ -237,9 +237,9 @@ export const alignmentViewerMetadata = {
           label: "Output format",
           defaultValue: "interactive-viewer",
           choices: [
-            { value: "interactive-viewer", label: "Mapped read alignment viewer" },
-            { value: "alignment-tsv", label: "Region alignment table" },
-            { value: "report", label: "Summary report" }
+            { showcase: "mapped-read-viewer", value: "interactive-viewer", label: "Mapped read alignment viewer" },
+            { showcase: false, value: "alignment-tsv", label: "Region alignment table" },
+            { showcase: false, value: "report", label: "Summary report" }
           ]
         }
       ]

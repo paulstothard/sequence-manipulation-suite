@@ -160,11 +160,11 @@ export const readMappingCoverageMetadata = {
           label: "Output format",
           defaultValue: "coverage-plot",
           choices: [
-            { value: "coverage-plot", label: "Coverage plot" },
-            { value: "alignment-table", label: "Mapped read table" },
-            { value: "coverage-table", label: "Coverage table" },
-            { value: "interactive-viewer", label: "Coverage viewer" },
-            { value: "summary-report", label: "Summary report" }
+            { showcase: "read-coverage-plot", value: "coverage-plot", label: "Coverage plot" },
+            { showcase: false, value: "alignment-table", label: "Mapped read table" },
+            { showcase: false, value: "coverage-table", label: "Coverage table" },
+            { showcase: "coverage-viewer", value: "interactive-viewer", label: "Coverage viewer" },
+            { showcase: false, value: "summary-report", label: "Summary report" }
           ]
         }
       ]

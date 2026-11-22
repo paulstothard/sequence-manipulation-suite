@@ -162,9 +162,9 @@ export const genomicIntervalOperationsMetadata = {
           label: "Output format",
           defaultValue: "interval-table",
           choices: [
-            { value: "interval-table", label: "Interval comparison table" },
-            { value: "bed", label: "BED interval output" },
-            { value: "summary-report", label: "Summary report" }
+            { showcase: false, value: "interval-table", label: "Interval comparison table" },
+            { showcase: false, value: "bed", label: "BED interval output" },
+            { showcase: false, value: "summary-report", label: "Summary report" }
           ]
         }
       ]

@@ -91,12 +91,12 @@ export const vectorContaminationScannerMetadata = {
       help: `Scanning is linear, including for the circular viewer; origin-spanning hits are not searched. Overlapping hits to the same reference and strand are consolidated at ${model.mergeOverlap * 100}% overlap of the shorter hit.`,
       defaultValue: defaults.outputFormat,
       choices: [
-        { value: "report", label: "Summary report" },
-        { value: "tsv", label: "Table", resultView: { kind: "table", streamId: "table" } },
-        { value: "text-map", label: "Text annotation map" },
-        { value: "svg-map", label: "Linear contamination map" },
-        { value: "interactive-viewer", label: "Linear DNA sequence viewer" },
-        { value: "interactive-circular-viewer", label: "Circular DNA sequence viewer" }
+        { showcase: false, value: "report", label: "Summary report" },
+        { showcase: false, value: "tsv", label: "Table", resultView: { kind: "table", streamId: "table" } },
+        { showcase: false, value: "text-map", label: "Text annotation map" },
+        { showcase: "linear-contamination-map", value: "svg-map", label: "Linear contamination map" },
+        { showcase: "linear-dna-viewer", value: "interactive-viewer", label: "Linear DNA sequence viewer" },
+        { showcase: "circular-dna-viewer", value: "interactive-circular-viewer", label: "Circular DNA sequence viewer" }
       ]
     },
     {

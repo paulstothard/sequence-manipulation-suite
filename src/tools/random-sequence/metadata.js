@@ -48,8 +48,8 @@ const fastaReportOutputOptions = [
     label: "Output format",
     defaultValue: "fasta",
     choices: [
-      { value: "fasta", label: "FASTA" },
-      { value: "report", label: "Summary report" }
+      { showcase: false, value: "fasta", label: "FASTA" },
+      { showcase: false, value: "report", label: "Summary report" }
     ]
   }
 ];
@@ -61,9 +61,9 @@ const fastaReportTableOutputOptions = [
     label: "Output format",
     defaultValue: "fasta",
     choices: [
-      { value: "fasta", label: "FASTA" },
-      { value: "report", label: "Summary report" },
-      { value: "tsv", label: "Table", resultView: { kind: "table", streamId: "table" } }
+      { showcase: false, value: "fasta", label: "FASTA" },
+      { showcase: false, value: "report", label: "Summary report" },
+      { showcase: false, value: "tsv", label: "Table", resultView: { kind: "table", streamId: "table" } }
     ]
   }
 ];

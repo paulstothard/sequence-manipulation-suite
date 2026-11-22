@@ -87,8 +87,8 @@ export const pairwiseTTestPostHocMetadata = {
       label: "Output format",
       options: [
         { id: "outputFormat", type: "radio", label: "Format", defaultValue: "result-tsv", choices: [
-          { value: "result-tsv", label: "Result table" },
-          { value: "report", label: "Summary report" }
+          { showcase: false, value: "result-tsv", label: "Result table" },
+          { showcase: false, value: "report", label: "Summary report" }
         ] }
       ]
     }

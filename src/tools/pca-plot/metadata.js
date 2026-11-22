@@ -78,11 +78,11 @@ export const pcaPlotMetadata = {
       label: "Output format",
       options: [
         { id: "outputFormat", type: "radio", label: "Format", defaultValue: "svg", choices: [
-          { value: "svg", label: "PCA plot" },
-          { value: "scores-tsv", label: "Scores table" },
-          { value: "loadings-tsv", label: "Loadings table" },
-          { value: "variance-tsv", label: "Variance table" },
-          { value: "report", label: "Summary report" }
+          { showcase: "pca-plot", value: "svg", label: "PCA plot" },
+          { showcase: false, value: "scores-tsv", label: "Scores table" },
+          { showcase: false, value: "loadings-tsv", label: "Loadings table" },
+          { showcase: false, value: "variance-tsv", label: "Variance table" },
+          { showcase: false, value: "report", label: "Summary report" }
         ] }
       ]
     },

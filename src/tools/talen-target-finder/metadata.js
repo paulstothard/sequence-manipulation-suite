@@ -92,16 +92,16 @@ export const talenTargetFinderMetadata = {
           type: "radio",
           label: "Output format",
           choices: [
-            { value: "report", label: "Summary report" },
-            { value: "tsv", label: "Target pair table" },
-            { value: "rvd-tsv", label: "RVD repeat table", resultView: { kind: "table", streamId: "rvdTable" } },
-            { value: "reference-tsv", label: "Reference half-site matches", resultView: { kind: "table", streamId: "referenceHits" } },
-            { value: "analysis-json", label: "Complete analysis JSON" },
-            { value: "context-text", label: "Context text" },
-            { value: "halfsite-fasta", label: "Half-site FASTA" },
-            { value: "text-map", label: "Text annotation map" },
-            { value: "svg-map", label: "Linear target map" },
-            { value: "interactive-viewer", label: "Linear DNA sequence viewer" }
+            { showcase: false, value: "report", label: "Summary report" },
+            { showcase: false, value: "tsv", label: "Target pair table" },
+            { showcase: false, value: "rvd-tsv", label: "RVD repeat table", resultView: { kind: "table", streamId: "rvdTable" } },
+            { showcase: false, value: "reference-tsv", label: "Reference half-site matches", resultView: { kind: "table", streamId: "referenceHits" } },
+            { showcase: false, value: "analysis-json", label: "Complete analysis JSON" },
+            { showcase: false, value: "context-text", label: "Context text" },
+            { showcase: false, value: "halfsite-fasta", label: "Half-site FASTA" },
+            { showcase: false, value: "text-map", label: "Text annotation map" },
+            { showcase: "linear-target-map", value: "svg-map", label: "Linear target map" },
+            { showcase: "linear-dna-viewer", value: "interactive-viewer", label: "Linear DNA sequence viewer" }
           ]
         },
         { id: "contextBases", type: "number", label: "Context bases", visibleWhen: { option: "outputFormat", value: "context-text" } }

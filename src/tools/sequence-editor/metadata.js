@@ -31,7 +31,7 @@ export const sequenceEditorMetadata = {
   inputType: "Plain-text DNA/RNA sequence, FASTA records, GenBank/DDBJ or EMBL nucleotide flatfile records, GFF3+FASTA, GTF+FASTA, or BED+FASTA",
   outputType: "Live sequence editor or summary report",
   showcaseOutputs: [
-    {
+    { showcase: "sequence-editor",
       id: "interactive-sequence-editor",
       label: "Sequence editor",
       options: { outputFormat: "editor" }
@@ -115,8 +115,8 @@ export const sequenceEditorMetadata = {
           label: "Output format",
           defaultValue: "editor",
           choices: [
-            { value: "editor", label: "Sequence editor" },
-            { value: "report", label: "Summary report" }
+            { showcase: "sequence-editor", value: "editor", label: "Sequence editor" },
+            { showcase: false, value: "report", label: "Summary report" }
           ]
         }
       ]

@@ -22,7 +22,7 @@ export const imageAnnotatorMetadata = {
   workerExport: "runImageAnnotator",
   workflow: graphicWorkflow,
   showcaseOutputs: [
-    { id: "image-annotator", label: "PNG annotation workspace", summary: "A PNG plot with a spaced pointer and label identifying the mean and standard deviation." },
+    { showcase: "image-annotator", id: "image-annotator", label: "PNG annotation workspace", summary: "A PNG plot with a spaced pointer and label identifying the mean and standard deviation." },
   ],
   options: [
     {

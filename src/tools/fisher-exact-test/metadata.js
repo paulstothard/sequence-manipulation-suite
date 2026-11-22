@@ -88,8 +88,8 @@ export const fisherExactTestMetadata = {
           label: "Format",
           defaultValue: "result-tsv",
           choices: [
-            { value: "result-tsv", label: "Result table" },
-            { value: "report", label: "Summary report" }
+            { showcase: false, value: "result-tsv", label: "Result table" },
+            { showcase: false, value: "report", label: "Summary report" }
           ]
         }
       ]

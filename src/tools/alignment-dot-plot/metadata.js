@@ -31,9 +31,9 @@ function makeOutputOptions(alphabet) {
       label: "Output format",
       defaultValue: defaults.outputFormat,
       choices: [
-        { value: "svg", label: "Dot plot" },
-        { value: "tsv", label: "Match table" },
-        { value: "report", label: "Summary report" }
+        { showcase: "sequence-dot-plot", value: "svg", label: "Dot plot" },
+        { showcase: false, value: "tsv", label: "Match table" },
+        { showcase: false, value: "report", label: "Summary report" }
       ]
     },
     {

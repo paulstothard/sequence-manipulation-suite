@@ -79,8 +79,8 @@ export const heatmapMetadata = {
       label: "Output format",
       options: [
         { id: "outputFormat", type: "radio", label: "Format", defaultValue: "svg", choices: [
-          { value: "svg", label: "Heatmap plot" },
-          { value: "cell-tsv", label: "Cell table" }
+          { showcase: "heatmap-plot", value: "svg", label: "Heatmap plot" },
+          { showcase: false, value: "cell-tsv", label: "Cell table" }
         ] }
       ]
     },

@@ -54,8 +54,8 @@ export const sequenceStatsProteinMetadata = {
           label: "Output format",
           defaultValue: PROTEIN_STATS_DEFAULTS.outputFormat,
           choices: [
-            { value: "report", label: "Summary report" },
-            { value: "tsv", label: "Summary table", resultView: { kind: "table", streamId: "table" } }
+            { showcase: false, value: "report", label: "Summary report" },
+            { showcase: false, value: "tsv", label: "Summary table", resultView: { kind: "table", streamId: "table" } }
           ]
         }
       ]

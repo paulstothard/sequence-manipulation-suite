@@ -50,9 +50,9 @@ export const proteinHydropathyMetadata = {
       label: "Output format",
       defaultValue: PROTEIN_HYDROPATHY_DEFAULTS.outputFormat,
       choices: [
-        { value: "report", label: "Summary report" },
-        { value: "tsv", label: "Table", resultView: { kind: "table", streamId: "table" } },
-        { value: "svg-plot", label: "Protein hydropathy plot" }
+        { showcase: false, value: "report", label: "Summary report" },
+        { showcase: false, value: "tsv", label: "Table", resultView: { kind: "table", streamId: "table" } },
+        { showcase: "protein-hydropathy-plot", value: "svg-plot", label: "Protein hydropathy plot" }
       ]
     },
     {

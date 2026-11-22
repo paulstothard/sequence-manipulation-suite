@@ -51,8 +51,8 @@ export const boxPlotMetadata = {
       label: "Output format",
       options: [
         { id: "outputFormat", type: "radio", label: "Format", defaultValue: "svg", choices: [
-          { value: "svg", label: "Box plot" },
-          { value: "box-tsv", label: "Box summary table" }
+          { showcase: "box-plot", value: "svg", label: "Box plot" },
+          { showcase: false, value: "box-tsv", label: "Box summary table" }
         ] }
       ]
     },

@@ -1,3 +1,5 @@
+import { renderAlignedSequenceViewer } from "./aligned-sequence-viewer-ui.js";
+import { getShowcaseOutputs, groupShowcaseItems } from "./showcase-catalog.js";
 import { renderOrfExplorer } from "./orf-explorer-ui.js";
 import {renderGraphicEditor} from './graphic-editor-ui.js';
 import { renderTextTableImage } from './text-table-image-ui.js';
@@ -15,23 +17,8 @@ import { renderTreeViewer } from "./tree-viewer-ui.js";
 import { alignmentViewerReferenceExample } from "../examples/alignment-viewer-example.js";
 import { vcfExtractorReferenceExample } from "../examples/vcf-extractor-example.js";
 import { rerootTree } from "../../packages/tree-viewer/src/core/reroot.js";
+import { installShowcaseZoomHint } from "./showcase-zoom-hint.js";
 
-const SHOWCASE_VISUAL_INCLUDE = /\b(plot|map|gel|figure|logo|heatmap|cloud|sankey|venn|upset|tree|chromatogram|diagram|poster)\b|\bcolored alignment\b|\bdot plot\b|svg/i;
-const SHOWCASE_VIEWER_INCLUDE = /\bviewer\b|\binteractive-viewer\b/i;
-const SHOWCASE_VISUAL_EXCLUDE = /\b(json|table|report|text|fasta|fastq|tsv|csv|xlsx|records?|summary)\b/i;
-const SHOWCASE_VIEWER_ALLOWLIST = new Map([
-  ...["phylogeny-builder", "multiple-align-dna-rna", "multiple-align-protein", "multiple-align-coding-dna"].map((id) => [id, new Set(["tree-viewer"])]),
-  ["alignment-viewer", new Set(["interactive-viewer"])],
-  ["circular-dna-sequence-viewer", new Set(["interactive-viewer"])],
-  ["dna-sequence-viewer", new Set(["interactive-viewer"])],
-  ["gene-viewer", new Set(["interactive-viewer"])],
-  ["protein-conservation-structure-viewer", new Set(["interactive-viewer"])],
-  ["protein-sequence-viewer", new Set(["interactive-viewer"])],
-  ["protein-structure-viewer", new Set(["interactive-viewer"])],
-  ["read-mapping-coverage", new Set(["interactive-viewer"])],
-  ["sam-bam-summary-region-viewer", new Set(["interactive-viewer"])],
-  ["vcf-genotype-table", new Set(["interactive-viewer"])]
-]);
 const SHOWCASE_TOOL_OPTION_OVERRIDES = new Map([
   ["restriction-digest", { gelStain: "red" }],
   ["in-silico-pcr", { gelStain: "green" }],
@@ -141,25 +128,6 @@ function normalizeShowcaseSvg(svg) {
   if (!svg.hasAttribute("preserveAspectRatio")) {
     svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
   }
-}
-
-function getShowcaseOutputOption(metadata, flattenOptions) {
-  return flattenOptions(metadata.options ?? []).find((option) => option.id === "outputFormat");
-}
-
-function isShowcaseVisualChoice(tool, choice) {
-  const text = `${choice?.label ?? ""} ${choice?.value ?? ""}`;
-  if (SHOWCASE_VISUAL_EXCLUDE.test(text)) {
-    return false;
-  }
-  const viewerChoice = SHOWCASE_VIEWER_INCLUDE.test(text);
-  if (viewerChoice) {
-    return SHOWCASE_VIEWER_ALLOWLIST.get(tool?.metadata?.id)?.has(choice?.value) === true;
-  }
-  if (SHOWCASE_VISUAL_INCLUDE.test(text)) {
-    return true;
-  }
-  return false;
 }
 
 function numericCoordinate(value) {
@@ -392,46 +360,25 @@ export function formatShowcaseRunStatus(toolName, outputLabel, warningCount = 0)
   return `Generated locally · Tool: ${toolName} · Output: ${outputLabel}${warnings}.`;
 }
 
-export function makeShowcaseItems({ tools, flattenOptions, getDefaultOptionValues, compareToolCategories }) {
-  return tools.flatMap((tool) => {
-    const outputOption = getShowcaseOutputOption(tool.metadata, flattenOptions);
-    const toolOptionOverrides = SHOWCASE_TOOL_OPTION_OVERRIDES.get(tool.metadata.id) ?? {};
-    const optionItems = (outputOption?.choices ?? [])
-      .filter((choice) => isShowcaseVisualChoice(tool, choice))
-      .map((choice) => {
-        const options = {
-          ...getDefaultOptionValues(tool.metadata.options ?? []),
-          ...toolOptionOverrides,
-          [outputOption.id]: choice.value
-        };
-        return {
-          id: `${tool.metadata.id}:${choice.value}`,
-          toolId: tool.metadata.id,
-          title: formatShowcaseItemTitle(tool.metadata.name, choice.label),
-          summary: `Generated from the bundled ${tool.metadata.name} example using the ${choice.label} output.`,
-          outputLabel: choice.label,
-          options
-        };
-      });
-    const declaredItems = (tool.metadata.showcaseOutputs ?? []).map((output) => ({
-      id: `${tool.metadata.id}:${output.id}`,
-      toolId: tool.metadata.id,
-      title: formatShowcaseItemTitle(tool.metadata.name, output.label),
-      summary: output.summary ?? `Generated from the bundled ${tool.metadata.name} example using the ${output.label} output.`,
-      outputLabel: output.label,
-      options: {
-        ...getDefaultOptionValues(tool.metadata.options ?? []),
-        ...toolOptionOverrides,
-        ...(output.options ?? {})
-      }
-    }));
-    return [...optionItems, ...declaredItems];
-  }).sort((left, right) => {
+export function makeShowcaseItems({ tools, getDefaultOptionValues, compareToolCategories }) {
+  return tools.flatMap((tool) => getShowcaseOutputs(tool.metadata).map((output) => ({
+    id: `${tool.metadata.id}:${output.id}`,
+    family: output.family,
+    toolId: tool.metadata.id,
+    title: formatShowcaseItemTitle(tool.metadata.name, output.label),
+    summary: output.summary ?? `Generated from the bundled ${tool.metadata.name} example using the ${output.label} output.`,
+    outputLabel: output.label,
+    options: {
+      ...getDefaultOptionValues(tool.metadata.options ?? []),
+      ...(SHOWCASE_TOOL_OPTION_OVERRIDES.get(tool.metadata.id) ?? {}),
+      ...(output.outputFormat === undefined ? {} : { outputFormat: output.outputFormat }),
+      ...(output.options ?? {})
+    }
+  }))).sort((left, right) => {
     const leftTool = tools.find((tool) => tool.metadata.id === left.toolId);
     const rightTool = tools.find((tool) => tool.metadata.id === right.toolId);
     return compareToolCategories(leftTool?.metadata.category, rightTool?.metadata.category) ||
-      String(leftTool?.metadata.name || left.toolId).localeCompare(String(rightTool?.metadata.name || right.toolId)) ||
-      left.title.localeCompare(right.title);
+      String(leftTool?.metadata.name || left.toolId).localeCompare(String(rightTool?.metadata.name || right.toolId));
   });
 }
 
@@ -513,18 +460,16 @@ function applyShowcaseFilters(filterControls, cards) {
   const category = filterControls.categorySelect.value;
   let visibleCount = 0;
   for (const card of cards) {
-    const matchesQuery = !query || card.dataset.showcaseFilterText?.includes(query);
-    const matchesCategory = !category || card.dataset.showcaseCategory === category;
-    const visible = Boolean(matchesQuery && matchesCategory);
+    const visible = card._sms3ShowcaseFilters.some(member =>
+      (!query || member.text.includes(query)) && (!category || member.category === category));
     card.hidden = !visible;
-    if (!visible) card._sms3ShowcaseScrollZoom?.setEnabled(false);
     if (visible) visibleCount += 1;
   }
   filterControls.clearButton.disabled = !query && !category;
-  filterControls.count.textContent = `${visibleCount.toLocaleString()} of ${cards.length.toLocaleString()} previews`;
+  filterControls.count.textContent = `${visibleCount.toLocaleString()} of ${cards.length.toLocaleString()} output types`;
 }
 
-const SHOWCASE_SCROLL_ZOOM_SELECTOR = [
+const SHOWCASE_ZOOM_HINT_SELECTOR = [
   ".orf-explorer-map",
   ".dna-viewer-canvas",
   ".sanger-trace-canvas",
@@ -532,20 +477,16 @@ const SHOWCASE_SCROLL_ZOOM_SELECTOR = [
   ".sms3-tree-viewer"
 ].join(", ");
 
-export function showcasePreviewSupportsScrollZoom(preview) {
-  return Boolean(preview?.querySelector?.(SHOWCASE_SCROLL_ZOOM_SELECTOR));
+export function showcasePreviewSupportsZoomHint(preview) {
+  return Boolean(preview?.querySelector?.(SHOWCASE_ZOOM_HINT_SELECTOR));
 }
 
-export function installShowcaseWheelIntentGuard(preview, { isScrollZoomEnabled = () => false } = {}) {
+export function installShowcaseWheelIntentGuard(preview) {
   const handleWheel = (event) => {
     if (event.ctrlKey || event.metaKey) return;
-    if (isScrollZoomEnabled()) {
-      event.preventDefault();
-      return;
-    }
     event.stopPropagation();
   };
-  preview.addEventListener("wheel", handleWheel, { capture: true, passive: false });
+  preview.addEventListener("wheel", handleWheel, { capture: true, passive: true });
   return () => preview.removeEventListener("wheel", handleWheel, { capture: true });
 }
 
@@ -568,7 +509,14 @@ function renderShowcaseViewer(preview, viewer, context) {
   }
 }
 
-async function renderShowcaseCard(card, item, token, context) {
+function disposeShowcasePreview(preview) {
+  for (const key of ["_sms3InspectionCleanup", "_sms3VisualCleanup", "_sms3ShowcaseWheelCleanup"]) {
+    preview[key]?.();
+    preview[key] = null;
+  }
+}
+
+async function renderShowcaseCard(card, item, token, generation, context) {
   const tool = context.tools.find((candidate) => candidate.metadata.id === item.toolId);
   const preview = card.querySelector(".showcase-preview");
   const status = card.querySelector(".showcase-run-status");
@@ -576,13 +524,15 @@ async function renderShowcaseCard(card, item, token, context) {
     return;
   }
 
+  const isCurrent = () => !token.cancelled && context.state.showcaseRenderToken === token && card._sms3ShowcaseGeneration === generation;
+  card.dataset.showcaseState = "rendering";
   try {
     // Keep this interactive preview small before analysis and rendering. The
     // ORF Finder itself retains the complete multi-record bundled example.
     const example = tool.metadata.id === "orf-finder"
       ? (tool.example ?? "").split(/\n(?=>)/, 1)[0] : tool.example ?? "";
     const result = await context.runTool(tool, example, item.options ?? {});
-    if (context.state.showcaseRenderToken !== token) {
+    if (!isCurrent()) {
       return;
     }
     preview._sms3InspectionCleanup?.();
@@ -595,15 +545,18 @@ async function renderShowcaseCard(card, item, token, context) {
       : null;
     const svg = result.visual?.svg ?? (String(result.output ?? "").trimStart().startsWith("<svg") ? result.output : "");
     let sharedInspection = false;
-    if (result.visual?.graphicEditor) {
+    if (result.visual?.alignedSequence) {
+      preview.classList.add("showcase-preview-viewer");
+      await renderAlignedSequenceViewer(preview,result.visual.alignedSequence,undefined,{preview:true});
+    } else if (result.visual?.graphicEditor) {
       preview.classList.add("showcase-preview-viewer");
       const document = await makeShowcaseGraphicDocument(result.visual.graphicEditor);
-      if (context.state.showcaseRenderToken !== token) return;
+      if (!isCurrent()) return;
       await renderGraphicEditor(preview,document.source,document,{preview:true});
     } else if (result.visual?.textTableImage) {
       preview.classList.add("showcase-preview-viewer");
       const document = await makeShowcaseTextImageDocument(result.visual.textTableImage);
-      if (context.state.showcaseRenderToken !== token) return;
+      if (!isCurrent()) return;
       await renderTextTableImage(preview, result.visual.textTableImage, document, { preview: true });
     } else if (result.visual?.plateLayout) {
       preview.insertAdjacentHTML("beforeend", renderPlateSvg(result.visual.plateLayout.layout));
@@ -611,7 +564,9 @@ async function renderShowcaseCard(card, item, token, context) {
       sharedInspection = true;
     } else if (result.visual?.treeViewer) {
       preview.classList.add("showcase-preview-viewer");
-      renderTreeViewer(preview, await makeShowcaseTreeViewerPreset(item, result.visual.treeViewer), undefined, { preview: true });
+      const preset = await makeShowcaseTreeViewerPreset(item, result.visual.treeViewer);
+      if (!isCurrent()) return;
+      renderTreeViewer(preview, preset, undefined, { preview: true });
     } else if (plotPreview) {
       preview.append(plotPreview);
       preview.querySelectorAll("svg").forEach(normalizeShowcaseSvg);
@@ -654,20 +609,32 @@ async function renderShowcaseCard(card, item, token, context) {
       pre.textContent = String(result.output ?? "").slice(0, 1600);
       preview.append(pre);
     }
-    card._sms3ShowcaseScrollZoom?.setAvailable(showcasePreviewSupportsScrollZoom(preview));
+    if (!isCurrent()) {
+      disposeShowcasePreview(preview);
+      return;
+    }
+    card._sms3ShowcaseZoomHint?.setAvailable(showcasePreviewSupportsZoomHint(preview));
     if (sharedInspection) installVisualInspection(preview);
     const warningCount = result.warnings?.length ?? 0;
     status.textContent = formatShowcaseRunStatus(tool.metadata.name, item.outputLabel, warningCount);
     status.classList.remove("error");
   } catch (error) {
-    if (context.state.showcaseRenderToken !== token) {
+    if (!isCurrent()) {
+      disposeShowcasePreview(preview);
       return;
     }
+    disposeShowcasePreview(preview);
     preview.textContent = "";
     preview.append(makeShowcaseStatus(error.message || "Preview generation failed.", "error"));
-    card._sms3ShowcaseScrollZoom?.setAvailable(false);
+    card._sms3ShowcaseZoomHint?.setAvailable(false);
     status.textContent = "Preview generation failed.";
     status.classList.add("error");
+  } finally {
+    if (isCurrent()) {
+      card.dataset.showcaseState = status.classList.contains("error") ? "error" : "complete";
+      preview.removeAttribute("aria-busy");
+      requestAnimationFrame(() => { preview.style.minHeight = ""; });
+    }
   }
 }
 
@@ -679,52 +646,38 @@ export function appendShowcase(topic, context) {
   const grid = document.createElement("div");
   grid.className = "showcase-grid";
   const showcaseItems = makeShowcaseItems(context);
+  const groups = groupShowcaseItems(showcaseItems, context.tools, context.compareToolCategories);
   const filterControls = makeShowcaseFilters(showcaseItems, context);
   const renderQueue = [];
   const cards = [];
-  const scrollZoomEntries = [];
-  let activeScrollZoom = null;
+  const zoomHintEntries = [];
 
-  const updateScrollZoomEntry = (entry, enabled) => {
-    entry.enabled = enabled;
-    entry.button.setAttribute("aria-pressed", String(enabled));
-    entry.button.textContent = enabled ? "Scroll zoom: On" : "Scroll zoom: Off";
-    entry.button.title = enabled
-      ? "Ordinary wheel and two-finger trackpad gestures zoom this preview. Press Escape, click outside, or select this button again to return to page scrolling."
-      : "Ordinary wheel and two-finger trackpad gestures scroll the Showcase page. Enable this mode to make them zoom this preview; pinch and Ctrl/Command-scroll always zoom.";
-    entry.preview.classList.toggle("showcase-scroll-zoom-active", enabled);
+  let rendering = false;
+  const drainQueue = async () => {
+    if (rendering) return;
+    rendering = true;
+    try {
+      while (renderQueue.length && !token.cancelled && context.state.showcaseRenderToken === token) {
+        // Prioritize requested examples, then previews matching the current filter.
+        let next = renderQueue.findIndex(entry => entry.requested);
+        if (next < 0) next = renderQueue.findIndex(entry => !entry.card.hidden);
+        const [entry] = renderQueue.splice(Math.max(0, next), 1);
+        await renderShowcaseCard(entry.card, entry.item, token, entry.generation, context);
+      }
+    } finally {
+      rendering = false;
+    }
   };
 
-  const setScrollZoomEnabled = (entry, enabled) => {
-    const nextEnabled = Boolean(enabled && entry.available);
-    if (nextEnabled && activeScrollZoom && activeScrollZoom !== entry) {
-      updateScrollZoomEntry(activeScrollZoom, false);
-    }
-    updateScrollZoomEntry(entry, nextEnabled);
-    activeScrollZoom = nextEnabled
-      ? entry
-      : activeScrollZoom === entry
-        ? null
-        : activeScrollZoom;
-  };
-
-  document.addEventListener("pointerdown", (event) => {
-    if (!activeScrollZoom) return;
-    if (activeScrollZoom.preview.contains(event.target) || activeScrollZoom.controls.contains(event.target)) return;
-    setScrollZoomEnabled(activeScrollZoom, false);
-  }, { capture: true, signal: eventController.signal });
-  document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && activeScrollZoom) {
-      setScrollZoomEnabled(activeScrollZoom, false);
-    }
-  }, { capture: true, signal: eventController.signal });
-
-  for (const item of showcaseItems) {
-    const tool = context.tools.find((candidate) => candidate.metadata.id === item.toolId);
+  for (const group of groups) {
     const card = document.createElement("article");
     card.className = "showcase-card";
-    card.dataset.showcaseCategory = tool?.metadata.category ?? "SMS3 tool";
-    card.dataset.showcaseFilterText = makeShowcaseFilterText(item, tool);
+    card.dataset.showcaseFamily = group.id;
+    card.dataset.showcaseMembers = group.items.map(item => item.id).join(" ");
+    card._sms3ShowcaseFilters = group.items.map(item => {
+      const tool = context.tools.find(candidate => candidate.metadata.id === item.toolId);
+      return { category: tool?.metadata.category, text: `${group.title} ${makeShowcaseFilterText(item, tool)}`.toLowerCase() };
+    });
 
     const header = document.createElement("div");
     header.className = "showcase-card-header";
@@ -732,85 +685,121 @@ export function appendShowcase(topic, context) {
     headingGroup.className = "showcase-card-title";
     const category = document.createElement("span");
     category.className = "showcase-card-category";
-    category.textContent = tool?.metadata.category ?? "SMS3 tool";
+    category.textContent = group.categories.join(" · ");
     const heading = document.createElement("h3");
-    heading.textContent = item.title;
+    heading.textContent = group.title;
     headingGroup.append(category, heading);
-    const openButton = document.createElement("button");
-    openButton.type = "button";
-    openButton.textContent = tool ? `Open ${tool.metadata.name}` : "Tool unavailable";
-    openButton.disabled = !tool;
-    openButton.addEventListener("click", () => {
-      if (tool) {
+    header.append(headingGroup);
+
+    const producers = document.createElement("div");
+    producers.className = "showcase-producers";
+    const producerLabel = document.createElement("span");
+    producerLabel.textContent = "Available in";
+    const producerList = document.createElement("ul");
+    for (const tool of group.producers) {
+      const li = document.createElement("li");
+      const link = document.createElement("a");
+      link.href = `#tool=${encodeURIComponent(tool.metadata.id)}`;
+      link.textContent = tool.metadata.name;
+      link.addEventListener("click", event => {
+        if (event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
         context.selectTool(tool);
-      }
-    });
-    header.append(headingGroup, openButton);
+      });
+      li.append(link);
+      producerList.append(li);
+    }
+    producers.append(producerLabel, producerList);
 
-    const summary = document.createElement("p");
-    summary.className = "summary";
-    summary.textContent = item.summary;
+    const source = group.items.length === 1 ? document.createElement("h4") : null;
+    if (source) source.className = "showcase-example-source";
+    const exampleLabel = document.createElement("label");
+    exampleLabel.className = "showcase-filter-field showcase-example-field";
+    const exampleText = document.createElement("span");
+    exampleText.textContent = "Example";
+    const exampleSelect = document.createElement("select");
+    for (const item of group.items) {
+      const option = document.createElement("option");
+      option.value = item.id;
+      option.textContent = item.title;
+      exampleSelect.append(option);
+    }
+    exampleSelect.value = group.representative.id;
+    exampleLabel.append(exampleText, exampleSelect);
+    exampleLabel.hidden = group.items.length === 1;
 
-    const previewControls = document.createElement("div");
-    previewControls.className = "showcase-preview-controls";
-    previewControls.hidden = true;
-    const scrollZoomButton = document.createElement("button");
-    scrollZoomButton.type = "button";
-    scrollZoomButton.className = "showcase-scroll-zoom-toggle";
-    previewControls.append(scrollZoomButton);
+    const previewGuidance = document.createElement("div");
+    previewGuidance.className = "showcase-preview-guidance";
+    previewGuidance.hidden = true;
+    const zoomHint = document.createElement("div");
+    zoomHint.className = "showcase-zoom-hint";
+    zoomHint.id = `showcase-zoom-hint-${group.id}`;
+    previewGuidance.append(zoomHint);
 
     const preview = document.createElement("div");
     preview.className = "showcase-preview";
-    const scrollZoomEntry = {
-      available: false,
-      button: scrollZoomButton,
-      controls: previewControls,
-      enabled: false,
+    const zoomHintEntry = {
       preview,
       setAvailable(available) {
-        this.available = Boolean(available);
-        previewControls.hidden = !this.available;
-        scrollZoomButton.disabled = !this.available;
-        if (!this.available) setScrollZoomEnabled(this, false);
-      },
-      setEnabled(enabled) {
-        setScrollZoomEnabled(this, enabled);
+        this.cleanupHint?.();
+        this.cleanupHint = null;
+        previewGuidance.hidden = !available;
+        if (available) {
+          this.preview.setAttribute("role", "group");
+          this.preview.setAttribute("aria-label", `${group.title} preview`);
+          this.preview.setAttribute("aria-describedby", zoomHint.id);
+          this.cleanupHint = installShowcaseZoomHint(this.preview, zoomHint);
+        }
       }
     };
-    scrollZoomEntries.push(scrollZoomEntry);
-    updateScrollZoomEntry(scrollZoomEntry, false);
-    scrollZoomButton.disabled = true;
-    scrollZoomButton.addEventListener("click", () => {
-      setScrollZoomEnabled(scrollZoomEntry, !scrollZoomEntry.enabled);
-    }, { signal: eventController.signal });
-    preview._sms3ShowcaseWheelCleanup = installShowcaseWheelIntentGuard(preview, {
-      isScrollZoomEnabled: () => scrollZoomEntry.enabled
-    });
-    preview.append(makeShowcaseStatus("Generating preview from current tool code..."));
-    card._sms3ShowcaseScrollZoom = scrollZoomEntry;
-
-    const status = makeShowcaseStatus(
-      tool ? `Queued ${tool.metadata.name}.` : "Tool is not registered.",
-      tool ? "showcase-run-status" : "showcase-run-status error"
-    );
-
-    card.append(header, summary, previewControls, preview, status);
+    zoomHintEntries.push(zoomHintEntry);
+    card._sms3ShowcaseZoomHint = zoomHintEntry;
+    const status = makeShowcaseStatus("", "showcase-run-status");
+    card.append(header, producers, exampleLabel);
+    if (source) card.append(source);
+    card.append(previewGuidance, preview, status);
     grid.append(card);
     cards.push(card);
 
-    if (tool) {
-      renderQueue.push({ card, item });
-    }
+    const queueExample = (item, requested = false) => {
+      const previous = zoomHintEntry.preview;
+      zoomHintEntry.setAvailable(false);
+      const height = previous.getBoundingClientRect().height;
+      disposeShowcasePreview(previous);
+      const next = document.createElement("div");
+      next.className = "showcase-preview";
+      if (height) next.style.minHeight = `${height}px`;
+      next.setAttribute("aria-busy", "true");
+      next.append(makeShowcaseStatus("Generating preview from current tool code..."));
+      next._sms3ShowcaseWheelCleanup = installShowcaseWheelIntentGuard(next);
+      previous.replaceWith(next);
+      zoomHintEntry.preview = next;
+      const generation = (card._sms3ShowcaseGeneration ?? 0) + 1;
+      card._sms3ShowcaseGeneration = generation;
+      card.dataset.showcaseExample = item.id;
+      card.dataset.showcaseState = "queued";
+      if (source) source.textContent = item.title;
+      status.textContent = `Queued ${item.title}.`;
+      status.classList.remove("error");
+      const pending = renderQueue.findIndex(entry => entry.card === card);
+      if (pending >= 0) renderQueue.splice(pending, 1);
+      renderQueue.push({ card, item, generation, requested });
+      if (requested) void drainQueue();
+    };
+    exampleSelect.addEventListener("change", () => {
+      queueExample(group.items.find(item => item.id === exampleSelect.value), true);
+    }, { signal: eventController.signal });
+    queueExample(group.representative);
   }
 
   context.container._sms3ShowcaseCleanup = () => {
+    token.cancelled = true;
+    renderQueue.length = 0;
     eventController.abort();
-    for (const entry of scrollZoomEntries) {
-      entry.preview._sms3ShowcaseWheelCleanup?.();
-      entry.preview._sms3ShowcaseWheelCleanup = null;
-      updateScrollZoomEntry(entry, false);
+    for (const entry of zoomHintEntries) {
+      entry.cleanupHint?.();
+      disposeShowcasePreview(entry.preview);
     }
-    activeScrollZoom = null;
     context.container._sms3ShowcaseCleanup = null;
   };
 
@@ -829,16 +818,5 @@ export function appendShowcase(topic, context) {
   context.container.append(filterControls.controls);
   context.container.append(grid);
   context.appendTopicNotesAndCitations(topic);
-  void (async () => {
-    const pending = [...renderQueue];
-    while (pending.length) {
-      // A filtered-to preview should be next, even in a large catalog.
-      const visible = pending.findIndex(entry => !entry.card.hidden);
-      const [entry] = pending.splice(Math.max(0, visible), 1);
-      if (context.state.showcaseRenderToken !== token) {
-        return;
-      }
-      await renderShowcaseCard(entry.card, entry.item, token, context);
-    }
-  })();
+  void drainQueue();
 }

@@ -129,11 +129,11 @@ export const samBamSummaryRegionViewerMetadata = {
           dependsOn: "dataSourceMode",
           defaultValue: "report",
           choices: [
-            { value: "report", label: "Whole-file summary", dependsOnValue: "sam-text" },
-            { value: "coverage-tsv", label: "Coverage statistics table", always: true },
-            { value: "alignment-tsv", label: "Region alignment table", always: true },
-            { value: "region-svg", label: "Region map", always: true },
-            { value: "interactive-viewer", label: "Mapped read alignment viewer", always: true }
+            { showcase: false, value: "report", label: "Whole-file summary", dependsOnValue: "sam-text" },
+            { showcase: false, value: "coverage-tsv", label: "Coverage statistics table", always: true },
+            { showcase: false, value: "alignment-tsv", label: "Region alignment table", always: true },
+            { showcase: "region-map", value: "region-svg", label: "Region map", always: true },
+            { showcase: "mapped-read-viewer", value: "interactive-viewer", label: "Mapped read alignment viewer", always: true }
           ]
         }
       ]

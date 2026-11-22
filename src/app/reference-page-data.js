@@ -757,7 +757,7 @@ export function makeReferenceTopics(sortedTools) {
     id: "sms3-showcase",
     label: "SMS3 showcase",
     title: "SMS3 Showcase",
-    summary: "Browse visual outputs generated from bundled SMS3 tool examples.",
+    summary: "Browse output types and find the SMS3 tools that produce them. Choose another example to compare tools or variants.",
     interactive: "showcase",
     notes: [
       "These previews are generated locally in the browser from bundled examples.",

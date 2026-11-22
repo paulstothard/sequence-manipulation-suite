@@ -62,9 +62,9 @@ export const codonAdaptationIndexMetadata = {
           label: "Format",
           defaultValue: CODON_ADAPTATION_DEFAULTS.outputFormat,
           choices: [
-            { value: "summary-tsv", label: "CAI summary table" },
-            { value: "codon-tsv", label: "Per-codon weight table" },
-            { value: "report", label: "Summary report" }
+            { showcase: false, value: "summary-tsv", label: "CAI summary table" },
+            { showcase: false, value: "codon-tsv", label: "Per-codon weight table" },
+            { showcase: false, value: "report", label: "Summary report" }
           ]
         }
       ]

@@ -85,15 +85,15 @@ export const sirnaDesignMetadata = {
           type: "radio",
           label: "Output format",
           choices: [
-            { value: "report", label: "Summary report" },
-            { value: "tsv", label: "Candidate table" },
-            { value: "offtarget-tsv", label: "Reference-match table", resultView: { kind: "table", streamId: "offTargetTable" } },
-            { value: "seed-tsv", label: "Transcript seed matches", resultView: { kind: "table", streamId: "seedTable" } },
-            { value: "analysis-json", label: "Complete analysis JSON" },
-            { value: "duplex-fasta", label: "Paired guide/passenger FASTA" },
-            { value: "duplex-text", label: "Antiparallel duplex alignment" },
-            { value: "guide-fasta", label: "Guide FASTA" },
-            { value: "context-text", label: "Context text" }
+            { showcase: false, value: "report", label: "Summary report" },
+            { showcase: false, value: "tsv", label: "Candidate table" },
+            { showcase: false, value: "offtarget-tsv", label: "Reference-match table", resultView: { kind: "table", streamId: "offTargetTable" } },
+            { showcase: false, value: "seed-tsv", label: "Transcript seed matches", resultView: { kind: "table", streamId: "seedTable" } },
+            { showcase: false, value: "analysis-json", label: "Complete analysis JSON" },
+            { showcase: false, value: "duplex-fasta", label: "Paired guide/passenger FASTA" },
+            { showcase: false, value: "duplex-text", label: "Antiparallel duplex alignment" },
+            { showcase: false, value: "guide-fasta", label: "Guide FASTA" },
+            { showcase: false, value: "context-text", label: "Context text" }
           ]
         },
         { id: "contextBases", type: "number", label: "Context bases", visibleWhen: { option: "outputFormat", value: "context-text" } }

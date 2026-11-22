@@ -1,3 +1,5 @@
+import { pairwiseAlignedSequenceModel } from "../../core/aligned-sequence-adapters.js";
+import { alignedSequenceViewerStream } from "../aligned-sequence-viewer/run.js";
 import { DEFAULT_ALIGNMENT_SVG_CELL_LIMIT } from "../../core/alignment-svg.js";
 import { normalizePairwiseToolOptions } from "../../core/pairwise-alignment-options.js";
 import { clustalIdentifierNotes } from "../../core/alignment-identifiers.js";
@@ -16,14 +18,15 @@ import {
   makePairwiseAlignmentReport,
   makePairwiseAlignmentText,
   pairwiseAlignmentTableColumns,
+  pairwiseDnaAlignmentTableColumns,
   preparePairwiseCodonAlignment,
   preparePairwiseAlignment
 } from "../../core/pairwise-alignment.js";
 import { makeTableStream, makeTextStream, makeToolResult } from "../../core/workflow.js";
 
-const standardFormats = { report:'report', alignmentText:'alignment-text', fasta:'aligned-fasta', clustal:'clustal', table:'tsv', coloredSvg:'svg-color' };
-const codingFormats = { report:'report', alignmentText:'alignment-text', codonFasta:'codon-fasta', proteinFasta:'protein-fasta', table:'tsv', coloredSvg:'svg-color' };
-const extensions = { report:'txt', alignmentText:'txt', fasta:'fasta', clustal:'aln', table:'tsv', coloredSvg:'svg', codonFasta:'fasta', proteinFasta:'fasta' };
+const standardFormats = { report:'report', alignmentText:'alignment-text', fasta:'aligned-fasta', clustal:'clustal', table:'tsv', coloredSvg:'svg-color', alignmentDocument:'aligned-sequence-viewer' };
+const codingFormats = { report:'report', alignmentText:'alignment-text', codonFasta:'codon-fasta', proteinFasta:'protein-fasta', table:'tsv', coloredSvg:'svg-color', alignmentDocument:'aligned-sequence-viewer' };
+const extensions = { report:'txt', alignmentText:'txt', fasta:'fasta', clustal:'aln', table:'tsv', coloredSvg:'svg', alignmentDocument:'sms3.json', codonFasta:'fasta', proteinFasta:'fasta' };
 
 async function runPairwiseAlignment(input, rawOptions = {}, alphabet, context = {}) {
   const options = normalizePairwiseToolOptions(rawOptions, alphabet);
@@ -51,13 +54,15 @@ async function runPairwiseAlignment(input, rawOptions = {}, alphabet, context = 
     codonFasta: () => makeTextStream(makeAlignedCodonFasta(records, alignment), 'text/x-fasta', {format:'fasta',alphabet:'dna-rna'}),
     proteinFasta: () => makeTextStream(makeAlignedProteinFromCodonsFasta(records, alignment), 'text/x-fasta', {format:'fasta',alphabet:'protein'}),
     table: () => makeTableStream(codonAlignmentTableColumns, alignment.codonColumns, 'pairwise-coding-dna-alignment'),
+    alignmentDocument: () => alignedSequenceViewerStream(pairwiseAlignedSequenceModel(records, alignment, alphabet)),
     coloredSvg: colored
   } : {
     report: () => makeTextStream(makePairwiseAlignmentReport(records, alignment, options)),
     alignmentText: () => makeTextStream(makePairwiseAlignmentText(records, alignment), 'text/plain', {format:'pairwise',alphabet}),
     fasta: () => makeTextStream(makeAlignedFasta(records, alignment), 'text/x-fasta', {format:'fasta',alphabet}),
     clustal: () => makeTextStream(makeClustal(records, alignment), 'text/plain', {format:'clustal',alphabet}),
-    table: () => makeTableStream(pairwiseAlignmentTableColumns, alignment.columns, `pairwise-alignment-${alphabet}`),
+    table: () => makeTableStream(alphabet === 'dna-rna' ? pairwiseDnaAlignmentTableColumns : pairwiseAlignmentTableColumns, alignment.columns, `pairwise-alignment-${alphabet}`),
+    alignmentDocument: () => alignedSequenceViewerStream(pairwiseAlignedSequenceModel(records, alignment, alphabet)),
     coloredSvg: colored
   };
   const streams = {};
@@ -76,10 +81,10 @@ async function runPairwiseAlignment(input, rawOptions = {}, alphabet, context = 
     notes:[...prepared.notes, ...(alignment.alignedLength ? [] : ['No positive-scoring local alignment found.']), ...(requested.has('clustal') ? clustalIdentifierNotes(records.map(record=>record.title)) : [])],
     download:{filename:`${coding ? 'coding-dna' : alphabet}-pairwise-alignment.${extensions[selected]}`,mimeType:`${mediaType};charset=utf-8`},
     warnings:prepared.warnings, recordsProcessed:2,
-    processedUnitLabel:alphabet === 'protein' ? 'residue' : 'base',
+    processedUnitLabel:alphabet === 'protein' ? (records.some(record => record.sequence.includes('*')) ? 'character' : 'residue') : 'base',
     basesProcessed:records[0].sequence.length + records[1].sequence.length,
     charactersRemoved:prepared.charactersRemoved,
-    visual:selected === 'coloredSvg' ? {svg:output} : undefined
+    visual:selected === 'alignmentDocument' ? {alignedSequence:JSON.parse(output).source} : selected === 'coloredSvg' ? {svg:output} : undefined
   });
 }
 

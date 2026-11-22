@@ -140,9 +140,9 @@ export const baseCompositionPlotMetadata = {
       label: "Output format",
       defaultValue: BASE_COMPOSITION_DEFAULTS.outputFormat,
       choices: [
-        { value: "report", label: "Summary report" },
-        { value: "tsv", label: "Table", resultView: { kind: "table", streamId: "table" } },
-        { value: "plot", label: "Base composition plot" }
+        { showcase: false, value: "report", label: "Summary report" },
+        { showcase: false, value: "tsv", label: "Table", resultView: { kind: "table", streamId: "table" } },
+        { showcase: "base-composition-plot", value: "plot", label: "Base composition plot" }
       ]
     },
     {

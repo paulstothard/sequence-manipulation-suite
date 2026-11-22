@@ -84,9 +84,9 @@ export const randomRowsLinesMetadata = {
           label: "Format",
           defaultValue: "sampled-text",
           choices: [
-            { value: "sampled-text", label: "Sampled text" },
-            { value: "sample-table", label: "Sample table" },
-            { value: "report", label: "Summary report" }
+            { showcase: false, value: "sampled-text", label: "Sampled text" },
+            { showcase: false, value: "sample-table", label: "Sample table" },
+            { showcase: false, value: "report", label: "Summary report" }
           ]
         }
       ]

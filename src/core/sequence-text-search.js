@@ -216,7 +216,7 @@ function parsePairwise(text, descriptor) {
       sequenceLane = 0;
       continue;
     }
-    const coordinateMatch = line.text.match(/^(.+?)\s+(\d+)\s+([A-Za-z*.-]+(?:\s+[A-Za-z*.-]+)*)\s+(-?\d+)\s*$/);
+    const coordinateMatch = line.text.match(/^(.+?)\s+(\d+|—)\s+([A-Za-z*.-]+(?:\s+[A-Za-z*.-]+)*)\s+(-?\d+|—)\s*$/);
     if (coordinateMatch) {
       const label = coordinateMatch[1].trim();
       const chunk = coordinateMatch[3];

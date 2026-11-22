@@ -149,12 +149,12 @@ export const plasmidCommonFeatureScannerMetadata = {
       label: "Output format",
       defaultValue: PLASMID_FEATURE_DEFAULTS.outputFormat,
       choices: [
-        { value: "report", label: "Summary report" },
-        { value: "tsv", label: "Table", resultView: { kind: "table", streamId: "table" } },
-        { value: "text-map", label: "Text annotation map" },
-        { value: "svg-map", label: "Linear feature map" },
-        { value: "interactive-viewer", label: "Linear DNA sequence viewer" },
-        { value: "interactive-circular-viewer", label: "Circular DNA sequence viewer" }
+        { showcase: false, value: "report", label: "Summary report" },
+        { showcase: false, value: "tsv", label: "Table", resultView: { kind: "table", streamId: "table" } },
+        { showcase: false, value: "text-map", label: "Text annotation map" },
+        { showcase: "linear-feature-map", value: "svg-map", label: "Linear feature map" },
+        { showcase: "linear-dna-viewer", value: "interactive-viewer", label: "Linear DNA sequence viewer" },
+        { showcase: "circular-dna-viewer", value: "interactive-circular-viewer", label: "Circular DNA sequence viewer" }
       ]
     },
     {

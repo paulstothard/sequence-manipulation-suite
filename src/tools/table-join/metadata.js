@@ -100,8 +100,8 @@ export const tableJoinMetadata = {
           label: "Format",
           defaultValue: "tsv",
           choices: [
-            { value: "tsv", label: "Joined table" },
-            { value: "report", label: "Summary report" }
+            { showcase: false, value: "tsv", label: "Joined table" },
+            { showcase: false, value: "report", label: "Summary report" }
           ]
         }
       ]

@@ -1,3 +1,4 @@
+import { validateAlignedSequenceDocument } from "../core/aligned-sequence-viewer.js";
 import { setUiText } from './set-ui-text.js';
 import {validateGraphicDocument} from '../core/graphic-editor.js';
 import { validateImageState, IMAGE_EDITOR_TOOLS, imageToolId } from '../core/text-table-image.js';
@@ -5,7 +6,7 @@ import { downloadText } from "./file-download.js";
 import { validatePlateLayout } from "../core/plate-layout.js";
 import { STANDARD_BROWSER_FILE_BYTES } from "../core/tool-limit-options.js";
 const EDITOR_DOCUMENT_FORMAT = "sms3-editor-document";
-const EDITOR_TOOLS = ["svg-editor", "image-annotator", ...IMAGE_EDITOR_TOOLS, "workflow", "tree-viewer", "plate-layout-planner", "sequence-editor", "markdown-notebook", "linear-genome-figure", "circular-genome-figure", "sequence-extractor", "sanger-trace-viewer", "sanger-trace-assembly", "sanger-trace-reference-comparison"];
+const EDITOR_TOOLS = ["aligned-sequence-viewer", "svg-editor", "image-annotator", ...IMAGE_EDITOR_TOOLS, "workflow", "tree-viewer", "plate-layout-planner", "sequence-editor", "markdown-notebook", "linear-genome-figure", "circular-genome-figure", "sequence-extractor", "sanger-trace-viewer", "sanger-trace-assembly", "sanger-trace-reference-comparison"];
 const MAX_BYTES = STANDARD_BROWSER_FILE_BYTES;
 const copy = (value) => structuredClone(value);
 const recoveryWrites = new Map();
@@ -28,6 +29,7 @@ function parseEditorDocument(text) {
     doc.tool = tool;
   }
   if (["svg-editor","image-annotator"].includes(doc.tool)) validateGraphicDocument(doc);
+  if (doc.tool === "aligned-sequence-viewer") validateAlignedSequenceDocument(doc);
   const records = doc.source.records;
   if (doc.tool === "plate-layout-planner") {
     if (typeof doc.source.input !== "string" || doc.source.input.length > 1_000_000) fail();

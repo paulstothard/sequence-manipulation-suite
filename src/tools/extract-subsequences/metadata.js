@@ -62,8 +62,8 @@ const outputOptions = [
     label: "Output format",
     defaultValue: defaults.outputFormat,
     choices: [
-      { value: "fasta", label: "FASTA records" },
-      { value: "tsv", label: "Table", resultView: { kind: "table", streamId: "table" } }
+      { showcase: false, value: "fasta", label: "FASTA records" },
+      { showcase: false, value: "tsv", label: "Table", resultView: { kind: "table", streamId: "table" } }
     ]
   }
 ];

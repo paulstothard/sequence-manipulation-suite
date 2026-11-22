@@ -117,8 +117,8 @@ export const tableColumnCalculatorMetadata = {
           label: "Format",
           defaultValue: "tsv",
           choices: [
-            { value: "tsv", label: "Calculated table" },
-            { value: "report", label: "Summary report" }
+            { showcase: false, value: "tsv", label: "Calculated table" },
+            { showcase: false, value: "report", label: "Summary report" }
           ]
         }
       ]

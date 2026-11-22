@@ -116,7 +116,7 @@ export function installOrfExplorerNavigation(svg, {
   });
   listen(svg, 'wheel', event => {
     // Dense maps retain native vertical scrolling; Ctrl/Command-wheel always
-    // zooms. Showcase's explicit Scroll zoom mode sets defaultPrevented first.
+    // zooms. Showcase filters ordinary wheel gestures before they reach here.
     if (!event.ctrlKey && !event.metaKey && !event.defaultPrevented && surface.scrollHeight > surface.clientHeight + 1) return;
     const factor = orfExplorerZoomFactor(viewerWheelZoomFactor(event),getView(),getLayout());
     if (factor === 1) return;

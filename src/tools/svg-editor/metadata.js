@@ -90,7 +90,7 @@ export const svgEditorMetadata = {
   workerModule: "../tools/svg-editor/run.js",
   workerExport: "runSvgEditor",
   workflow: graphicWorkflow,
-  showcaseOutputs: [{ id: "svg-editor", label: "Editable SVG", summary: "An illustrative expression plot with an editable rounded outline, pointer and fold-change label." }],
+  showcaseOutputs: [{ showcase: "svg-editor", id: "svg-editor", label: "Editable SVG", summary: "An illustrative expression plot with an editable rounded outline, pointer and fold-change label." }],
   options: [
     graphicLimits,
     {

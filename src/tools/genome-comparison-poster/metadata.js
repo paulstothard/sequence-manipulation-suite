@@ -279,14 +279,14 @@ export const genomeComparisonPosterMetadata = {
       label: "Output format",
       defaultValue: "circular-plot",
       choices: [
-        { value: "linear-plot", label: "Linear genome comparison plot" },
-        { value: "wrapped-plot", label: "Wrapped linear genome comparison plot" },
-        { value: "circular-plot", label: "Circular genome comparison plot" },
-        { value: "spiral-plot", label: "Spiral genome comparison plot" },
-        { value: "loom-plot", label: "Loom ribbon genome comparison plot" },
-        { value: "blocks-table", label: "Alignment block table" },
-        { value: "summary-table", label: "Genome summary table" },
-        { value: "report", label: "Summary report" }
+        { showcase: "linear-genome-comparison-plot", value: "linear-plot", label: "Linear genome comparison plot" },
+        { showcase: "wrapped-linear-genome-comparison-plot", value: "wrapped-plot", label: "Wrapped linear genome comparison plot" },
+        { showcase: "circular-genome-comparison-plot", value: "circular-plot", label: "Circular genome comparison plot" },
+        { showcase: "spiral-genome-comparison-plot", value: "spiral-plot", label: "Spiral genome comparison plot" },
+        { showcase: "loom-ribbon-genome-comparison-plot", value: "loom-plot", label: "Loom ribbon genome comparison plot" },
+        { showcase: false, value: "blocks-table", label: "Alignment block table" },
+        { showcase: false, value: "summary-table", label: "Genome summary table" },
+        { showcase: false, value: "report", label: "Summary report" }
       ]
     },
     {

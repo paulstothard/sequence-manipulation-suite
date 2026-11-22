@@ -107,12 +107,12 @@ export const phylogenyBuilderMetadata = {
           label: "Output format",
           defaultValue: PHYLOGENY_OUTPUT_FORMATS.treePlot,
           choices: [
-            { value: PHYLOGENY_OUTPUT_FORMATS.treeViewer, label: "Tree Viewer" },
-            { value: PHYLOGENY_OUTPUT_FORMATS.treePlot, label: "Phylogeny tree plot" },
-            { value: PHYLOGENY_OUTPUT_FORMATS.treeReport, label: "Tree report" },
-            { value: PHYLOGENY_OUTPUT_FORMATS.distanceTable, label: "Distance table" },
-            { value: PHYLOGENY_OUTPUT_FORMATS.alignedFasta, label: "Aligned FASTA" },
-            { value: PHYLOGENY_OUTPUT_FORMATS.alignmentReport, label: "Alignment report" }
+            { showcase: "tree-viewer", value: PHYLOGENY_OUTPUT_FORMATS.treeViewer, label: "Tree Viewer" },
+            { showcase: "tree-figure", value: PHYLOGENY_OUTPUT_FORMATS.treePlot, label: "Phylogeny tree plot" },
+            { showcase: false, value: PHYLOGENY_OUTPUT_FORMATS.treeReport, label: "Tree report" },
+            { showcase: false, value: PHYLOGENY_OUTPUT_FORMATS.distanceTable, label: "Distance table" },
+            { showcase: false, value: PHYLOGENY_OUTPUT_FORMATS.alignedFasta, label: "Aligned FASTA" },
+            { showcase: false, value: PHYLOGENY_OUTPUT_FORMATS.alignmentReport, label: "Alignment report" }
           ],
           help: "The tree uses neighbor joining from alignment-derived p-distance values. The distance table and aligned FASTA are useful for checking the tree input."
         }

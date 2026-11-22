@@ -1,5 +1,47 @@
 let nextHelpId = 0;
 
+// Explicit question-mark help for controls that need more than a hover hint.
+// Native popovers provide keyboard activation, Escape and outside-click dismissal.
+export function createControlHelp(label, text) {
+  const element = document.createElement('span');
+  element.className = 'option-label';
+  const button = document.createElement('button');
+  button.type = 'button'; button.className = 'option-help'; button.textContent = '?';
+  button.setAttribute('aria-label', `Help: ${label}`);
+  button.setAttribute('aria-expanded', 'false');
+  const popover = document.createElement('div');
+  popover.id = `control-help-${++nextHelpId}`;
+  popover.className = 'app-control-tooltip'; popover.popover = 'auto';
+  popover.setAttribute('role', 'note'); popover.setAttribute('aria-label', label);
+  popover.textContent = text;
+  button.setAttribute('aria-controls', popover.id);
+  button.setAttribute('popovertarget', popover.id);
+  const controller = new AbortController();
+  const close = () => { if (popover.matches(':popover-open')) popover.hidePopover(); };
+  const position = () => {
+    if (!popover.matches(':popover-open')) return;
+    const anchor = button.getBoundingClientRect(), box = popover.getBoundingClientRect();
+    const viewport = window.visualViewport, margin = 8;
+    const left = viewport?.offsetLeft ?? 0, top = viewport?.offsetTop ?? 0;
+    const width = viewport?.width ?? document.documentElement.clientWidth;
+    const height = viewport?.height ?? document.documentElement.clientHeight;
+    popover.style.left = `${Math.max(left + margin, Math.min(anchor.left, left + width - box.width - margin))}px`;
+    const y = anchor.bottom + 6 + box.height <= top + height - margin ? anchor.bottom + 6 : anchor.top - box.height - 6;
+    popover.style.top = `${Math.max(top + margin, Math.min(y, top + height - box.height - margin))}px`;
+  };
+  popover.addEventListener('toggle', () => {
+    const open = popover.matches(':popover-open');
+    button.setAttribute('aria-expanded', String(open));
+    if (open) { button.setAttribute('aria-describedby', popover.id); position(); }
+    else button.removeAttribute('aria-describedby');
+  });
+  window.addEventListener('scroll', position, { capture: true, passive: true, signal: controller.signal });
+  window.addEventListener('resize', position, { signal: controller.signal });
+  window.visualViewport?.addEventListener('resize', position, { signal: controller.signal });
+  element.append(button, popover);
+  return { element, dispose() { close(); controller.abort(); element.remove(); } };
+}
+
 // Short help belongs on the control itself. Longer help can keep its explicit
 // disclosure button; both use the shared help-popover appearance in styles.css.
 export function installControlHelp(root, { signal, compact = false } = {}) {

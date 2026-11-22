@@ -136,15 +136,15 @@ export const pseudomoleculeBuilderMetadata = {
           label: "Format",
           defaultValue: "fasta",
           choices: [
-            { value: "fasta", label: "Joined DNA FASTA" },
-            { value: "genbank", label: "Annotated GenBank flatfile" },
-            { value: "embl", label: "Annotated EMBL flatfile" },
-            { value: "ddbj", label: "Annotated DDBJ-style flatfile" },
-            { value: "gff3-bundle", label: "Remapped GFF3 + FASTA" },
-            { value: "bed-bundle", label: "Remapped BED + FASTA" },
-            { value: "record-json", label: "Annotated record JSON" },
-            { value: "mapping-table", label: "Coordinate mapping table" },
-            { value: "report", label: "Summary report" }
+            { showcase: false, value: "fasta", label: "Joined DNA FASTA" },
+            { showcase: false, value: "genbank", label: "Annotated GenBank flatfile" },
+            { showcase: false, value: "embl", label: "Annotated EMBL flatfile" },
+            { showcase: false, value: "ddbj", label: "Annotated DDBJ-style flatfile" },
+            { showcase: false, value: "gff3-bundle", label: "Remapped GFF3 + FASTA" },
+            { showcase: false, value: "bed-bundle", label: "Remapped BED + FASTA" },
+            { showcase: false, value: "record-json", label: "Annotated record JSON" },
+            { showcase: false, value: "mapping-table", label: "Coordinate mapping table" },
+            { showcase: false, value: "report", label: "Summary report" }
           ],
           help: "GenBank, EMBL, DDBJ, GFF3, and record JSON retain remapped annotations. BED is interval-oriented and FASTA contains sequence only; the coordinate map remains the audit trail for source placement."
         }

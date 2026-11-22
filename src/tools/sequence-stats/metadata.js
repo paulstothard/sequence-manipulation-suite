@@ -42,8 +42,8 @@ export const sequenceStatsDnaRnaMetadata = {
           label: "Output format",
           defaultValue: SEQUENCE_STATS_DEFAULTS.outputFormat,
           choices: [
-            { value: "report", label: "Summary report" },
-            { value: "tsv", label: "Summary table", resultView: { kind: "table", streamId: "table" } }
+            { showcase: false, value: "report", label: "Summary report" },
+            { showcase: false, value: "tsv", label: "Summary table", resultView: { kind: "table", streamId: "table" } }
           ]
         }
       ]

@@ -171,12 +171,12 @@ export const technicalSequenceScannerMetadata = {
       label: "Output format",
       defaultValue: defaults.outputFormat,
       choices: [
-        { value: "report", label: "Summary report" },
-        { value: "tsv", label: "Summary table", resultView: { kind: "table", streamId: "table" } },
-        { value: "text-map", label: "Text annotation map" },
-        { value: "svg-map", label: "Linear technical-sequence map" },
-        { value: "interactive-viewer", label: "Linear DNA sequence viewer" },
-        { value: "interactive-circular-viewer", label: "Circular DNA sequence viewer" }
+        { showcase: false, value: "report", label: "Summary report" },
+        { showcase: false, value: "tsv", label: "Summary table", resultView: { kind: "table", streamId: "table" } },
+        { showcase: false, value: "text-map", label: "Text annotation map" },
+        { showcase: "linear-technical-sequence-map", value: "svg-map", label: "Linear technical-sequence map" },
+        { showcase: "linear-dna-viewer", value: "interactive-viewer", label: "Linear DNA sequence viewer" },
+        { showcase: "circular-dna-viewer", value: "interactive-circular-viewer", label: "Circular DNA sequence viewer" }
       ]
     },
     {

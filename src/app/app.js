@@ -849,6 +849,12 @@ function renderHomeView() {
 }
 
 function renderActiveView() {
+  if ((state.activeView !== "reference" || state.selectedReference !== SHOWCASE_REFERENCE_ID) &&
+      elements.selectedReferenceBody._sms3ShowcaseCleanup) {
+    elements.selectedReferenceBody._sms3ShowcaseCleanup();
+    elements.selectedReferenceBody.replaceChildren();
+    state.showcaseRenderToken = null;
+  }
   externalResourcesController?.cancel();
   clearWorkflowHandoffs();
   elements.homeView.hidden = state.activeView !== "home";
@@ -5738,13 +5744,16 @@ function renderWorkflowStepInspector(result, workflowDefinition = getActiveWorkf
     if (stepRawOutput) {
       const actions = document.createElement("div");
       actions.className = "workflow-step-result-actions output-action-row";
-      const copyButton = document.createElement("button");
-      copyButton.type = "button";
-      copyButton.textContent = "Copy output";
-      copyButton.addEventListener("click", async () => {
-        await copyTextWithFeedback(copyButton, stepRawOutput);
-        addWorkflowMessage(`Copied output from step ${index + 1}.`);
-      });
+      if (getBaseMimeType(formatted.mimeType) !== "image/svg+xml") {
+        const copyButton = document.createElement("button");
+        copyButton.type = "button";
+        copyButton.textContent = "Copy output";
+        copyButton.addEventListener("click", async () => {
+          await copyTextWithFeedback(copyButton, stepRawOutput);
+          addWorkflowMessage(`Copied output from step ${index + 1}.`);
+        });
+        actions.append(copyButton);
+      }
       const downloadButton = document.createElement("button");
       downloadButton.type = "button";
       downloadButton.textContent = "Download";
@@ -5755,7 +5764,7 @@ function renderWorkflowStepInspector(result, workflowDefinition = getActiveWorkf
           formatted.mimeType || "text/plain;charset=utf-8"
         );
       });
-      actions.append(copyButton, downloadButton);
+      actions.append(downloadButton);
       item.append(actions);
     }
 
@@ -5904,7 +5913,7 @@ async function runSelectedWorkflow() {
       stepCount: result.steps.length
     };
     renderWorkflowView();
-    const hasWorkflowVisual = Boolean(formatted.handoff || formatted.filePreview || formatted.svg || formatted.viewer || formatted.figure || formatted.proteinFigure || formatted.sequenceLogo || formatted.sequenceExtractor || formatted.treeViewer || formatted.graphicEditor || formatted.textTableImage || formatted.plateLayout);
+    const hasWorkflowVisual = Boolean(formatted.handoff || formatted.filePreview || formatted.svg || formatted.viewer || formatted.figure || formatted.proteinFigure || formatted.sequenceLogo || formatted.sequenceExtractor || formatted.treeViewer || formatted.graphicEditor || formatted.alignedSequence || formatted.textTableImage || formatted.plateLayout);
     elements.workflowOutput.value = formatted.text;
     elements.workflowOutput.dataset.rawOutput = formatted.rawText;
     elements.workflowOutput.dataset.filename = formatted.filename ?? "sms3-workflow-output.txt";
@@ -5923,6 +5932,7 @@ async function runSelectedWorkflow() {
       sequenceExtractor: formatted.sequenceExtractor,
       treeViewer: formatted.treeViewer,
       graphicEditor: formatted.graphicEditor,
+      alignedSequence: formatted.alignedSequence,
       textTableImage: formatted.textTableImage,
       plateLayout: formatted.plateLayout,
       editorDocument: formatted.editorDocument,
@@ -5932,7 +5942,7 @@ async function runSelectedWorkflow() {
     elements.workflowOutput.hidden = Boolean(formatted.tableStream || hasWorkflowVisual);
     setOutputSearchRowVisible("workflow", Boolean(formatted.tableStream || (!hasWorkflowVisual && formatted.text)));
     updateOutputActions("workflow", {
-      hidden: Boolean(formatted.handoff || formatted.filePreview || formatted.tableStream || formatted.graphicEditor || formatted.textTableImage || formatted.plateLayout || formatted.proteinFigure || formatted.sequenceLogo),
+      hidden: Boolean(formatted.handoff || formatted.filePreview || formatted.tableStream || formatted.graphicEditor || formatted.alignedSequence || formatted.textTableImage || formatted.plateLayout || formatted.proteinFigure || formatted.sequenceLogo),
       mimeType: formatted.mimeType,
       label: formatted.outputLabel
     });
@@ -6518,10 +6528,10 @@ async function openEditorDocument(doc, {recovered = false} = {}) {
     elements.sequenceInput.value = doc.state.markdown || '';
     markdownWorkspace.render({...doc.state,__documentLoaded:true,__documentSource:doc.source});
   } else {
-    const key = ['svg-editor','image-annotator'].includes(doc.tool) ? 'graphicEditor' : IMAGE_EDITOR_TOOLS.includes(doc.tool) ? 'textTableImage' : doc.tool === 'plate-layout-planner' ? 'plateLayout' : doc.tool === 'tree-viewer' ? 'treeViewer' : doc.tool === 'sequence-editor' ? 'sequenceEditor' : doc.tool === 'sequence-extractor' ? 'sequenceExtractor' : doc.tool.includes('genome-figure') ? 'figure' : 'sangerTrace';
+    const key = doc.tool === 'aligned-sequence-viewer' ? 'alignedSequence' : ['svg-editor','image-annotator'].includes(doc.tool) ? 'graphicEditor' : IMAGE_EDITOR_TOOLS.includes(doc.tool) ? 'textTableImage' : doc.tool === 'plate-layout-planner' ? 'plateLayout' : doc.tool === 'tree-viewer' ? 'treeViewer' : doc.tool === 'sequence-editor' ? 'sequenceEditor' : doc.tool === 'sequence-extractor' ? 'sequenceExtractor' : doc.tool.includes('genome-figure') ? 'figure' : 'sangerTrace';
     if (doc.tool === 'tree-viewer') elements.sequenceInput.value=JSON.stringify(doc.state.document,null,2);
     if (doc.tool === 'sequence-editor') elements.sequenceInput.value=String(doc.source.input||'');
-    if (['plate-layout-planner', ...IMAGE_EDITOR_TOOLS, 'svg-editor', 'image-annotator'].includes(doc.tool)) elements.sequenceInput.value=doc.source.input;
+    if (['aligned-sequence-viewer', 'plate-layout-planner', ...IMAGE_EDITOR_TOOLS, 'svg-editor', 'image-annotator'].includes(doc.tool)) elements.sequenceInput.value=doc.source.input;
     await Promise.resolve(renderVisualOutput('tool', null, {[key]:doc.source, editorDocument:doc}));
     elements.toolOutputEmpty.hidden = true;
   }

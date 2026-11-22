@@ -164,9 +164,9 @@ export const proteinConservationStructureViewerMetadata = {
           label: "Output format",
           defaultValue: "interactive-viewer",
           choices: [
-            { value: "interactive-viewer", label: "Conservation protein structure viewer" },
-            { value: "report", label: "Mapping report" },
-            { value: "conservation-tsv", label: "Conservation table" }
+            { showcase: "conservation-protein-structure-viewer", value: "interactive-viewer", label: "Conservation protein structure viewer" },
+            { showcase: false, value: "report", label: "Mapping report" },
+            { showcase: false, value: "conservation-tsv", label: "Conservation table" }
           ]
         }
       ]

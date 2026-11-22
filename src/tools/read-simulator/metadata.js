@@ -146,10 +146,10 @@ export const readSimulatorMetadata = {
           defaultValue: "fastq",
           help: "For paired-end read outputs, SMS3 shows one interleaved preview after Run and offers separate R1/R2 downloads.",
           choices: [
-            { value: "fastq", label: "Read FASTQ" },
-            { value: "fasta", label: "Read FASTA" },
-            { value: "truth-table", label: "Read metadata table" },
-            { value: "report", label: "Summary report" }
+            { showcase: false, value: "fastq", label: "Read FASTQ" },
+            { showcase: false, value: "fasta", label: "Read FASTA" },
+            { showcase: false, value: "truth-table", label: "Read metadata table" },
+            { showcase: false, value: "report", label: "Summary report" }
           ]
         }
       ]

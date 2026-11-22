@@ -81,10 +81,10 @@ export const tableSqlQueryMetadata = {
           label: "Output format",
           defaultValue: "table",
           choices: [
-            { value: "table", label: "Query result table" },
-            { value: "csv", label: "CSV output" },
-            { value: "json", label: "JSON array" },
-            { value: "report", label: "Summary report" }
+            { showcase: false, value: "table", label: "Query result table" },
+            { showcase: false, value: "csv", label: "CSV output" },
+            { showcase: false, value: "json", label: "JSON array" },
+            { showcase: false, value: "report", label: "Summary report" }
           ]
         }
       ]
